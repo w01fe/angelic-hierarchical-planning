@@ -1,13 +1,12 @@
 ;;  Copyright (c) Jason Wolfe, 2008. All rights reserved.    
 ;;  jawolfe at cs dot berkeley dot edu
 ;;
-;;  File: states.clj
+;;  File: angel.search.states.clj
 ;;
-;;  Representations and simple functions for generic and explicit states, 
-;;  state spaces, and sets of states.
-;; 
+;;  Exports for states. 
 
-(ns search
+
+(ns search.states
  (:refer-clojure)
  )
 
