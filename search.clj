@@ -1,6 +1,6 @@
 (ns angel.search
  (:refer-clojure)
- (:require angel.search.states)
+ (:require (angel.search actions states search algorithms))
  )
 
 
