@@ -1,4 +1,4 @@
-(in-ns 'angel.util)
+(in-ns 'edu.berkeley.angel.util)
 
 
 (defn nats  

@@ -1,3 +1,1 @@
-(ns angel.util.macros
-  (:refer-clojure)
-  )
+(in-ns 'edu.berkeley.angel.util)

@@ -6,7 +6,7 @@
 ;;  Exports for states. 
 
 
-(in-ns 'angel.search.states)
+(in-ns 'edu.berkeley.angel.search.states)
 
 (derive ::StateSpace ::StateSet)
 

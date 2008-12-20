@@ -5,9 +5,9 @@
 ;;
 ;;  Exports for states. 
 
-(ns angel.search.states
+(ns edu.berkeley.angel.search.states
  (:refer-clojure)
- (:require (angel.search.states states explicit binary))
+ (:require (edu.berkeley.angel.search.states states explicit binary))
  )
 
 

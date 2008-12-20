@@ -5,9 +5,9 @@
 ;;
 ;;  Exports for states. 
 
-(ns angel.search.algorithms
+(ns edu.berkeley.angel.search.algorithms
  (:refer-clojure)
- (:require (angel.search.algorithms textbook))
+ (:require (edu.berkeley.angel.search.algorithms textbook))
  )
 
 

@@ -5,7 +5,7 @@
 ;;
 ;;  Exports for states. 
 
-(ns angel.search)
+(ns edu.berkeley.angel.search)
 
 (defstruct action :name :function)
 

@@ -1,4 +1,4 @@
-(in-ns 'angel.util)
+(in-ns 'edu.berkeley.angel.util)
 
 (defn power-set
   "Returns a vector of possible subvectors of seq, in no particular order"

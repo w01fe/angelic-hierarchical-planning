@@ -1,4 +1,4 @@
-(in-ns 'angel.search)
+(in-ns 'edu.berkeley.angel.search)
 
 ;; action-fn returns set of actions given state
 ;; action returns [result cost] pair

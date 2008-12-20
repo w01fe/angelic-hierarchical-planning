@@ -1,6 +1,6 @@
-(ns angel.search
+(ns edu.berkeley.angel.search
  (:refer-clojure)
- (:require (angel.search actions states search algorithms))
+ (:require (edu.berkeley.angel.search actions states search algorithms))
  )
 
 

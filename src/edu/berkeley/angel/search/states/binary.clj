@@ -5,9 +5,9 @@
 ;;
 ;;  Representations and simple functions for factored states and set thereof.
 
-(ns angel.search.states.binary
+(ns edu.berkeley.angel.search.states.binary
  (:refer-clojure)
- (:use angel.search.states angel.util )
+ (:use edu.berkeley.angel.search.states edu.berkeley.angel.util )
  )
 
 
@@ -37,7 +37,7 @@
 
 ;; Binary state spaces
 
-(derive ::BinaryStateSpace ::angel.search.states/StateSpace)
+(derive ::BinaryStateSpace ::edu.berkeley.angel.search.states/StateSpace)
 
 (defstruct binary-state-space :class :vars)  ; :var-map)
 
@@ -60,6 +60,6 @@
 
 ;; Binary state sets
 
-(derive ::BinaryStateSet ::angel.search.states/StateSet)
+(derive ::BinaryStateSet ::edu.berkeley.angel.search.states/StateSet)
 ;(derive ::BinaryStateSpace ::BinaryStateSet)
 ;(defstruct binary-state-set :class :space :formula)

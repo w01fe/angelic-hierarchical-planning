@@ -1,0 +1,1 @@
+The notice "he license for this application is the Common Development and Distribution License (CDDL), and not the GPL as shown elsewhere. Apparently Google Code does not allow CDDL, so as a concession, you can use this code under GPL v2, if you so choose." appears at http://code.google.com/p/graphmaker/ at the time of download.

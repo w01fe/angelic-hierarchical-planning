@@ -1,6 +1,4 @@
-(ns angel.util
-  (:refer-clojure)
-  )
+(in-ns 'edu.berkeley.angel.util)
 
 (defn member? 
   "Is item a member of seq?"
@@ -21,5 +19,9 @@
 	(aset arr i (aget arr r))
 	(aset arr r prev)))
      (seq arr)))
+
+(defn random-element [s]
+  "Return a random element of this seq"
+  (nth s (rand-int (count s))))
 
 ; (map (fn [[k v]] (list k (* (/ 6.0 10000) (count v)))) (categorize identity (take 10000 (repeatedly #(random-permutation '(1 2 3))))))

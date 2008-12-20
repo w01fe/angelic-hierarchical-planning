@@ -9,10 +9,10 @@
 
 (ns angel.search.states.explicit
  (:refer-clojure)
- (:use angel.search.states)
+ (:use edu.berkeley.angel.search.states)
  )
 
-(derive ::ExplicitStateSet ::angel.search.states/StateSpace)
+(derive ::ExplicitStateSet ::edu.berkeley.angel.search.states/StateSpace)
 
 (defstruct explicit-state-set :class :states)
 
