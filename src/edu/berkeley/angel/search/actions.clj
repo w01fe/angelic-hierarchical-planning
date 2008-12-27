@@ -1,23 +1,37 @@
 ;;  Copyright (c) Jason Wolfe, 2008. All rights reserved.    
 ;;  jawolfe at cs dot berkeley dot edu
 ;;
-;;  File: angel.search.states.clj
+;;  File: angel.search.actions.clj
 ;;
 ;;  Exports for states. 
 
-(ns edu.berkeley.angel.search)
-
-; should use methods, not action fns ??????
-; i.e. should be able to have same actions, use with different state representations?
-; well, with the cost of a single function call can get that here ...? 
+(in-ns 'edu.berkeley.angel.search)
 
 (defstruct action :class :name :fn)
 
-(defn make-action [name function]
-  (struct action ::Action name function))
+(defn make-action "function is a fn from states to [state reward] pairs.  "
+  [name next-fn]
+  (struct action ::Action name next-fn))
 
-(defn apply-action [state action]
-  ((:fn action) state))
+(defn next-state [state action]
+  (let [[next reward] ((:fn action) state)]
+    (with-meta next
+      {:act-seq (conj (:act-seq ^state) action)
+       :reward (+ reward (:reward ^state))})))
+
+       
+(defstruct action-space :class :fn)
+
+(defn make-action-space "function is a map from states to lazy seq of action objects"
+  [fn]
+  (struct action-space ::ActionSpace fn))
+  
+(defn applicable-actions [state action-space]
+  ((:fn action-space) state))
+  
+(defn successor-states [state action-space]
+  (map #(next-state state %) (applicable-actions state action-space)))
+  
 
 
 

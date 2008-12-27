@@ -3,6 +3,72 @@
   (:use (edu.berkeley.angel util search) clojure.contrib.test-is)
   )
 
+(defn depth-first-search "Tree dfs search"
+  [search-problem]
+  (first-solution (search-problem->state-space-search-state search-problem (constantly Double/NEGATIVE_INFINITY) (constantly Double/POSITIVE_INFINITY))
+			  (make-stack-pq) (constantly 0)))
+
+(defn depth-first-graph-search "Graph dfs search"
+  [search-problem]
+  (first-solution (search-problem->state-space-search-state search-problem (constantly Double/NEGATIVE_INFINITY) (constantly Double/POSITIVE_INFINITY))
+			  (make-graph-stack-pq) (constantly 0)))
+
+
+
+(defn breadth-first-search "Tree bfs search"
+  [search-problem]
+  (first-solution (search-problem->state-space-search-state search-problem (constantly Double/NEGATIVE_INFINITY) (constantly Double/POSITIVE_INFINITY))
+			  (make-queue-pq) (constantly 0)))
+
+(defn breadth-first-graph-search "Graph bfs search"
+  [search-problem]
+  (first-solution (search-problem->state-space-search-state search-problem (constantly Double/NEGATIVE_INFINITY) (constantly Double/POSITIVE_INFINITY))
+			  (make-graph-queue-pq) (constantly 0)))
+
+
+(defn uniform-cost-search "Tree uniform-cost search"
+  [search-problem]
+  (first-optimal-solution (search-problem->state-space-search-state search-problem (constantly Double/NEGATIVE_INFINITY) (constantly Double/POSITIVE_INFINITY))
+			  (make-tree-search-pq) #(- (reward-so-far %))))
+
+(defn uniform-cost-graph-search "Tree uniform-cost search"
+  [search-problem]
+  (first-optimal-solution (search-problem->state-space-search-state search-problem (constantly Double/NEGATIVE_INFINITY) (constantly Double/POSITIVE_INFINITY)) 
+			  (make-graph-search-pq) #(- (reward-so-far %))))
+
+
+(defn a-star-search "Tree a* search"
+  [search-problem heuristic]
+  (first-optimal-solution (search-problem->state-space-search-state search-problem (constantly Double/NEGATIVE_INFINITY) heuristic)
+			  (make-tree-search-pq) #(- (upper-reward-bound %))))
+
+(defn a-star-graph-search "Graph a* search"
+  [search-problem heuristic]
+  (first-optimal-solution (search-problem->state-space-search-state search-problem (constantly Double/NEGATIVE_INFINITY) heuristic) 
+			  (make-graph-search-pq) #(- (upper-reward-bound %))))
+
+
+
+(comment
+(time (uniform-cost-search
+  (make-search-problem 
+   (list 5)
+   (let [act-inc (make-action 'inc #(vector (list (inc (first %))) -1))
+	 act-dec (make-action 'dec #(vector (list (dec (first %))) -1))] 
+     (make-action-space 
+      (fn [state]
+	(cond (= (first state) 10) [act-dec]
+	      (= (first state) 0)  [act-inc]
+	      true                 [act-inc act-dec]))))
+   (make-goal #(zero? (first %))))))
+
+   
+     
+)
+
+
+(comment 
+
 (declare dfs-)
 (defn dfs- [state action-fn goal-test rem-depth] 
   (if (goal-test state) 
@@ -29,7 +95,7 @@
 		      (= '(inc dec dec dec dec dec dec) 
 			 (dfs (make-search-problem (make-search-space (range 0 11) [dec inc] action-fn) 5 zero?) 7)))))}) 
 
-(defn a-star [search-problem]
+(defn graph-uniform-cost [search-problem]
   "Standard (tree) A* search"
   (let [queue (make-fancy-priority-queue)
 	action-fn (:action-fn (:search-space search-problem))
@@ -42,6 +108,6 @@
 	  (or (and (goal-test best) cost)
  	      (do (doseq [[action state c2] (successors best action-fn)]
 		    (fancy-pq-add! queue state (+ cost c2)))
-		  (recur))))))))
+		  (recur)))))))))
 	
   

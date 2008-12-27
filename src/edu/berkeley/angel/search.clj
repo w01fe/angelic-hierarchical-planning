@@ -1,6 +1,7 @@
 (ns edu.berkeley.angel.search
  (:refer-clojure)
- (:require (edu.berkeley.angel.search actions states search algorithms))
+ (:use edu.berkeley.angel.util)
+ (:require (edu.berkeley.angel.search states actions goals problems spaces algorithms))
  )
 
 
