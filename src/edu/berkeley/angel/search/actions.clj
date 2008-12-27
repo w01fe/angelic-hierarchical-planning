@@ -25,9 +25,14 @@
 (defn make-action-space "function is a map from states to lazy seq of action objects"
   [fn]
   (struct action-space ::ActionSpace fn))
-  
-(defn applicable-actions [state action-space]
+
+(defmulti applicable-actions #(vector (:class %1) (:class %2)))
+ 
+(defmethod applicable-actions :default [state action-space]
   ((:fn action-space) state))
+ 
+;(defn applicable-actions [state action-space]
+;  ((:fn action-space) state))
   
 (defn successor-states [state action-space]
   (map #(next-state state %) (applicable-actions state action-space)))
