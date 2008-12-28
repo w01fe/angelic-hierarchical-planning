@@ -12,3 +12,20 @@
 	    (let [k (key-fn item)]
 	      (assoc m k (cons item (get m k ())))))
 	  {} s))
+
+(defn map-map "Like a map for maps (/ seqs of map-entries)"
+ [f m] (reduce #(conj %1 (f %2)) {} m))
+
+(defmacro lazy-get "Like get but lazy about default"
+  [m k d]
+  `(if-let [pair# (find ~m ~k)] 
+       (second pair#)
+     ~d))
+
+(defn safe-get "Like get but throw an exception if not found"
+  [m k] 
+  (lazy-get m k (throw (IllegalArgumentException. (format "Key %s not found" k)))))
+
+(defn assoc-cat "Like assoc but for maps to lists"
+  [m k v]
+  (assoc m k (concat v (get m k))))

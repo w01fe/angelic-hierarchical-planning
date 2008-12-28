@@ -54,6 +54,23 @@
   ([arg] `(DelayedSeq. (fn [] (seq ~arg))))
   ([arg & args] `(lazy-seq ~@(spread (cons arg args)))))
 
+(defn seq->vector-pair [x]
+  (cond (and (vector? x) (= (count x) 2) (coll? (second x))) x
+	(coll? x)   [(first x) (rest x)]
+	:else       [x nil]))
+
+(defn enforce-seq [x]
+  (cond (seq? x)  x
+	(coll? x) (seq x)
+	:else     (list x)))
+
+(defn distinct-elts? [s]
+  (let [s (seq s)]
+    (= (count s) (count (distinct s)))))
+
+(defn separate "Like filter, but returns [true-elts false-elts]"
+  [pred coll]
+  [(filter pred coll) (filter (complement pred) coll)])
 
 
 ;  ([arg &args]) `(lazy-cons  
