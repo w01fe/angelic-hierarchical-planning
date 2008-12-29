@@ -1,5 +1,6 @@
 (in-ns 'edu.berkeley.angel.planning.strips)
 
+
 (defstruct strips-planning-instance :class :name :domain :objects :trans-objects :init-atoms :goal-atoms)
 
 (defn get-subtypes [types type]
@@ -19,6 +20,7 @@
 	    (map-map (fn [t] [t (mapcat (partial get all-objects) (get-subtypes types t))]) (keys types))
 	    (map (partial check-atom types all-objects predicates) init-atoms)
 	    (map (partial check-atom types all-objects predicates) goal-atoms))))
+
 
 (defn parse-pddl-objects [s]
   (when s
@@ -76,29 +78,34 @@
 	 objects)
        (get objects (ffirst vars))))))
 
+
+
 (defn strips-action->action [schema]
   (assert-is (empty? (:vars schema)))
-  (make-action 
-   (:name schema)
-   (fn [state]
-     [(clojure.set/union 
-       (clojure.set/difference state (:delete-list schema)) 
-       (:add-list schema))
-      (- (:cost schema))])))
+  (assoc 
+      (make-action 
+       (:name schema)
+       (fn [state]
+	 [(clojure.set/union 
+	   (clojure.set/difference state (:delete-list schema)) 
+	   (:add-list schema))
+	  (- (:cost schema))]))
+    :preconditions (:preconditions schema)))
 
 (defn get-strips-action-space [instance]
   (let [domain  (:domain instance)
 	objects (:trans-objects instance)
-	schemas (:action-schemata domain)]
+	schemas (:action-schemata domain)
+	instantiations (map #'strips-action->action 
+			    (mapcat #(get-instantiations % objects)
+				    schemas))]
     (make-action-space
      (fn [state]
-       (map strips-action->action
-	    (filter #(every? state (:preconditions %))
-		    (mapcat #(get-instantiations % objects)
-			    schemas)))))))
+       (filter #(every? state (:preconditions %))
+	       instantiations)))))
 		      
     
-    
+
 
 (defn get-strips-goal [instance]
   (let [goal-atoms (set (:goal-atoms instance))]
@@ -129,4 +136,6 @@
   (read-strips-planning-instance
    (read-strips-planning-domain "/Users/jawolfe/Projects/research/IPC/IPC2/2000-Tests/Blocks/Track1/Typed/domain.pddl")
    "/Users/jawolfe/Projects/research/IPC/IPC2/2000-Tests/Blocks/Track1/Typed/probBLOCKS-4-0.pddl")))
+
+  
   )

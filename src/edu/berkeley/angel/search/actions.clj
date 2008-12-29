@@ -13,7 +13,13 @@
   [name next-fn]
   (struct action ::Action name next-fn))
 
+(def *next-counter* (make-array Integer/TYPE 1))
+
+(defn reset-next-counter [] 
+  (aset *next-counter* 0 0))
+
 (defn next-state [state action]
+  (aset *next-counter* 0 (inc (aget *next-counter* 0)))
   (let [[next reward] ((:fn action) state)]
     (with-meta next
       {:act-seq (conj (:act-seq ^state) action)
