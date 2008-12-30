@@ -111,14 +111,6 @@
   (let [goal-atoms (set (:goal-atoms instance))]
      (make-goal #(every? % goal-atoms))))
 
-(defn strips-instance->state-space-search-problem 
-  [instance]
-  (make-search-problem 
-   (set (:init-atoms instance)) 
-   nil  
-   (get-strips-action-space instance)
-   (get-strips-goal instance)
-   ))
 
 (defmethod planning-problem->state-space-search-problem :edu.berkeley.angel.planning.strips/StripsPlanningInstance
   [instance]
@@ -131,11 +123,11 @@
 
 
 (comment 
-  (uniform-cost-graph-search 
-  (strips-instance->state-space-search-problem 
+  (map :name (first (uniform-cost-graph-search 
+  (planning-problem->state-space-search-problem 
   (read-strips-planning-instance
    (read-strips-planning-domain "/Users/jawolfe/Projects/research/IPC/IPC2/2000-Tests/Blocks/Track1/Typed/domain.pddl")
-   "/Users/jawolfe/Projects/research/IPC/IPC2/2000-Tests/Blocks/Track1/Typed/probBLOCKS-4-0.pddl")))
-
+   "/Users/jawolfe/Projects/research/IPC/IPC2/2000-Tests/Blocks/Track1/Typed/probBLOCKS-4-0.pddl")))))
+  
   
   )
