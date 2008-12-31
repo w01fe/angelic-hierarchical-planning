@@ -1,51 +1,37 @@
+; Textbook algorithms for fully observable, deterministic problems
+; with countable state spaces and finite action spaces.
+
 (ns edu.berkeley.angel.search.algorithms.textbook
   (:refer-clojure)
-  (:use (edu.berkeley.angel util search) clojure.contrib.test-is)
+  (:use (edu.berkeley.angel [util :as util] search) clojure.contrib.test-is)
   )
 
-(defn depth-first-search "Tree dfs search"
-  [search-problem]
-  (first-solution (search-problem->state-space-search-state search-problem (constantly Double/NEGATIVE_INFINITY) (constantly Double/POSITIVE_INFINITY))
-			  (make-stack-pq) (constantly 0)))
+(defn depth-first-search         "Tree dfs search"          [node]
+  (first-solution node         (make-stack-pq)        (constantly 0)))
 
-(defn depth-first-graph-search "Graph dfs search"
-  [search-problem]
-  (first-solution (search-problem->state-space-search-state search-problem (constantly Double/NEGATIVE_INFINITY) (constantly Double/POSITIVE_INFINITY))
-			  (make-graph-stack-pq) (constantly 0)))
+(defn depth-first-graph-search   "Graph dfs search"         [node]
+  (first-solution node         (make-graph-stack-pq)  (constantly 0)))
 
 
+(defn breadth-first-search       "Tree bfs search"          [node]
+  (first-solution node         (make-queue-pq)        (constantly 0)))
 
-(defn breadth-first-search "Tree bfs search"
-  [search-problem]
-  (first-solution (search-problem->state-space-search-state search-problem (constantly Double/NEGATIVE_INFINITY) (constantly Double/POSITIVE_INFINITY))
-			  (make-queue-pq) (constantly 0)))
-
-(defn breadth-first-graph-search "Graph bfs search"
-  [search-problem]
-  (first-solution (search-problem->state-space-search-state search-problem (constantly Double/NEGATIVE_INFINITY) (constantly Double/POSITIVE_INFINITY))
-			  (make-graph-queue-pq) (constantly 0)))
+(defn breadth-first-graph-search "Graph bfs search"         [node]
+  (first-solution node         (make-graph-queue-pq)  (constantly 0)))
 
 
-(defn uniform-cost-search "Tree uniform-cost search"
-  [search-problem]
-  (first-optimal-solution (search-problem->state-space-search-state search-problem (constantly Double/NEGATIVE_INFINITY) (constantly Double/POSITIVE_INFINITY))
-			  (make-tree-search-pq) #(- (reward-so-far %))))
+(defn uniform-cost-search        "Tree uniform-cost search" [node]
+  (first-optimal-solution node (make-tree-search-pq)  #(- (reward-so-far %))))
 
-(defn uniform-cost-graph-search "Tree uniform-cost search"
-  [search-problem]
-  (first-optimal-solution (search-problem->state-space-search-state search-problem (constantly Double/NEGATIVE_INFINITY) (constantly Double/POSITIVE_INFINITY)) 
-			  (make-graph-search-pq) #(- (reward-so-far %))))
+(defn uniform-cost-graph-search "Tree uniform-cost search"  [node]
+  (first-optimal-solution node (make-graph-search-pq) #(- (reward-so-far %))))
 
 
-(defn a-star-search "Tree a* search"
-  [search-problem heuristic]
-  (first-optimal-solution (search-problem->state-space-search-state search-problem (constantly Double/NEGATIVE_INFINITY) heuristic)
-			  (make-tree-search-pq) #(- (upper-reward-bound %))))
+(defn a-star-search             "Tree a* search"            [node]
+  (first-optimal-solution node (make-tree-search-pq)  #(- (upper-reward-bound %))))
 
-(defn a-star-graph-search "Graph a* search"
-  [search-problem heuristic]
-  (first-optimal-solution (search-problem->state-space-search-state search-problem (constantly Double/NEGATIVE_INFINITY) heuristic) 
-			  (make-graph-search-pq) #(- (upper-reward-bound %))))
+(defn a-star-graph-search       "Graph a* search"           [node]
+  (first-optimal-solution node (make-graph-search-pq) #(- (upper-reward-bound %))))
 
 
 
@@ -64,6 +50,14 @@
 
    
      
+)
+
+
+(comment 
+(defn depth-first-search "Tree dfs search"
+  [search-problem]
+  (first-solution (search-problem->state-space-search-state search-problem (constantly Double/NEGATIVE_INFINITY) (constantly Double/POSITIVE_INFINITY))
+			  (make-stack-pq) (constantly 0)))
 )
 
 

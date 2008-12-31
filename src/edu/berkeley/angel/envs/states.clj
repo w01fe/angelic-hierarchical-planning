@@ -1,13 +1,6 @@
-;;  Copyright (c) Jason Wolfe, 2008. All rights reserved.    
-;;  jawolfe at cs dot berkeley dot edu
-;;
-;;  File: angel.search.states.clj
-;;
-;;  Exports for states. 
-
-(ns edu.berkeley.angel.search.states
+(ns edu.berkeley.angel.envs.states
  (:refer-clojure)
- (:require (edu.berkeley.angel.search.states states explicit binary))
+ (:require (edu.berkeley.angel.envs.states states explicit binary))
  )
 
 

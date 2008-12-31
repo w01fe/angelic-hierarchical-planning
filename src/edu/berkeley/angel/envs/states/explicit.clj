@@ -1,18 +1,9 @@
-;;  Copyright (c) Jason Wolfe, 2008. All rights reserved.    
-;;  jawolfe at cs dot berkeley dot edu
-;;
-;;  File: angel.search.states.explicit.clj
-;;
-;;  Representations and simple functions for generic and explicit states, 
-;;  state spaces, and sets of states.
-;; 
-
-(ns angel.search.states.explicit
+(ns edu.berkeley.angel.envs.states.explicit
  (:refer-clojure)
- (:use edu.berkeley.angel.search.states)
+ (:use edu.berkeley.angel.envs.states)
  )
 
-(derive ::ExplicitStateSet ::edu.berkeley.angel.search.states/StateSpace)
+(derive ::ExplicitStateSet ::edu.berkeley.angel.envs.states/StateSpace)
 
 (defstruct explicit-state-set :class :states)
 

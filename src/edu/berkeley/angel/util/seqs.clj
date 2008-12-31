@@ -1,6 +1,7 @@
 (ns edu.berkeley.angel.util
   (:import (edu.berkeley.angel.util DelayedSeq)))
 
+(comment ; already in clojure.contrib with name includes? (no keys though)
 (defn member? 
   "Is item a member of seq?"
   ([item seq] (when-first [x seq] (or (= x item) (recur item (rest seq)))))
@@ -10,6 +11,7 @@
 		(is (member? 1 '(2 -1 3) #(Math/abs %) =))
 		(is (member? [1 2] '([3 4] [1 2])))
 		(is (not (member? [1 2] '([3 4] [1 2]) identity ==))))})
+    )
 
 (defn random-permutation [s]
   "Return a random permutation of this seq." 
@@ -24,6 +26,35 @@
 (defn random-element [s]
   "Return a random element of this seq"
   (nth s (rand-int (count s))))
+
+(defn first-maximal-element [f s]
+  "Return the first element of s maximizing (f elt), throwing an exception if s empty."
+  (if (empty? s) 
+      (throw (IllegalArgumentException. "Empty seq has no maximal elt."))
+    ((fn [f s max-elt max-val]
+       (if (empty? s) 
+	   max-elt
+	 (let [elt (first s)
+	       val (f elt)]
+	   (if (> val max-val)
+	       (recur f (rest s) elt val)
+	     (recur f (rest s) max-elt max-val)))))
+     f (rest s) (first s) (f (first s)))))
+
+(defn random-maximal-element [f s]
+  "Return a random element of s maximizing (f elt), throwing an exception if s empty."
+  (random-element 
+   ((fn [f s max-elts max-val]
+      (if (empty? s) 
+	  max-elts
+	(let [elt (first s)
+	      val (f elt)]
+	   (cond (> val max-val) (recur f (rest s) [elt] val)
+		 (= val max-val) (recur f (rest s) (cons elt max-elts) val)
+                 :else  	 (recur f (rest s) max-elts max-val)))))
+    f s '() Double/NEGATIVE_INFINITY)))
+
+	   
 
 (defn lazy-merge  "Lazily merge two sorted seqs in increasing order based on the supplied comparator, or compare otherwise"
   ([s1 s2] (lazy-merge s1 s2 compare))
@@ -68,10 +99,11 @@
   (let [s (seq s)]
     (= (count s) (count (distinct s)))))
 
+(comment   ; already in clojure.contrib with same name!
 (defn separate "Like filter, but returns [true-elts false-elts]"
   [pred coll]
   [(filter pred coll) (filter (complement pred) coll)])
-
+  )
 
 ;  ([arg &args]) `(lazy-cons  
 

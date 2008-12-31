@@ -7,7 +7,7 @@
 
 (ns edu.berkeley.angel.search.algorithms
  (:refer-clojure)
- (:require (edu.berkeley.angel.search.algorithms textbook))
+ (:require (edu.berkeley.angel.search.algorithms textbook real-time))
  )
 
 

@@ -1,21 +1,31 @@
-(in-ns 'edu.berkeley.angel.search)
+(in-ns 'edu.berkeley.angel.envs)
 
-(defstruct search-problem :class :state-space :action-space :initial-state :goal)
+(defmulti #^{:doc "Get metafied initial state"}   get-initial-state :class)
+(defmulti #^{:doc "Get instance of state-space"}  get-state-space   :class)
+(defmulti #^{:doc "Get instance of action-space"} get-action-space  :class)
+(defmulti #^{:doc "Get instance of goal struct"}  get-goal          :class)
 
-(defn make-search-problem [initial-state state-space action-space goal]
-  (struct search-problem ::SearchProblem state-space action-space initial-state goal))
+(defn metafy-initial-state [s]
+  (with-meta s {:act-seq [] :reward 0}))
 
-(defn get-initial-state [search-problem]
-  (with-meta 
-   (:initial-state search-problem)
-   {:act-seq [] :reward 0}))
 
-(defn get-state-space [search-problem]
-  (:state-space search-problem))
+; Default, simple structure implementation
+
+(defstruct environment :class :state-space :action-space :initial-state :goal)
+
+(defn make-environment [initial-state state-space action-space goal]
+  (struct environment ::Environment state-space action-space initial-state goal))
+
+    
+(defmethod get-initial-state ::Environment [env]
+  (metafy-initial-state (:initial-state env)))
+
+(defmethod get-state-space   ::Environment [env]
+  (:state-space env))
   
-(defn get-action-space [search-problem]
-  (:action-space search-problem))
+(defmethod get-action-space  ::Environment [env]
+  (:action-space env)) 
 
-(defn get-goal [search-problem]
-  (:goal search-problem))
+(defmethod get-goal          ::Environment [env]
+  (:goal env))
   
