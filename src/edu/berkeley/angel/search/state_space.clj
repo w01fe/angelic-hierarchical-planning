@@ -8,10 +8,10 @@
 
 ;;; An auxillary data structure to hold cached features of env, heuristics.
 
-(defstruct state-space-search-space-struct :class :action-space :goal :lower-reward-fn :upper-reward-fn)
+(defstruct state-space-search-space-struct :class :state-space :action-space :goal :lower-reward-fn :upper-reward-fn)
 
-(defn make-state-space-search-space- [action-space goal lower-reward-fn upper-reward-fn]
-  (struct state-space-search-space-struct ::StateSpaceSearchSpace action-space goal lower-reward-fn upper-reward-fn))
+(defn make-state-space-search-space- [state-space action-space goal lower-reward-fn upper-reward-fn]
+  (struct state-space-search-space-struct ::StateSpaceSearchSpace state-space action-space goal lower-reward-fn upper-reward-fn))
 
 
 ;;; Main node data structure
@@ -32,7 +32,7 @@
   ([env upper-reward-fn] 
      (state-space-search-space env (constantly Double/NEGATIVE_INFINITY) upper-reward-fn))
   ([env lower-reward-fn upper-reward-fn]
-     (make-state-space-search-space- (get-action-space env) (get-goal env) lower-reward-fn upper-reward-fn)))
+     (make-state-space-search-space- (get-state-space env) (get-action-space env) (get-goal env) lower-reward-fn upper-reward-fn)))
 
 (defn state-space-search-node 
   ([env] 
@@ -41,7 +41,7 @@
      (state-space-search-node env (constantly Double/NEGATIVE_INFINITY) upper-reward-fn))
   ([env lower-reward-fn upper-reward-fn]
      (make-state-space-node 
-      (make-state-space-search-space- (get-action-space env) (get-goal env) lower-reward-fn upper-reward-fn)
+      (make-state-space-search-space- (get-state-space env) (get-action-space env) (get-goal env) lower-reward-fn upper-reward-fn)
       (get-initial-state env))))  
 
 ;;; Node methods 
@@ -72,6 +72,9 @@
 (defmethod extract-a-solution ::StateSpaceNode [node]
   (when (satisfies-goal? (:state node) (:goal (:search-space node)))
     [(:act-seq ^(:state node)) (:reward ^(:state node))]))
+
+(defmethod node-str ::StateSpaceNode [node] 
+  (state-str (:state-space (:search-space node)) (:state node)))
 
 
 ;(defmethod node-parent ::StateSpaceNode [node] 

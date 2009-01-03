@@ -1,10 +1,16 @@
 (in-ns 'edu.berkeley.angel.util)
 
+(defn prln "Print and return the first argument"
+  [& args] (do (println (apply print-str args)) (first args)))
+
 (defn pst2
    "Print the stack trace of the \"cause\" of the specified exception or *e if none passed"
    ([] (.printStackTrace (.getCause *e)))
    ([e] (.printStackTrace (.getCause e)))
     )
+
+(defn truthify [x]
+  (if x true false))
 
 (defn sref-set! [sref val] 
   (aset sref 0 val))
@@ -52,6 +58,7 @@
        (let ~(apply vector (mapcat #(vector % `(safe-get ~g '~%))  vars))
 	 ~@body))))
 
-
+(defn xor [& args]
+  (odd? (count (filter identity args))))
   
 

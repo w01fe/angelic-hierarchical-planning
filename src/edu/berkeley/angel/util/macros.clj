@@ -28,3 +28,9 @@
 ;  ([[binding-form test format-str & args] & body]
 ;     `(when-let [~binding-form (make-safe ~test ~format-str ~@args)] ~@body)))
 
+
+(defmacro cond-list "Takes args like hash-map, returns lazy seq of elts with true preds."
+  ([] ())
+  ([pred elt & args]
+     `(let [r# (cond-list ~@args)]
+	(if ~pred (cons ~elt r#) r#)))) 

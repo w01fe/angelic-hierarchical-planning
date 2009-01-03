@@ -64,6 +64,15 @@
 	   (neg? (compare (first s1) (first s2))) (lazy-cons (first s1) (lazy-merge (rest s1) s2))
 	   true                                   (lazy-cons (first s2) (lazy-merge s1 (rest s2))))))
      
+(defn cons-when "Like cons but ignores logically false items"
+  [item seq]
+  (if item (cons item seq) seq))
+
+(defmacro lazy-cons-when "Like cons-when but lazy like lazy-cons"
+  [item seq]
+  `(let [item# ~item]
+     (if item# (lazy-cons item# ~seq) ~seq)))
+
 (defn map-when "Like map but discards logically false entries"
   [fn & seqs]
   (filter identity (apply map fn seqs)))
@@ -98,6 +107,10 @@
 (defn distinct-elts? [s]
   (let [s (seq s)]
     (= (count s) (count (distinct s)))))
+
+(defn concat-elts "Lazily conctaenate a lazy seq of lazy seqs." [s] 
+  (mapcat identity s))
+
 
 (comment   ; already in clojure.contrib with same name!
 (defn separate "Like filter, but returns [true-elts false-elts]"

@@ -31,6 +31,13 @@
   [(lower-reward-bound node) (upper-reward-bound node)])
 
 
+(defmulti #^{:doc "Get a human-readable string version of this node"} node-str :class)
+(defmethod node-str ::Node [node] 
+  (str node))
+
+
+
+
 ;; Optional methods: may throw unsupportedoperationexception if desired.
 
 (defmulti #^{:doc "Parent node"} node-parent :class)
@@ -72,8 +79,9 @@
 (defn map-leaf-refinements- [f pq priority-fn]
   (when-not (pq-empty? pq)
     (let [next (pq-remove-min! pq)]
+;      (when (f next) (prn next (f next)))
       (if-let [fnext (f next)]
-	  (lazy-cons fnext (leaf-refinements- f pq priority-fn))
+	  (lazy-cons fnext (map-leaf-refinements- f pq priority-fn))
 	(do (pq-add-all! pq (map (fn [i] [i (priority-fn i)]) (immediate-refinements next)))
 	    (recur f pq priority-fn))))))
 
@@ -103,13 +111,13 @@
    (make-graph-stack-pq) 
    #(- (upper-reward-bound %))))
 
-(defn map-refinements-depth
-  "A depth-limited version of map-leaf-refinements.  f is not applied to nodes with depth or solution cutoffs."
+(defn map-leaf-refinements-depth
+  "A depth-limited version of map-leaf-refinements.  f is not applied to nodes with only depth or solution cutoffs."
   [node f depth]
   (map-leaf-refinements 
    node 
-   #(or (and (extract-optimal-solution %) (= (node-depth %) depth) %)
-	(f %))
+   #(or (f %)
+	(and (or (extract-optimal-solution %) (= (node-depth %) depth)) %))
    (make-graph-stack-pq) 
    #(- (upper-reward-bound %))))
 

@@ -1,4 +1,4 @@
-(in-ns 'edu.berkeley.angel.envs.strips)
+(in-ns 'edu.berkeley.angel.domains.strips)
 
 
 ;;; Helpers for parsing instances
