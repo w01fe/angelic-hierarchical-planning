@@ -8,10 +8,10 @@
 
 ;;; An auxillary data structure to hold cached features of env, heuristics.
 
-(defstruct state-space-search-space :class :action-space :goal :lower-reward-fn :upper-reward-fn)
+(defstruct state-space-search-space-struct :class :action-space :goal :lower-reward-fn :upper-reward-fn)
 
-(defn- make-state-space-search-space [action-space goal lower-reward-fn upper-reward-fn]
-  (struct state-space-search-space ::StateSpaceSearchProblem action-space goal lower-reward-fn upper-reward-fn))
+(defn make-state-space-search-space- [action-space goal lower-reward-fn upper-reward-fn]
+  (struct state-space-search-space-struct ::StateSpaceSearchSpace action-space goal lower-reward-fn upper-reward-fn))
 
 
 ;;; Main node data structure
@@ -20,11 +20,19 @@
 
 (defstruct state-space-node :class :search-space :state)
 
-(defn- make-state-space-node [search-space state]
+(defn make-state-space-node [search-space state]
   (struct state-space-node ::StateSpaceNode search-space state))
 
 
-;;; Only method to call here is:
+;;; Only methods to call here is:
+
+(defn state-space-search-space
+  ([env] 
+     (state-space-search-space env (constantly Double/POSITIVE_INFINITY)))
+  ([env upper-reward-fn] 
+     (state-space-search-space env (constantly Double/NEGATIVE_INFINITY) upper-reward-fn))
+  ([env lower-reward-fn upper-reward-fn]
+     (make-state-space-search-space- (get-action-space env) (get-goal env) lower-reward-fn upper-reward-fn)))
 
 (defn state-space-search-node 
   ([env] 
@@ -33,9 +41,8 @@
      (state-space-search-node env (constantly Double/NEGATIVE_INFINITY) upper-reward-fn))
   ([env lower-reward-fn upper-reward-fn]
      (make-state-space-node 
-      (make-state-space-search-space (get-action-space env) (get-goal env) lower-reward-fn upper-reward-fn)
-      (get-initial-state env))))
-  
+      (make-state-space-search-space- (get-action-space env) (get-goal env) lower-reward-fn upper-reward-fn)
+      (get-initial-state env))))  
 
 ;;; Node methods 
 
@@ -63,7 +70,7 @@
        (extract-a-solution node)))
 
 (defmethod extract-a-solution ::StateSpaceNode [node]
-  (when (satisfies-goal? (:state node) (:goal (search-space node)))
+  (when (satisfies-goal? (:state node) (:goal (:search-space node)))
     [(:act-seq ^(:state node)) (:reward ^(:state node))]))
 
 
@@ -73,7 +80,8 @@
 (defmethod node-depth ::StateSpaceNode [node] 
   (count (:act-seq ^(:state node))))
 
-
+(defmethod node-first-action ::StateSpaceNode [node]
+  (nth (:act-seq ^(:state node)) 0))
 
 
 

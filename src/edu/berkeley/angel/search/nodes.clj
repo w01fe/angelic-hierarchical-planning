@@ -39,11 +39,17 @@
 (defmulti #^{:doc "Depth of node"} node-depth :class)
 (defmethod node-depth :Node [node] (throw (UnsupportedOperationException.)))
 
-;;;;;;;;;;;;;;;; Some useful utility functions based on these definitions.
+(defmulti #^{:doc "First primitive action at node"} node-first-action :class)
+(defmethod node-first-action :Node [node] (throw (UnsupportedOperationException.)))
+
+;;; Some useful utility functions based on these definitions.
+
+(defn node? [obj] 
+  (and (map? obj) (isa? (:class obj) ::Node)))
 
 (defn all-refinements- [pq priority-fn]
 ;  (print "\ntop")
-  (if (pq-empty? pq) nil
+  (when-not (pq-empty? pq)
     (let [next (pq-remove-min! pq)]
 ;      (print " " (first (:state next)) ": " )
       (pq-add-all! pq (map (fn [i] [i (priority-fn i)]) (immediate-refinements next)))
@@ -63,6 +69,116 @@
   (filter primitive-refinement (all-refinements node pq priority-fn)))
 
 
+(defn map-leaf-refinements- [f pq priority-fn]
+  (when-not (pq-empty? pq)
+    (let [next (pq-remove-min! pq)]
+      (if-let [fnext (f next)]
+	  (lazy-cons fnext (leaf-refinements- f pq priority-fn))
+	(do (pq-add-all! pq (map (fn [i] [i (priority-fn i)]) (immediate-refinements next)))
+	    (recur f pq priority-fn))))))
+
+(defn leaf-refinements 
+  "Returns a lazy seq of leaf refinements satisfying pred, refined using the provided 
+   (presumed fresh) priority queue and priority function."
+  [node pred pq priority-fn]
+  (pq-add! pq node (priority-fn node))
+  (map-leaf-refinements- #(when (pred %) %) pq priority-fn))
+
+(defn map-leaf-refinements 
+  "Returns a lazy seq of true (f node) invocations, refined using the provided 
+   (presumed fresh) priority queue and priority function."
+  [node f pq priority-fn]
+  (pq-add! pq node (priority-fn node))
+  (map-leaf-refinements- f pq priority-fn))
+
+; TODO: versions based on other search algorithms!
+(defn refinements-depth
+  "Returns a lazy seq of *mostly unique* refinement nodes at the desired depth (or optimal solns
+   at lower depths, with search cutoff), computed by depth-first graph search, reopened if better.  
+   node must support node-depth."
+  [node f depth]
+  (leaf-refinements 
+   node 
+   #(or (extract-optimal-solution %) (= (node-depth %) depth))
+   (make-graph-stack-pq) 
+   #(- (upper-reward-bound %))))
+
+(defn map-refinements-depth
+  "A depth-limited version of map-leaf-refinements.  f is not applied to nodes with depth or solution cutoffs."
+  [node f depth]
+  (map-leaf-refinements 
+   node 
+   #(or (and (extract-optimal-solution %) (= (node-depth %) depth) %)
+	(f %))
+   (make-graph-stack-pq) 
+   #(- (upper-reward-bound %))))
+
+
+
+
+
+;; TODO: these are somewhat misnomors, if hierarchy is infinite (e.g.) ?
+; So far ignoring internal structure of nodes (bounds) 
+(defn first-optimal-solution [node pq priority-fn]
+  (some extract-optimal-solution
+	(all-refinements node pq priority-fn)))
+
+
+(defn first-solution [node pq priority-fn]
+  (some extract-a-solution
+	(all-refinements node pq priority-fn)))
+
+
+;;; A wrapper for nodes to change their cost bounds
+
+(defstruct reward-adjusted-node :class :node :lower-reward :upper-reward)
+
+(derive ::RewardAdjustedNode ::Node)
+
+(defn adjust-reward 
+  "A wrapper for nodes to change just their cost bounds.  No checking is done; be careful."
+  ([node upper] (adjust-reward node (lower-reward-bound node) upper))
+  ([node lower upper] (struct reward-adjusted-node ::RewardAdjustedNode node lower upper)))
+
+(defmethod lower-reward-bound       ::RewardAdjustedNode [node] (:lower-reward node))
+(defmethod upper-reward-bound       ::RewardAdjustedNode [node] (:upper-reward node))
+(defmethod reward-so-far            ::RewardAdjustedNode [node] (reward-so-far            (:node node)))
+(defmethod immediate-refinements    ::RewardAdjustedNode [node] (immediate-refinements    (:node node)))
+(defmethod primitive-refinement     ::RewardAdjustedNode [node] (primitive-refinements    (:node node)))
+(defmethod extract-optimal-solution ::RewardAdjustedNode [node] (extract-optimal-solution (:node node)))
+(defmethod extract-a-solution       ::RewardAdjustedNode [node] (extract-a-solution       (:node node)))
+(defmethod dead-end?                ::RewardAdjustedNode [node] (dead-end?                (:node node)))
+(defmethod node-parent              ::RewardAdjustedNode [node] (node-parent              (:node node)))
+(defmethod node-depth               ::RewardAdjustedNode [node] (node-depth               (:node node)))
+(defmethod node-first-action        ::RewardAdjustedNode [node] (node-first-action        (:node node)))
+
+
+
+
+  
+
+
+
+
+
+
+
+
+
+
+
+(comment 
+  (map #(map :name (:act-seq ^(:state %)))
+       (primitive-refinements-depth 
+	(state-space-search-node  
+	 (read-strips-planning-instance
+	  (read-strips-planning-domain "/Users/jawolfe/Projects/research/IPC/IPC2/2000-Tests/Blocks/Track1/Typed/domain.pddl")
+   "/Users/jawolfe/Projects/research/IPC/IPC2/2000-Tests/Blocks/Track1/Typed/probBLOCKS-4-0.pddl")) 2)))
+
+
+
+
+(comment 
 (defn some-refinements- [pred pq priority-fn]
   (if (pq-empty? pq) nil
     (let [next (pq-remove-min! pq)]
@@ -76,35 +192,21 @@
    priority queue and priority function, cutting off branches where pred returns false."
   [node pred pq priority-fn]
   (pq-add! pq node (priority-fn node))
-  (some-refinements- pred pq priority-fn))
-
-(defn primitive-refinements-depth 
-  "Returns a lazy seq of *unique* primitive refinements at the desired depth,
-   computed by depth-first graph search.  node must support node-depth."
-  [node depth]
-  (filter #(and (primitive-refinement %) (= (node-depth %) depth))
-	  (some-refinements node #(<= (node-depth %) depth) 
-			    (make-graph-stack-pq) (constantly 0))))
-
-
-;; TODO: these are somewhat misnomors, if hierarchy is infinite (e.g.)
-; So far ignoring internal structure of nodes (bounds, extract-a-sol, ...) 
-(defn first-optimal-solution [node pq priority-fn]
-  (some extract-optimal-solution
-	(all-refinements node pq priority-fn)))
-
-
-(defn first-solution [node pq priority-fn]
-  (some extract-a-solution
-	(all-refinements node pq priority-fn)))
-
-
+  (some-refinements- pred pq priority-fn)))
 
 (comment 
-  (map #(map :name (:act-seq ^(:state %)))
-       (primitive-refinements-depth 
-	(state-space-search-node  
-	 (read-strips-planning-instance
-	  (read-strips-planning-domain "/Users/jawolfe/Projects/research/IPC/IPC2/2000-Tests/Blocks/Track1/Typed/domain.pddl")
-   "/Users/jawolfe/Projects/research/IPC/IPC2/2000-Tests/Blocks/Track1/Typed/probBLOCKS-4-0.pddl")) 2)))
+(defn iterate-refinements- [f pq priority-fn]
+  (when-not (pq-empty? pq)
+    (let [next (f (pq-remove-min! pq))]
+      (lazy-cons next
+		 (do (when (node? next)
+		       (pq-add-all! pq (map (fn [i] [i (priority-fn i)]) (immediate-refinements next))))
+		     (iterate-refinements f pq priority-fn))))))
 
+(defn iterate-refinements 
+  "Returns a lazy seq of (f refinement), refined using the provided (presumed fresh)
+   priority queue and priority function.  When (f refinement) is a node, continues
+   iteration; otherwise, stops. Filters out nil entries."
+  [node f pq priority-fn]
+  (pq-add! pq node (priority-fn node))
+  (iterate-refinements- f pq priority-fn)))

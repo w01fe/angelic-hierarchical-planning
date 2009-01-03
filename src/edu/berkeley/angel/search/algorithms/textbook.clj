@@ -1,5 +1,6 @@
 ; Textbook algorithms for fully observable, deterministic problems
 ; with countable state spaces and finite action spaces.
+; Does *not* assume positive action costs...
 
 (ns edu.berkeley.angel.search.algorithms.textbook
   (:refer-clojure)
@@ -20,11 +21,11 @@
   (first-solution node         (make-graph-queue-pq)  (constantly 0)))
 
 
-(defn uniform-cost-search        "Tree uniform-cost search" [node]
-  (first-optimal-solution node (make-tree-search-pq)  #(- (reward-so-far %))))
+;(defn uniform-cost-search        "Tree uniform-cost search" [node]
+;  (first-optimal-solution node (make-tree-search-pq)  #(- (reward-so-far %))))
 
-(defn uniform-cost-graph-search "Tree uniform-cost search"  [node]
-  (first-optimal-solution node (make-graph-search-pq) #(- (reward-so-far %))))
+;(defn uniform-cost-graph-search "Tree uniform-cost search"  [node]
+;  (first-optimal-solution node (make-graph-search-pq) #(- (reward-so-far %))))
 
 
 (defn a-star-search             "Tree a* search"            [node]

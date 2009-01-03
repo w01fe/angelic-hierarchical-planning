@@ -110,7 +110,8 @@
 
 (defmethod get-goal          ::StripsPlanningInstance [instance]
   (let [goal-atoms (set (:goal-atoms instance))]
-    (make-goal #(every? % goal-atoms))))
+    (assoc (make-goal #(every? % goal-atoms))
+     :conjuncts goal-atoms)))
   
 
 

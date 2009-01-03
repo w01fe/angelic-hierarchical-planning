@@ -1,3 +1,6 @@
+; Priority queues. 
+; BEWARE; some of these will not save you from GHI-type problems. (depth-limited search).
+
 (ns edu.berkeley.angel.util
   (:import (java.util PriorityQueue HashMap HashSet) (com.bluemarsh.graphmaker.core.util FibonacciHeap))
   )
@@ -60,14 +63,15 @@
 (derive ::GraphQueuePriorityQueue ::QueuePriorityQueue)
 
 (defn make-graph-queue-pq
-  "A queue that ignores priorities and repeated adds."
-  [] {:class ::GraphQueuePriorityQueue :queue (sref clojure.lang.PersistentQueue/EMPTY) :set (new HashSet)})
+  "A queue that ignores priorities and repeated adds of >= priority."
+  [] {:class ::GraphQueuePriorityQueue :queue (sref clojure.lang.PersistentQueue/EMPTY) :map (new HashMap)})
 
 (defmethod pq-add! ::GraphQueuePriorityQueue [pq item cost]
-  (let [#^HashSet s (:set pq)]
-    (if (.contains s item)
+  (let [#^HashMap m (:map pq)
+	val (.get m item)] 
+    (if (and val (<= val cost)) 
         :ignored
-      (do (.add s item)
+      (do (.put m item cost)
 	  (sref-up! (:queue pq) conj [item cost])
 	  :added)))) 
 
@@ -117,24 +121,26 @@
 (derive ::GraphStackPriorityQueue ::StackPriorityQueue)
 
 (defn make-graph-stack-pq
-  "A stack that ignores priorities and repeated adds."
-  [] {:class ::GraphStackPriorityQueue :stack (sref nil) :set (new HashSet)})
+  "A stack that ignores priorities and repeated adds.  BEWARE of GHI with, e.g., depth-limited search."
+  [] {:class ::GraphStackPriorityQueue :stack (sref nil) :map (new HashMap)})
 
 (defmethod pq-add! ::GraphStackPriorityQueue [pq item cost]
-  (let [#^HashSet s (:set pq)]
-    (if (.contains s item)
+  (let [#^HashMap m (:map pq)
+	val (.get m item)] 
+    (if (and val (<= val cost)) 
         :ignored
-      (do (.add s item)
+      (do (.put m item cost)
 	  (sref-up! (:stack pq) conj [item cost])
 	  :added))))
 
 (defmethod pq-add-all! ::GraphStackPriorityQueue [pq items]
 ;  (print " a ")
-  (let [#^HashSet s (:set pq)
+  (let [#^HashMap m (:map pq)
 	old (sref-get (:stack pq))]
     (sref-set! (:stack pq) 
-	       (delay-seq (concat (for [pair items :when (not (.contains s (first pair)))] 
-				    (do (.add s (first pair)) pair))
+	       (delay-seq (concat (for [pair items :when (let [v (.get m (first pair))] 
+							   (or (nil? v) (< (second pair) v)))] 
+				    (do (.put m (first pair) (second pair)) pair))
 				  old)))
 ;    (print " ae ")
     nil))

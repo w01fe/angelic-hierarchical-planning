@@ -19,6 +19,13 @@
       {:act-seq (conj (:act-seq ^state) action)
        :reward (+ reward (:reward ^state))})))
 
+(defn next-initial-state [[state [act-seq reward-so-far]] action]
+;  (aset *next-counter* 0 (inc (aget *next-counter* 0)))
+  (let [[next reward] ((:fn action) state)]
+    [(with-meta next ^state)
+     [(conj act-seq action)
+      (+ reward-so-far reward)]]))
+
 
 (defmulti applicable-actions #(vector (:class %1) (:class %2)))
 
