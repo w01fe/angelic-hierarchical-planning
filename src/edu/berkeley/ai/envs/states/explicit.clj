@@ -1,9 +1,9 @@
-(ns edu.berkeley.angel.envs.states.explicit
+(ns edu.berkeley.ai.envs.states.explicit
  (:refer-clojure)
- (:use edu.berkeley.angel.envs.states)
+ (:use edu.berkeley.ai.envs.states)
  )
 
-(derive ::ExplicitStateSet ::edu.berkeley.angel.envs.states/StateSpace)
+(derive ::ExplicitStateSet ::edu.berkeley.ai.envs.states/StateSpace)
 
 (defstruct explicit-state-set :class :states)
 

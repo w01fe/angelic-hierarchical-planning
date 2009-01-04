@@ -1,4 +1,4 @@
-(in-ns 'edu.berkeley.angel.envs)
+(in-ns 'edu.berkeley.ai.envs)
 
 
 (defstruct action :class :name :fn)

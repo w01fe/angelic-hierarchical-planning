@@ -3,7 +3,7 @@
 ;   Now, this version does not.  Old version that does is below.
 ;   (if you want that, use flat hierarchy?)
 
-(in-ns 'edu.berkeley.angel.search)
+(in-ns 'edu.berkeley.ai.search)
 
 
 ;;; An auxillary data structure to hold cached features of env, heuristics.

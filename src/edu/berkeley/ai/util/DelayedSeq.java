@@ -10,7 +10,7 @@
  *   Created largely from from ASeq.java by Jason Wolfe.
  **/
 
-package edu.berkeley.angel.util;
+package edu.berkeley.ai.util;
 import clojure.lang.*;
 
 import java.util.*;

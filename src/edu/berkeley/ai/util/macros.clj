@@ -1,4 +1,4 @@
-(in-ns 'edu.berkeley.angel.util)
+(in-ns 'edu.berkeley.ai.util)
 
 (defmacro assert-is
   "Like assert, but prints some more info about the offending form (may multiple eval on error)"

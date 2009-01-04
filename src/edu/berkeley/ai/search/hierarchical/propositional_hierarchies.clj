@@ -1,6 +1,6 @@
-(ns edu.berkeley.angel.search.hierarchical.propositional-hierarchies
+(ns edu.berkeley.ai.search.hierarchical.propositional-hierarchies
   (:refer-clojure)
-  (:use edu.berkeley.angel.search.hierarchical)
+  (:use edu.berkeley.ai.search.hierarchical)
   )
 
 (comment 

@@ -1,4 +1,4 @@
-(ns edu.berkeley.angel.envs)
+(ns edu.berkeley.ai.envs)
 
 (defstruct goal :class :test)
 

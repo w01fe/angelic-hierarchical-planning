@@ -1,4 +1,4 @@
-(in-ns 'edu.berkeley.angel.util)
+(in-ns 'edu.berkeley.ai.util)
 
 (defn true-keys 
   "Return a lazy seq of the keys corresponding to logically true values in map."

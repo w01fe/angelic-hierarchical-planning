@@ -2,7 +2,7 @@
 ; Search space != state space, in general
 ; state-space search problems are a special case (of course)
 
-(in-ns 'edu.berkeley.angel.search)
+(in-ns 'edu.berkeley.ai.search)
 
 ;;;;;;;;;;;;;;;;;; Interface for search nodes
 

@@ -2,9 +2,9 @@
 ; with countable state spaces and finite action spaces.
 ; Does *not* assume positive action costs...
 
-(ns edu.berkeley.angel.search.algorithms.textbook
+(ns edu.berkeley.ai.search.algorithms.textbook
   (:refer-clojure)
-  (:use (edu.berkeley.angel [util :as util] search) clojure.contrib.test-is)
+  (:use (edu.berkeley.ai [util :as util] search) clojure.contrib.test-is)
   )
 
 (defn depth-first-search         "Tree dfs search"          [node]

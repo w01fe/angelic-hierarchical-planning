@@ -1,9 +1,9 @@
 ; Textbook algorithms for fully observable, deterministic problems
 ; with countable state spaces and finite action spaces.
 
-(ns edu.berkeley.angel.search.algorithms.real-time
+(ns edu.berkeley.ai.search.algorithms.real-time
   (:refer-clojure)
-  (:use (edu.berkeley.angel [util :as util] envs search))
+  (:use (edu.berkeley.ai [util :as util] envs search))
   )
 
 

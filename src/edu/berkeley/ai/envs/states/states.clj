@@ -1,4 +1,4 @@
-(in-ns 'edu.berkeley.angel.envs.states)
+(in-ns 'edu.berkeley.ai.envs.states)
 
 (defmulti list-states :class)
 (defmulti count-states :class)

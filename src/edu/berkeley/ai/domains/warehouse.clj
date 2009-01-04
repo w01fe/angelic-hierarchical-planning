@@ -1,6 +1,6 @@
-(ns edu.berkeley.angel.domains.warehouse
+(ns edu.berkeley.ai.domains.warehouse
  (:refer-clojure)
- (:require edu.berkeley.angel.envs)
+ (:require edu.berkeley.ai.envs)
  )
 
 

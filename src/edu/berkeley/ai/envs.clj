@@ -1,7 +1,7 @@
-(ns edu.berkeley.angel.envs
+(ns edu.berkeley.ai.envs
  (:refer-clojure)
- (:use [edu.berkeley.angel.util :as util])
- (:require (edu.berkeley.angel.envs states actions goals envs))
+ (:use [edu.berkeley.ai.util :as util])
+ (:require (edu.berkeley.ai.envs states actions goals envs))
  )
 
 

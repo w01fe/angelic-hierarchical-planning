@@ -1,4 +1,4 @@
-(in-ns 'edu.berkeley.angel.envs)
+(in-ns 'edu.berkeley.ai.envs)
 
 (defmulti #^{:doc "Get metafied initial state"}   get-initial-state :class)
 (defmulti #^{:doc "Get instance of state-space"}  get-state-space   :class)

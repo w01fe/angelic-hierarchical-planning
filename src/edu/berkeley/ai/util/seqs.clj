@@ -1,5 +1,5 @@
-(ns edu.berkeley.angel.util
-  (:import (edu.berkeley.angel.util DelayedSeq)))
+(ns edu.berkeley.ai.util
+  (:import (edu.berkeley.ai.util DelayedSeq)))
 
 (comment ; already in clojure.contrib with name includes? (no keys though)
 (defn member? 

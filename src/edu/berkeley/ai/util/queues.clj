@@ -1,7 +1,7 @@
 ; Priority queues. 
 ; BEWARE; some of these will not save you from GHI-type problems. (depth-limited search).
 
-(ns edu.berkeley.angel.util
+(ns edu.berkeley.ai.util
   (:import (java.util PriorityQueue HashMap HashSet) (com.bluemarsh.graphmaker.core.util FibonacciHeap))
   )
 

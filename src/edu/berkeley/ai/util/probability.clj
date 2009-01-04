@@ -1,1 +1,1 @@
-(in-ns 'edu.berkeley.angel.util)
+(in-ns 'edu.berkeley.ai.util)

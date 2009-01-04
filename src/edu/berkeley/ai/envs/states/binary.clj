@@ -1,13 +1,13 @@
-(ns edu.berkeley.angel.envs.states.binary
+(ns edu.berkeley.ai.envs.states.binary
  (:refer-clojure)
- (:use edu.berkeley.angel.envs.states [edu.berkeley.angel.util :as util] )
+ (:use edu.berkeley.ai.envs.states [edu.berkeley.ai.util :as util] )
  )
 
 
 
 ;; Binary state spaces
 
-(derive ::BinaryStateSpace ::edu.berkeley.angel.envs.states/StateSpace)
+(derive ::BinaryStateSpace ::edu.berkeley.ai.envs.states/StateSpace)
 
 (defstruct binary-state-space :class :vars) 
 
@@ -33,7 +33,7 @@
 
 ;; Binary state sets
 
-;(derive ::BinaryStateSet ::edu.berkeley.angel.envs.states/StateSet)
+;(derive ::BinaryStateSet ::edu.berkeley.ai.envs.states/StateSet)
 ;(derive ::BinaryStateSpace ::BinaryStateSet)
 ;(defstruct binary-state-set :class :space :formula)
 

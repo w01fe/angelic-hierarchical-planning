@@ -1,7 +1,7 @@
-(ns edu.berkeley.angel.util
+(ns edu.berkeley.ai.util
  (:refer-clojure)
  (:use clojure.contrib.test-is)
- (:require (edu.berkeley.angel.util macros seqs sets maps numeric probability misc queues))
+ (:require (edu.berkeley.ai.util macros seqs sets maps numeric probability misc queues))
  ) 
 
 

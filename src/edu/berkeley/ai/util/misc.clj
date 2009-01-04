@@ -1,4 +1,4 @@
-(in-ns 'edu.berkeley.angel.util)
+(in-ns 'edu.berkeley.ai.util)
 
 (defn prln "Print and return the first argument"
   [& args] (do (println (apply print-str args)) (first args)))
