@@ -7,6 +7,9 @@
   [name next-fn]
   (struct action ::Action name next-fn))
 
+
+
+
 ;(def *next-counter* (make-array Integer/TYPE 1))
 
 ;(defn reset-next-counter [] 
@@ -27,8 +30,9 @@
       (+ reward-so-far reward)]]))
 
 
-(defmulti applicable-actions #(vector (:class %1) (:class %2)))
 
+
+(defmulti applicable-actions #(vector (:class %1) (:class %2)))
        
 (defstruct action-space :class :fn)
 
@@ -43,7 +47,3 @@
 (defn successor-states [state action-space]
   (map #(next-state state %) (applicable-actions state action-space)))
   
-
-
-
-

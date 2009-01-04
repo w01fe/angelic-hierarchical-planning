@@ -111,6 +111,8 @@
 (defn concat-elts "Lazily conctaenate a lazy seq of lazy seqs." [s] 
   (mapcat identity s))
 
+(defn iterate-while [f x]
+  (take-while identity (iterate f x)))
 
 (comment   ; already in clojure.contrib with same name!
 (defn separate "Like filter, but returns [true-elts false-elts]"

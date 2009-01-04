@@ -1,6 +1,7 @@
 (ns edu.berkeley.angel.search.hierarchical
  (:refer-clojure)
- (:require (edu.berkeley.angel.search.hierarchical hierarchies abstract-lookahead-trees search-space))
+ (:use edu.berkeley.angel.search)
+ (:require (edu.berkeley.angel.search.hierarchical hierarchies cfg-hierarchies propositional-hierarchies top-down-forward-search abstract-lookahead-trees))
  )
 
 

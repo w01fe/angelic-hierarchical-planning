@@ -1,5 +1,9 @@
-(in-ns 'edu.berkeley.angel.search.hierarchical)
+(ns edu.berkeley.angel.search.hierarchical.propositional-hierarchies
+  (:refer-clojure)
+  (:use edu.berkeley.angel.search.hierarchical)
+  )
 
+(comment 
 ; Here, primitives are a type of high-level action.  
 
 ; Two ways to hande high-level preconditions; sloppy and neat.
@@ -11,7 +15,7 @@
 
 ; Two: treat unbound HLA variables like a second level (do away with HLA preconditions) ?
 
-; Collect preconditions in node with HLA (they are important).  But be careful, can mess up equality (set?)
+; Collect preconditions in node with HLA (they are important).
 
 
 
@@ -28,10 +32,10 @@
 (defmethod hla-primitive ::PrimitiveHLA [hla] (:primitive action))
 
 (defmulti hla-name                       :class)
-(defmethod hla-name ::PrimitiveHLA [hla] (:name (hla-primitive hla)))
+(defmethod hla-name ::PrimitiveHLA [hla] (:name (:primitive action)))
 
 (defmulti hla-immediate-refinements      :class)
-(defmethod hla-immediate-refinements ::PrimitiveHLA [hla] (throw (UnsupportedOperationException.)))
+(defmethod hla-name ::PrimitiveHLA [hla] (UnsupportedOperationException.))
 
 (defmulti hla-hierarchical-preconditions :class)
 (defmulti hla-optimistic-description     :class)
@@ -41,8 +45,6 @@
 
 
 ; Search space for use with action hierarchies
-; TODO: have some debug level where we check that the action space matches what's generated top-down.
-
 
 (defstruct hierarchical-search-space-struct :class :state-space :action-space :goal :top-level-action)
 
@@ -53,7 +55,7 @@
   (make-hierarchical-search-space- (get-alt env) (get-action-space env) (get-goal env) top-level-action))
 
 
-
+)
 ;(defmul immediate-refinements (fn [hla state] :class)
 
 
