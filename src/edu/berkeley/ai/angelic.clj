@@ -1,6 +1,6 @@
-(ns edu.berkeley.ai.domains
+(ns edu.berkeley.ai.angelic
  (:refer-clojure)
- (:require (edu.berkeley.ai.domains strips nav-switch warehouse))
+ (:require (edu.berkeley.ai.angelic valuations dnf_simple_valuations descriptions ncstrips_descriptions hierarchies))
  )
 
 

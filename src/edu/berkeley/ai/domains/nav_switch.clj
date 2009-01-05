@@ -1,6 +1,6 @@
 (ns edu.berkeley.ai.domains.nav-switch
  (:refer-clojure)
- (:use clojure.contrib.str-utils [edu.berkeley.ai.util :as util] edu.berkeley.ai.envs edu.berkeley.ai.envs.states)
+ (:use clojure.contrib.str-utils [edu.berkeley.ai.util :as util] edu.berkeley.ai.envs edu.berkeley.ai.envs.states edu.berkeley.ai.domains.strips)
  )
 
 ;(derive ::NavSwitch ::Environment)
@@ -51,6 +51,38 @@
 	     (make-action name #(vector (struct nav-switch-state (map + (:pos %) delta) (:hor? %))
 					(if (xor (zero? (first delta)) (:hor? %)) +goodmove-reward+ +badmove-reward+))))))))
      (make-goal #(= (:pos %) goal-pos)))))
+
+(defn make-nav-switch-strips-domain []
+  (make-strips-planning-domain 
+   "nav-switch"
+   [:xc :yc]
+   nil
+   '[[atx :xc] [aty :yc] [horiz] [vert] [above :yc :yc] [left-of :xc :xc] [switch-at :xc :yc]]
+   [(make-strips-action-schema 'flip-h '[[:xc x] [:yc y]] '[[atx x] [aty y] [switch-at x y] [vert]] '[[horiz]] '[[vert]] 1)
+    (make-strips-action-schema 'flip-v '[[:xc x] [:yc y]] '[[atx x] [aty y] [switch-at x y] [horiz]] '[[vert]] '[[horiz]] 1)
+    (make-strips-action-schema 'good-up [[:yc 'old] [:yc 'new]] '[[vert]  [aty old] [above new old]] '[[aty new]] '[[aty old]] 2)
+    (make-strips-action-schema 'bad-up  [[:yc 'old] [:yc 'new]] '[[horiz] [aty old] [above new old]] '[[aty new]] '[[aty old]] 4)
+    (make-strips-action-schema 'good-down [[:yc 'old] [:yc 'new]] '[[vert]  [aty old] [above old new]] '[[aty new]] '[[aty old]] 2)
+    (make-strips-action-schema 'bad-down  [[:yc 'old] [:yc 'new]] '[[horiz] [aty old] [above old new]] '[[aty new]] '[[aty old]] 4)
+    (make-strips-action-schema 'good-left [[:xc 'old] [:xc 'new]] '[[horiz] [atx old] [left-of new old]] '[[atx new]] '[[atx old]] 2)
+    (make-strips-action-schema 'bad-left  [[:xc 'old] [:xc 'new]] '[[vert]  [atx old] [left-of new old]] '[[atx new]] '[[atx old]] 4)
+    (make-strips-action-schema 'good-right [[:xc 'old] [:xc 'new]] '[[horiz] [atx old] [left-of old new]] '[[atx new]] '[[atx old]] 2)
+    (make-strips-action-schema 'bad-right  [[:xc 'old] [:xc 'new]] '[[vert]  [atx old] [left-of old new]] '[[atx new]] '[[atx old]] 4)]))
+
+(defn make-nav-switch-strips-env [height width switch-coords initial-pos initial-hor? goal-pos]
+  (make-strips-planning-instance 
+   "nav-switch"
+   (make-nav-switch-strips-domain)
+   {:xc (map #(keyword (str "x" %)) (range width))
+    :yc (map #(keyword (str "y" %)) (range height))}
+   (concat (if initial-hor? '[[horiz]] '[[vert]])
+	   [['atx (keyword (str "x" (first initial-pos)))] ['aty (keyword (str "y" (second initial-pos)))]]
+	   (map (fn [pos] ['switch-at (keyword (str "x" (first pos))) (keyword (str "y" (second pos)))]) switch-coords)
+	   (map (fn [x] ['left-of (keyword (str "x" (dec x))) (keyword (str "x" x))]) (range 1 width))
+	   (map (fn [x] ['above   (keyword (str "y" (dec x))) (keyword (str "y" x))]) (range 1 height)))
+   [['atx (keyword (str "x" (first goal-pos)))] ['aty (keyword (str "y" (second goal-pos)))]]))
+    
+
 
 (comment 
   (binding [*debug-level* 1] (lrta-star (make-nav-switch-env 2 2 [[0 0]] [1 0] true [0 1]) (constantly 0) 100 1))

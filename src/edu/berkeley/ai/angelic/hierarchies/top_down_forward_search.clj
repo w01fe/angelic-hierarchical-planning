@@ -4,8 +4,6 @@
 ; According to contract, equality should be only on plan-tail and valuations if possible.  This is tree though.
 ; TODO: make hashing overhead optioanl in, e.g., LRTA*. (or not). 
 
-(declare get-lower-bound get-upper-bound restrict consistent? progress-pessimistic progress-optimistic)
-
 (derive ::TopDownForwardNode ::Node)
 (derive ::TopDownForwardRootNode ::TopDownForwardNode)
 
@@ -71,7 +69,7 @@
     (or (sref-get s)
 	(sref-set s 
 	  (progress-optimistic 
-	   (restrict (get-optimistic-valuation (:previous node))
+	   (restrict-valuation (get-optimistic-valuation (:previous node))
 		     (hla-hierarchical-preconditions (:hla node)))
 	   (hla-optimistic-description (:hla node)))))))
 
@@ -82,10 +80,10 @@
 ;;; Node methods 
 
 (defmethod lower-reward-bound ::TopDownForwardNode [node] 
-  (get-lower-bound (restrict (get-pessimistic-valuation node) (:goal (:search-space node)))))
+  (get-valuation-lower-bound (restrict-valuation (get-pessimistic-valuation node) (:goal (:search-space node)))))
 
 (defmethod upper-reward-bound ::TopDownForwardNode [node] 
-  (get-upper-bound (restrict (get-optimistic-valuation node) (:goal (:search-space node)))))
+  (get-valuation-upper-bound (restrict-valuation (get-optimistic-valuation node) (:goal (:search-space node)))))
 
 (defmethod reward-so-far ::TopDownForwardNode [node] 
   0) ;;TODO? 
@@ -118,8 +116,8 @@
       [act-seq lower])))
 
 (defmethod extract-optimal-solution ::TopDownForwardNode [node] 
-  (when (> (consistent? (restrict (get-pessimistic-valuation node) (:goal (:search-space node)))))
-      (primitive-refinement node)))
+  (when-not (dead-end? (restrict (get-pessimistic-valuation node) (:goal (:search-space node))))
+    (primitive-refinement node)))
 
 (defmethod node-str ::TopDownForwardNode [node] 
   (apply str (map (comp hla-name :hla) (rest (rseq (iterate-while :previous node))))))

@@ -3,10 +3,7 @@
 
 ;;; Helpers for parsing instances
 
-(defn- get-subtypes [types type]
-  (when type
-    (cons type 
-	  (map get-subtypes (safe-get types type)))))
+
 
 (defn- parse-pddl-objects [s]
   (when s
@@ -17,9 +14,7 @@
      
 
 ;;; Helpers for implementing Environment interface (specifically, action space)
-
-(defn- simplify-atom [var obj atom]
-  (cons (first atom) (replace {var obj} (rest atom)))) 
+ 
 
 (defn- instantiate-schema [schema var obj rest-vars]
   (make-strips-action-schema 

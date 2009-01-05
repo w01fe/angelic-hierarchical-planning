@@ -114,6 +114,13 @@
 (defn iterate-while [f x]
   (take-while identity (iterate f x)))
 
+(defn report-seq [msg coll]
+  (lazy-cons
+    (do (println "(first" msg (first coll) ")") (first coll))
+    (do (println "(rest after" msg (first coll) ")")
+      (when (rest coll)
+        (report-seq msg (rest coll))))))
+
 (comment   ; already in clojure.contrib with same name!
 (defn separate "Like filter, but returns [true-elts false-elts]"
   [pred coll]
