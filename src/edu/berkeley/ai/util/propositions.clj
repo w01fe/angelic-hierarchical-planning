@@ -54,8 +54,9 @@
       (check-type types objects obj type))
     (seq atom)))
 
-(defn- simplify-atom [var obj atom]
-  (cons (first atom) (replace {var obj} (rest atom))))
+(defn- simplify-atom 
+  ([var obj atom] (simplify-atom {var obj} atom))
+  ([m atom]       (cons (first atom) (replace m (rest atom)))))
     
 ;;; PDDL domain parsing helpers 
 

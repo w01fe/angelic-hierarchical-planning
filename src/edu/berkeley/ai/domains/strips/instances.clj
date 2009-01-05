@@ -1,6 +1,8 @@
 (in-ns 'edu.berkeley.ai.domains.strips)
 
 
+;; TODO: normalize schema instances!
+
 ;;; Helpers for parsing instances
 
 

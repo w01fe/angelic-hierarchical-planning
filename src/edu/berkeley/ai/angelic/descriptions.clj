@@ -1,5 +1,7 @@
 (in-ns 'edu.berkeley.ai.angelic)
 
+(defmulti instantiate-description-schema (fn [x m] (:class x)))
+
 (defmulti progress-optimistic (partial map :class))
 (defmulti progress-pessimistic (partial map :class))
 

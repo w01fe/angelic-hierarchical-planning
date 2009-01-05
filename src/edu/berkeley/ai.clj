@@ -1,5 +1,5 @@
-(ns edu.berkeley.angel
+(ns edu.berkeley.ai
  (:refer-clojure)
- (:require (edu.berkeley.angel util envs domains search))
+ (:require (edu.berkeley.ai util envs search angelic domains))
  )
 
