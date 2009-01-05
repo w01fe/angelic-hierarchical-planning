@@ -1,6 +1,6 @@
 (ns edu.berkeley.ai.angelic.ncstrips-descriptions
   (:refer-clojure)
-  (:use (edu.berkeley.ai.util :as util) edu.berkeley.ai.util.propositions edu.berkeley.ai.angelic edu.berkeley.ai.angelic.dnf-simple-valuations)
+  (:use [edu.berkeley.ai.util :as util] edu.berkeley.ai.util.propositions edu.berkeley.ai.angelic edu.berkeley.ai.angelic.dnf-simple-valuations)
   )
 
 
@@ -13,7 +13,7 @@
 (defn- normalize-ncstrips-effect-atoms [types vars-and-objects predicates effect]
   (let [atom-checker (partial check-atom types vars-and-objects predicates)]
     (apply make-ncstrips-effect 
-	   (append (for [f :pos-preconditions :neg-preconditions :adds :deletes :possible-adds :possible-deletes]
+	   (concat (for [f :pos-preconditions :neg-preconditions :adds :deletes :possible-adds :possible-deletes]
 		     (distinct (map atom-checker (safe-get effect f))))
 		   [(:cost effect)]))))
 
@@ -31,13 +31,13 @@
       
 
 (defn- check-ncstrips-effect [types vars-and-objects predicates effect]
-  (filter identity (simplify-ncstrips-effect (normalize-ncstrips-effect-atoms types vars-and-object spredicates effect))))
+  (filter identity (simplify-ncstrips-effect (normalize-ncstrips-effect-atoms types vars-and-objects predicates effect))))
   
 
 (defn- instantiate-ncstrips-effect-atoms [var-map effect]
   (let [instantiator (partial simplify-atom var-map)]
     (apply make-ncstrips-effect 
-	   (append (for [f :pos-preconditions :neg-preconditions :adds :deletes :possible-adds :possible-deletes]
+	   (concat (for [f :pos-preconditions :neg-preconditions :adds :deletes :possible-adds :possible-deletes]
 		     (distinct (map instantiator (safe-get effect f))))
 		   [(eval `(fn ~(vec var-map) ~effect))]))))
 
@@ -51,7 +51,7 @@
 
 (defn make-ncstrips-description-schema [types vars-and-objects predicates effects]
   ; TODO: check mutual exclusion condition!
-  (struct ncstrips-description ::NCSTRIPSDescriptionSchema (map (partial check-ncstrips-effect types vars-and-objects predicates) effects)))
+  (struct ncstrips-description-schema ::NCSTRIPSDescriptionSchema (map (partial check-ncstrips-effect types vars-and-objects predicates) effects)))
 
 
 (defstruct ncstrips-description :class :effects)
@@ -63,16 +63,16 @@
 
   
 (defn- progress-effect-clause [effect clause]
-  (when (and (every clause (:pos-preconditions effect))
-	     (every #(not (= :true (clause %))) (:neg-preconditions effect)))
+  (when (and (every? clause (:pos-preconditions effect))
+	     (every? #(not (= :true (clause %))) (:neg-preconditions effect)))
     (let [adds    (concat (:pos-preconditions effect)
 			  (:adds effect))
 	  deletes (concat (:neg-preconditions effect)
 			  (:deletes effect))
 	  unks    (concat (remove clause (:possible-adds effect))
-			  (filter #(= :true (clause %)) (possible-deletes effect)))]
+			  (filter #(= :true (clause %)) (:possible-deletes effect)))]
       (apply assoc (apply dissoc clause deletes)
-	     (append (interleave adds (repeat :true))
+	     (concat (interleave adds (repeat :true))
 		     (interleave unks (repeat :unknown)))))))
 
 (defn- progress-ncstrips [val desc combiner]
@@ -91,6 +91,13 @@
 (defmethod progress-pessimistic [::DNFSimpleValuation ::NCSTRIPSDescription] [val desc] ;TODO: improve
   (progress-ncstrips val desc min))
 
+
+;(defmethod parse-description :ncstrips [type desc]  
+;  (match ['#{[:optional [:precondition    (unquote pre)]]
+;	     [:optional [:effect          (unquote eff)]]
+;	     [:optional [:possible-effect (unquote poss)]]}
+;	  (chunk 
+	     
 
 ;(defmethod regress-optimistic (partial (map :class)))
 ;(defmethod regress-pessimistic (partial (map :class)))

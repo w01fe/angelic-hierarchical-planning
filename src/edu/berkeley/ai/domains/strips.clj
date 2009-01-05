@@ -3,7 +3,7 @@
  (:use clojure.contrib.seq-utils edu.berkeley.ai.util.propositions
        (edu.berkeley.ai [util :as util] [envs :as envs])
        (edu.berkeley.ai.envs.states [binary :as bss]))
- (:require (edu.berkeley.ai.envs.states binary) (edu.berkeley.ai.domains.strips domains instances ncstrips))
+ (:require (edu.berkeley.ai.envs.states binary) (edu.berkeley.ai.domains.strips domains instances))
  )
 
 

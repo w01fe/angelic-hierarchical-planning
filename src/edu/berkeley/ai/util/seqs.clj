@@ -121,6 +121,13 @@
       (when (rest coll)
         (report-seq msg (rest coll))))))
 
+(defn chunk "Return a seq of seqs of len <= n"
+  [n s]
+  (when (seq s)
+    (lazy-cons (take n s)
+	       (chunk n (drop n s)))))
+  
+
 (comment   ; already in clojure.contrib with same name!
 (defn separate "Like filter, but returns [true-elts false-elts]"
   [pred coll]

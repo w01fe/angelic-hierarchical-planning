@@ -28,6 +28,14 @@
   [m k] 
   (lazy-get m k (throw (IllegalArgumentException. (format "Key %s not found" k)))))
 
+(defn merge-agree "Like merge but returns nil if there are inconsistencies."
+  ([] {})
+  ([map] map)
+  ([m1 m2 & maps]
+     (when (every? (fn [[k v]] (= v (get m1 k v))) m2)
+       (apply merge-agree (merge m1 m2) maps))))
+  
+
 (defn assoc-cat "Like assoc but for maps to lists"
   [m k v]
   (assoc m k (concat v (get m k))))

@@ -1,4 +1,6 @@
-(in-ns 'edu.berkeley.ai.util.propositions)
+(ns edu.berkeley.ai.util.propositions
+  (:refer-clojure)
+  (:use edu.berkeley.ai.util clojure.contrib.seq-utils))
 
 (defn check-types [types]
   (let [type-map (map-map seq->vector-pair types)]
@@ -54,7 +56,7 @@
       (check-type types objects obj type))
     (seq atom)))
 
-(defn- simplify-atom 
+(defn simplify-atom 
   ([var obj atom] (simplify-atom {var obj} atom))
   ([m atom]       (cons (first atom) (replace m (rest atom)))))
     
