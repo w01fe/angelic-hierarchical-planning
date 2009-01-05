@@ -35,28 +35,48 @@
 
 
 
-(defn merge-mappings [s1 s2]
-  (filter identity 
-     (for [m1 s1, m2 s2] (merge-agree m1 m2))))
+(defmacro merge-mappings [s1 s2]
+  `(when-let [s1# ~s1]
+     (filter identity 
+	     (for [m1# s1#, m2# ~s2] (merge-agree m1# m2#)))))
+
+(defmacro merge-multi-mappings [s1 s2]
+  `(when-let [s1# ~s1]
+     (for [m1# s1#, m2# ~s2] 
+       (reduce (fn [m# [k# v#]] (assoc m# k# (cons v# (get m# k#)))) m2# m1#))))
 
 (declare match-mappings)
 
 (defn match-set [var-tree match-tree]
+  (prn "enter match-set " var-tree match-tree)
+  (prln
   (cond (empty? var-tree)
           (when (empty? match-tree) [{}])
 	(empty? match-tree)
-	  (when (every? #(= (first %) :optional) var-tree) [{}])
+	  (when (every? #(contains? #{:optional :multiple} (first %)) var-tree) [{}])
         :else
 	  (concat-elts
 	   (for [clause var-tree]
-	     (when-let [dm (match-mappings (if (= (first clause) :optional) (second clause) clause) (first match-tree))]
-	       (merge-mappings dm (match-set (remove #(identical? clause %) var-tree) (rest match-tree))))))))
+	     (if (= (first clause) :multiple)
+	         (merge-multi-mappings
+		  (match-mappings (second clause) (first match-tree))
+		  (match-set      var-tree        (rest match-tree)))
+	       (merge-mappings
+		(match-mappings (if (= :optional (first clause)) (second clause) clause) (first match-tree))
+		(match-set      (disj var-tree clause)                                   (rest match-tree)))))))
+  "leave match-set " var-tree match-tree))
+
+;	     (match-mappings 
+;	      [clause (if (= (first clause) :multiple) var-tree (disj var-tree clause))]
+;	      [(first match-tree) (rest match-tree)])))))
+
+
 
 (defn match-mappings "Return a lazy seq of maps of variable bindings for this matching.
                       Binds variables in (unquote x) and (unquote-seq x) - greedy forms, 
                       matches any order for sets, and hangles (:optional ... )"
   [var-tree match-tree]
-;  (prn var-tree match-tree)
+  (prn "match-mappings " var-tree match-tree)
   (distinct 
     (cond (not (coll? var-tree))
 	    (when (= var-tree match-tree)
@@ -71,6 +91,11 @@
 	    (do (assert-is (= (count (first var-tree)) 2))
 		(lazy-cat (merge-mappings (match-mappings (second (first var-tree)) (first match-tree))
 					  (match-mappings (rest var-tree) (rest match-tree)))
+			  (match-mappings (rest var-tree) match-tree)))
+  	  (and (coll? (first var-tree)) (= (ffirst var-tree) :multiple))
+	    (do (assert-is (= (count (first var-tree)) 2))
+		(lazy-cat (merge-multi-mappings (match-mappings (second (first var-tree)) (first match-tree))
+					  (match-mappings var-tree (rest match-tree)))
 			  (match-mappings (rest var-tree) match-tree)))
 	  (not (coll? match-tree))
             nil
@@ -107,7 +132,13 @@
    '#{[:FOO [unquote x]]
       [:BAR [unquote y]]
       [:optional [:BAZ [unquote z]]]}
-   [[:FOO 12] [:BAR 14]])   
+   [[:FOO 12] [:BAR 14]])
+
+  (match-mappings
+   '#{[:FOO [unquote x]]
+      [:BAR [unquote y]]
+      [:multiple [:BAZ [unquote z]]]}
+   [[:FOO 12] [:BAR 14]])
      
 
 (defn match-mapping "Return a map of variable bindings for this matching, or 
