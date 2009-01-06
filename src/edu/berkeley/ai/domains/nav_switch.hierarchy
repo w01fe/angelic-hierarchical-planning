@@ -1,0 +1,44 @@
+;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
+;;; 4 Op-blocks world
+;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
+
+(define (hierarchy nav-switch)
+  (:type :strips-hierarchy)
+  (:hla act
+       :parameters (?cx - :xc ?cy - :yc ?gx - :xc ?gy - :yc)
+       :precondition (and (:goal-match (atx ?gx)) (:goal-match (aty ?gy)) (atx ?cx) (aty ?cy))
+       :refinement   (:precondition (and (atx ?gx) (aty ?gy))
+                      :expansion    ())
+       :refinement   (:expansion    ((go ?cx ?cy ?gx ?gy)))    
+       :optimistic   (:vac 0)
+       :pessimistic  (:vac))
+       
+  (:hla go
+       :parameters (?cx - :xc ?cy - :yc ?dx - :xc ?dy - :yc)
+       :refinement (:expansion (nav ?cx ?cy ?dx ?dy))
+       :refinement (:expansion (nav-switch ?cx ?cy :? :?) (go ?cx ?cy ?dx ?dy))
+       :optimistic   (:ncstrips (:effect (and (atx ?dx) (aty ?dy) (not (atx ?cx)) (not (aty ?cy))) 
+                                 :possible-effect (and (horiz) (not (horiz))) 
+                                 :cost-expr 4))
+       :pessimistic  (:vac))
+       
+  (:hla nav-switch
+       :parameters (?cx - :xc ?cy - :yc ?dx - :xc ?dy - :yc)
+       :precondition (switch-at ?dx ?dy)
+       :refinement   (:expansion (nav ?cx ?cy ?dx ?dy))
+       :optimistic   (:vac)
+       :pessimistic  (:vac))
+
+  (:hla nav       
+       :parameters (?cx - :xc ?cy - :yc ?dx - :xc ?dy - :yc)
+       :refinement (:precondition (and (atx ?dx) (aty ?dy)) :expansion ())
+       :refinement (:expansion ((bad-left   ?cx :?) (nav :? ?cy ?dx ?dy)))
+       :refinement (:expansion ((bad-up     ?cy :?) (nav ?cx :? ?dx ?dy)))
+       :refinement (:expansion ((bad-down   ?cy :?) (nav ?cx :? ?dx ?dy)))
+       :refinement (:expansion ((bad-right  ?cx :?) (nav :? ?cy ?dx ?dy)))
+       :refinement (:expansion ((good-left  ?cx :?) (nav :? ?cy ?dx ?dy)))
+       :refinement (:expansion ((good-up    ?cy :?) (nav ?cx :? ?dx ?dy)))
+       :refinement (:expansion ((good-down  ?cy :?) (nav ?cx :? ?dx ?dy)))
+       :refinement (:expansion ((good-right ?cx :?) (nav :? ?cy ?dx ?dy)))
+       :optimistic   (:vac)
+       :pessimistic  (:vac)))
