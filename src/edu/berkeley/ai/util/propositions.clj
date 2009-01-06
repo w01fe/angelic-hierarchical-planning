@@ -72,7 +72,12 @@
   (cons (first pred) (map first (parse-typed-pddl-list (rest pred)))))
 
 (defn pddl-conjunction->seq [conj]
-  (if (= (first conj) 'and)
+  (when (seq conj)
+    (if (= (first conj) 'and)
       (rest conj)
-    (list conj)))
+    (list conj))))
 
+(defn parse-pddl-conjunction [conj]
+  (let [[pos neg]
+	(separate #(not= (first %) 'not) (pddl-conjunction->seq conj))]
+    [pos (map (fn [term] (assert-is (= 2 (count term))) (second term)) neg)]))

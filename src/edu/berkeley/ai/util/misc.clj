@@ -48,24 +48,25 @@
 (declare match-mappings)
 
 (defn match-set [var-tree match-tree]
-  (prn "enter match-set " var-tree match-tree)
-  (prln
+;  (prn "enter match-set " var-tree match-tree)
   (cond (empty? var-tree)
           (when (empty? match-tree) [{}])
 	(empty? match-tree)
 	  (when (every? #(contains? #{:optional :multiple} (first %)) var-tree) [{}])
+;	(and (= (count var-tree) 1) (= (ffirst var-tree) :rest))
+;	  (match-mappings [:multiple (rfirst var-tree)] match-tree)
         :else
 	  (concat-elts
-	   (for [clause var-tree]
+	   (for [clause var-tree] ; :when (not (= (first clause) :rest))]
 	     (if (= (first clause) :multiple)
 	         (merge-multi-mappings
 		  (match-mappings (second clause) (first match-tree))
 		  (match-set      var-tree        (rest match-tree)))
 	       (merge-mappings
 		(match-mappings (if (= :optional (first clause)) (second clause) clause) (first match-tree))
-		(match-set      (disj var-tree clause)                                   (rest match-tree)))))))
-  "leave match-set " var-tree match-tree))
+		(match-set      (disj var-tree clause)                                   (rest match-tree))))))))
 
+;  "leave match-set " var-tree match-tree))
 ;	     (match-mappings 
 ;	      [clause (if (= (first clause) :multiple) var-tree (disj var-tree clause))]
 ;	      [(first match-tree) (rest match-tree)])))))
@@ -76,7 +77,7 @@
                       Binds variables in (unquote x) and (unquote-seq x) - greedy forms, 
                       matches any order for sets, and hangles (:optional ... )"
   [var-tree match-tree]
-  (prn "match-mappings " var-tree match-tree)
+ ; (prn "match-mappings " var-tree match-tree)
   (distinct 
     (cond (not (coll? var-tree))
 	    (when (= var-tree match-tree)
@@ -115,8 +116,23 @@
   [[var-tree match-tree] & body]
   (let [vars (match-vars var-tree) g (gensym)]
     `(let [~g (match-mapping '~var-tree ~match-tree)]
-       (let ~(apply vector (mapcat #(vector % `(get ~g '~% :no-match))  vars))
+       (let ~(apply vector (mapcat #(vector % `(get ~g '~% nil))  vars))
 	 ~@body))))
+
+(defmacro if-match 
+  [[var-tree match-tree] then else]
+  (let [vars (match-vars var-tree) g (gensym)]
+    `(let [~g (match-mappings '~var-tree ~match-tree)]
+       (if (first ~g)
+	 (do 
+	   (when (rest ~g) (throw (IllegalArgumentException. (str "Multiple matches: " '~var-tree " " ~match-tree "\n" (take 2 ~g)))))
+	   (let ~(apply vector (mapcat #(vector % `(get (first ~g) '~% :no-match))  vars))
+	     ~then))
+	 ~else))))  
+
+(defmacro when-match
+  [binding & body]
+  `(if-match ~binding (do ~@body) nil))
 
 (defn xor [& args]
   (odd? (count (filter identity args))))

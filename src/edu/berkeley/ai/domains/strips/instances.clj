@@ -22,7 +22,8 @@
   (make-strips-action-schema 
    (concat (enforce-seq (:name schema)) [obj])
    rest-vars
-   (map (partial simplify-atom var obj) (:preconditions schema))
+   (map (partial simplify-atom var obj) (:pos-pre schema))
+   (map (partial simplify-atom var obj) (:neg-pre schema))
    (map (partial simplify-atom var obj) (:add-list schema))
    (map (partial simplify-atom var obj) (:delete-list schema))
    (:cost schema)))
@@ -48,7 +49,8 @@
 	   (clojure.set/difference state (:delete-list schema)) 
 	   (:add-list schema))
 	  (- (:cost schema))]))
-    :preconditions (:preconditions schema)))
+    :pos-pre (:pos-pre schema)
+    :neg-pre (:neg-pre schema)))
 
 		      
 
@@ -101,7 +103,7 @@
 				    schemas))]
     (make-action-space
      (fn [state]
-       (filter #(every? state (:preconditions %))
+       (filter #(and (every? state (:pos-pre %)) (not-any? state (:neg-pre %)))
 	       instantiations)))))
    
 

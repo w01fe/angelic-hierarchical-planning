@@ -1,6 +1,6 @@
 (ns edu.berkeley.ai.angelic.ncstrips-descriptions
   (:refer-clojure)
-  (:use [edu.berkeley.ai.util :as util] edu.berkeley.ai.util.propositions edu.berkeley.ai.angelic edu.berkeley.ai.angelic.dnf-simple-valuations)
+  (:use clojure.contrib.seq-utils [edu.berkeley.ai.util :as util] edu.berkeley.ai.util.propositions edu.berkeley.ai.angelic edu.berkeley.ai.angelic.dnf-simple-valuations)
   )
 
 
@@ -92,12 +92,22 @@
   (progress-ncstrips val desc min))
 
 
-;(defmethod parse-description :ncstrips [type desc]  
-;  (match ['#{[:optional [:precondition    (unquote pre)]]
-;	     [:optional [:effect          (unquote eff)]]
-;	     [:optional [:possible-effect (unquote poss)]]}
-;	  (chunk 
-	     
+(defmethod parse-description :ncstrips [type desc env]  
+  (assert-is (isa? (:class env) ::StripsPlanningDomain))
+  (match [[:ncstrips [:multiple [unquote clauses]]] desc]
+    (make-ncstrips-description-schema 
+     (safe-get env :types) (safe-get env :guaranteed-objs) (safe-get env :predicates)
+     (for [clause clauses]
+       (match [#{[:optional [:precondition    [unquote pre]]]
+		 [:optional [:effect          [unquote eff]]]
+		 [:optional [:possible-effect [unquote poss]]]
+		 [:cost     [unquote cost-expr]]}
+	       clause]
+	 (let [[pos-pre neg-pre] (parse-pddl-conjunction pre),
+	       [add     del    ] (parse-pddl-conjunction eff),
+	       [p-add   p-del  ] (parse-pddl-conjunction poss)]
+	   (make-ncstrips-effect pos-pre neg-pre add del p-add p-del cost-expr)))))))
+
 
 ;(defmethod regress-optimistic (partial (map :class)))
 ;(defmethod regress-pessimistic (partial (map :class)))

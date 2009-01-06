@@ -57,17 +57,17 @@
    "nav-switch"
    [:xc :yc]
    nil
-   '[[atx :xc] [aty :yc] [horiz] [vert] [above :yc :yc] [left-of :xc :xc] [switch-at :xc :yc]]
-   [(make-strips-action-schema 'flip-h '[[:xc x] [:yc y]] '[[atx x] [aty y] [switch-at x y] [vert]] '[[horiz]] '[[vert]] 1)
-    (make-strips-action-schema 'flip-v '[[:xc x] [:yc y]] '[[atx x] [aty y] [switch-at x y] [horiz]] '[[vert]] '[[horiz]] 1)
-    (make-strips-action-schema 'good-up [[:yc 'old] [:yc 'new]] '[[vert]  [aty old] [above new old]] '[[aty new]] '[[aty old]] 2)
-    (make-strips-action-schema 'bad-up  [[:yc 'old] [:yc 'new]] '[[horiz] [aty old] [above new old]] '[[aty new]] '[[aty old]] 4)
-    (make-strips-action-schema 'good-down [[:yc 'old] [:yc 'new]] '[[vert]  [aty old] [above old new]] '[[aty new]] '[[aty old]] 2)
-    (make-strips-action-schema 'bad-down  [[:yc 'old] [:yc 'new]] '[[horiz] [aty old] [above old new]] '[[aty new]] '[[aty old]] 4)
-    (make-strips-action-schema 'good-left [[:xc 'old] [:xc 'new]] '[[horiz] [atx old] [left-of new old]] '[[atx new]] '[[atx old]] 2)
-    (make-strips-action-schema 'bad-left  [[:xc 'old] [:xc 'new]] '[[vert]  [atx old] [left-of new old]] '[[atx new]] '[[atx old]] 4)
-    (make-strips-action-schema 'good-right [[:xc 'old] [:xc 'new]] '[[horiz] [atx old] [left-of old new]] '[[atx new]] '[[atx old]] 2)
-    (make-strips-action-schema 'bad-right  [[:xc 'old] [:xc 'new]] '[[vert]  [atx old] [left-of old new]] '[[atx new]] '[[atx old]] 4)]))
+   '[[atx :xc] [aty :yc] [horiz] [above :yc :yc] [left-of :xc :xc] [switch-at :xc :yc]]
+   [(make-strips-action-schema 'flip-h '[[:xc x] [:yc y]] '[[atx x] [aty y] [switch-at x y]] '[[horiz]] '[[horiz]] [] (- +flip-reward+))
+    (make-strips-action-schema 'flip-v '[[:xc x] [:yc y]] '[[atx x] [aty y] [switch-at x y] [horiz]] [] [] '[[horiz]] (- +flip-reward+))
+    (make-strips-action-schema 'good-up [[:yc 'old] [:yc 'new]] '[[aty old] [above new old]] '[[horiz]] '[[aty new]] '[[aty old]] (- +goodmove-reward+))
+    (make-strips-action-schema 'bad-up  [[:yc 'old] [:yc 'new]] '[[horiz] [aty old] [above new old]] [] '[[aty new]] '[[aty old]] (- +badmove-reward+))
+    (make-strips-action-schema 'good-down [[:yc 'old] [:yc 'new]] '[[aty old] [above old new]] '[[horiz]] '[[aty new]] '[[aty old]] (- +goodmove-reward+))
+    (make-strips-action-schema 'bad-down  [[:yc 'old] [:yc 'new]] '[[horiz] [aty old] [above old new]] [] '[[aty new]] '[[aty old]] (- +badmove-reward+))
+    (make-strips-action-schema 'good-left [[:xc 'old] [:xc 'new]] '[[horiz] [atx old] [left-of new old]] [] '[[atx new]] '[[atx old]] (- +goodmove-reward+))
+    (make-strips-action-schema 'bad-left  [[:xc 'old] [:xc 'new]] '[[atx old] [left-of new old]] '[[horiz]] '[[atx new]] '[[atx old]] (- +badmove-reward+))
+    (make-strips-action-schema 'good-right [[:xc 'old] [:xc 'new]] '[[horiz] [atx old] [left-of old new]] [] '[[atx new]] '[[atx old]] (- +goodmove-reward+))
+    (make-strips-action-schema 'bad-right  [[:xc 'old] [:xc 'new]] '[[atx old] [left-of old new]] '[[horiz]] '[[atx new]] '[[atx old]] (- +badmove-reward+))]))
 
 (defn make-nav-switch-strips-env [height width switch-coords initial-pos initial-hor? goal-pos]
   (make-strips-planning-instance 
@@ -85,7 +85,14 @@
 
 
 (comment 
+  (u util search search.algorithms.textbook domains.nav-switch)
   (binding [*debug-level* 1] (lrta-star (make-nav-switch-env 2 2 [[0 0]] [1 0] true [0 1]) (constantly 0) 100 1))
   (map :name (first (a-star-search (state-space-search-node (make-nav-switch-env 2 2 [[0 0]] [1 0] true [0 1]) (constantly 0)))))
   (binding [*debug-level* 1] (lrta-star (make-nav-switch-env 2 2 [[0 0]] [1 0] true [0 1]) #(reduce + (map (comp (fn [x] (* -2 (Math/abs x))) -) (:pos %) [0 1])) 10 1))
+
+  (dotimes [_ 3] (time (map :name (first (a-star-search (state-space-search-node (make-nav-switch-strips-env 6 6 [[1 1]] [5 0] true [0 5]) (constantly 0)))))))
+  ; right now STRIPS is about 4x slower than hand-coded.  Optimizations:
+    ; reachability analysis (planning graph?)
+    ; constant substitution
+    ; succesor generation
   )

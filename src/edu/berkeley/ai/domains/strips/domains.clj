@@ -3,10 +3,10 @@
 
 ;;; STRIPS action schemas
 
-(defstruct strips-action-schema :class :name :vars :preconditions :add-list :delete-list :cost)
+(defstruct strips-action-schema :class :name :vars :pos-pre :neg-pre :add-list :delete-list :cost)
 
-(defn make-strips-action-schema [name vars preconditions add-list delete-list cost]
-  (struct strips-action-schema ::StripsActionSchema name vars preconditions add-list delete-list cost))
+(defn make-strips-action-schema [name vars pos-pre neg-pre add-list delete-list cost]
+  (struct strips-action-schema ::StripsActionSchema name vars pos-pre neg-pre add-list delete-list cost))
 
 
 ;;; STRIPS planning domain helpers
@@ -15,7 +15,8 @@
 ;  (.println System/out action-schema)
   (assert-is (not (map? (:vars action-schema))))
   (let [vars-and-objects (check-objects types (concat guaranteed-objs (:vars action-schema)))]
-    (doseq [atom (concat (:preconditions action-schema)
+    (doseq [atom (concat (:pos-pre       action-schema)
+			 (:neg-pre       action-schema)
 			 (:add-list      action-schema)
 			 (:delete-list   action-schema))]
 ;      (.println System/out atom)
@@ -35,13 +36,15 @@
 	   :precondition [unquote precondition]
 	   :effect       [unquote effect]]
 	  action]
-    (let [[adds deletes] (separate #(not= (first %) 'not) (pddl-conjunction->seq effect))]
+    (let [[adds deletes]    (parse-pddl-conjunction effect)
+	  [pos-pre neg-pre] (parse-pddl-conjunction precondition)] 
       (make-strips-action-schema 
        name 
        (parse-typed-pddl-list parameters)
-       (pddl-conjunction->seq precondition)
+       pos-pre
+       neg-pre
        adds
-       (map second deletes)
+       deletes
        1))))
 
 ;(defn- emit-pddl-action-schema [action-schema]
