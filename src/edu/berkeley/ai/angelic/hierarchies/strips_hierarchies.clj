@@ -1,4 +1,4 @@
-(ns edu.berkeley.ai.angelic.hierarchies.propositional-hierarchies
+(ns edu.berkeley.ai.angelic.hierarchies.strips-hierarchies
   (:refer-clojure)
   (:use edu.berkeley.ai.angelic.hierarchies)
   )

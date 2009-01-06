@@ -21,11 +21,11 @@
 
 ; Generic stuff for hierarchies.  
 
-(derive ::PrimitiveHLA :HLA)
+(derive ::PrimitiveHLA ::HLA)
 
-(defmulti #^{:doc "If this HLA is primitive, return the primitive action, else nil."} primitive-action :class)
+(defmulti #^{:doc "If this HLA is primitive, return the primitive action, else nil."} hla-primitive :class)
 (defmethod hla-primitive ::HLA [hla] nil)
-(defmethod hla-primitive ::PrimitiveHLA [hla] (:primitive action))
+(defmethod hla-primitive ::PrimitiveHLA [hla] (:primitive hla))
 
 (defmulti hla-name                       :class)
 (defmethod hla-name ::PrimitiveHLA [hla] (:name (hla-primitive hla)))
@@ -47,10 +47,10 @@
 (defstruct hierarchical-search-space-struct :class :state-space :action-space :goal :top-level-action)
 
 (defn make-hierarchical-search-space- [state-space action-space goal top-level-action ]
-  (struct state-space-search-space-struct ::HierarchicalSearchSpace state-space action-space goal top-level-action ))
+  (struct hierarchical-search-space-struct ::HierarchicalSearchSpace state-space action-space goal top-level-action ))
 
 (defn hierarchical-search-space [env top-level-action] 
-  (make-hierarchical-search-space- (get-alt env) (get-action-space env) (get-goal env) top-level-action))
+  (make-hierarchical-search-space- (get-state-space env) (get-action-space env) (get-goal env) top-level-action))
 
 
 

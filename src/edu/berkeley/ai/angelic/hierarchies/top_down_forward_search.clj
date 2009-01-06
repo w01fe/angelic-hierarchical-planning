@@ -11,8 +11,9 @@
 
 (defn make-top-down-forward-node [search-space hla previous-node]
   (with-meta  
-   (struct top-down-forward-node ::TopDownForwardNode search-space hla previous)
+   (struct top-down-forward-node ::TopDownForwardNode search-space hla previous-node)
    {:pessimistic-valuation (sref nil), :optimistic-valuation (sref nil)}))
+
 
 
 (defstruct top-down-forward-root-node :class :search-space :initial-valuation)
@@ -23,22 +24,23 @@
 
 (defn make-initial-top-down-forward-node [search-space initial-valuation initial-plan]
   (loop [actions initial-plan
-	 previous (make-top-down-forward-root-node search-space initial-valuation]]
+	 previous (make-top-down-forward-root-node search-space initial-valuation)]
     (if (empty? actions)
         previous
       (recur (rest actions)
 	     (make-top-down-forward-node search-space (first actions) previous)))))
 
 
+
 (defmulti local-immediate-refinements (fn [node rest-actions] (:class node)))
 
-(defn local-immediate-refinements ::TopDownForwardRootNode [node rest-actions]  nil)
+(defmethod local-immediate-refinements ::TopDownForwardRootNode [node rest-actions]  nil)
 
-(defn local-immediate-refinements ::TopDownForwardNode [node rest-actions]
+(defmethod local-immediate-refinements ::TopDownForwardNode [node rest-actions]
   (when-not (hla-primitive (:hla node))
     (for [refinement (hla-immediate-refinements (:hla node))]
       (loop [previous node,
-	     actions (append refinement rest-actions)]
+	     actions (concat refinement rest-actions)]
 	(if (empty? actions) 
 	    previous
 	  (recur 
@@ -57,17 +59,17 @@
 (defmethod get-pessimistic-valuation ::TopDownForwardNode [node]
   (let [s (:pessimistic-valuation ^node)]
     (or (sref-get s)
-	(sref-set s 
+	(sref-set! s 
 	  (progress-pessimistic 
-	   (restrict (get-pessimistic-valuation (:previous node)) 
-		     (hla-hierarchical-preconditions (:hla node)))
+	   (restrict-valuation (get-pessimistic-valuation (:previous node)) 
+			       (hla-hierarchical-preconditions (:hla node)))
 	   (hla-pessimistic-description (:hla node)))))))
 
 
 (defmethod get-optimistic-valuation ::TopDownForwardNode [node]
   (let [s (:optimistic-valuation ^node)]
     (or (sref-get s)
-	(sref-set s 
+	(sref-set! s 
 	  (progress-optimistic 
 	   (restrict-valuation (get-optimistic-valuation (:previous node))
 		     (hla-hierarchical-preconditions (:hla node)))
@@ -98,7 +100,8 @@
          refinements
        (recur (:previous node)
 	      (cons (:hla node) rest-acts)
-	      (delay-seq (concat (local-immediate-refinements node rest-acts) refinements)))))))
+	      ;(delay-seq
+	       (concat (local-immediate-refinements node rest-acts) refinements))))))
 
 
 (defmethod primitive-refinement ::TopDownForwardNode [node]
@@ -116,11 +119,13 @@
       [act-seq lower])))
 
 (defmethod extract-optimal-solution ::TopDownForwardNode [node] 
-  (when-not (dead-end? (restrict (get-pessimistic-valuation node) (:goal (:search-space node))))
+  (when-not (dead-end? (restrict-valuation (get-pessimistic-valuation node) (:goal (:search-space node))))
     (primitive-refinement node)))
 
 (defmethod node-str ::TopDownForwardNode [node] 
   (apply str (map (comp hla-name :hla) (rest (rseq (iterate-while :previous node))))))
+
+
 
 
 ;(defmethod node-parent ::TopDownForwardNode [node] 
