@@ -1,4 +1,4 @@
-(in-ns 'edu.berkeley.ai.search.hierarchical)
+(in-ns 'edu.berkeley.ai.angelic.hierarchies)
 
 
 ; According to contract, equality should be only on plan-tail and valuations if possible.  This is tree though.

@@ -1,4 +1,4 @@
-(in-ns 'edu.berkeley.ai.search.hierarchical)
+(in-ns 'edu.berkeley.ai.angelic.hierarchies)
 (comment 
 (derive ::AltNode ::Node)
 

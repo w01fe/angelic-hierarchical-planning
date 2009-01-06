@@ -1,6 +1,6 @@
-(ns edu.berkeley.ai.search.hierarchical.cfg-hierarchies
+(ns edu.berkeley.ai.angelic.hierarchies.cfg-hierarchies
   (:refer-clojure)
-  (:use edu.berkeley.ai.util edu.berkeley.ai.search.hierarchical)
+  (:use edu.berkeley.ai.util edu.berkeley.ai.angelic.hierarchies)
   )
 
 (derive ::CFGHLA :HLA)

@@ -1,4 +1,4 @@
-(in-ns 'edu.berkeley.ai.search.hierarchical)
+(in-ns 'edu.berkeley.ai.angelic.hierarchies)
 
 ; Here, primitives are a type of high-level action.  
 
