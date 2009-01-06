@@ -1,8 +1,7 @@
 (ns edu.berkeley.ai.angelic.ncstrips-descriptions
   (:refer-clojure)
-  (:use clojure.contrib.seq-utils [edu.berkeley.ai.util :as util] edu.berkeley.ai.util.propositions edu.berkeley.ai.angelic edu.berkeley.ai.angelic.dnf-simple-valuations)
+  (:use clojure.contrib.seq-utils [edu.berkeley.ai.util :as util] edu.berkeley.ai.util.propositions edu.berkeley.ai.angelic)
   )
-
 
 
 (defstruct ncstrips-effect :pos-preconditions :neg-preconditions :adds :deletes :possible-adds :possible-deletes :cost)
@@ -11,9 +10,10 @@
   (struct ncstrips-effect pos-preconditions neg-preconditions adds deletes possible-adds possible-deletes cost-expr))
 
 (defn- normalize-ncstrips-effect-atoms [types vars-and-objects predicates effect]
+;  (prn "\n\n" effect "\n\n")
   (let [atom-checker (partial check-atom types vars-and-objects predicates)]
     (apply make-ncstrips-effect 
-	   (concat (for [f :pos-preconditions :neg-preconditions :adds :deletes :possible-adds :possible-deletes]
+	   (concat (for [f [:pos-preconditions :neg-preconditions :adds :deletes :possible-adds :possible-deletes]]
 		     (distinct (map atom-checker (safe-get effect f))))
 		   [(:cost effect)]))))
 
@@ -50,13 +50,19 @@
 (defstruct ncstrips-description-schema :class :effects)
 
 (defn make-ncstrips-description-schema [types vars-and-objects predicates effects]
-  ; TODO: check mutual exclusion condition!
-  (struct ncstrips-description-schema ::NCSTRIPSDescriptionSchema (map (partial check-ncstrips-effect types vars-and-objects predicates) effects)))
+  ; TODO: check mutual exclusion condition!objects
+;  (prn effects) 
+  (struct ncstrips-description-schema ::NCStripsDescriptionSchema (map (partial check-ncstrips-effect types vars-and-objects predicates) effects)))
+
+
+(defmethod instantiate-description-schema ::NCStripsDescriptionSchema [desc inst]
+  (assert-is (isa? (:class inst) :edu.berkeley.ai.domains.strips/StripsPlanningInstance))
+  desc)
 
 
 (defstruct ncstrips-description :class :effects)
 
-(defmethod instantiate-description-schema ::NCSTRIPSDescriptionSchema [schema var-map]
+(defmethod ground-description ::NCStripsDescriptionSchema [schema var-map]
   (struct ncstrips-description ::NCStripsDescription
 	  (map #(instantiate-ncstrips-effect % var-map))))
   
@@ -92,21 +98,22 @@
   (progress-ncstrips val desc min))
 
 
-(defmethod parse-description :ncstrips [type desc env]  
-  (assert-is (isa? (:class env) ::StripsPlanningDomain))
-  (match [[:ncstrips [:multiple [unquote clauses]]] desc]
-    (make-ncstrips-description-schema 
-     (safe-get env :types) (safe-get env :guaranteed-objs) (safe-get env :predicates)
-     (for [clause clauses]
-       (match [#{[:optional [:precondition    [unquote pre]]]
-		 [:optional [:effect          [unquote eff]]]
-		 [:optional [:possible-effect [unquote poss]]]
-		 [:cost     [unquote cost-expr]]}
-	       clause]
-	 (let [[pos-pre neg-pre] (parse-pddl-conjunction pre),
-	       [add     del    ] (parse-pddl-conjunction eff),
-	       [p-add   p-del  ] (parse-pddl-conjunction poss)]
-	   (make-ncstrips-effect pos-pre neg-pre add del p-add p-del cost-expr)))))))
+(defmethod parse-description :ncstrips [desc domain vars]  
+  (assert-is (isa? (:class domain) :edu.berkeley.ai.domains.strips/StripsPlanningDomain))
+  (make-ncstrips-description-schema 
+   (safe-get domain :types) 
+   (check-objects (safe-get domain :types) (concat (safe-get domain :guaranteed-objs) vars)) 
+   (safe-get domain :predicates)
+   (for [clause (rest desc)]
+     (match [#{[:optional [:precondition    [unquote pre]]]
+	       [:optional [:effect          [unquote eff]]]
+	       [:optional [:possible-effect [unquote poss]]]
+	       [:cost-expr [unquote cost-expr]]}
+	     (chunk 2 clause)]
+       (let [[pos-pre neg-pre] (parse-pddl-conjunction pre),
+	     [add     del    ] (parse-pddl-conjunction eff),
+	     [p-add   p-del  ] (parse-pddl-conjunction poss)]
+	 (make-ncstrips-effect pos-pre neg-pre add del p-add p-del cost-expr))))))
 
 
 ;(defmethod regress-optimistic (partial (map :class)))

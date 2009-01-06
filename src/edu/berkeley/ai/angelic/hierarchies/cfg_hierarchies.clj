@@ -22,7 +22,7 @@
 
 (defmethod hla-name ::CFGHLA [hla] (:name hla))
 
-(defmethod hla-immediate-refinements ::CFGHLA [hla]
+(defmethod hla-immediate-refinements [::CFGHLA ::Valuation] [hla opt-val]
   (for [production (get (:production-rules hla) (:nonterminal hla))]
     (for [element production]
       (if-let [prim (get (:terminal-map hla) element)]
@@ -32,10 +32,10 @@
 (defmethod hla-hierarchical-preconditions ::CFGHLA [hla]
   nil)
 
-(defmethod hla-optimistic-description     :CFGHLA [hla]
+(defmethod hla-optimistic-description     ::CFGHLA [hla]
   (throw (UnsupportedOperationException. "TODO")))
 
-(defmethod hla-pessimistic-description    :CFGHLA [hla]
+(defmethod hla-pessimistic-description    ::CFGHLA [hla]
   (throw (UnsupportedOperationException. "TODO")))
 
 

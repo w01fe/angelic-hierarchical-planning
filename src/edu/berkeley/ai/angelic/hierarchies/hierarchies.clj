@@ -21,6 +21,18 @@
 
 ; Generic stuff for hierarchies.  
 
+(defmulti parse-hierarchy-type (fn [type contents domain] type))
+
+(defn parse-hierarchy [file domain]
+  (match [(define (hierarchy [unquote name])
+	    (:type [unquote type])
+	    [unquote-seq meat])
+	  (read-string (.toLowerCase (slurp file)))]
+    (assert-is (= name (:name domain)))
+    (parse-hierarchy-type type meat domain)))
+
+(defmulti instantiate-hierarchy (fn [top-level-action instance] (:class top-level-action)))
+
 (derive ::PrimitiveHLA ::HLA)
 
 (defmulti #^{:doc "If this HLA is primitive, return the primitive action, else nil."} hla-primitive :class)
@@ -30,8 +42,8 @@
 (defmulti hla-name                       :class)
 (defmethod hla-name ::PrimitiveHLA [hla] (:name (hla-primitive hla)))
 
-(defmulti hla-immediate-refinements      :class)
-(defmethod hla-immediate-refinements ::PrimitiveHLA [hla] (throw (UnsupportedOperationException.)))
+(defmulti hla-immediate-refinements      (partial map :class))
+(defmethod hla-immediate-refinements [::PrimitiveHLA ::Valuation] [hla] (throw (UnsupportedOperationException.)))
 
 (defmulti hla-hierarchical-preconditions :class)
 (defmulti hla-optimistic-description     :class)

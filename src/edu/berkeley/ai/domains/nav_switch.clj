@@ -54,7 +54,7 @@
 
 (defn make-nav-switch-strips-domain []
   (make-strips-planning-domain 
-   "nav-switch"
+   'nav-switch
    [:xc :yc]
    nil
    '[[atx :xc] [aty :yc] [horiz] [above :yc :yc] [left-of :xc :xc] [switch-at :xc :yc]]

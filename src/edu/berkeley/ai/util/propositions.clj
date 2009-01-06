@@ -49,6 +49,8 @@
   (assert-is (is-type? types objects obj type)))
 
 (defn check-atom [types objects predicates atom]
+;  (println types)
+;  (dotimes [_ 10] (println atom))
   (let [[pred & args] atom,
 	type-sig (safe-get predicates pred)]
     (assert-is (= (count args) (count type-sig)) "Wrong number of predicate args.")

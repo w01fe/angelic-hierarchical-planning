@@ -1,6 +1,4 @@
-(ns edu.berkeley.ai.angelic.dnf-simple-valuations
-  (:refer-clojure)
-  (:use edu.berkeley.ai.angelic))
+(in-ns 'edu.berkeley.ai.angelic)
 
 (defstruct dnf-simple-valuation :class :dnf :bound)
 
@@ -15,7 +13,13 @@
 (defmethod get-valuation-upper-bound ::DNFSimpleValuation [val] (:bound val))
 (defmethod dead-end-valuation?       ::DNFSimpleValuation [val] (:dnf val))
 
+
 (defmethod restrict-valuation       [::DNFSimpleValuation ::ConjunctiveCondition] [val con]
   (make-dnf-simple-valuation 
-   (reduce (fn [map term] (assoc map term :true)) (:dnf val) con)
+   (filter identity
+     (for [clause (:dnf val)]
+       (loop [con con clause clause]
+	 (cond (empty? con) clause
+	       (contains? clause (first con)) (recur (rest con) (assoc clause (first con) :true))
+	       :else nil))))
    (:bound val)))

@@ -14,14 +14,16 @@
 (defn- check-action-schema [types guaranteed-objs predicates action-schema] 
 ;  (.println System/out action-schema)
   (assert-is (not (map? (:vars action-schema))))
-  (let [vars-and-objects (check-objects types (concat guaranteed-objs (:vars action-schema)))]
-    (doseq [atom (concat (:pos-pre       action-schema)
-			 (:neg-pre       action-schema)
-			 (:add-list      action-schema)
-			 (:delete-list   action-schema))]
-;      (.println System/out atom)
-      (check-atom types vars-and-objects predicates atom)))
-  action-schema)
+  (let [vars-and-objects (check-objects types (concat guaranteed-objs (:vars action-schema)))
+	atom-checker (fn [atoms] (map #(check-atom types vars-and-objects predicates %) atoms))]
+    (make-strips-action-schema 
+     (:name action-schema)
+     (:vars action-schema)
+     (atom-checker (:pos-pre       action-schema))
+     (atom-checker (:neg-pre       action-schema))
+     (atom-checker (:add-list      action-schema))
+     (atom-checker (:delete-list   action-schema))
+     (:cost action-schema))))
 
 (defn- check-action-schemata [types guaranteed-objs predicates action-schemata]
   (assert-is (distinct-elts? (map :name action-schemata)))

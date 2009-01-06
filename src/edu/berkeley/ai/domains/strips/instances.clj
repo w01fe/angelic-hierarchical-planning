@@ -52,6 +52,17 @@
     :pos-pre (:pos-pre schema)
     :neg-pre (:neg-pre schema)))
 
+(defn- get-ground-tails [all-objects var-tail]
+  (if (empty? var-tail) ['()]
+    (for [tail   (get-ground-tails all-objects (rest var-tail))
+	  object (safe-get all-objects (first var-tail))]
+      (cons object tail))))
+     
+(defn get-ground-atoms [instance]
+  (concat-elts 
+   (for [[predicate arglist] (:predicates (:domain instance))]
+     (map #(cons predicate %)
+	  (get-ground-tails (:trans-objects instance) arglist)))))
 		      
 
 ;;; Structure definition, methods, and implementation of Env interface.
