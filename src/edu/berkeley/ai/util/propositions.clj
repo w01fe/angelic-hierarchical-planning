@@ -11,9 +11,9 @@
   (let [type-map (map-map seq->vector-pair types)]
 ;    (prn type-map)
     (assert-is (= (count types) (count type-map)) "Duplicate type")
-    (doseq [type (keys types)]
-      (let [distinct? (distinct-elts? (get-subtypes types type))]
-	(assert-is (identity distinct?) "Recursive type or duplicate inclusion %s" (take 100 (get-subtypes types type)))))
+    (doseq [type (keys type-map)]
+      (let [distinct? (distinct-elts? (get-subtypes type-map type))]
+	(assert-is (identity distinct?) "Recursive type or duplicate inclusion %s" (take 100 (get-subtypes type-map type)))))
     type-map))
 
 
