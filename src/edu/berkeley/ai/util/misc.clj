@@ -9,6 +9,12 @@
    ([e] (.printStackTrace (.getCause e)))
     )
 
+(defn symbol-cat [& args]
+  (symbol (apply str args)))
+
+(defn desymbolize [symbol n]
+  (read-string (apply str (nthrest (name symbol) n))))
+
 (defn truthify [x]
   (if x true false))
 
@@ -174,3 +180,5 @@
 		 (match-mapping (rest var-tree) (rest match-tree)))))
   )
  
+
+

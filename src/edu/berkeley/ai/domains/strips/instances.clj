@@ -17,6 +17,7 @@
 
 ;;; Helpers for implementing Environment interface (specifically, action space)
  
+; TODO: change to use conjunctiveconditions throughout!.
 
 (defn- instantiate-schema [schema var obj rest-vars]
   (make-strips-action-schema 
@@ -118,12 +119,24 @@
 	       instantiations)))))
    
 
-(defmethod get-goal          ::StripsPlanningInstance [instance]
-  (let [goal-atoms (set (:goal-atoms instance))]
-    (assoc (make-goal #(every? % goal-atoms))
-     :conjuncts goal-atoms)))
-  
+(derive ::ConjunctiveCondition :edu.berkeley.ai.envs/Condition)
 
+(defstruct conjunctive-condition :class :pos :neg)
+(defn make-conjunctive-condition [pos neg] 
+  (struct conjunctive-condition ::ConjunctiveCondition (set pos) (set neg)))
+
+(defmulti get-positive-conjuncts :class)
+(defmethod get-positive-conjuncts ::ConjunctiveCondition [c] (:pos c))
+
+(defmulti get-negative-conjuncts :class)
+(defmethod get-negative-conjuncts ::ConjunctiveCondition [c] (:neg c))
+
+(defmethod satisfies-condition? ::ConjunctiveCondition [s c]
+  (and (every?   s (:pos c))
+       (not-any? s (:neg c)))) 
+
+(defmethod get-goal          ::StripsPlanningInstance [instance]
+  (make-conjunctive-condition (:goal-atoms instance) nil))
 
 
 

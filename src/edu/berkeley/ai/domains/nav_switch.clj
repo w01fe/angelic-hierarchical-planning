@@ -50,7 +50,7 @@
 		 :when (legal-coord?- (map + coord delta) height width)]
 	     (make-action name #(vector (struct nav-switch-state (map + (:pos %) delta) (:hor? %))
 					(if (xor (zero? (first delta)) (:hor? %)) +goodmove-reward+ +badmove-reward+))))))))
-     (make-goal #(= (:pos %) goal-pos)))))
+     (make-simple-condition #(= (:pos %) goal-pos)))))
 
 (defn make-nav-switch-strips-domain []
   (make-strips-planning-domain 
@@ -73,14 +73,14 @@
   (make-strips-planning-instance 
    "nav-switch"
    (make-nav-switch-strips-domain)
-   {:xc (map #(keyword (str "x" %)) (range width))
-    :yc (map #(keyword (str "y" %)) (range height))}
+   {:xc (map #(symbol-cat "x" %) (range width))
+    :yc (map #(symbol-cat "y" %) (range height))}
    (concat (if initial-hor? '[[horiz]] '[[vert]])
-	   [['atx (keyword (str "x" (first initial-pos)))] ['aty (keyword (str "y" (second initial-pos)))]]
-	   (map (fn [pos] ['switch-at (keyword (str "x" (first pos))) (keyword (str "y" (second pos)))]) switch-coords)
-	   (map (fn [x] ['left-of (keyword (str "x" (dec x))) (keyword (str "x" x))]) (range 1 width))
-	   (map (fn [x] ['above   (keyword (str "y" (dec x))) (keyword (str "y" x))]) (range 1 height)))
-   [['atx (keyword (str "x" (first goal-pos)))] ['aty (keyword (str "y" (second goal-pos)))]]))
+	   [['atx (symbol-cat "x" (first initial-pos))] ['aty (symbol-cat "y" (second initial-pos))]]
+	   (map (fn [pos] ['switch-at (symbol-cat "x" (first pos)) (symbol-cat "y" (second pos))]) switch-coords)
+	   (map (fn [x] ['left-of (symbol-cat "x" (dec x)) (symbol-cat "x" x)]) (range 1 width))
+	   (map (fn [x] ['above   (symbol-cat "y" (dec x)) (symbol-cat "y" x)]) (range 1 height)))
+   [['atx (symbol-cat "x" (first goal-pos))] ['aty (symbol-cat "y" (second goal-pos))]]))
     
 
 

@@ -1,5 +1,10 @@
 (in-ns 'edu.berkeley.ai.util)
 
+(defmacro forcat 
+  "Like for, but concatenates the results."
+  [& args]
+  `(concat-elts (for ~@args)))
+
 (defmacro assert-is
   "Like assert, but prints some more info about the offending form (may multiple eval on error)"
   ([form] `(assert-is ~form ""))

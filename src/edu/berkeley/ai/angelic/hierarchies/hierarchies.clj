@@ -31,7 +31,7 @@
     (assert-is (= name (:name domain)))
     (parse-hierarchy-type type meat domain)))
 
-(defmulti instantiate-hierarchy (fn [top-level-action instance] (:class top-level-action)))
+(defmulti instantiate-hierarchy (fn [hierarchy instance] (:class hierarchy)))
 
 (derive ::PrimitiveHLA ::HLA)
 
@@ -42,7 +42,11 @@
 (defmulti hla-name                       :class)
 (defmethod hla-name ::PrimitiveHLA [hla] (:name (hla-primitive hla)))
 
-(defmulti hla-immediate-refinements      (partial map :class))
+
+; TODO: this way of doing things doubles up on calls to restrict.
+(defmulti  #^{:doc "Get refinements compatible with this optimistic valuation, representing 
+            the situation before doing this action *or apply its hierarchical preconditions*"} 
+    hla-immediate-refinements      (partial map :class))
 (defmethod hla-immediate-refinements [::PrimitiveHLA ::Valuation] [hla] (throw (UnsupportedOperationException.)))
 
 (defmulti hla-hierarchical-preconditions :class)

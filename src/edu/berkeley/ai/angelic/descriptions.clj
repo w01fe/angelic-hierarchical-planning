@@ -16,7 +16,7 @@
 ; Default - some nice vacuous descriptions
 
 (defmethod parse-description nil [desc domain params]
-  (parse-description [:vac] domain))
+  (parse-description [:vac] domain params))
 
 (defmethod parse-description :vac [desc domain params]
   (assert-is (<= (count desc) 2))

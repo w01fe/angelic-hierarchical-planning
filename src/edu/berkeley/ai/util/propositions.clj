@@ -2,24 +2,20 @@
   (:refer-clojure)
   (:use edu.berkeley.ai.util clojure.contrib.seq-utils))
 
+(defn get-subtypes "Return all subtypes of type, starting with itself." [types type]
+  (when type
+    (lazy-cons type 
+	       (lazy-mapcat  (partial get-subtypes types) (safe-get types type)))))
+
 (defn check-types [types]
   (let [type-map (map-map seq->vector-pair types)]
+;    (prn type-map)
     (assert-is (= (count types) (count type-map)) "Duplicate type")
-    (loop [type-map type-map]
-      (let [next-type-map 
-	    (map-map 
-	     (fn [[k vs]] 
-	       [k (mapcat 
-		   (fn [v] 
-		     (assert-is (not= k v) "Recursion detected") 
-		     (or (safe-get type-map v) [v])) 
-		   vs)]) 
-	     type-map)]
-	(if (= next-type-map type-map) type-map
-	    (do (doseq [[k vs] next-type-map]
-		  (assert-is (distinct-elts? vs) "Duplicate inclusion"))
-		(recur next-type-map)))))
+    (doseq [type (keys types)]
+      (let [distinct? (distinct-elts? (get-subtypes types type))]
+	(assert-is (identity distinct?) "Recursive type or duplicate inclusion %s" (take 100 (get-subtypes types type)))))
     type-map))
+
 
 (defn check-objects [types guaranteed-objs]
   (let [obj-map (reduce (fn [m [k & vs]] (assoc-cat m k (if (coll? (first vs)) (first vs) vs))) {} guaranteed-objs)]
@@ -36,10 +32,22 @@
       (safe-get types pred-type))
     pred-map))
 
-(defn get-subtypes [types type]
-  (when type
-    (cons type 
-	  (map get-subtypes (safe-get types type)))))
+
+
+(defn- maximal-subtypes- [types t1 t2]
+  (let [s1 (get-subtypes types t1)
+	s2 (get-subtypes types t2)]
+    (cond (includes? t1 s2) [t1]
+	  (includes? t2 s1) [t2]
+	  :else             (concat-elts 
+			     (for [t1p (rest s1), t2p (rest s2)]
+			       (maximal-subtypes- types t1p t2p))))))
+
+(defn maximal-subtypes [types parents]
+  (assert-is (not (empty? parents)))
+  (reduce (partial maximal-subtypes- types) parents))
+
+
 	  
 (defn is-type? [types objects obj type]
   (or (includes? obj (get objects type))

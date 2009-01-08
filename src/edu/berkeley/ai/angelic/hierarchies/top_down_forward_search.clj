@@ -32,24 +32,6 @@
 
 
 
-(defmulti local-immediate-refinements (fn [node rest-actions] (:class node)))
-
-(defmethod local-immediate-refinements ::TopDownForwardRootNode [node rest-actions]  nil)
-
-(defmethod local-immediate-refinements ::TopDownForwardNode [node rest-actions]
-  (when-not (hla-primitive (:hla node))
-    (for [refinement (hla-immediate-refinements (:hla node))]
-      (loop [previous node,
-	     actions (concat refinement rest-actions)]
-	(if (empty? actions) 
-	    previous
-	  (recur 
-	   (make-top-down-forward-node (:search-space node) (first actions) previous)
-	   (rest actions)))))))
-
-
-
-
 (defmulti get-pessimistic-valuation :class)
 (defmulti get-optimistic-valuation :class)
 
@@ -76,6 +58,27 @@
 	   (hla-optimistic-description (:hla node)))))))
 
 
+
+
+(defmulti local-immediate-refinements (fn [node rest-actions] (:class node)))
+
+(defmethod local-immediate-refinements ::TopDownForwardRootNode [node rest-actions]  nil)
+
+; TODO: filter out dead ends here ???
+(defmethod local-immediate-refinements ::TopDownForwardNode [node rest-actions]
+  (when-not (hla-primitive (:hla node))
+    (for [refinement (hla-immediate-refinements (:hla node) (get-optimistic-valuation node))]
+      (loop [previous node,
+	     actions (concat refinement rest-actions)]
+	(if (empty? actions) 
+	    previous
+	  (recur 
+	   (make-top-down-forward-node (:search-space node) (first actions) previous)
+	   (rest actions)))))))
+
+
+(defmethod dead-end?  ::TopDownForwardNode [node]
+  (dead-end-valuation? (get-optimistic-valuation node)))
 
       
 

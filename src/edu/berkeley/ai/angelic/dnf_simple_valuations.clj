@@ -2,6 +2,8 @@
 
 (defstruct dnf-simple-valuation :class :dnf :bound)
 
+; TODO: think about splitting out constant part of state.
+
 ; dnf clauses are maps from vars to :true or :unknown  (not present = :false)
 
 (defn make-dnf-simple-valuation [dnf bound]
@@ -14,12 +16,14 @@
 (defmethod dead-end-valuation?       ::DNFSimpleValuation [val] (:dnf val))
 
 
+;; TODO: revamp!
 (defmethod restrict-valuation       [::DNFSimpleValuation ::ConjunctiveCondition] [val con]
-  (make-dnf-simple-valuation 
-   (filter identity
-     (for [clause (:dnf val)]
-       (loop [con con clause clause]
-	 (cond (empty? con) clause
-	       (contains? clause (first con)) (recur (rest con) (assoc clause (first con) :true))
-	       :else nil))))
-   (:bound val)))
+  (let [con (seq con)]  ; Assume conjunction of literals.
+    (make-dnf-simple-valuation 
+     (filter identity
+       (for [clause (:dnf val)]
+         (loop [con con clause clause]
+  	   (cond (empty? con) clause
+	         (contains? clause (first con)) (recur (rest con) (assoc clause (first con) :true))
+	         :else nil))))
+     (:bound val))))

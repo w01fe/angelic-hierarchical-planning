@@ -4,4 +4,6 @@
 (defmulti get-valuation-upper-bound :class)
 (defmulti dead-end-valuation? :class)
 
-(defmulti restrict-valuation (partial map :class))
+(defmulti restrict-valuation (fn [val condition] [(:class val) (:class condition)]))
+
+

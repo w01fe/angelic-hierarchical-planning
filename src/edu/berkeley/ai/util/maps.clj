@@ -35,7 +35,22 @@
      (when (every? (fn [[k v]] (= v (get m1 k v))) m2)
        (apply merge-agree (merge m1 m2) maps))))
   
-
 (defn assoc-cat "Like assoc but for maps to lists"
   [m k v]
   (assoc m k (concat v (get m k))))
+
+(defn merge-cat "Like merge but concatenates duplicate values (in rev. order.)"
+  ([] {})
+  ([map] map)
+  ([m1 m2 & maps]
+     (apply merge-cat 
+	    (reduce (fn [m [k vs]] (assoc-cat m k vs))
+		    {} (concat m1 m2))
+	    maps)))
+
+(defn map-map-cat "A map-map that concatenates duplicate values"
+  [f m] (reduce (fn [m x] 
+		  (let [[k v] (f x)]
+		    (assoc-cat m k v)))
+		{} m))
+  

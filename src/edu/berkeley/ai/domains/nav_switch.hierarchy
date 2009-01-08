@@ -6,7 +6,7 @@
   (:type :strips-hierarchy)
   (:hla act
        :parameters (?cx - :xc ?cy - :yc ?gx - :xc ?gy - :yc)
-       :precondition (and (:goal-match (atx ?gx)) (:goal-match (aty ?gy)) (atx ?cx) (aty ?cy))
+       :precondition (and (goal-atx ?gx) (goal-aty ?gy) (atx ?cx) (aty ?cy))
        :refinement   (:precondition (and (atx ?gx) (aty ?gy))
                       :expansion    ())
        :refinement   (:expansion    ((go ?cx ?cy ?gx ?gy)))    
@@ -15,17 +15,18 @@
        
   (:hla go
        :parameters (?cx - :xc ?cy - :yc ?dx - :xc ?dy - :yc)
-       :refinement (:expansion (nav ?cx ?cy ?dx ?dy))
-       :refinement (:expansion (nav-switch ?cx ?cy :? :?) (go ?cx ?cy ?dx ?dy))
+       :refinement (:expansion ((nav ?cx ?cy ?dx ?dy)))
+       :refinement (:expansion ((nav-switch ?cx ?cy :?1 :?2) (go ?cx ?cy ?dx ?dy)))
        :optimistic   (:ncstrips (:effect (and (atx ?dx) (aty ?dy) (not (atx ?cx)) (not (aty ?cy))) 
                                  :possible-effect (and (horiz) (not (horiz))) 
-                                 :cost-expr 4))
+                                 :cost-expr (* 4 (+ (Math/abs (- (desymbolize ?dx 1) (desymbolize ?cx 1)))
+                                                  (Math/abs (- (desymbolize ?dy 1) (desymbolize ?cy 1)))))))
        :pessimistic  (:vac))
        
   (:hla nav-switch
        :parameters (?cx - :xc ?cy - :yc ?dx - :xc ?dy - :yc)
        :precondition (switch-at ?dx ?dy)
-       :refinement   (:expansion (nav ?cx ?cy ?dx ?dy))
+       :refinement   (:expansion ((nav ?cx ?cy ?dx ?dy)))
        :optimistic   (:vac)
        :pessimistic  (:vac))
 

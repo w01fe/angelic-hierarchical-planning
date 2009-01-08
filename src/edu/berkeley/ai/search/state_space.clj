@@ -70,7 +70,7 @@
        (extract-a-solution node)))
 
 (defmethod extract-a-solution ::StateSpaceNode [node]
-  (when (satisfies-goal? (:state node) (:goal (:search-space node)))
+  (when (satisfies-condition? (:state node) (:goal (:search-space node)))
     [(:act-seq ^(:state node)) (:reward ^(:state node))]))
 
 (defmethod node-str ::StateSpaceNode [node] 

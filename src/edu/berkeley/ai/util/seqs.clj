@@ -104,12 +104,25 @@
 	(coll? x) (seq x)
 	:else     (list x)))
 
+(import '(java.util HashSet))
+(defn distinct-elts? "Works on lazy infinite seqs (as much as poss.)!" [s]
+  (let [hs (HashSet.)]
+    (loop [s (seq s)]
+      (cond (empty? s)                    true
+	    (.contains hs (first s))        false
+            :else (do (.add hs (first s)) (recur (rest s)))))))
+	  
+(comment ; old version
 (defn distinct-elts? [s]
   (let [s (seq s)]
     (= (count s) (count (distinct s)))))
+  )
 
 (defn concat-elts "Lazily conctaenate a lazy seq of lazy seqs." [s] 
   (mapcat identity s))
+
+(defn lazy-mapcat "Like mapcat but without the pain" [f s]
+  (concat-elts (map f s)))
 
 (defn iterate-while [f x]
   (take-while identity (iterate f x)))
