@@ -49,6 +49,7 @@
 
 
 (defmethod get-optimistic-valuation ::TopDownForwardNode [node]
+;  (prln (node-str node))
   (let [s (:optimistic-valuation ^node)]
     (or (sref-get s)
 	(sref-set! s 
@@ -67,8 +68,8 @@
 ; TODO: filter out dead ends here ???
 (defmethod local-immediate-refinements ::TopDownForwardNode [node rest-actions]
   (when-not (hla-primitive (:hla node))
-    (for [refinement (hla-immediate-refinements (:hla node) (get-optimistic-valuation node))]
-      (loop [previous node,
+    (for [refinement (hla-immediate-refinements (:hla node) (get-optimistic-valuation (:previous node)))]
+      (loop [previous (:previous node),
 	     actions (concat refinement rest-actions)]
 	(if (empty? actions) 
 	    previous
@@ -95,7 +96,6 @@
 
 
 (defmethod immediate-refinements ::TopDownForwardNode [node] 
-  (concat-elts
    (loop [node node,
           rest-acts nil,
 	  refinements nil]
@@ -104,7 +104,7 @@
        (recur (:previous node)
 	      (cons (:hla node) rest-acts)
 	      ;(delay-seq
-	       (concat (local-immediate-refinements node rest-acts) refinements))))))
+	       (concat (local-immediate-refinements node rest-acts) refinements)))))
 
 
 (defmethod primitive-refinement ::TopDownForwardNode [node]
@@ -126,7 +126,7 @@
     (primitive-refinement node)))
 
 (defmethod node-str ::TopDownForwardNode [node] 
-  (apply str (map (comp hla-name :hla) (rest (rseq (iterate-while :previous node))))))
+  (str-join " " (map (comp hla-name :hla) (rest (reverse (iterate-while :previous node))))))
 
 
 (comment 
@@ -141,6 +141,34 @@
 			     domain)
 	    env))) 
     ))))
+
+(let [domain (make-nav-switch-strips-domain)
+	env    (make-nav-switch-strips-env 2 2 [[0 0]] [1 0] true [0 1])
+	val (make-initial-valuation :edu.berkeley.ai.angelic.dnf-simple-valuations/DNFSimpleValuation env)
+	    node
+    (make-initial-top-down-forward-node 
+     env
+     val
+     (list (instantiate-hierarchy
+	    (parse-hierarchy "/Users/jawolfe/Projects/angel/src/edu/berkeley/ai/domains/nav_switch.hierarchy"
+			     domain)
+	    env)))] 
+        (map reward-bounds (immediate-refinements (first (immediate-refinements (first (immediate-refinements node)))))))
+
+(let [domain (make-nav-switch-strips-domain)
+	env    (make-nav-switch-strips-env 2 2 [[0 0]] [1 0] true [0 1])
+	val (make-initial-valuation :edu.berkeley.ai.angelic.dnf-simple-valuations/DNFSimpleValuation env)
+	    node
+    (make-initial-top-down-forward-node 
+     env
+     val
+     (list (instantiate-hierarchy
+	    (parse-hierarchy "/Users/jawolfe/Projects/angel/src/edu/berkeley/ai/domains/nav_switch.hierarchy"
+			     domain)
+	    env)))] 
+        (map #(vector (node-str %) (reward-bounds %)) (take 80 (all-refinements node (make-queue-pq) (constantly 0)))))
+
+(let [domain (make-nav-switch-strips-domain), env (make-nav-switch-strips-env 2 2 [[0 0]] [1 0] true [0 1]), val (make-initial-valuation :edu.berkeley.ai.angelic.dnf-simple-valuations/DNFSimpleValuation env), node (make-initial-top-down-forward-node env val (list (instantiate-hierarchy (parse-hierarchy "/Users/jawolfe/Projects/angel/src/edu/berkeley/ai/domains/nav_switch.hierarchy" domain) env)))] (interactive-search node (make-queue-pq) (constantly 0))) 
   )
 
 ;(defmethod node-parent ::TopDownForwardNode [node] 

@@ -19,12 +19,13 @@
   (parse-description [:vac] domain params))
 
 (defmethod parse-description :vac [desc domain params]
+;  (prn (second desc))
   (assert-is (<= (count desc) 2))
   {:class ::VacuousDescription :cost (second desc)})
 
 (defmethod instantiate-description-schema ::VacuousDescription [desc instance]
   (assert-is (isa? (:class instance) :edu.berkeley.ai.domains.strips/StripsPlanningInstance))
-  (assoc desc :all-dnf (map-map #(vector % :unknown) (edu.berkeley.ai.domains.strips/get-ground-atoms instance)))) 
+  (assoc desc :all-dnf (list (map-map #(vector % :unknown) (edu.berkeley.ai.domains.strips/get-ground-atoms instance))))) 
 
 (defmethod ground-description ::VacuousDescription [desc var-map]
   desc)

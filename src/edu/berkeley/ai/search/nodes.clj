@@ -72,6 +72,40 @@
   (pq-add! pq node (priority-fn node))
   (all-refinements- pq priority-fn))
 
+;; TODO: check goal
+(defn interactive-search [node pq priority-fn]
+  (pq-add! pq node (priority-fn node))
+  (loop []
+    (when-not (pq-empty? pq)
+      (let [next (pq-remove-min! pq)
+	    dead-end (dead-end? next)
+	    refs (when-not dead-end (immediate-refinements next))]
+	(print "\n\n" (node-str next) (reward-bounds next))
+	(if dead-end 
+	    (print " is a dead end.")
+	  (print " has refinements \n                    " 
+                        (str-join "\n                     " (map #(str (reward-bounds %) " " (node-str %)) refs)) "\n"))
+	(when (loop []
+		(print "\n(d)rop, (n)ext, (s)ave, (q)uit, (r)eroot, go (#), (expr ... *n)? ")
+		(flush)
+		(let [result (read)]
+		  (cond (= result 'd) true
+			(= result 'n) (do (pq-add-all! pq (map (fn [i] [i (priority-fn i)]) refs)) true)
+			(= result 'r) (do (while (not (pq-empty? pq)) (pq-remove-min! pq))
+					  (pq-add! pq next (priority-fn next))
+					  true)
+			(= result 's) (do (def *n next) (recur))
+			(= result 'q) false
+			(integer? result) (do (pq-add-all! pq (map (fn [i] [i (priority-fn i)]) refs))
+					      (dotimes [_ (dec result)]
+						(let [next (pq-remove-min! pq)]
+						  (when-not (dead-end? next)
+						    (pq-add-all! pq (map (fn [i] [i (priority-fn i)]) (immediate-refinements next))))))
+					      true)
+			:else          (do (print (binding [*n next] (eval result)) "\n") (recur)))))
+	  (recur))))))
+
+
 (defn primitive-refinements 
   "Returns a lazy seq of primitive refinements, refined using 
    the provided (presumed fresh) priority queue and priority function"

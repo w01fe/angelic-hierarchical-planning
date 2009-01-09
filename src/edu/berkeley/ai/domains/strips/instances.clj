@@ -28,7 +28,10 @@
    (clojure.set/union (get-positive-conjuncts c1) (get-positive-conjuncts c2))
    (clojure.set/union (get-negative-conjuncts c1) (get-negative-conjuncts c2))))
 			      
-
+(defn simplify-conjunctive-condition [c var-map]
+  (make-conjunctive-condition
+   (map (partial simplify-atom var-map) (get-positive-conjuncts c))
+   (map (partial simplify-atom var-map) (get-negative-conjuncts c))))
 
 
 
@@ -44,8 +47,8 @@
      
 
 ;;; Helpers for implementing Environment interface (specifically, action space)
- 
-; TODO: change to use conjunctiveconditions throughout!.
+
+;; TODO: standalone instantiate -> action method.
 
 (defn- instantiate-schema [schema var obj rest-vars]
   (make-strips-action-schema 
@@ -108,7 +111,8 @@
 	    domain
 	    all-objects    
 	    (map-map (fn [t] [t (mapcat (partial get all-objects) (get-subtypes types t))]) (keys types))
-	    (map (partial check-atom types all-objects predicates) init-atoms)
+	    (concat (map (partial check-atom types all-objects predicates) init-atoms)
+		    (map #(check-atom types all-objects predicates (cons (goal-ize (first %)) (rest %))) goal-atoms))
 	    (map (partial check-atom types all-objects predicates) goal-atoms))))
 
 (defn read-strips-planning-instance [domain file]

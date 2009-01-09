@@ -3,11 +3,12 @@
 (defn prln "Print and return the first argument"
   [& args] (do (println (apply print-str args)) (first args)))
 
+(comment 
 (defn pst2
    "Print the stack trace of the \"cause\" of the specified exception or *e if none passed"
    ([] (.printStackTrace (.getCause *e)))
    ([e] (.printStackTrace (.getCause e)))
-    )
+    ))
 
 (defn symbol-cat [& args]
   (symbol (apply str args)))

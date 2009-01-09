@@ -16,7 +16,7 @@
 	  )
 
 (defn map-map "Like a map for maps (/ seqs of map-entries)"
- [f m] (reduce #(conj %1 (f %2)) {} m))
+ [f & maps] (reduce #(conj %1 %2) {} (apply map f maps)))
 
 (defmacro lazy-get "Like get but lazy about default"
   [m k d]

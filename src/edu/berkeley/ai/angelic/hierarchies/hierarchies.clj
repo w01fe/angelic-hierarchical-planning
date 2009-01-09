@@ -27,7 +27,7 @@
   (match [(define (hierarchy [unquote name])
 	    (:type [unquote type])
 	    [unquote-seq meat])
-	  (read-string (.toLowerCase (slurp file)))]
+	  (read-string (slurp file))] ;(.toLowerCase (slurp file)))]
     (assert-is (= name (:name domain)))
     (parse-hierarchy-type type meat domain)))
 

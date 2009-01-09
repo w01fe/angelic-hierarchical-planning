@@ -10,7 +10,7 @@
 
 (defn make-dnf-simple-valuation [dnf bound]
   (if-let [dnf (seq dnf)]
-      (struct dnf-simple-valuation ::DNFSimpleValuation dnf bound)
+      (struct dnf-simple-valuation ::DNFSimpleValuation (set dnf) bound)
     (struct dnf-simple-valuation ::DNFSimpleValuation nil Double/NEGATIVE_INFINITY)))
   
 (defmethod make-initial-valuation     ::DNFSimpleValuation [type env]
@@ -18,7 +18,7 @@
 
 (defmethod get-valuation-lower-bound ::DNFSimpleValuation [val] (:bound val))
 (defmethod get-valuation-upper-bound ::DNFSimpleValuation [val] (:bound val))
-(defmethod dead-end-valuation?       ::DNFSimpleValuation [val] (seq (:dnf val)))
+(defmethod dead-end-valuation?       ::DNFSimpleValuation [val] (empty? (:dnf val)))
 
 (defn restrict-clause [clause pos neg]
   (when-let [after-pos
@@ -26,10 +26,10 @@
 	       (cond (empty? pos)                   clause
 		     (contains? clause (first pos)) (recur (rest pos) (assoc clause (first pos) :true))
 		     :else nil))]
-    (loop [neg neg clause clause]
-      (cond (empty? pos)                       clause
-	    (= :true (get clause (first pos))) nil
-	    :else  (recur (rest pos) (dissoc clause (first pos)))))))
+    (loop [neg neg clause after-pos]
+      (cond (empty? neg)                       clause
+	    (= :true (get clause (first neg))) nil
+	    :else  (recur (rest neg) (dissoc clause (first neg)))))))
 
 (defmethod restrict-valuation       [::DNFSimpleValuation :edu.berkeley.ai.domains.strips/ConjunctiveCondition] [val con]
   (let [pos (get-positive-conjuncts con)
@@ -58,11 +58,12 @@
 
 (defmethod valuation-consistent-mappings [::DNFSimpleValuation :edu.berkeley.ai.domains.strips/ConjunctiveCondition]
   [opt-val quasi-ground-condition dummy-domains]
-  (let [[ground-pos var-pos] (separate #(some is-dummy-var? (rest %)) 
+  (let [[var-pos ground-pos] (separate #(some is-dummy-var? (rest %)) 
 				       (get-positive-conjuncts quasi-ground-condition))
-	[ground-neg var-neg] (separate #(some is-dummy-var? (rest %)) 
+	[var-neg ground-neg] (separate #(some is-dummy-var? (rest %)) 
 				       (get-negative-conjuncts quasi-ground-condition))
 	opt-val (restrict-valuation opt-val (make-conjunctive-condition ground-pos ground-neg))]
+;    (prn dummy-domains ground-pos var-pos ground-neg var-neg opt-val)
     (when-not (dead-end-valuation? opt-val)
       (reduce clojure.set/union #{} (map #(clause-consistent-mappings % var-pos var-neg dummy-domains)
 				     (:dnf opt-val))))))
