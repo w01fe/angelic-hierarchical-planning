@@ -62,6 +62,21 @@
 
 (defstruct strips-planning-domain :class :name :types :guaranteed-objs :predicates :action-schemata)
 
+
+(defn goal-ize [pred-name] (symbol-cat 'goal- pred-name))
+
+(defn de-goal [pred]
+  (let [name (name (first pred))]
+    (if (.startsWith name "goal-")
+      (cons (symbol (.substring name 5))
+	    (rest pred)))))
+
+(defn add-goal-predicates [predicates]
+  (let [all-preds (merge predicates (map-map (fn [[pred args]] [(goal-ize pred) args]) predicates))]
+    (assert-is (= (count all-preds) (* 2 (count predicates))))
+    all-preds))
+
+
 (defn make-strips-planning-domain 
   "types are either single keywords/symbols or [union-keyword & constituent-types].  
      Empty constitutenty type is same as single keyword/symbol.
@@ -74,7 +89,9 @@
 	guaranteed-objs (check-objects types guaranteed-objs)
         predicates (check-predicates types predicates)
         action-schemata (check-action-schemata types guaranteed-objs predicates action-schemata)]
-    (struct strips-planning-domain ::StripsPlanningDomain name types guaranteed-objs predicates action-schemata)))
+    (struct strips-planning-domain 
+	    ::StripsPlanningDomain name types guaranteed-objs 
+	    (add-goal-predicates predicates) action-schemata)))
 
 
 (defn read-strips-planning-domain [file]

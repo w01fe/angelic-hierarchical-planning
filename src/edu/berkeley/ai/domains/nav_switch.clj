@@ -3,8 +3,6 @@
  (:use clojure.contrib.str-utils [edu.berkeley.ai.util :as util] edu.berkeley.ai.envs edu.berkeley.ai.envs.states edu.berkeley.ai.domains.strips)
  )
 
-;(derive ::NavSwitch ::Environment)
-;(defstruct nav-switch-env :class :height :width :switch-coords :initial-pos :initial-hor?)
 
 
 

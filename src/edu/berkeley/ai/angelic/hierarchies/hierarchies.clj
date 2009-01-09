@@ -46,7 +46,7 @@
 ; TODO: this way of doing things doubles up on calls to restrict.
 (defmulti  #^{:doc "Get refinements compatible with this optimistic valuation, representing 
             the situation before doing this action *or apply its hierarchical preconditions*"} 
-    hla-immediate-refinements      (partial map :class))
+    hla-immediate-refinements      (fn [hla val] [(:class hla) (:class val)]))
 (defmethod hla-immediate-refinements [::PrimitiveHLA ::Valuation] [hla] (throw (UnsupportedOperationException.)))
 
 (defmulti hla-hierarchical-preconditions :class)

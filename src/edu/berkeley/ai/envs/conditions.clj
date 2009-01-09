@@ -16,5 +16,14 @@
   ((:test condition) state))
 
 
+(defmulti conjoin-conditions (fn [c1 c2] [(:class c1) (:class c2)]))
+
+(defmethod conjoin-conditions [::Condition ::Condition] [c1 c2]
+  (make-simple-condition 
+   #(and (satisfies-condition? % c1) (satisfies-condition? % c2))))
+
+
+(defmulti satisfying-states (fn [condition state-space] [(:class condition) (:class state-space)]))
+
 
 

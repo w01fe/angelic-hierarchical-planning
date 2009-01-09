@@ -3,9 +3,37 @@
 
 ;; TODO: normalize schema instances!
 
+;;; Conjunctive conditions
+
+;; TODO: empty conditions
+
+(derive ::ConjunctiveCondition :edu.berkeley.ai.envs/Condition)
+
+(defstruct conjunctive-condition :class :pos :neg)
+(defn make-conjunctive-condition [pos neg] 
+  (struct conjunctive-condition ::ConjunctiveCondition (set pos) (set neg)))
+
+;(defmulti get-positive-conjuncts :class)
+(defn get-positive-conjuncts [c] (safe-get c :pos))
+
+;(defmulti get-negative-conjuncts :class)
+(defn get-negative-conjuncts [c] (safe-get c :neg))
+
+(defmethod satisfies-condition? ::ConjunctiveCondition [s c]
+  (and (every?   s (:pos c))
+       (not-any? s (:neg c)))) 
+
+(defmethod conjoin-conditions [::ConjunctiveCondition ::ConjunctiveCondition] [c1 c2]
+  (make-conjunctive-condition 
+   (clojure.set/union (get-positive-conjuncts c1) (get-positive-conjuncts c2))
+   (clojure.set/union (get-negative-conjuncts c1) (get-negative-conjuncts c2))))
+			      
+
+
+
+
+
 ;;; Helpers for parsing instances
-
-
 
 (defn- parse-pddl-objects [s]
   (when s
@@ -40,6 +68,7 @@
        (get objects (ffirst vars))))))
 
 
+
 (defn- strips-action->action [schema]
   (assert-is (empty? (:vars schema)))
   (assoc 
@@ -50,8 +79,7 @@
 	   (clojure.set/difference state (:delete-list schema)) 
 	   (:add-list schema))
 	  (- (:cost schema))]))
-    :pos-pre (:pos-pre schema)
-    :neg-pre (:neg-pre schema)))
+    :precondition (make-conjunctive-condition (:pos-pre schema) (:neg-pre schema))))
 
 (defn- get-ground-tails [all-objects var-tail]
   (if (empty? var-tail) ['()]
@@ -115,31 +143,11 @@
 				    schemas))]
     (make-action-space
      (fn [state]
-       (filter #(and (every? state (:pos-pre %)) (not-any? state (:neg-pre %)))
+       (filter #(satisfies-condition? state (:precondition %))
 	       instantiations)))))
    
-
-(derive ::ConjunctiveCondition :edu.berkeley.ai.envs/Condition)
-
-(defstruct conjunctive-condition :class :pos :neg)
-(defn make-conjunctive-condition [pos neg] 
-  (struct conjunctive-condition ::ConjunctiveCondition (set pos) (set neg)))
-
-(defmulti get-positive-conjuncts :class)
-(defmethod get-positive-conjuncts ::ConjunctiveCondition [c] (:pos c))
-
-(defmulti get-negative-conjuncts :class)
-(defmethod get-negative-conjuncts ::ConjunctiveCondition [c] (:neg c))
-
-(defmethod satisfies-condition? ::ConjunctiveCondition [s c]
-  (and (every?   s (:pos c))
-       (not-any? s (:neg c)))) 
-
 (defmethod get-goal          ::StripsPlanningInstance [instance]
   (make-conjunctive-condition (:goal-atoms instance) nil))
-
-
-
 
 
 

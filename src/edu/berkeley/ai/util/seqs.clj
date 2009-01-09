@@ -119,7 +119,8 @@
   )
 
 (defn concat-elts "Lazily conctaenate a lazy seq of lazy seqs." [s] 
-  (mapcat identity s))
+  (when (seq s) (lazy-cat (first s) (concat-elts (rest s)))))
+;  (mapcat identity s))
 
 (defn lazy-mapcat "Like mapcat but without the pain" [f s]
   (concat-elts (map f s)))
@@ -140,6 +141,10 @@
     (lazy-cons (take n s)
 	       (chunk n (drop n s)))))
   
+(defn combinations "Take a seq of seqs and return a lazy list of ordered combinations (pick 1 from each seq)" [seqs]
+  (if (empty? seqs) '(())
+    (forcat [item (first seqs)]
+      (map #(cons item %) (combinations (rest seqs))))))
 
 (comment   ; already in clojure.contrib with same name!
 (defn separate "Like filter, but returns [true-elts false-elts]"

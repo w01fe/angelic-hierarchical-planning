@@ -3,7 +3,7 @@
   (:use edu.berkeley.ai.util edu.berkeley.ai.angelic.hierarchies)
   )
 
-(derive ::CFGHLA ::HLA)
+(derive ::CFGHLA :edu.berkeley.ai.angelic.hierarchies/HLA)
 
 (defstruct cfg-hla :class :nonterminal :production-rules :terminal-map) 
 
@@ -11,7 +11,7 @@
   (assert-is (distinct-elts? (concat (keys production-rules) (keys terminal-map))))
   (struct cfg-hla ::CFGHLA NT production-rules terminal-map))
 
-(derive ::TerminalCFGHLA ::PrimitiveHLA)
+(derive ::TerminalCFGHLA :edu.berkeley.ai.angelic.hierarchies/PrimitiveHLA)
 
 (defstruct terminal-cfg-hla :class :primitive)
 

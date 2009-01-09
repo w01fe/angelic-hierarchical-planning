@@ -16,20 +16,17 @@
   (:hla go
        :parameters (?cx - :xc ?cy - :yc ?dx - :xc ?dy - :yc)
        :refinement (:expansion ((nav ?cx ?cy ?dx ?dy)))
-       :refinement (:expansion ((nav-switch ?cx ?cy :?1 :?2) (go ?cx ?cy ?dx ?dy)))
+       :refinement (:precondition (switch-at :?1 :?2) 
+                    :expansion ((nav ?cx ?cy :?1 :?2) (go :?1 :?2 ?dx ?dy)))
        :optimistic   (:ncstrips (:effect (and (atx ?dx) (aty ?dy) (not (atx ?cx)) (not (aty ?cy))) 
                                  :possible-effect (and (horiz) (not (horiz))) 
-                                 :cost-expr (* 4 (+ (Math/abs (- (desymbolize ?dx 1) (desymbolize ?cx 1)))
+                                 :cost-expr (* 2 (+ (Math/abs (- (desymbolize ?dx 1) (desymbolize ?cx 1)))
                                                   (Math/abs (- (desymbolize ?dy 1) (desymbolize ?cy 1)))))))
-       :pessimistic  (:vac))
+       :pessimistic  (:ncstrips (:effect (and (atx ?dx) (aty ?dy) (not (atx ?cx)) (not (aty ?cy))) 
+                                 :possible-effect (and (horiz) (not (horiz))) 
+                                 :cost-expr (* 4 (+ (Math/abs (- (desymbolize ?dx 1) (desymbolize ?cx 1)))
+                                                    (Math/abs (- (desymbolize ?dy 1) (desymbolize ?cy 1))))))))
        
-  (:hla nav-switch
-       :parameters (?cx - :xc ?cy - :yc ?dx - :xc ?dy - :yc)
-       :precondition (switch-at ?dx ?dy)
-       :refinement   (:expansion ((nav ?cx ?cy ?dx ?dy)))
-       :optimistic   (:vac)
-       :pessimistic  (:vac))
-
   (:hla nav       
        :parameters (?cx - :xc ?cy - :yc ?dx - :xc ?dy - :yc)
        :refinement (:precondition (and (atx ?dx) (aty ?dy)) :expansion ())
@@ -41,5 +38,12 @@
        :refinement (:expansion ((good-up    ?cy :?) (nav ?cx :? ?dx ?dy)))
        :refinement (:expansion ((good-down  ?cy :?) (nav ?cx :? ?dx ?dy)))
        :refinement (:expansion ((good-right ?cx :?) (nav :? ?cy ?dx ?dy)))
-       :optimistic   (:vac)
-       :pessimistic  (:vac)))
+       :exact        (:ncstrips (:precondition (horiz)
+                                 :effect (and (atx ?dx) (aty ?dy) (not (atx ?cx)) (not (aty ?cy))) 
+                                 :cost-expr (+ (* 2 (Math/abs (- (desymbolize ?dx 1) (desymbolize ?cx 1)))
+                                               (* 4 (Math/abs (- (desymbolize ?dy 1) (desymbolize ?cy 1)))))))
+			        (:precondition (not (horiz))
+                                 :effect (and (atx ?dx) (aty ?dy) (not (atx ?cx)) (not (aty ?cy))) 
+                                 :cost-expr (+ (* 4 (Math/abs (- (desymbolize ?dx 1) (desymbolize ?cx 1)))
+                                               (* 2 (Math/abs (- (desymbolize ?dy 1) (desymbolize ?cy 1))))))))))
+

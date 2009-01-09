@@ -1,8 +1,9 @@
 (ns edu.berkeley.ai.angelic.ncstrips-descriptions
   (:refer-clojure)
-  (:use clojure.contrib.seq-utils [edu.berkeley.ai.util :as util] edu.berkeley.ai.util.propositions edu.berkeley.ai.angelic)
+  (:use clojure.contrib.seq-utils [edu.berkeley.ai.util :as util] edu.berkeley.ai.util.propositions edu.berkeley.ai.angelic edu.berkeley.ai.angelic.dnf-simple-valuations)
   )
 
+;; TODO TODO: allow dummy vars in ncstrips preconditions
 
 (defstruct ncstrips-effect :pos-preconditions :neg-preconditions :adds :deletes :possible-adds :possible-deletes :cost)
 
@@ -33,13 +34,13 @@
 (defn- check-ncstrips-effect [types vars-and-objects predicates effect]
   (filter identity (simplify-ncstrips-effect (normalize-ncstrips-effect-atoms types vars-and-objects predicates effect))))
   
-
+; TODO: is this definition of cost-expr sufficiently general?
 (defn- instantiate-ncstrips-effect-atoms [var-map effect]
   (let [instantiator (partial simplify-atom var-map)]
     (apply make-ncstrips-effect 
 	   (concat (for [f :pos-preconditions :neg-preconditions :adds :deletes :possible-adds :possible-deletes]
 		     (distinct (map instantiator (safe-get effect f))))
-		   [(eval `(fn ~(vec var-map) ~effect))]))))
+		   [(eval `(let ~(vec (concat-elts var-map)) ~effect))]))))
 
 (defn- instantiate-ncstrips-effect [effect var-map]
   (filter identity 
@@ -67,7 +68,6 @@
 	  (map #(instantiate-ncstrips-effect % var-map))))
   
 
-  
 (defn- progress-effect-clause [effect clause]
   (when (and (every? clause (:pos-preconditions effect))
 	     (every? #(not (= :true (clause %))) (:neg-preconditions effect)))
@@ -77,9 +77,10 @@
 			  (:deletes effect))
 	  unks    (concat (remove clause (:possible-adds effect))
 			  (filter #(= :true (clause %)) (:possible-deletes effect)))]
-      (apply assoc (apply dissoc clause deletes)
-	     (concat (interleave adds (repeat :true))
-		     (interleave unks (repeat :unknown)))))))
+      [(apply assoc (apply dissoc clause deletes)
+	      (concat (interleave adds (repeat :true))
+		      (interleave unks (repeat :unknown))))
+       (- (:cost effect))])))
 
 (defn- progress-ncstrips [val desc combiner]
   (let [results 
@@ -91,10 +92,10 @@
      (reduce combiner (map second results)))))
       
 
-(defmethod progress-optimistic [::DNFSimpleValuation ::NCSTRIPSDescription] [val desc]
+(defmethod progress-optimistic [:edu.berkeley.ai.angelic.dnf-simple-valuations/DNFSimpleValuation ::NCSTRIPSDescription] [val desc]
   (progress-ncstrips val desc max))
 
-(defmethod progress-pessimistic [::DNFSimpleValuation ::NCSTRIPSDescription] [val desc] ;TODO: improve
+(defmethod progress-pessimistic [:edu.berkeley.ai.angelic.dnf-simple-valuations/DNFSimpleValuation ::NCSTRIPSDescription] [val desc] ;TODO: improve
   (progress-ncstrips val desc min))
 
 

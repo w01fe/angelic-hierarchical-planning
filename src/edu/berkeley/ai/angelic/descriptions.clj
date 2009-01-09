@@ -5,11 +5,11 @@
 (defmulti ground-description             (fn [desc var-map] (:class desc)))
 
 
-(defmulti progress-optimistic (partial map :class))
-(defmulti progress-pessimistic (partial map :class))
+(defmulti progress-optimistic (fn [val desc] [(:class val) (:class desc)]))
+(defmulti progress-pessimistic (fn [val desc] [(:class val) (:class desc)]))
 
-(defmulti regress-optimistic (partial map :class))
-(defmulti regress-pessimistic (partial map :class))
+(defmulti regress-optimistic (fn [val desc] [(:class val) (:class desc)]))
+(defmulti regress-pessimistic (fn [val desc] [(:class val) (:class desc)]))
 
 
 
@@ -30,8 +30,8 @@
   desc)
 
 
-(defmethod progress-optimistic [::VacuousDescription ::DNFSimpleValuation] [desc val]
-  (make-dnf-simple-valuation (:all-dnf desc) (if-let [c (:cost desc)] (+ c (:bound val)) Double/POSITIVE_INFINITY)))
+(defmethod progress-optimistic [:edu.berkeley.ai.angelic.dnf-simple-valuations/DNFSimpleValuation ::VacuousDescription] [val desc]
+  (edu.berkeley.ai.angelic.dnf-simple-valuations/make-dnf-simple-valuation (:all-dnf desc) (if-let [c (:cost desc)] (+ c (:bound val)) Double/POSITIVE_INFINITY)))
 
-(defmethod progress-pessimistic [::VacuousDescription ::DNFSimpleValuation] [desc val]
-  (make-dnf-simple-valuation nil (if-let [c (:cost desc)] (+ c (:bound val)) Double/NEGATIVE_INFINITY))) 
+(defmethod progress-pessimistic [:edu.berkeley.ai.angelic.dnf-simple-valuations/DNFSimpleValuation ::VacuousDescription] [val desc]
+  (edu.berkeley.ai.angelic.dnf-simple-valuations/make-dnf-simple-valuation nil (if-let [c (:cost desc)] (+ c (:bound val)) Double/NEGATIVE_INFINITY))) 
