@@ -9,26 +9,26 @@
 
 (defstruct top-down-forward-node  :class :goal :hla :previous)
 
-(defn make-top-down-forward-node [env hla previous-node]
+(defn make-top-down-forward-node [goal hla previous-node]
   (with-meta  
-   (struct top-down-forward-node ::TopDownForwardNode (get-goal env) hla previous-node)
+   (struct top-down-forward-node ::TopDownForwardNode goal hla previous-node)
    {:pessimistic-valuation (sref nil), :optimistic-valuation (sref nil)}))
 
 
 
-(defstruct top-down-forward-root-node :class :env :initial-valuation)
+(defstruct top-down-forward-root-node :class :goal :initial-valuation)
 
-(defn make-top-down-forward-root-node [env initial-valuation]
-  (struct top-down-forward-root-node ::TopDownForwardRootNode env initial-valuation))
+(defn make-top-down-forward-root-node [goal initial-valuation]
+  (struct top-down-forward-root-node ::TopDownForwardRootNode goal initial-valuation))
 
 
 (defn make-initial-top-down-forward-node [env initial-valuation initial-plan]
   (loop [actions initial-plan
-	 previous (make-top-down-forward-root-node env initial-valuation)]
+	 previous (make-top-down-forward-root-node (get-goal env) initial-valuation)]
     (if (empty? actions)
         previous
       (recur (rest actions)
-	     (make-top-down-forward-node env (first actions) previous)))))
+	     (make-top-down-forward-node (get-goal env) (first actions) previous)))))
 
 
 
@@ -73,7 +73,7 @@
 	(if (empty? actions) 
 	    previous
 	  (recur 
-	   (make-top-down-forward-node (:env node) (first actions) previous)
+	   (make-top-down-forward-node (:goal node) (first actions) previous)
 	   (rest actions)))))))
 
 
@@ -122,7 +122,7 @@
       [act-seq lower])))
 
 (defmethod extract-optimal-solution ::TopDownForwardNode [node] 
-  (when-not (dead-end-valuation? (restrict-valuation (get-pessimistic-valuation node) (:goal (:env node))))
+  (when-not (dead-end-valuation? (restrict-valuation (get-pessimistic-valuation node) (:goal node)))
     (primitive-refinement node)))
 
 (defmethod node-str ::TopDownForwardNode [node] 

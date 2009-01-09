@@ -201,7 +201,7 @@
      (make-strips-hla-schema (gensym "strips-top-level-action") {} nil nil 
 			     [[(gensym "strips-top-level-action-ref") nil nil
 			       (map-map identity dummy-vars) 
-			       (cons 'act (map first dummy-vars))]]
+			       (list (cons 'act (map first dummy-vars)))]]
 			     vacuous-desc vacuous-desc nil)  ; Dummy top-level action
      {}
      (make-conjunctive-condition nil nil)
@@ -232,8 +232,8 @@
 (defn- translate-var-map "Get the var mappings for hla, given this args and var-map" [hla args var-map skip-dummy?]
   (let [hla-vars (:vars hla)]
     (assert-is (= (count args) (count hla-vars)))
-    (map-map (fn [arg hla-var] [hla-var (safe-get var-map arg)]) 
-	     ((if skip-dummy? (partial filter (fn [arg var] (not (is-dummy-var? arg)))) identity)
+    (map-map (fn [[arg hla-var]] [hla-var (safe-get var-map arg)]) 
+	     ((if skip-dummy? (partial filter (fn [[arg var]] (not (is-dummy-var? arg)))) identity)
 	      (map #(vector %1 (second %2)) args hla-vars)))))
 
     
@@ -271,19 +271,19 @@
 	       (cons (map (partial simplify-atom dummy-var-map) precondition)
 		     (repeat (make-conjunctive-condition)))))))))
 
-(prefer-method hla-immediate-refinements [::PrimitiveHLA ::Valuation] [::StripsHLA ::DNFSimpleValuation])
+(prefer-method hla-immediate-refinements [:edu.berkeley.ai.angelic.hierarchies/PrimitiveHLA :edu.berkeley.ai.angelic/Valuation] [::StripsHLA :edu.berkeley.ai.angelic.dnf-simple-valuations/DNFSimpleValuation])
 
-(defmethod hla-immediate-refinements     [::StripsHLA ::DNFSimpleValuation] [hla opt-val]
+(defmethod hla-immediate-refinements     [::StripsHLA :edu.berkeley.ai.angelic.dnf-simple-valuations/DNFSimpleValuation] [hla opt-val]
   (let [opt-val (restrict-valuation opt-val (:precondition hla))
 	hierarchy (:hierarchy hla)
-	objects   (:trans-objects (:problem-instance :hierarchy))
+	objects   (:trans-objects (:problem-instance hierarchy))
 	var-map   (:var-map hla)]
     (when-not (dead-end-valuation? opt-val)
       (forcat [[name pos-pre neg-pre dummy-type-map expansion] (:refinement-schemata (:schema hla))]
 	 (let [quasi-ground-impl-pre (make-conjunctive-condition
 				      (map (partial simplify-atom var-map) pos-pre)
 				      (map (partial simplify-atom var-map) neg-pre))
-	       dummy-val-map (map-map (fn [var types] [var (forcat [t types] (safe-get objects t))]) 
+	       dummy-val-map (map-map (fn [[var types]] [var (forcat [t types] (safe-get objects t))]) 
 				      dummy-type-map)]
 	   (refinement-instantiations (conjoin-conditions quasi-ground-impl-pre (:precondition hla))
 				      hierarchy

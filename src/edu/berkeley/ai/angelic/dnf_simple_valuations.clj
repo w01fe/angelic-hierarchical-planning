@@ -64,7 +64,7 @@
 				       (get-negative-conjuncts quasi-ground-condition))
 	opt-val (restrict-valuation opt-val (make-conjunctive-condition ground-pos ground-neg))]
     (when-not (dead-end-valuation? opt-val)
-      (reduce clojure.set/union (map #(clause-consistent-mappings % var-pos var-neg dummy-domains)
+      (reduce clojure.set/union #{} (map #(clause-consistent-mappings % var-pos var-neg dummy-domains)
 				     (:dnf opt-val))))))
 
       
