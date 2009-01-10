@@ -1,36 +1,13 @@
 (in-ns 'edu.berkeley.ai.domains.strips)
 
+;;; STRIPS domains
 
-;;; STRIPS action schemas
+;; STRIPS action schemata
 
 (defstruct strips-action-schema :class :name :vars :pos-pre :neg-pre :add-list :delete-list :cost)
 
 (defn make-strips-action-schema [name vars pos-pre neg-pre add-list delete-list cost]
   (struct strips-action-schema ::StripsActionSchema name vars pos-pre neg-pre add-list delete-list cost))
-
-
-;;; STRIPS planning domain helpers
-
-(defn- check-action-schema [types guaranteed-objs predicates action-schema] 
-;  (.println System/out action-schema)
-  (assert-is (not (map? (:vars action-schema))))
-  (let [vars-and-objects (check-objects types (concat guaranteed-objs (:vars action-schema)))
-	atom-checker (fn [atoms] (map #(check-atom types vars-and-objects predicates %) atoms))]
-    (make-strips-action-schema 
-     (:name action-schema)
-     (:vars action-schema)
-     (atom-checker (:pos-pre       action-schema))
-     (atom-checker (:neg-pre       action-schema))
-     (atom-checker (:add-list      action-schema))
-     (atom-checker (:delete-list   action-schema))
-     (:cost action-schema))))
-
-(defn- check-action-schemata [types guaranteed-objs predicates action-schemata]
-  (assert-is (distinct-elts? (map :name action-schemata)))
-  (map (partial check-action-schema types guaranteed-objs predicates) action-schemata))
-    
-;;; PDDL domain parsing helpers 
-
 
 (defn- parse-pddl-action-schema [action]
   (match [[:action       [unquote name]
@@ -49,16 +26,28 @@
        deletes
        1))))
 
-;(defn- emit-pddl-action-schema [action-schema]
-;  (str "(:action " (:name action-schema) "\n"
-;       "\n\t :parameters " 
-;       "\n\t :precondition " (cons 'and (:precondition action-schema))
-;       "\n\t :effect " (cons 'and (concat (:add-list action-schema)
-;					  (map (partial list 'not) (:delete-list action-schema))))))s
+
+(defn- check-action-schema [types guaranteed-objs predicates action-schema] 
+;  (.println System/out action-schema)
+  (assert-is (not (map? (:vars action-schema))))
+  (let [vars-and-objects (check-objects types (concat guaranteed-objs (:vars action-schema)))
+	atom-checker (fn [atoms] (map #(check-atom types vars-and-objects predicates %) atoms))]
+    (make-strips-action-schema 
+     (:name action-schema)
+     (:vars action-schema)
+     (atom-checker (:pos-pre       action-schema))
+     (atom-checker (:neg-pre       action-schema))
+     (atom-checker (:add-list      action-schema))
+     (atom-checker (:delete-list   action-schema))
+     (:cost action-schema))))
+
+(defn- check-action-schemata [types guaranteed-objs predicates action-schemata]
+  (assert-is (distinct-elts? (map :name action-schemata)))
+  (map (partial check-action-schema types guaranteed-objs predicates) action-schemata))
 
 
 	    
-;;; Actual STRIPS domain definition and interface
+;; STRIPS domains
 
 (defstruct strips-planning-domain :class :name :types :guaranteed-objs :predicates :action-schemata)
 
@@ -76,7 +65,6 @@
     (assert-is (= (count all-preds) (* 2 (count predicates))))
     all-preds))
 
-
 (defn make-strips-planning-domain 
   "types are either single keywords/symbols or [union-keyword & constituent-types].  
      Empty constitutenty type is same as single keyword/symbol.
@@ -92,7 +80,6 @@
     (struct strips-planning-domain 
 	    ::StripsPlanningDomain name types guaranteed-objs 
 	    (add-goal-predicates predicates) action-schemata)))
-
 
 (defn read-strips-planning-domain [file]
   (match [[define [domain [unquote name]]
@@ -112,6 +99,7 @@
 
 
 
+
 (comment 
   (is-type? {:typea nil, :typeb [:typea]} {:typea [:a1]} :a1 :typea)
 
@@ -126,3 +114,16 @@
   
   (read-strips-planning-domain "/Users/jawolfe/Projects/research/IPC/IPC2/2000-Tests/Blocks/Track1/Typed/domain.pddl")
 )
+
+
+;;; PDDL domain parsing helpers 
+
+
+
+
+;(defn- emit-pddl-action-schema [action-schema]
+;  (str "(:action " (:name action-schema) "\n"
+;       "\n\t :parameters " 
+;       "\n\t :precondition " (cons 'and (:precondition action-schema))
+;       "\n\t :effect " (cons 'and (concat (:add-list action-schema)
+;					  (map (partial list 'not) (:delete-list action-schema))))))s

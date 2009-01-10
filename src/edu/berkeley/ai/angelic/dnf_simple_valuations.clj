@@ -1,24 +1,33 @@
 (ns edu.berkeley.ai.angelic.dnf-simple-valuations
   (:refer-clojure)
-  (:use clojure.contrib.seq-utils [edu.berkeley.ai.util :as util] edu.berkeley.ai.envs edu.berkeley.ai.util.propositions edu.berkeley.ai.domains.strips edu.berkeley.ai.angelic))
+  (:use clojure.contrib.seq-utils [edu.berkeley.ai.util :as util] edu.berkeley.ai.envs edu.berkeley.ai.util.propositions edu.berkeley.ai.angelic))
 
-(defstruct dnf-simple-valuation :class :dnf :bound)
+;;; A set of conjunctive clauses, maps from vars to :true or :unknown  (not present = :false)
 
 ; TODO: think about splitting out constant part of state.
 
-; dnf clauses are maps from vars to :true or :unknown  (not present = :false)
+
+(derive ::DNFSimpleValuation :edu.berkeley.ai.angelic/PropositionalValuation)
+
+(defstruct dnf-simple-valuation :class :dnf :bound)
 
 (defn make-dnf-simple-valuation [dnf bound]
   (if-let [dnf (seq dnf)]
       (struct dnf-simple-valuation ::DNFSimpleValuation (set dnf) bound)
     (struct dnf-simple-valuation ::DNFSimpleValuation nil Double/NEGATIVE_INFINITY)))
+
+
   
 (defmethod make-initial-valuation     ::DNFSimpleValuation [type env]
   (make-dnf-simple-valuation (list (map-map #(vector % :true) (get-initial-state env))) 0))
 
 (defmethod get-valuation-lower-bound ::DNFSimpleValuation [val] (:bound val))
+
 (defmethod get-valuation-upper-bound ::DNFSimpleValuation [val] (:bound val))
+
 (defmethod dead-end-valuation?       ::DNFSimpleValuation [val] (empty? (:dnf val)))
+
+
 
 (defn restrict-clause [clause pos neg]
   (when-let [after-pos
@@ -31,7 +40,7 @@
 	    (= :true (get clause (first neg))) nil
 	    :else  (recur (rest neg) (dissoc clause (first neg)))))))
 
-(defmethod restrict-valuation       [::DNFSimpleValuation :edu.berkeley.ai.domains.strips/ConjunctiveCondition] [val con]
+(defmethod restrict-valuation       [::DNFSimpleValuation :edu.berkeley.ai.envs/ConjunctiveCondition] [val con]
   (let [pos (get-positive-conjuncts con)
 	neg (get-negative-conjuncts con)]
     (make-dnf-simple-valuation 
@@ -39,11 +48,6 @@
      (:bound val))))
 
 
-(defn is-dummy-var? [var]
-  (and (keyword? var)
-       (.startsWith (name var) "?")))
-
-(defmulti valuation-consistent-mappings (fn [val cond dummy-domains] [(:class val) (:class cond)]))
 
 ;; TODO TODO: filter domains first in constant time
 (defn clause-consistent-mappings [clause var-pos var-neg dummy-domains]
@@ -55,8 +59,7 @@
 	      (map-map (fn [dummy-map-entry dummy-val] [(first dummy-map-entry) dummy-val])
 		       dummy-seq combo)))))
   
-
-(defmethod valuation-consistent-mappings [::DNFSimpleValuation :edu.berkeley.ai.domains.strips/ConjunctiveCondition]
+(defmethod valuation-consistent-mappings [::DNFSimpleValuation :edu.berkeley.ai.envs/ConjunctiveCondition]
   [opt-val quasi-ground-condition dummy-domains]
   (let [[var-pos ground-pos] (separate #(some is-dummy-var? (rest %)) 
 				       (get-positive-conjuncts quasi-ground-condition))

@@ -4,11 +4,12 @@
 
 ; TODO: use forward hashmaps in metadata for children?
 
-(defstruct hierarchical-search-space-struct :class :state-space :action-space :goal :top-level-action)
+(comment ; if you use this, consider the version in hierarchies.
+  (defstruct hierarchical-search-space-struct :class :state-space :action-space :goal :top-level-action)
 
-(defn make-hierarchical-search-space- [state-space action-space goal top-level-action ]
-  (struct state-space-search-space-struct ::HierarchicalSearchSpace state-space action-space goal top-level-action ))
-
+  (defn make-hierarchical-search-space- [state-space action-space goal top-level-action ]
+    (struct state-space-search-space-struct ::HierarchicalSearchSpace state-space action-space goal top-level-action ))
+  )
 
 ; According to contract, equality should be only on plan-tail and valuations if possible.  This is tree though.
 ; TODO: make hashing overhead optioanl in, e.g., LRTA*. 

@@ -2,6 +2,13 @@
   (:refer-clojure)
   (:use edu.berkeley.ai.util clojure.contrib.seq-utils))
 
+;;; Helpers for dealing with propositional domains and PDDL syntax
+
+; types are maps from a type to the types it contains
+; objects are maps from types to sets of objects (not yet transitive)
+; predicates are maps from names to lists of types
+; atoms are predicate applications
+
 (defn get-subtypes "Return all subtypes of type, starting with itself." [types type]
   (when type
     (lazy-cons type 
@@ -23,7 +30,6 @@
     (assert-is (distinct-elts? (apply concat (vals obj-map))))
     obj-map))
 
-
 (defn check-predicates [types predicates]
   (let [pred-map (map-map seq->vector-pair predicates)]
     (assert-is (= (count predicates) (count pred-map)) "Duplicate predicate")
@@ -31,8 +37,6 @@
 	    pred-type pred-types]
       (safe-get types pred-type))
     pred-map))
-
-
 
 (defn- maximal-subtypes- [types t1 t2]
   (let [s1 (get-subtypes types t1)
@@ -49,8 +53,6 @@
 				(for [t1 tl1, t2 tl2]
 				  (set (maximal-subtypes- types t1 t2)))))
 	  (map hash-set parents)))
-
-
 	  
 (defn is-type? [types objects obj type]
   (or (includes? obj (get objects type))
@@ -60,8 +62,6 @@
   (assert-is (is-type? types objects obj type)))
 
 (defn check-atom [types objects predicates atom]
-;  (println types)
-;  (dotimes [_ 10] (println atom))
   (let [[pred & args] atom,
 	type-sig (safe-get predicates pred)]
     (assert-is (= (count args) (count type-sig)) "Wrong number of predicate args.")
@@ -73,6 +73,14 @@
   ([var obj atom] (simplify-atom {var obj} atom))
   ([m atom]       (cons (first atom) (replace m (rest atom)))))
     
+
+;;; Misc
+
+(defn is-dummy-var? [var]
+  (and (keyword? var)
+       (.startsWith (name var) "?")))
+
+
 ;;; PDDL domain parsing helpers 
 
 (defn parse-typed-pddl-list [s]
