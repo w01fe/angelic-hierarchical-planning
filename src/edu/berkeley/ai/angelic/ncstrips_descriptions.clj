@@ -73,7 +73,7 @@
   (struct ncstrips-description ::NCStripsDescription
 	  (filter identity (map #(instantiate-ncstrips-effect % var-map) (:effects schema)))))
   
-;; TODO: wrong !!! preconditions are not just effects
+;; TODO: make more efficient
 (defn- progress-effect-clause [effect clause]
   (when (and (every? clause (:pos-preconditions effect))
 	     (every? #(not (= :true (clause %))) (:neg-preconditions effect)))

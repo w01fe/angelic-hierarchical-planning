@@ -33,21 +33,21 @@
 
 (defmulti instantiate-hierarchy (fn [hierarchy instance] (:class hierarchy)))
 
-(derive ::PrimitiveHLA ::HLA)
+;(derive ::PrimitiveHLA ::HLA)
 
 (defmulti #^{:doc "If this HLA is primitive, return the primitive action, else nil."} hla-primitive :class)
 (defmethod hla-primitive ::HLA [hla] nil)
-(defmethod hla-primitive ::PrimitiveHLA [hla] (:primitive hla))
+;(defmethod hla-primitive ::PrimitiveHLA [hla] (:primitive hla))
 
 (defmulti hla-name                       :class)
-(defmethod hla-name ::PrimitiveHLA [hla] (:name (hla-primitive hla)))
+;(defmethod hla-name ::PrimitiveHLA [hla] (:name (hla-primitive hla)))
 
 
 ; TODO: this way of doing things doubles up on calls to restrict.
 (defmulti  #^{:doc "Get refinements compatible with this optimistic valuation, representing 
             the situation before doing this action *or apply its hierarchical preconditions*"} 
     hla-immediate-refinements      (fn [hla val] [(:class hla) (:class val)]))
-(defmethod hla-immediate-refinements [::PrimitiveHLA ::Valuation] [hla] (throw (UnsupportedOperationException.)))
+;(defmethod hla-immediate-refinements [::PrimitiveHLA ::Valuation] [hla] (throw (UnsupportedOperationException.)))
 
 (defmulti hla-hierarchical-preconditions :class)
 (defmulti hla-optimistic-description     :class)

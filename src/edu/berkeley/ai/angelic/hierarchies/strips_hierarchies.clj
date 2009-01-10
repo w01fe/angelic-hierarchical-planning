@@ -96,8 +96,9 @@
      nil)))
 
 
-;; TODO: primitive is not really ground primitive !!
+
 ; TODO: double check about removing precs from NCSTRIPS for primitives.
+
 (defn- make-strips-primitive-hla-schema [types objects predicates action]
   (let [desc (make-ncstrips-description-schema types (check-objects types (concat objects (:vars action))) predicates 
 					       [(make-ncstrips-effect (:pos-pre action) (:neg-pre action) (:add-list action) (:delete-list action) nil nil (:cost action))])]
@@ -175,7 +176,7 @@
 
 (derive ::StripsHLA :edu.berkeley.ai.angelic.hierarchies/HLA)
 (derive ::StripsPrimitiveHLA ::StripsHLA)
-(derive ::StripsPrimitiveHLA :edu.berkeley.ai.angelic.hierarchies/PrimitiveHLA)
+;(derive ::StripsPrimitiveHLA :edu.berkeley.ai.angelic.hierarchies/PrimitiveHLA)
 
 ; TODO TODO: should eventually remove all dependence on instance
 (defstruct strips-hierarchy :class :hla-map :problem-instance)
@@ -220,7 +221,12 @@
 
 		    )
 
-(prefer-method hla-name ::StripsHLA :edu.berkeley.ai.angelic.hierarchies/PrimitiveHLA)
+
+(defmethod hla-primitive ::StripsPrimitiveHLA [hla] 
+  (strips-action->action (get-strips-action-schema-instance (:primitive hla) (:var-map hla))))    
+
+
+
 
 (defmethod hla-name                       ::StripsHLA [hla] 
   (cons (:name (:schema hla))
@@ -244,7 +250,6 @@
 					    (safe-get var-map arg))]) 
 	     (map #(vector %1 (second %2)) args hla-vars))))
 
-    
 
 (defn- refinement-instantiations [precondition hierarchy expansion opt-val var-map dummy-var-vals]
   (if (empty? expansion)   ; must handle empty expansion specially
@@ -279,7 +284,9 @@
 	       (cons (simplify-conjunctive-condition  precondition dummy-var-map)
 		     (repeat (make-conjunctive-condition nil nil)))))))))
 
-(prefer-method hla-immediate-refinements [:edu.berkeley.ai.angelic.hierarchies/PrimitiveHLA :edu.berkeley.ai.angelic/Valuation] [::StripsHLA :edu.berkeley.ai.angelic.dnf-simple-valuations/DNFSimpleValuation])
+;(prefer-method hla-immediate-refinements [:edu.berkeley.ai.angelic.hierarchies/PrimitiveHLA :edu.berkeley.ai.angelic/Valuation] [::StripsHLA :edu.berkeley.ai.angelic.dnf-simple-valuations/DNFSimpleValuation])
+
+(defmethod hla-immediate-refinements [::StripsPrimitiveHLA ::Valuation] [hla] (throw (UnsupportedOperationException.)))
 
 (defmethod hla-immediate-refinements     [::StripsHLA :edu.berkeley.ai.angelic.dnf-simple-valuations/DNFSimpleValuation] [hla opt-val]
   (let [opt-val (restrict-valuation opt-val (:precondition hla))

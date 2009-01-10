@@ -50,29 +50,27 @@
 
 ;; TODO: standalone instantiate -> action method.
 
-(defn- instantiate-schema [schema var obj rest-vars]
-  (make-strips-action-schema 
-   (concat (enforce-seq (:name schema)) [obj])
-   rest-vars
-   (map (partial simplify-atom var obj) (:pos-pre schema))
-   (map (partial simplify-atom var obj) (:neg-pre schema))
-   (map (partial simplify-atom var obj) (:add-list schema))
-   (map (partial simplify-atom var obj) (:delete-list schema))
-   (:cost schema)))
-
-(defn- get-instantiations [action-schema objects]
-  (let [vars (seq (:vars action-schema))]
-    (if (empty? vars) 
-        [action-schema]
-      (mapcat 
-       #(get-instantiations 
-	 (instantiate-schema action-schema (second (first vars)) % (rest vars))
-	 objects)
-       (get objects (ffirst vars))))))
 
 
+(defn get-strips-action-schema-instance [schema var-map]
+;  (prn schema var-map)
+  (let [simplifier #(map (partial simplify-atom var-map) %)]
+    (make-strips-action-schema
+     (cons (:name schema) (map #(safe-get var-map (second %)) (:vars schema)))
+     nil
+     (simplifier (:pos-pre schema))
+     (simplifier (:neg-pre schema))
+     (simplifier (:add-list schema))
+     (simplifier (:delete-list schema))
+     (:cost schema))))
 
-(defn- strips-action->action [schema]
+(defn get-strips-action-schema-instantiations [action-schema objects]
+;  (prn action-schema) (prln
+  (map (partial get-strips-action-schema-instance action-schema)
+       (for [combo (combinations (map #(safe-get objects (first %)) (:vars action-schema)))]
+	 (map-map (fn [[t v] val] [v val]) (:vars action-schema) combo))))
+
+(defn strips-action->action [schema]
   (assert-is (empty? (:vars schema)))
   (assoc 
       (make-action 
@@ -84,18 +82,7 @@
 	  (- (:cost schema))]))
     :precondition (make-conjunctive-condition (:pos-pre schema) (:neg-pre schema))))
 
-(defn- get-ground-tails [all-objects var-tail]
-  (if (empty? var-tail) ['()]
-    (for [tail   (get-ground-tails all-objects (rest var-tail))
-	  object (safe-get all-objects (first var-tail))]
-      (cons object tail))))
-     
-(defn get-ground-atoms [instance]
-  (concat-elts 
-   (for [[predicate arglist] (:predicates (:domain instance))]
-     (map #(cons predicate %)
-	  (get-ground-tails (:trans-objects instance) arglist)))))
-		      
+      
 
 ;;; Structure definition, methods, and implementation of Env interface.
 
@@ -143,7 +130,7 @@
 	objects (:trans-objects instance)
 	schemas (:action-schemata domain)
 	instantiations (map #'strips-action->action 
-			    (mapcat #(get-instantiations % objects)
+			    (mapcat #(get-strips-action-schema-instantiations % objects)
 				    schemas))]
     (make-action-space
      (fn [state]
@@ -165,11 +152,50 @@
 
 
 (comment 
-  (map :name (first (uniform-cost-graph-search 
+  (map :name (first (a-star-search 
   (state-space-search-node  
   (read-strips-planning-instance
    (read-strips-planning-domain "/Users/jawolfe/Projects/research/IPC/IPC2/2000-Tests/Blocks/Track1/Typed/domain.pddl")
-   "/Users/jawolfe/Projects/research/IPC/IPC2/2000-Tests/Blocks/Track1/Typed/probBLOCKS-4-0.pddl")))))
+   "/Users/jawolfe/Projects/research/IPC/IPC2/2000-Tests/Blocks/Track1/Typed/probBLOCKS-4-0.pddl") (constantly 0)))))
   
   
   )
+
+
+
+(comment 
+(defn- get-ground-tails [all-objects var-tail]
+  (if (empty? var-tail) ['()]
+    (for [tail   (get-ground-tails all-objects (rest var-tail))
+	  object (safe-get all-objects (first var-tail))]
+      (cons object tail))))
+     
+(defn get-ground-atoms [instance]
+  (concat-elts 
+   (for [[predicate arglist] (:predicates (:domain instance))]
+     (map #(cons predicate %)
+	  (get-ground-tails (:trans-objects instance) arglist)))))
+		)
+
+
+(comment ; Old versions
+(defn- instantiate-schema [schema var obj rest-vars]
+  (make-strips-action-schema 
+   (concat (enforce-seq (:name schema)) [obj])
+   rest-vars
+   (map (partial simplify-atom var obj) (:pos-pre schema))
+   (map (partial simplify-atom var obj) (:neg-pre schema))
+   (map (partial simplify-atom var obj) (:add-list schema))
+   (map (partial simplify-atom var obj) (:delete-list schema))
+   (:cost schema)))
+
+(defn- get-instantiations [action-schema objects]
+  (let [vars (seq (:vars action-schema))]
+    (if (empty? vars) 
+        [action-schema]
+      (mapcat 
+       #(get-instantiations 
+	 (instantiate-schema action-schema (second (first vars)) % (rest vars))
+	 objects)
+       (get objects (ffirst vars))))))
+)
