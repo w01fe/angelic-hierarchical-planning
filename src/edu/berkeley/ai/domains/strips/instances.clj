@@ -5,8 +5,6 @@
 
 ;;; Conjunctive conditions
 
-;; TODO: empty conditions
-
 (derive ::ConjunctiveCondition :edu.berkeley.ai.envs/Condition)
 
 (defstruct conjunctive-condition :class :pos :neg)
@@ -72,15 +70,14 @@
 
 (defn strips-action->action [schema]
   (assert-is (empty? (:vars schema)))
-  (assoc 
-      (make-action 
-       (:name schema)
-       (fn [state]
-	 [(clojure.set/union 
-	   (clojure.set/difference state (:delete-list schema)) 
-	   (:add-list schema))
-	  (- (:cost schema))]))
-    :precondition (make-conjunctive-condition (:pos-pre schema) (:neg-pre schema))))
+  (make-action 
+   (:name schema)
+   (fn [state]
+     [(clojure.set/union 
+       (clojure.set/difference state (:delete-list schema)) 
+       (:add-list schema))
+      (- (:cost schema))])
+   (make-conjunctive-condition (:pos-pre schema) (:neg-pre schema))))
 
       
 
@@ -125,6 +122,8 @@
 (defmethod get-state-space   ::StripsPlanningInstance [instance]
   (make-binary-state-space (:predicates instance)))
   
+
+;; TODO: speed up
 (defmethod get-action-space  ::StripsPlanningInstance [instance]
   (let [domain  (:domain instance)
 	objects (:trans-objects instance)
@@ -132,10 +131,8 @@
 	instantiations (map #'strips-action->action 
 			    (mapcat #(get-strips-action-schema-instantiations % objects)
 				    schemas))]
-    (make-action-space
-     (fn [state]
-       (filter #(satisfies-condition? state (:precondition %))
-	       instantiations)))))
+    (make-enumerated-action-space instantiations)))
+
    
 (defmethod get-goal          ::StripsPlanningInstance [instance]
   (make-conjunctive-condition (:goal-atoms instance) nil))

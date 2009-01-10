@@ -1,7 +1,7 @@
 (ns edu.berkeley.ai.envs
  (:refer-clojure)
- (:use [edu.berkeley.ai.util :as util])
- (:require (edu.berkeley.ai.envs states actions conditions envs))
+ (:use clojure.contrib.seq-utils [edu.berkeley.ai.util :as util])
+ (:require (edu.berkeley.ai.envs states conditions actions envs))
  )
 
 

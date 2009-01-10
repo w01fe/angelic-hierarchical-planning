@@ -38,16 +38,24 @@
 		  (if (contains? switch-coords  coord)
 		      (if (= coord (:pos state)) \b \s)
 		    (if (= coord (:pos state)) \o (if (:hor? state) \- \|))))))))))
-     (make-action-space 
+     (make-enumerated-action-space 
       (fn [state]
 	(let [coord (:pos state)]
 	  (lazy-cons-when 
 	   (when (contains? switch-coords coord)
-	     (make-action 'flip #(vector (struct nav-switch-state (:pos %) (not (:hor? %))) +flip-reward+)))
+	     (make-action 'flip #(vector (struct nav-switch-state (:pos %) (not (:hor? %))) +flip-reward+) 
+			  (make-simple-condition #(contains? switch-coords (:pos %)))))
 	   (for [[name delta] [['left [-1 0]] ['right [1 0]] ['up [0 -1]] ['down [0 1]]]
 		 :when (legal-coord?- (map + coord delta) height width)]
 	     (make-action name #(vector (struct nav-switch-state (map + (:pos %) delta) (:hor? %))
-					(if (xor (zero? (first delta)) (:hor? %)) +goodmove-reward+ +badmove-reward+))))))))
+					(if (xor (zero? (first delta)) (:hor? %)) +goodmove-reward+ +badmove-reward+))
+			  (make-simple-condition #(legal-coord?- (map + (:pos %) delta) height width)))))))
+      (cons (make-action 'flip #(vector (struct nav-switch-state (:pos %) (not (:hor? %))) +flip-reward+) 
+			  (make-simple-condition #(contains? switch-coords (:pos %))))
+	    (for [[name delta] [['left [-1 0]] ['right [1 0]] ['up [0 -1]] ['down [0 1]]]]
+	     (make-action name #(vector (struct nav-switch-state (map + (:pos %) delta) (:hor? %))
+					(if (xor (zero? (first delta)) (:hor? %)) +goodmove-reward+ +badmove-reward+))
+			  (make-simple-condition #(legal-coord?- (map + (:pos %) delta) height width))))))
      (make-simple-condition #(= (:pos %) goal-pos)))))
 
 (defn make-nav-switch-strips-domain []

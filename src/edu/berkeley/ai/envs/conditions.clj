@@ -27,3 +27,5 @@
 
 
 
+(def *true-condition* (make-simple-condition (constantly true)))
+(def *false-condition* (make-simple-condition (constantly false)))
