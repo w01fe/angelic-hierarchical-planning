@@ -33,7 +33,7 @@
 
 (derive ::PropositionalCondition ::Condition)
 
-(defmulti ground-condition (fn [cond var-map] (:class cond)))
+(defmulti ground-propositional-condition (fn [cond var-map] (:class cond)))
 
 
 
@@ -60,7 +60,7 @@
    (clojure.set/union (get-positive-conjuncts c1) (get-positive-conjuncts c2))
    (clojure.set/union (get-negative-conjuncts c1) (get-negative-conjuncts c2))))
 			      
-(defmethod ground-condition ::ConjunctiveCondition [c var-map]
+(defmethod ground-propositional-condition ::ConjunctiveCondition [c var-map]
   (make-conjunctive-condition
    (map (partial simplify-atom var-map) (get-positive-conjuncts c))
    (map (partial simplify-atom var-map) (get-negative-conjuncts c))))

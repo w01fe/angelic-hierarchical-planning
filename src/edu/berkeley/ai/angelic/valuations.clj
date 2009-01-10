@@ -35,7 +35,7 @@
 (defmethod get-valuation-upper-bound ::ExplicitValuation [val]
   (reduce max (vals (:state-map val))))
 
-(defmethod dead-end-valuation ::ExplicitValuation [val]
+(defmethod dead-end-valuation? ::ExplicitValuation [val]
   (empty? (:state-map val)))
 
 (defmethod restrict-valuation ::ExplicitValuation [val condition]

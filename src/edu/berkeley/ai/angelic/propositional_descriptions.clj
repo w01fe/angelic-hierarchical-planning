@@ -21,7 +21,7 @@
 
 (defmethod instantiate-description-schema ::VacuousPropositionalDescription [desc instance]
   (assert-is (isa? (:class instance) :edu.berkeley.ai.domains.strips/StripsPlanningInstance))
-  (assoc desc :all-dnf (list (map-map #(vector % :unknown) (edu.berkeley.ai.domains.strips/get-ground-atoms instance))))) 
+  (assoc desc :all-dnf (list (map-map #(vector % :unknown) (edu.berkeley.ai.domains.strips/get-strips-predicate-instantiations instance))))) 
 
 
 (defmethod ground-description ::VacuousPropositionalDescription [desc var-map] desc)

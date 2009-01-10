@@ -206,6 +206,7 @@
   (cons (:name (:schema hla))
 	(replace (:var-map hla) (map second (:vars (:schema hla))))))
 
+(defmethod hla-primitive ::StripsHLA [hla] nil)
 (defmethod hla-primitive ::StripsPrimitiveHLA [hla] 
   (strips-action->action (get-strips-action-schema-instance (:primitive hla) (:var-map hla))))
 
@@ -258,7 +259,7 @@
 		     extra-preconditions)
 		    (:primitive hla))))
 	       expansion 
-	       (cons (simplify-conjunctive-condition  precondition dummy-var-map)
+	       (cons (ground-propositional-condition  precondition dummy-var-map)
 		     (repeat (make-conjunctive-condition nil nil)))))))))
 
 
