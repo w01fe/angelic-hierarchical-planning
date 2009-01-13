@@ -57,7 +57,7 @@
 
 (defmethod get-state-space   ::StripsPlanningInstance [instance]
   (make-binary-state-space (get-strips-predicate-instantiations instance)))
-  
+ 
 
 
 (defn get-strips-action-schema-instance [schema var-map]

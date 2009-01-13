@@ -13,8 +13,9 @@
 
 (defn make-binary-state-space [vars] 
   "Make a binary state space from a set of variables"
-  (assert-is (= vars (distinct vars)))
-  (struct binary-state-space ::BinaryStateSpace (sort vars))) 
+  (let [var-set (set vars)]
+    (assert-is (= (count vars) (count var-set)))
+    (struct binary-state-space ::BinaryStateSpace var-set)))
 
 
 (defmethod list-states ::BinaryStateSpace [state-set]
