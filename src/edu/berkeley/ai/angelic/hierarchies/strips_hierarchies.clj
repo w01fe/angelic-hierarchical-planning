@@ -27,7 +27,7 @@
 ; TODO: some more general way to do this (without focusing on ncstrips)
 (defn- make-strips-primitive-hla-schema [types objects predicates action]
   (let [desc (make-ncstrips-description-schema types (check-objects types (concat objects (:vars action))) predicates 
-					       [(make-ncstrips-effect (:pos-pre action) (:neg-pre action) (:add-list action) (:delete-list action) nil nil (:cost action))])]
+					       [(make-ncstrips-effect (:pos-pre action) (:neg-pre action) (:add-list action) (:delete-list action) nil nil (constantly (:cost action)))] (:vars action))]
     (make-strips-hla-schema (:name action) (:vars action) (:pos-pre action) (:neg-pre action) :primitive desc desc action)))
 
 

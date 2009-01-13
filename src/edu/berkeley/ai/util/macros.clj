@@ -39,3 +39,4 @@
   ([pred elt & args]
      `(let [r# (cond-list ~@args)]
 	(if ~pred (cons ~elt r#) r#)))) 
+

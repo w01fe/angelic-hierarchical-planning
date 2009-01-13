@@ -15,7 +15,7 @@
 	  {} s))
 	  )
 
-(defn map-map "Like a map for maps (/ seqs of map-entries)"
+(defn map-map "Like map, but expects f to return pairs/map entries that are combined to make a map return value."
  [f & maps] (reduce #(conj %1 %2) {} (apply map f maps)))
 
 (defmacro lazy-get "Like get but lazy about default"
@@ -54,3 +54,15 @@
 		    (assoc-cat m k v)))
 		{} m))
   
+(defn merge-reduce "Combines maps, reducing sets of values with same key. Assumes nil value = not present.  The first map entry must be a real map, but the remaining arguments can be seqs of map entries/pairs."
+  ([f ] {})
+  ([f m1 & maps]
+     (reduce (fn [m [k v]] 
+	       (if-let [v2 (get m k)]
+		   (assoc m k (f v2 v))
+		 (assoc m k v)))
+	     m1
+	     (concat-elts maps))))
+
+      
+      

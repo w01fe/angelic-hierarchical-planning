@@ -88,8 +88,15 @@
 (defmethod reward-so-far ::TopDownForwardNode [node] 
   0) ;TODO? 
 
+
+(def *next-counter* (make-array Integer/TYPE 1))
+
+(defn reset-next-counter [] 
+  (aset *next-counter* 0 0))
+
 ; TODO: add way to specify which HLA to refine.
 (defmethod immediate-refinements ::TopDownForwardNode [node] 
+  (aset *next-counter* 0 (inc (aget *next-counter* 0)))
   (let [nodes (rest (reverse (iterate-while :previous node)))]
     (when-let [rest-nodes (drop-while #(hla-primitive (:hla %)) nodes)]
       (local-immediate-refinements (first rest-nodes) (map :hla (rest rest-nodes))))))
@@ -170,7 +177,11 @@
 
 (let [domain (make-nav-switch-strips-domain), env (make-nav-switch-strips-env 2 2 [[0 0]] [1 0] true [0 1]), val (make-initial-valuation :edu.berkeley.ai.angelic.dnf-simple-valuations/DNFSimpleValuation env), node (make-initial-top-down-forward-node env val (list (instantiate-hierarchy (parse-hierarchy "/Users/jawolfe/Projects/angel/src/edu/berkeley/ai/domains/nav_switch.hierarchy" domain) env)))] (interactive-search node (make-queue-pq) (constantly 0)))
 
-(let [domain (make-nav-switch-strips-domain), env (make-nav-switch-strips-env 2 2 [[0 0]] [1 0] true [0 1]), val (make-initial-valuation :edu.berkeley.ai.angelic.dnf-simple-valuations/DNFSimpleValuation env), node (make-initial-top-down-forward-node env val (list (instantiate-hierarchy (parse-hierarchy "/Users/jawolfe/Projects/angel/src/edu/berkeley/ai/domains/nav_switch.hierarchy" domain) env)))] (a-star-search node))
+(u util envs search search.algorithms.textbook angelic angelic.hierarchies domains.nav-switch domains.strips)
+
+(let [domain (make-nav-switch-strips-domain), env (make-nav-switch-strips-env 5 5 [[1 1]] [4 0] true [0 4]), val (make-initial-valuation :edu.berkeley.ai.angelic.dnf-simple-valuations/DNFSimpleValuation env), node (make-initial-top-down-forward-node env val (list (instantiate-hierarchy (parse-hierarchy "/Users/jawolfe/Projects/angel/src/edu/berkeley/ai/domains/nav_switch.hierarchy" domain) env)))] (check-solution env (a-star-search node)))
+
+(let [domain (make-nav-switch-strips-domain), env (make-nav-switch-strips-env 25 25 [[1 1]] [24 0] true [0 24]), val (make-initial-valuation :edu.berkeley.ai.angelic.dnf-simple-valuations/DNFSimpleValuation env), node (make-initial-top-down-forward-node env val (list (instantiate-hierarchy (parse-hierarchy "/Users/jawolfe/Projects/angel/src/edu/berkeley/ai/domains/nav_switch.hierarchy" domain) env)))] (time (second (a-star-search node))))
   )
 
 

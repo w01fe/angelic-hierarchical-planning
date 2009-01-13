@@ -1,7 +1,18 @@
 (in-ns 'edu.berkeley.ai.util)
 
-(defn prln "Print and return the first argument"
+(defn prln "Print all arguments and return the first argument"
   [& args] (do (println (apply print-str args)) (first args)))
+
+(defmacro trace-expr "Trace a single expression, printing info about args and return. Will remove shortcuts"
+  ([expr] 
+     `(do
+        (let [args# (list ~@(rest expr))]
+	  (print "Entering " (cons '~(first expr) args#) "...\n")
+	  (let [result# (apply ~(first expr) args#)]
+	    (print "Leaving " (cons '~(first expr) args#) ", got " result# ".\n")
+	    result#)))))
+
+
 
 (comment 
 (defn pst2

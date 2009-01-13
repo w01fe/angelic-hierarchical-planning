@@ -1,6 +1,6 @@
 (ns edu.berkeley.ai.angelic.dnf-simple-valuations
   (:refer-clojure)
-  (:use clojure.contrib.seq-utils [edu.berkeley.ai.util :as util] edu.berkeley.ai.envs edu.berkeley.ai.util.propositions edu.berkeley.ai.angelic))
+  (:use clojure.contrib.seq-utils [edu.berkeley.ai.util :as util] edu.berkeley.ai.envs edu.berkeley.ai.util.propositions edu.berkeley.ai.angelic edu.berkeley.ai.search.csps))
 
 ;;; A set of conjunctive clauses, maps from vars to :true or :unknown  (not present = :false)
 
@@ -48,8 +48,46 @@
      (:bound val))))
 
 
+; TODO: full CSP solution ?
+; TODO: special case non-constraint case ?
+;; TODO TODO: filter domains first in linear time
 
-;; TODO TODO: filter domains first in constant time
+; 
+
+; To be supported, a value must appear in at least one instantiation of each 
+(comment 
+(defn filter-domains [clause var-pos var-neg dummy-domains]
+  (let [pos-pred-map (map-map-cat #(vector (first %) [(rest %)]) var-pos)
+	neg-pred-map (map-map-cat #(vector (first %) [(rest %)]) var-pos)]
+    (loop [allowed {}
+	   disallowed {}
+	   clause (seq clause)]
+      (if clause
+	  (recur 
+	   (if-let [pos (get pos-pred-map (ffirst clause))]
+	       ...
+	     allowed)
+	   
+	   (rest clause))
+	(map-map 
+	 (fn [dummy-var domain]
+	   [dummy-var
+	    (clojure.set/difference 
+	     (clojure.set/intersection domain (get allowed dummy-var))
+	     (get disallowed dummy-var))])
+	 dummy-domains))))))
+
+(comment 
+(defn clause-consistent-mappings [clause var-pos var-neg dummy-domains]
+  (let [dummy-seq (seq (filter-domains clause var-pos var-neg dummy-domains))]
+    (filter #(restrict-clause clause 
+	       (map (partial simplify-atom %) var-pos) 
+	       (map (partial simplify-atom %) var-neg))
+	    (for [combo (combinations (map second dummy-seq))]
+	      (map-map (fn [dummy-map-entry dummy-val] [(first dummy-map-entry) dummy-val])
+		       dummy-seq combo)))))
+  
+
 (defn clause-consistent-mappings [clause var-pos var-neg dummy-domains]
   (let [dummy-seq (seq dummy-domains)]
     (filter #(restrict-clause clause 
@@ -58,7 +96,11 @@
 	    (for [combo (combinations (map second dummy-seq))]
 	      (map-map (fn [dummy-map-entry dummy-val] [(first dummy-map-entry) dummy-val])
 		       dummy-seq combo)))))
-  
+)
+; CSP approach cuts time in half for 25x25 nav-switch domains.
+(defn clause-consistent-mappings [clause var-pos var-neg dummy-domains]
+  (all-csp-solutions (make-conjunctive-propositional-csp dummy-domains var-pos var-neg clause)))
+
 (defmethod valuation-consistent-mappings [::DNFSimpleValuation :edu.berkeley.ai.envs/ConjunctiveCondition]
   [opt-val quasi-ground-condition dummy-domains]
   (let [[var-pos ground-pos] (separate #(some is-dummy-var? (rest %)) 

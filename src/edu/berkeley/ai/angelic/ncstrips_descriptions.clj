@@ -4,6 +4,8 @@
   )
 
 ;;; NCStrips descriptions
+; wow: calls to eval are expensive.  4x faster by precompiling eval!
+
 
 (derive ::NCStripsDescription :edu.berkeley.ai.angelic/PropositionalDescription)
 
@@ -42,21 +44,6 @@
 
 (defn- check-ncstrips-effect [types vars-and-objects predicates effect]
   (simplify-ncstrips-effect (normalize-ncstrips-effect-atoms types vars-and-objects predicates effect)))
-  
-
-; TODO: is this definition of cost-expr sufficiently general?
-; TODO: compile (fn [] ) for effect earlier, on-load ?
-(defn- instantiate-ncstrips-effect-atoms [var-map effect]
-  (let [instantiator (partial simplify-atom var-map)]
-    (apply make-ncstrips-effect 
-	   (concat (for [f [:pos-preconditions :neg-preconditions :adds :deletes :possible-adds :possible-deletes]]
-		     (distinct (map instantiator (safe-get effect f))))
-		   [(eval `(let ~(vec (concat-elts (map (fn [[k v]] [k `'~v]) var-map))) 
-				   ~(:cost effect)))]))))
-
-(defn- instantiate-ncstrips-effect [effect var-map]
-  (simplify-ncstrips-effect
-   (instantiate-ncstrips-effect-atoms var-map effect)))
 
 
 
@@ -64,11 +51,11 @@
 
 ;; Ungrounded NCStrips description schemata
 
-(defstruct ncstrips-description-schema :class :effects)
+(defstruct ncstrips-description-schema :class :effects :vars)
 
-(defn make-ncstrips-description-schema [types vars-and-objects predicates effects]
+(defn make-ncstrips-description-schema [types vars-and-objects predicates effects vars]
   ; TODO: check mutual exclusion condition!objects
-  (struct ncstrips-description-schema ::NCStripsDescriptionSchema (filter identity (map (partial check-ncstrips-effect types vars-and-objects predicates) effects))))
+  (struct ncstrips-description-schema ::NCStripsDescriptionSchema (doall (filter identity (map (partial check-ncstrips-effect types vars-and-objects predicates) effects))) vars))
 
 (defmethod parse-description :ncstrips [desc domain vars]  
   (assert-is (isa? (:class domain) :edu.berkeley.ai.domains.strips/StripsPlanningDomain))
@@ -85,7 +72,10 @@
        (let [[pos-pre neg-pre] (parse-pddl-conjunction pre),
 	     [add     del    ] (parse-pddl-conjunction eff),
 	     [p-add   p-del  ] (parse-pddl-conjunction poss)]
-	 (make-ncstrips-effect pos-pre neg-pre add del p-add p-del cost-expr))))))
+	 (make-ncstrips-effect pos-pre neg-pre add del p-add p-del
+		   (eval `(fn ~(vec (map second vars)) ~cost-expr))))))
+   vars))
+
 
 (defmethod instantiate-description-schema ::NCStripsDescriptionSchema [desc inst]
   (assert-is (isa? (:class inst) :edu.berkeley.ai.domains.strips/StripsPlanningInstance))
@@ -99,9 +89,26 @@
 
 (defstruct ncstrips-description :class :effects)
 
+
+
+; TODO: is this definition of cost-expr sufficiently general?
+(defn- instantiate-ncstrips-effect-atoms [var-map effect hla-vars]
+  (let [instantiator (partial simplify-atom var-map)]
+    (apply make-ncstrips-effect 
+	   (concat (for [f [:pos-preconditions :neg-preconditions :adds :deletes :possible-adds :possible-deletes]]
+		     (distinct (map instantiator (safe-get effect f))))
+		   [(apply (:cost effect) (map #(safe-get var-map (second %)) hla-vars))]))))
+;		   [(eval `(let ~(vec (concat-elts (map (fn [[k v]] [k `'~v]) var-map))) 
+;				   ~(:cost effect)))]))))
+
+(defn- instantiate-ncstrips-effect [effect var-map hla-vars]
+  (simplify-ncstrips-effect
+   (instantiate-ncstrips-effect-atoms var-map effect hla-vars)))
+
+
 (defmethod ground-description ::NCStripsDescriptionSchema [schema var-map]
   (struct ncstrips-description ::NCStripsDescription
-	  (filter identity (map #(instantiate-ncstrips-effect % var-map) (:effects schema)))))
+	  (filter identity (map #(instantiate-ncstrips-effect % var-map (:vars schema)) (:effects schema)))))
 
   
 ; TODO: make more efficient

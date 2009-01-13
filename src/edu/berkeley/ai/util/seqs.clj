@@ -27,33 +27,26 @@
   "Return a random element of this seq"
   (nth s (rand-int (count s))))
 
+(defn maximal-elements [f s]
+  "Return the first element of s maximizing (f elt)."
+  (when (seq s)
+    (loop [max-elts (first s), 
+	   max-val (f (first s)),
+	   rest-elts (rest s)]
+      (if (empty? rest-elts) 
+	  max-elts
+	(let [next-val (f (first rest-elts))]
+	  (cond (< next-val max-val) (recur max-elts max-val (rest rest-elts))
+		(= next-val max-val) (recur (cons (first rest-elts) max-elts) max-val (rest rest-elts))
+		(> next-val max-val) (recur [(first rest-elts)] next-val (rest rest-elts))))))))
+
 (defn first-maximal-element [f s]
   "Return the first element of s maximizing (f elt), throwing an exception if s empty."
-  (if (empty? s) 
-      (throw (IllegalArgumentException. "Empty seq has no maximal elt."))
-    ((fn [f s max-elt max-val]
-       (if (empty? s) 
-	   max-elt
-	 (let [elt (first s)
-	       val (f elt)]
-	   (if (> val max-val)
-	       (recur f (rest s) elt val)
-	     (recur f (rest s) max-elt max-val)))))
-     f (rest s) (first s) (f (first s)))))
+  (first (make-safe (maximal-elements f s))))
 
 (defn random-maximal-element [f s]
   "Return a random element of s maximizing (f elt), throwing an exception if s empty."
-  (random-element 
-   ((fn [f s max-elts max-val]
-      (if (empty? s) 
-	  max-elts
-	(let [elt (first s)
-	      val (f elt)]
-	   (cond (> val max-val) (recur f (rest s) [elt] val)
-		 (= val max-val) (recur f (rest s) (cons elt max-elts) val)
-                 :else  	 (recur f (rest s) max-elts max-val)))))
-    f s '() Double/NEGATIVE_INFINITY)))
-
+  (random-element (make-safe (maximal-elements f s))))
 	   
 
 (defn lazy-merge  "Lazily merge two sorted seqs in increasing order based on the supplied comparator, or compare otherwise"
@@ -76,6 +69,8 @@
 (defn map-when "Like map but discards logically false entries"
   [fn & seqs]
   (filter identity (apply map fn seqs)))
+
+;(defn map-while "Like map but stops and returns nil on false result."
 
 (defn spread "Copied from clojure.core."
   [arglist]
@@ -145,6 +140,45 @@
   (if (empty? seqs) '(())
     (forcat [item (first seqs)]
       (map #(cons item %) (combinations (rest seqs))))))
+
+
+
+(defn position-if [f s]
+  (loop [s (seq s) i (int 0)]
+    (when s
+      (if (f (first s)) 
+	  i
+	(recur (rest s) (inc i))))))
+
+(defn position [elt s]
+  (loop [s (seq s) i (int 0)]
+    (when s
+      (if (= (first s) elt) 
+	  i
+	(recur (rest s) (inc i))))))
+
+(defn positions-if [f s]
+  (loop [s (seq s) i (int 0) pos []]
+    (if s
+        (if (f (first s)) 
+	    (recur (rest s) (inc i) (conj pos i))
+	  (recur (rest s) (inc i) pos))
+      pos)))
+
+(defn positions [elt s]
+  (loop [s (seq s) i (int 0) pos []]
+    (if s
+        (if (= (first s) elt) 
+	    (recur (rest s) (inc i) (conj pos i))
+	  (recur (rest s) (inc i) pos))
+      pos)))
+
+
+(defn mevery? "Like every but takes args like map."
+  ([f & seqs]
+     (or (some empty? seqs)
+	 (and (apply f (map first seqs))
+	      (recur f (map rest seqs))))))
 
 (comment   ; already in clojure.contrib with same name!
 (defn separate "Like filter, but returns [true-elts false-elts]"

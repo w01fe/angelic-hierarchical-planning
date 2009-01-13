@@ -1,13 +1,12 @@
 (in-ns 'edu.berkeley.ai.util)
 
 (defn power-set
-  "Returns a vector of possible subvectors of seq, in no particular order"
-  ([seq]      (power-set seq [[]])) 
-  ([seq sets] (if (empty? seq) 
-		  sets 
-		(recur (rest seq)
-		       (lazy-cat sets (map #(cons (first seq) %) sets))))) 
-  {:test (fn [] (is (= (power-set '(a b)) '[[] [a] [b] [b a]])))})
+  "Returns a lazy seq of possible subvectors of seq s."
+  [s]
+  (loop [s (seq s), sets [[]]]
+    (if s 
+        (recur (rest s) (lazy-cat sets (map #(conj % (first s)) sets)))
+      sets)))
   
 (defn subset? [s1 s2]
   "Is s1 a subset of s2?"
