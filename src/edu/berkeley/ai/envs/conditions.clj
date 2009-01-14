@@ -5,8 +5,10 @@
 ;; Methods
 
 (defmulti satisfies-condition? (fn [state condition] (:class condition)))
+(defmulti consistent-condition? :class)
 (defmulti conjoin-conditions (fn [c1 c2] [(:class c1) (:class c2)]))
 (defmulti satisfying-states (fn [condition state-space] [(:class condition) (:class state-space)]))
+
 
 
 ;; Simple conditions are just predicates on states
@@ -25,8 +27,31 @@
   (make-simple-condition 
    #(and (satisfies-condition? % c1) (satisfies-condition? % c2))))
 
-(def *true-condition* (make-simple-condition (constantly true)))
+
+;; Trivial conditions
+
+(derive ::FalseCondition ::Condition)
 (def *false-condition* (make-simple-condition (constantly false)))
+
+(defmethod satisfies-condition? ::FalseCondition [state condition] false)
+(defmethod consistent-condition? ::FalseCondition [condition] false)
+(defmethod conjoin-conditions    [::FalseCondition ::Condition] [fc c] fc)
+(defmethod conjoin-conditions    [::Condition ::FalseCondition] [c fc] fc)
+(defmethod conjoin-conditions    [::FalseCondition ::FalseCondition] [fc1 fc2] fc1)
+(defmethod satisfying-states     ::FalseCondition [c] nil)
+
+
+(derive ::TrueCondition ::Condition)
+(def *true-condition* {:class ::TrueCondition})
+
+(defmethod satisfies-condition? ::TrueCondition [state condition] true)
+(defmethod consistent-condition? ::TrueCondition [condition] true)
+(defmethod conjoin-conditions    [::TrueCondition ::Condition] [tc c] c)
+(defmethod conjoin-conditions    [::Condition ::TrueCondition] [c tc] c)
+(defmethod conjoin-conditions    [::TrueCondition ::TrueCondition] [tc1 tc2] tc1)
+(defmethod conjoin-conditions    [::TrueCondition ::FalseCondition] [tc1 fc2] fc1)
+(defmethod conjoin-conditions    [::FalseCondition ::TrueCondition] [fc1 tc2] fc1)
+
 
 
 ;; Propositional conditions
@@ -65,4 +90,6 @@
    (map (partial simplify-atom var-map) (get-positive-conjuncts c))
    (map (partial simplify-atom var-map) (get-negative-conjuncts c))))
 
+(defmethod consistent-condition? ::ConjunctiveCondition [condition]
+  (empty? (clojure.set/intersection (:pos condition) (:neg condition))))
 

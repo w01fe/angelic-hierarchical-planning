@@ -7,6 +7,7 @@
 (defmulti ground-description             (fn [desc var-map] (:class desc)))
 
 
+(comment 
 ;; Vacuous descriptions
 
 (derive ::VacuousPropositionalDescription ::PropositionalDescription)
@@ -33,7 +34,7 @@
 
 (defmethod progress-pessimistic [:edu.berkeley.ai.angelic.dnf-simple-valuations/DNFSimpleValuation ::VacuousPropositionalDescription] [val desc]
   (edu.berkeley.ai.angelic.dnf-simple-valuations/make-dnf-simple-valuation nil (if-let [c (:cost desc)] (+ c (:bound val)) Double/NEGATIVE_INFINITY))) 
-
+ )
 
 
 

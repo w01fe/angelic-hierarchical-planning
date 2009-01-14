@@ -77,7 +77,7 @@
 ;; Node methods 
 
 (defmethod dead-end?  ::TopDownForwardNode [node]
-  (dead-end-valuation? (get-optimistic-valuation node)))
+  (empty-valuation? (get-optimistic-valuation node)))
 
 (defmethod lower-reward-bound ::TopDownForwardNode [node] 
   (get-valuation-lower-bound (restrict-valuation (get-pessimistic-valuation node) (:goal node))))
@@ -117,7 +117,7 @@
       [act-seq lower])))
 
 (defmethod extract-optimal-solution ::TopDownForwardNode [node] 
-  (when-not (dead-end-valuation? (restrict-valuation (get-pessimistic-valuation node) (:goal node)))
+  (when-not (empty-valuation? (restrict-valuation (get-pessimistic-valuation node) (:goal node)))
     (primitive-refinement node)))
 
 (defmethod node-str ::TopDownForwardNode [node] 

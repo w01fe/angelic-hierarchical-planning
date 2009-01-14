@@ -25,7 +25,7 @@
 
 (defmethod get-valuation-upper-bound ::DNFSimpleValuation [val] (:bound val))
 
-(defmethod dead-end-valuation?       ::DNFSimpleValuation [val] (empty? (:dnf val)))
+(defmethod empty-valuation?       ::DNFSimpleValuation [val] (empty? (:dnf val)))
 
 
 
@@ -109,7 +109,7 @@
 				       (get-negative-conjuncts quasi-ground-condition))
 	opt-val (restrict-valuation opt-val (make-conjunctive-condition ground-pos ground-neg))]
 ;    (prn dummy-domains ground-pos var-pos ground-neg var-neg opt-val)
-    (when-not (dead-end-valuation? opt-val)
+    (when-not (empty-valuation? opt-val)
       (reduce clojure.set/union #{} (map #(clause-consistent-mappings % var-pos var-neg dummy-domains)
 				     (:dnf opt-val))))))
 

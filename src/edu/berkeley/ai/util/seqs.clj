@@ -100,7 +100,9 @@
 	:else     (list x)))
 
 (import '(java.util HashSet))
-(defn distinct-elts? "Works on lazy infinite seqs (as much as poss.)!" [s]
+(defn distinct-elts? "Are all of the elements of this sequence distinct?  Works on infinite sequences with repititions, making 
+                      it useful for, e.g., detecting cycles in graphs." 
+  [s]
   (let [hs (HashSet.)]
     (loop [s (seq s)]
       (cond (empty? s)                    true
@@ -130,13 +132,14 @@
       (when (rest coll)
         (report-seq msg (rest coll))))))
 
-(defn chunk "Return a seq of seqs of len <= n"
+(defn chunk "Lazily break s into chunks of length n (or less, for the final chunk)."
   [n s]
   (when (seq s)
     (lazy-cons (take n s)
 	       (chunk n (drop n s)))))
   
-(defn combinations "Take a seq of seqs and return a lazy list of ordered combinations (pick 1 from each seq)" [seqs]
+(defn combinations "Take a seq of seqs and return a lazy list of ordered combinations (pick 1 from each seq)" 
+  [seqs]
   (if (empty? seqs) '(())
     (forcat [item (first seqs)]
       (map #(cons item %) (combinations (rest seqs))))))
@@ -174,7 +177,7 @@
       pos)))
 
 
-(defn mevery? "Like every but takes args like map."
+(defn mevery? "Like every but takes multiple seq args like map."
   ([f & seqs]
      (or (some empty? seqs)
 	 (and (apply f (map first seqs))
@@ -185,6 +188,7 @@
   [pred coll]
   [(filter pred coll) (filter (complement pred) coll)])
   )
+
 
 ;  ([arg &args]) `(lazy-cons  
 

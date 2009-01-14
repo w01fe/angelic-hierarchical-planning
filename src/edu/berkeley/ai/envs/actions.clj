@@ -21,6 +21,14 @@
       {:act-seq (conj (:act-seq ^state) action)
        :reward (+ reward (:reward ^state))})))
 
+(defn next-state-and-reward [state action]
+  (aset *next-counter* 0 (inc (aget *next-counter* 0)))
+  (let [[next reward] ((:fn action) state)]
+    [(with-meta next
+       {:act-seq (conj (:act-seq ^state) action)
+        :reward (+ reward (:reward ^state))})
+     reward]))
+
 (defn next-initial-state [[state [act-seq reward-so-far]] action]
   (aset *next-counter* 0 (inc (aget *next-counter* 0)))
   (let [[next reward] ((:fn action) state)]
