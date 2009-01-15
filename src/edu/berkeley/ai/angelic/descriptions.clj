@@ -27,31 +27,49 @@
 	(let [[next step-reward] (next-state-and-reward state action)]
 	  [next (+ reward step-reward)])))))
 
-(defn progress-optimistic [::Valuation ::ExplicitDescription]  [val desc]
+(defmethod progress-optimistic [::Valuation ::ExplicitDescription]  [val desc]
   (progress-explicit val desc))
 
-(defn progress-pessimistic [::Valuation ::ExplicitDescription]  [val desc]
+(defmethod progress-pessimistic [::Valuation ::ExplicitDescription]  [val desc]
   (progress-explicit val desc))
 
 
-;; Vacuous descriptions
+;; Endpoint descriptions
 
+(derive ::PessimalDescription ::Description)
+(def *pessimal-description* {:class ::PessimalDescription})
 
-(derive ::VacuousDescription ::Description)
-
-(defmethod parse-description nil [desc domain params] 
-  (parse-description [:vac] domain params))
-
-(defmethod parse-description :vac [desc domain params]
-  (assert-is (<= (count desc) 2))
-  {:class ::VacuousDescription :cost (second desc)})
-
-(defmethod progress-optimistic [::Valuation ::VacuousDescription] [val desc]
-  (make-optimal-valuation 
-   (if-let [c (:cost desc)] (+ c (:bound val)) Double/POSITIVE_INFINITY)))
-
-(defmethod progress-pessimistic [::Valuation ::VacuousDescription] [val desc]
+(defmethod progress-optimistic [::Valuation ::PessimalDescription] [val desc]
   *pessimal-valuation*)
+
+(defmethod progress-pessimistic [::Valuation ::PessimalDescription] [val desc]
+  *pessimal-valuation*)
+
+
+(defstruct conditional-description :class :condition :max-reward)
+(derive ::ConditionalDescription ::Description)
+(defn make-conditional-description [condition max-reward]
+  (if (or (= condition *false-condition*)
+	  (= max-reward Double/NEGATIVE_INFINITY))
+      *pessimal-description*
+    (struct conditional-description ::ConditionalDescription condition max-reward)))
+
+(defn make-optimal-description
+  ([] (make-optimal-description Double/POSITIVE_INFINITY))
+  ([opt-rew] (make-conditional-description *true-condition* opt-rew)))
+
+(defmethod progress-optimistic [::PessimalValuation ::ConditionalDescription] [val desc]
+  val)
+
+(defmethod progress-optimistic [::Valuation ::ConditionalDescription] [val desc]
+  (make-conditional-valuation 
+   (:condition desc) 
+   (+ (:max-reward desc)
+      (get-valuation-upper-bound val))))
+
+(defmethod progress-pessimistic [::Valuation ::ConditionalDescription] [val desc]
+  (throw (UnsupportedOperationException.)))
+
 
 
   

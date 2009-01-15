@@ -39,7 +39,7 @@
 	    [:optional [:pessimistic  [unquote pessimistic]]]
 	    [:optional [:exact        [unquote exact]]]}
 	  (chunk 2 (rest hla))]
-    (when exact (assert-is (nil? optimistic)) (assert-is (nil? pessimistic)))
+    (when exact (assert-is (empty? optimistic)) (assert-is (empty? pessimistic)))
     (let [name (first hla)
 	  [pos-pre neg-pre] (parse-pddl-conjunction precondition)
 	   params        (parse-typed-pddl-list parameters)] 
@@ -56,8 +56,8 @@
 		(let [[pp np] (parse-pddl-conjunction precondition)] 
 		  [(if ref-name (symbol-cat name '- ref-name) (gensym name)) pp np nil expansion])))
 	    refinements)
-       (parse-description (or optimistic exact) domain params)
-       (parse-description (or pessimistic exact) domain params)
+       (parse-description (or optimistic exact [:opt]) domain params)
+       (parse-description (or pessimistic exact [:pess]) domain params)
        nil))))
 
 
@@ -140,7 +140,37 @@
     {:class ::StripsHierarchySchema, :hlas
      (check-hla-schemata (:types domain) (:guaranteed-objs domain) (:predicates domain) (:action-schemata domain)
 			 (map #(parse-strips-hla-schema % domain) hlas))}))
-      
+
+(defn make-flat-act-optimistic-description-schema [upper-reward-fn]
+  {:class ::FlatActOptimisticDescriptionSchema :upper-reward-fn upper-reward-fn})
+
+(defmethod instantiate-description-schema ::FlatActOptimisticDescriptionSchema [desc instance]
+  (make-flat-act-optimistic-description (get-goal instance) (:upper-reward-fn desc)))
+
+(defmethod ground-description :edu.berkeley.ai.angelic.hierarchies/FlatActOptimisticDescription [desc var-map] desc)
+
+; TODO: use ncstrips for Act description?
+; Immediate refinements are [name pos-prec neg-prec unk-types expansion]
+; TODO: check it's correct to ignore primitive precs.
+(defn make-flat-strips-hierarchy-schema [domain upper-reward-fn]
+  (assert-is (isa? (:class domain) :edu.berkeley.ai.domains.strips/StripsPlanningDomain))
+  {:class ::StripsHierarchySchema
+   :hlas 
+     (map-map #(vector (:name %) %) 
+	(cons
+	  (make-strips-hla-schema
+	   'act nil nil nil
+	   (cons ['empty nil nil nil []]
+		 (for [action (:action-schemata domain)]
+		   (let [dummy-vars (for [[t v] (:vars action)] [(keyword (str "?" v)) [t]])]
+		     [(:name action) nil nil (into {} dummy-vars) [(cons (:name action) (map first dummy-vars)) ['act]]]))) 
+	   (make-flat-act-optimistic-description-schema upper-reward-fn)
+	   *pessimal-description* nil)
+	  (map (partial make-strips-primitive-hla-schema 
+                 (:types domain) (:guaranteed-objs domain) (:predicates domain))
+	       (:action-schemata domain))))})
+
+
 
 (comment 
   (parse-hierarchy "/Users/jawolfe/Projects/angel/src/edu/berkeley/ai/domains/nav_switch.hierarchy"
@@ -175,7 +205,8 @@
   (let [hla-map (map-map (fn [[name hla]] [name (instantiate-strips-hla-schema hla instance)])
 			 (safe-get hierarchy :hlas))
 	act     (safe-get hla-map 'act)
-	vacuous-desc (instantiate-description-schema (parse-description [:vac] :dummy :dummy) instance)
+	opt-desc  (instantiate-description-schema (parse-description [:opt] :dummy :dummy) instance)
+	pess-desc (instantiate-description-schema (parse-description [:pess] :dummy :dummy) instance)
 	dummy-vars (for [[t v] (:vars act)] [(keyword (str "?" v)) [t]])]
     (make-strips-hla 
      (struct strips-hierarchy ::StripsHierarchy hla-map instance)
@@ -183,7 +214,7 @@
 			     [[(gensym "strips-top-level-action-ref") nil nil
 			       (map-map identity dummy-vars) 
 			       (list (cons 'act (map first dummy-vars)))]]
-			     vacuous-desc vacuous-desc nil)  ; Dummy top-level action
+			     opt-desc pess-desc nil)  ; Dummy top-level action
      {}
      (make-conjunctive-condition nil nil)
      false
@@ -263,7 +294,7 @@
 		     (repeat (make-conjunctive-condition nil nil)))))))))
 
 
-(defmethod hla-immediate-refinements [::StripsPrimitiveHLA :edu.berkeley.ai.angelic/PropositionalValuation] [hla] (throw (UnsupportedOperationException.)))
+(defmethod hla-immediate-refinements [::StripsPrimitiveHLA :edu.berkeley.ai.angelic/Valuation] [hla] (throw (UnsupportedOperationException.)))
 
 (defmethod hla-immediate-refinements     [::StripsHLA :edu.berkeley.ai.angelic/PropositionalValuation] [hla opt-val]
   (let [opt-val (restrict-valuation opt-val (:precondition hla))

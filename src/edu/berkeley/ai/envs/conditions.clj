@@ -15,23 +15,31 @@
 
 (derive ::SimpleCondition ::Condition)
 
-(defstruct simple-condition :class :test)
+(defstruct simple-condition :class :test :known-consistent)
 
-(defn make-simple-condition [test]
-  (struct simple-condition ::SimpleCondition test))
+(defn make-simple-condition 
+  ([test] (make-simple-condition test false))
+  ([test kc] (struct simple-condition ::SimpleCondition test kc)))
 
 (defmethod satisfies-condition? ::SimpleCondition [state condition]
   ((:test condition) state))
 
 (defmethod conjoin-conditions [::Condition ::Condition] [c1 c2]
-  (make-simple-condition 
-   #(and (satisfies-condition? % c1) (satisfies-condition? % c2))))
+  (if (= c1 c2) c1
+    (make-simple-condition 
+     #(and (satisfies-condition? % c1) (satisfies-condition? % c2)))))
 
+(defmethod consistent-condition? ::SimpleCondition [condition] 
+  (if (:known-consistent condition) 
+      true
+    (throw (UnsupportedOperationException. (str condition)))))
+
+; cons
 
 ;; Trivial conditions
 
-(derive ::FalseCondition ::Condition)
-(def *false-condition* (make-simple-condition (constantly false)))
+(derive ::FalseCondition ::SimpleCondition)
+(def *false-condition* {:class ::FalseCondition :test (constantly false)})
 
 (defmethod satisfies-condition? ::FalseCondition [state condition] false)
 (defmethod consistent-condition? ::FalseCondition [condition] false)
@@ -41,16 +49,6 @@
 (defmethod satisfying-states     ::FalseCondition [c] nil)
 
 
-(derive ::TrueCondition ::Condition)
-(def *true-condition* {:class ::TrueCondition})
-
-(defmethod satisfies-condition? ::TrueCondition [state condition] true)
-(defmethod consistent-condition? ::TrueCondition [condition] true)
-(defmethod conjoin-conditions    [::TrueCondition ::Condition] [tc c] c)
-(defmethod conjoin-conditions    [::Condition ::TrueCondition] [c tc] c)
-(defmethod conjoin-conditions    [::TrueCondition ::TrueCondition] [tc1 tc2] tc1)
-(defmethod conjoin-conditions    [::TrueCondition ::FalseCondition] [tc1 fc2] fc1)
-(defmethod conjoin-conditions    [::FalseCondition ::TrueCondition] [fc1 tc2] fc1)
 
 
 
@@ -70,6 +68,8 @@
 
 (defn make-conjunctive-condition [pos neg] 
   (struct conjunctive-condition ::ConjunctiveCondition (set pos) (set neg)))
+
+;(def *true-condition* (make-conjunctive-condition nil nil))
 
 (defn get-positive-conjuncts [c] (safe-get c :pos))
 
@@ -93,3 +93,18 @@
 (defmethod consistent-condition? ::ConjunctiveCondition [condition]
   (empty? (clojure.set/intersection (:pos condition) (:neg condition))))
 
+
+
+(derive ::TrueCondition ::ConjunctiveCondition)
+(def *true-condition* {:class ::TrueCondition})
+
+(defmethod satisfies-condition? ::TrueCondition [state condition] true)
+(defmethod consistent-condition? ::TrueCondition [condition] true)
+(defmethod conjoin-conditions    [::TrueCondition ::Condition] [tc c] c)
+(defmethod conjoin-conditions    [::TrueCondition ::ConjunctiveCondition] [tc c] c)
+(defmethod conjoin-conditions    [::Condition ::TrueCondition] [c tc] c)
+(defmethod conjoin-conditions    [::ConjunctiveCondition ::TrueCondition] [c tc] c)
+(defmethod conjoin-conditions    [::TrueCondition ::TrueCondition] [tc1 tc2] tc1)
+(defmethod conjoin-conditions    [::TrueCondition ::FalseCondition] [tc fc] fc)
+(defmethod conjoin-conditions    [::FalseCondition ::TrueCondition] [fc tc] fc)
+(defmethod ground-propositional-condition ::TrueCondition [c var-map] c)

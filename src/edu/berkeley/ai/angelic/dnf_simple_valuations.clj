@@ -27,6 +27,23 @@
 
 (defmethod empty-valuation?       ::DNFSimpleValuation [val] (empty? (:dnf val)))
 
+(defn- clause-instantiations [clause]
+  (loop [insts [#{}]
+	 pairs (seq clause)]
+    (if (empty? pairs) insts
+      (let [[var val] (first pairs)]
+	(cond (= val :true)
+  	        (recur (map #(conj % var) insts) (rest pairs))
+	      (= val :unknown)
+	        (recur (concat (map #(conj % var) insts) insts) (rest pairs))
+	      :else (throw (IllegalArgumentException.)))))))
+	  
+
+(defmethod explicit-valuation-map ::DNFSimpleValuation [val]
+  (into {}
+    (map #(vector % (:bound val))
+      (forcat [clause (:dnf val)]
+	(clause-instantiations clause)))))
 
 
 (defn restrict-clause [clause pos neg]

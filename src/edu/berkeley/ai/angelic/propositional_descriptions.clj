@@ -7,6 +7,39 @@
 (defmulti ground-description             (fn [desc var-map] (:class desc)))
 
 
+; Optimal and pessimal
+
+(defmethod parse-description :pess [desc domain params]
+  (assert-is (= (count desc) 1))
+  *pessimal-description*)
+
+(defmethod instantiate-description-schema ::PessimalDescription [desc instance]
+  desc)
+
+(defmethod ground-description ::PessimalDescription [desc var-map]
+  desc)
+
+
+(defmethod parse-description :opt [desc domain params]
+  (assert-is (<= (count desc) 2))
+  (if (= (count desc) 1)
+      (make-optimal-description)
+    (make-optimal-description (second desc))))
+
+(defmethod instantiate-description-schema ::ConditionalDescription [desc instance]
+  desc)
+
+(defmethod ground-description ::ConditionalDescription [desc var-map]
+  (make-conditional-description 
+   (ground-propositional-condition (safe-get desc :condition) var-map)
+   (safe-get desc :max-reward)))
+
+
+
+
+
+
+
 (comment 
 ;; Vacuous descriptions
 

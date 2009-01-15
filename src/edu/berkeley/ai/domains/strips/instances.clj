@@ -105,6 +105,14 @@
   (make-conjunctive-condition (:goal-atoms instance) nil))
 
 
+;; useful utility 
+
+(defn get-strips-state-pred-val "Get the only true args of pred in state, or error" [state pred]
+  (let [pred-apps (filter #(= (first %) pred) state)]
+    (assert-is (= (count pred-apps) 1))
+    (rfirst pred-apps)))
+  
+
 
 
 

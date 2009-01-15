@@ -182,6 +182,14 @@
 (let [domain (make-nav-switch-strips-domain), env (make-nav-switch-strips-env 5 5 [[1 1]] [4 0] true [0 4]), val (make-initial-valuation :edu.berkeley.ai.angelic.dnf-simple-valuations/DNFSimpleValuation env), node (make-initial-top-down-forward-node env val (list (instantiate-hierarchy (parse-hierarchy "/Users/jawolfe/Projects/angel/src/edu/berkeley/ai/domains/nav_switch.hierarchy" domain) env)))] (check-solution env (a-star-search node)))
 
 (let [domain (make-nav-switch-strips-domain), env (make-nav-switch-strips-env 35 35 [[1 1]] [34 0] true [0 34]), val (make-initial-valuation :edu.berkeley.ai.angelic.dnf-simple-valuations/DNFSimpleValuation env), node (make-initial-top-down-forward-node env val (list (instantiate-hierarchy (parse-hierarchy "/Users/jawolfe/Projects/angel/src/edu/berkeley/ai/domains/nav_switch.hierarchy" domain) env)))] (time (second (a-star-search node))))
+
+; Flat hierarchies
+(let [env (make-nav-switch-env 5 5 [[1 1]] [4 0] true [0 4]), val (make-initial-valuation :edu.berkeley.ai.angelic/ExplicitValuation env), node (make-initial-top-down-forward-node env val (list (instantiate-hierarchy (make-flat-hierarchy-schema  (fn [state] (* -2 (+ (Math/abs (- (first (:pos state)) 0)) (Math/abs (- (second (:pos state)) 4))))) ) env)))] (time (second (a-star-search node))))
+
+(let [env (make-nav-switch-strips-env 5 5 [[1 1]] [4 0] true [0 4]), val (make-initial-valuation :edu.berkeley.ai.angelic/ExplicitValuation env), node (make-initial-top-down-forward-node env val (list (instantiate-hierarchy (make-flat-hierarchy-schema  (fn [state] (* -2 (+ (Math/abs (- (desymbolize (first (get-strips-state-pred-val state 'atx)) 1) 0)) (Math/abs (- (desymbolize (first (get-strips-state-pred-val state 'aty)) 1) 4))))) ) env)))] (time (second (a-star-search node))))
+
+(let [domain (make-nav-switch-strips-domain), env (make-nav-switch-strips-env 5 5 [[1 1]] [4 0] true [0 4]), val (make-initial-valuation :edu.berkeley.ai.angelic/ExplicitValuation env), node (make-initial-top-down-forward-node env val (list (instantiate-hierarchy (make-flat-strips-hierarchy-schema domain (fn [state] (* -2 (+ (Math/abs (- (desymbolize (first (get-strips-state-pred-val state 'atx)) 1) 0)) (Math/abs (- (desymbolize (first (get-strips-state-pred-val state 'aty)) 1) 4))))) ) env)))] (time (second (a-star-search node))))
+
   )
 
 

@@ -56,7 +56,7 @@
 	     (make-action name #(vector (struct nav-switch-state (map + (:pos %) delta) (:hor? %))
 					(if (xor (zero? (first delta)) (:hor? %)) +goodmove-reward+ +badmove-reward+))
 			  (make-simple-condition #(legal-coord?- (map + (:pos %) delta) height width))))))))
-     (make-simple-condition #(= (:pos %) goal-pos)))))
+     (make-simple-condition #(= (:pos %) goal-pos) true))))
 
 (defn make-nav-switch-strips-domain []
   (make-strips-planning-domain 

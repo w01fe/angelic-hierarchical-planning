@@ -38,6 +38,7 @@
 
 
 (defn legal-action? [state action]
+;  (prn state action)
   (satisfies-condition? state (:precondition action)))
 
 (defn safe-next-state [state action]

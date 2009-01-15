@@ -10,8 +10,8 @@
        :refinement   (:precondition (and (atx ?gx) (aty ?gy))
                       :expansion    ())
        :refinement   (:expansion    ((go ?cx ?cy ?gx ?gy)))    
-       :optimistic   (:vac 0)
-       :pessimistic  (:vac))
+       :optimistic   (:opt 0)
+       :pessimistic  (:pess))
        
   (:hla go
        :parameters (?cx - :xc ?cy - :yc ?dx - :xc ?dy - :yc)
