@@ -42,7 +42,7 @@
   (satisfies-condition? state (:precondition action)))
 
 (defn safe-next-state [state action]
-  (assert-is (legal-action? state action))
+  (util/assert-is (legal-action? state action))
   (next-state state action))
 
 (defn apply-actions [state actions]

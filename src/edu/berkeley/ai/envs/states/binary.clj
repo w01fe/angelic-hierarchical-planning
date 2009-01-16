@@ -1,6 +1,7 @@
 (ns edu.berkeley.ai.envs.states.binary
  (:refer-clojure)
- (:use edu.berkeley.ai.envs.states [edu.berkeley.ai.util :as util] )
+ (:use [edu.berkeley.ai.envs.states :as states])
+ (:require [edu.berkeley.ai.util :as util] )
  )
 
 
@@ -14,12 +15,12 @@
 (defn make-binary-state-space [vars] 
   "Make a binary state space from a set of variables"
   (let [var-set (set vars)]
-    (assert-is (= (count vars) (count var-set)))
+    (util/assert-is (= (count vars) (count var-set)))
     (struct binary-state-space ::BinaryStateSpace var-set)))
 
 
 (defmethod list-states ::BinaryStateSpace [state-set]
-  (power-set (:vars state-set)))
+  (util/power-set (:vars state-set)))
 
 (defmethod canonicalize ::BinaryStateSpace [state-set]
   state-set)  
@@ -47,15 +48,15 @@
 (defstruct binary-vector-state :class :space :true-vars)
 
 (defn make-binary-vector-state [space true-vars]
-  (doseq [x true-vars]  #(assert-is (member? x (:vars space))))
-  (assert-is (= (seq true-vars) (distinct true-vars)))
+  (doseq [x true-vars]  #(util/assert-is (member? x (:vars space))))
+  (util/assert-is (= (seq true-vars) (distinct true-vars)))
   (struct binary-vector-state ::BinaryVectorState space (apply vector true-vars)))
 
 
 (defstruct binary-set-state :class :space :true-vars)
 
 (defn make-binary-set-state [space true-vars]
-  (doseq [x true-vars]  #(assert-is (member? x (:vars space))))
-  (assert-is (= (seq true-vars) (distinct true-vars)))
+  (doseq [x true-vars]  #(util/assert-is (member? x (:vars space))))
+  (util/assert-is (= (seq true-vars) (distinct true-vars)))
   (struct binary-set-state ::BinaryVectorState space (apply hash-set true-vars)))
  )

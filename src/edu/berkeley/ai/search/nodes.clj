@@ -56,52 +56,52 @@
 
 (defn all-refinements- [pq priority-fn]
 ;  (print "\ntop")
-  (when-not (pq-empty? pq)
-    (let [next (pq-remove-min! pq)]
+  (when-not (queues/pq-empty? pq)
+    (let [next (queues/pq-remove-min! pq)]
 ;      (print " " (first (:state next)) ": " )
       (if (dead-end? next) 
 	  (recur pq priority-fn)
 	(do
-	  (pq-add-all! pq (map (fn [i] [i (priority-fn i)]) (immediate-refinements next)))
+	  (queues/pq-add-all! pq (map (fn [i] [i (priority-fn i)]) (immediate-refinements next)))
 	  (lazy-cons next (all-refinements- pq priority-fn)))))))
 
 (defn all-refinements 
   "Returns a lazy seq of all refinements, refined using 
    the provided (presumed fresh) priority queue and priority function"
   [node pq priority-fn]
-  (pq-add! pq node (priority-fn node))
+  (queues/pq-add! pq node (priority-fn node))
   (all-refinements- pq priority-fn))
 
 ;; TODO: check goal
 (defn interactive-search [node pq priority-fn]
-  (pq-add! pq node (priority-fn node))
+  (queues/pq-add! pq node (priority-fn node))
   (loop []
-    (when-not (pq-empty? pq)
-      (let [next (pq-remove-min! pq)
+    (when-not (queues/pq-empty? pq)
+      (let [next (queues/pq-remove-min! pq)
 	    dead-end (dead-end? next)
 	    refs (when-not dead-end (immediate-refinements next))]
 	(print "\n\n" (node-str next) (reward-bounds next))
 	(if dead-end 
 	    (print " is a dead end.")
 	  (print " has refinements \n                    " 
-                        (str-join "\n                     " (map #(str (reward-bounds %) " " (node-str %)) refs)) "\n"))
+                        (util/str-join "\n                     " (map #(str (reward-bounds %) " " (node-str %)) refs)) "\n"))
 	(or (extract-a-solution next)
 	(when (loop []
 		(print "\n(d)rop, (n)ext, (s)ave, (q)uit, (r)eroot, go (#), (expr ... *n)? ")
 		(flush)
 		(let [result (read)]
 		  (cond (= result 'd) true
-			(= result 'n) (do (pq-add-all! pq (map (fn [i] [i (priority-fn i)]) refs)) true)
-			(= result 'r) (do (while (not (pq-empty? pq)) (pq-remove-min! pq))
-					  (pq-add! pq next (priority-fn next))
+			(= result 'n) (do (queues/pq-add-all! pq (map (fn [i] [i (priority-fn i)]) refs)) true)
+			(= result 'r) (do (while (not (queues/pq-empty? pq)) (queues/pq-remove-min! pq))
+					  (queues/pq-add! pq next (priority-fn next))
 					  true)
 			(= result 's) (do (def *n next) (recur))
 			(= result 'q) false
-			(integer? result) (do (pq-add-all! pq (map (fn [i] [i (priority-fn i)]) refs))
+			(integer? result) (do (queues/pq-add-all! pq (map (fn [i] [i (priority-fn i)]) refs))
 					      (dotimes [_ (dec result)]
-						(let [next (pq-remove-min! pq)]
+						(let [next (queues/pq-remove-min! pq)]
 						  (when-not (dead-end? next)
-						    (pq-add-all! pq (map (fn [i] [i (priority-fn i)]) (immediate-refinements next))))))
+						    (queues/pq-add-all! pq (map (fn [i] [i (priority-fn i)]) (immediate-refinements next))))))
 					      true)
 			:else          (do (print (binding [*n next] (eval result)) "\n") (recur)))))
 	  (recur)))))))
@@ -115,28 +115,28 @@
 
 
 (defn map-leaf-refinements- [f pq priority-fn]
-  (when-not (pq-empty? pq)
-    (let [next (pq-remove-min! pq)]
+  (when-not (queues/pq-empty? pq)
+    (let [next (queues/pq-remove-min! pq)]
 ;      (when (f next) (prn next (f next)))
       (if (dead-end? next) 
 	  (recur f pq priority-fn)
 	(if-let [fnext (f next)]
 	    (lazy-cons fnext (map-leaf-refinements- f pq priority-fn))
-	  (do (pq-add-all! pq (map (fn [i] [i (priority-fn i)]) (immediate-refinements next)))
+	  (do (queues/pq-add-all! pq (map (fn [i] [i (priority-fn i)]) (immediate-refinements next)))
 	      (recur f pq priority-fn)))))))
 
 (defn leaf-refinements 
   "Returns a lazy seq of leaf refinements satisfying pred, refined using the provided 
    (presumed fresh) priority queue and priority function."
   [node pred pq priority-fn]
-  (pq-add! pq node (priority-fn node))
+  (queues/pq-add! pq node (priority-fn node))
   (map-leaf-refinements- #(when (pred %) %) pq priority-fn))
 
 (defn map-leaf-refinements 
   "Returns a lazy seq of true (f node) invocations, refined using the provided 
    (presumed fresh) priority queue and priority function."
   [node f pq priority-fn]
-  (pq-add! pq node (priority-fn node))
+  (queues/pq-add! pq node (priority-fn node))
   (map-leaf-refinements- f pq priority-fn))
 
 ; TODO: versions based on other search algorithms!
@@ -148,7 +148,7 @@
   (leaf-refinements 
    node 
    #(or (extract-optimal-solution %) (= (node-depth %) depth))
-   (make-graph-stack-pq) 
+   (queues/make-graph-stack-pq) 
    #(- (upper-reward-bound %))))
 
 (defn map-leaf-refinements-depth
@@ -158,7 +158,7 @@
    node 
    #(or (f %)
 	(and (or (extract-optimal-solution %) (= (node-depth %) depth)) %))
-   (make-graph-stack-pq) 
+   (queues/make-graph-stack-pq) 
    #(- (upper-reward-bound %))))
 
 
@@ -228,10 +228,10 @@
 
 (comment 
 (defn some-refinements- [pred pq priority-fn]
-  (if (pq-empty? pq) nil
-    (let [next (pq-remove-min! pq)]
+  (if (queues/pq-empty? pq) nil
+    (let [next (queues/pq-remove-min! pq)]
       (if (pred next)
-	(do (pq-add-all! pq (map (fn [i] [i (priority-fn i)]) (immediate-refinements next)))
+	(do (queues/pq-add-all! pq (map (fn [i] [i (priority-fn i)]) (immediate-refinements next)))
 	    (lazy-cons next (some-refinements- pred pq priority-fn)))
 	(recur pred pq priority-fn)))))
 
@@ -239,16 +239,16 @@
   "Returns a lazy seq of refinements, refined using the provided (presumed fresh) 
    priority queue and priority function, cutting off branches where pred returns false."
   [node pred pq priority-fn]
-  (pq-add! pq node (priority-fn node))
+  (queues/pq-add! pq node (priority-fn node))
   (some-refinements- pred pq priority-fn)))
 
 (comment 
 (defn iterate-refinements- [f pq priority-fn]
-  (when-not (pq-empty? pq)
-    (let [next (f (pq-remove-min! pq))]
+  (when-not (queues/pq-empty? pq)
+    (let [next (f (queues/pq-remove-min! pq))]
       (lazy-cons next
 		 (do (when (node? next)
-		       (pq-add-all! pq (map (fn [i] [i (priority-fn i)]) (immediate-refinements next))))
+		       (queues/pq-add-all! pq (map (fn [i] [i (priority-fn i)]) (immediate-refinements next))))
 		     (iterate-refinements f pq priority-fn))))))
 
 (defn iterate-refinements 
@@ -256,5 +256,5 @@
    priority queue and priority function.  When (f refinement) is a node, continues
    iteration; otherwise, stops. Filters out nil entries."
   [node f pq priority-fn]
-  (pq-add! pq node (priority-fn node))
+  (queues/pq-add! pq node (priority-fn node))
   (iterate-refinements- f pq priority-fn)))

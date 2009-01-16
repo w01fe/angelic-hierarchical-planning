@@ -32,7 +32,7 @@
   ([env upper-reward-fn] 
      (state-space-search-space env (constantly Double/NEGATIVE_INFINITY) upper-reward-fn))
   ([env lower-reward-fn upper-reward-fn]
-     (make-state-space-search-space- (get-state-space env) (get-action-space env) (get-goal env) lower-reward-fn upper-reward-fn)))
+     (make-state-space-search-space- (envs/get-state-space env) (envs/get-action-space env) (envs/get-goal env) lower-reward-fn upper-reward-fn)))
 
 (defn state-space-search-node 
   ([env] 
@@ -41,8 +41,8 @@
      (state-space-search-node env (constantly Double/NEGATIVE_INFINITY) upper-reward-fn))
   ([env lower-reward-fn upper-reward-fn]
      (make-state-space-node 
-      (make-state-space-search-space- (get-state-space env) (get-action-space env) (get-goal env) lower-reward-fn upper-reward-fn)
-      (get-initial-state env))))  
+      (make-state-space-search-space- (envs/get-state-space env) (envs/get-action-space env) (envs/get-goal env) lower-reward-fn upper-reward-fn)
+      (envs/get-initial-state env))))  
 
 ;;; Node methods 
 
@@ -59,7 +59,7 @@
   (let [search-space (:search-space node)
 	state (:state node)]
     (map #(make-state-space-node search-space %) 
-	 (successor-states state (:action-space search-space)))))
+	 (envs/successor-states state (:action-space search-space)))))
 
 (defmethod primitive-refinement ::StateSpaceNode [node] 
   nil)
@@ -70,11 +70,11 @@
        (extract-a-solution node)))
 
 (defmethod extract-a-solution ::StateSpaceNode [node]
-  (when (satisfies-condition? (:state node) (:goal (:search-space node)))
+  (when (envs/satisfies-condition? (:state node) (:goal (:search-space node)))
     [(:act-seq ^(:state node)) (:reward ^(:state node))]))
 
 (defmethod node-str ::StateSpaceNode [node] 
-  (state-str (:state-space (:search-space node)) (:state node)))
+  (states/state-str (:state-space (:search-space node)) (:state node)))
 
 
 ;(defmethod node-parent ::StateSpaceNode [node] 
@@ -94,9 +94,9 @@
 (search-problem->state-space-node
   (make-search-problem 
    (list 5)
-   (let [act-inc (make-action 'inc #(vector (list (inc (first %))) -1))
-	 act-dec (make-action 'dec #(vector (list (dec (first %))) -1))] 
-     (make-action-space 
+   (let [act-inc (envs/make-action 'inc #(vector (list (inc (first %))) -1))
+	 act-dec (envs/make-action 'dec #(vector (list (dec (first %))) -1))] 
+     (envs/make-action-space 
       (fn [state]
 	(cond (= (first state) 10) [act-dec]
 	      (= (first state) 0)  [act-inc]

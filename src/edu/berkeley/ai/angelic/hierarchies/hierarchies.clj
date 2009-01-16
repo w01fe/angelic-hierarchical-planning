@@ -9,11 +9,11 @@
 (defmulti parse-hierarchy-type (fn [type contents domain] type))
 
 (defn parse-hierarchy "Call this method to parse a hierarchy.  Will delegate based on declared type." [file domain]
-  (match [(define (hierarchy [unquote name])
+  (util/match [(define (hierarchy [unquote name])
 	    (:type [unquote type])
 	    [unquote-seq meat])
 	  (read-string (slurp file))] ;(.toLowerCase (slurp file)))]
-    (assert-is (= name (:name domain)))
+    (util/assert-is (= name (:name domain)))
     (parse-hierarchy-type type meat domain)))
 
 
@@ -51,5 +51,5 @@
     (struct hierarchical-search-space-struct ::HierarchicalSearchSpace state-space action-space goal top-level-action ))
 
   (defn hierarchical-search-space [env top-level-action] 
-    (make-hierarchical-search-space- (get-state-space env) (get-action-space env) (get-goal env) top-level-action))
+    (make-hierarchical-search-space- (envs/get-state-space env) (envs/get-action-space env) (envs/get-goal env) top-level-action))
   )

@@ -10,16 +10,16 @@
   (struct strips-action-schema ::StripsActionSchema name vars pos-pre neg-pre add-list delete-list cost))
 
 (defn- parse-pddl-action-schema [action]
-  (match [[:action       [unquote name]
+  (util/match [[:action       [unquote name]
 	   :parameters   [unquote parameters]
 	   :precondition [unquote precondition]
 	   :effect       [unquote effect]]
 	  action]
-    (let [[adds deletes]    (parse-pddl-conjunction effect)
-	  [pos-pre neg-pre] (parse-pddl-conjunction precondition)] 
+    (let [[adds deletes]    (props/parse-pddl-conjunction effect)
+	  [pos-pre neg-pre] (props/parse-pddl-conjunction precondition)] 
       (make-strips-action-schema 
        name 
-       (parse-typed-pddl-list parameters)
+       (props/parse-typed-pddl-list parameters)
        pos-pre
        neg-pre
        adds
@@ -29,9 +29,9 @@
 
 (defn- check-action-schema [types guaranteed-objs predicates action-schema] 
 ;  (.println System/out action-schema)
-  (assert-is (not (map? (:vars action-schema))))
-  (let [vars-and-objects (check-objects types (concat guaranteed-objs (:vars action-schema)))
-	atom-checker (fn [atoms] (map #(check-atom types vars-and-objects predicates %) atoms))]
+  (util/assert-is (not (map? (:vars action-schema))))
+  (let [vars-and-objects (props/check-objects types (concat guaranteed-objs (:vars action-schema)))
+	atom-checker (fn [atoms] (map #(props/check-atom types vars-and-objects predicates %) atoms))]
     (make-strips-action-schema 
      (:name action-schema)
      (:vars action-schema)
@@ -42,7 +42,7 @@
      (:cost action-schema))))
 
 (defn- check-action-schemata [types guaranteed-objs predicates action-schemata]
-  (assert-is (distinct-elts? (map :name action-schemata)))
+  (util/assert-is (apply distinct? (map :name action-schemata)))
   (map (partial check-action-schema types guaranteed-objs predicates) action-schemata))
 
 
@@ -52,7 +52,7 @@
 (defstruct strips-planning-domain :class :name :types :guaranteed-objs :predicates :action-schemata)
 
 
-(defn goal-ize [pred-name] (symbol-cat 'goal- pred-name))
+(defn goal-ize [pred-name] (util/symbol-cat 'goal- pred-name))
 
 (defn de-goal [pred]
   (let [name (name (first pred))]
@@ -61,8 +61,8 @@
 	    (rest pred)))))
 
 (defn add-goal-predicates [predicates]
-  (let [all-preds (merge predicates (map-map (fn [[pred args]] [(goal-ize pred) args]) predicates))]
-    (assert-is (= (count all-preds) (* 2 (count predicates))))
+  (let [all-preds (merge predicates (util/map-map (fn [[pred args]] [(goal-ize pred) args]) predicates))]
+    (util/assert-is (= (count all-preds) (* 2 (count predicates))))
     all-preds))
 
 (defn make-strips-planning-domain 
@@ -73,16 +73,16 @@
    action-schemata are instances of strips-action-schema."
   [name types guaranteed-objs predicates action-schemata]
 ;  (prn name types guaranteed-objs predicates action-schemata)
-  (let [types (check-types types)
-	guaranteed-objs (check-objects types guaranteed-objs)
-        predicates (check-predicates types predicates)
+  (let [types (props/check-types types)
+	guaranteed-objs (props/check-objects types guaranteed-objs)
+        predicates (props/check-predicates types predicates)
         action-schemata (check-action-schemata types guaranteed-objs predicates action-schemata)]
     (struct strips-planning-domain 
 	    ::StripsPlanningDomain name types guaranteed-objs 
 	    (add-goal-predicates predicates) action-schemata)))
 
 (defn read-strips-planning-domain [file]
-  (match [[define [domain [unquote name]]
+  (util/match [[define [domain [unquote name]]
 	   [:requirements :strips :typing]
 	   [:types [unquote-seq types]]
 	   [:predicates [unquote-seq predicates]]
@@ -92,7 +92,7 @@
      name
      types
      nil
-     (map parse-pddl-predicate predicates)
+     (map props/parse-pddl-predicate predicates)
      (map parse-pddl-action-schema actions))))
 
 

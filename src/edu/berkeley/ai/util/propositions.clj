@@ -1,6 +1,6 @@
 (ns edu.berkeley.ai.util.propositions
   (:refer-clojure)
-  (:use edu.berkeley.ai.util clojure.contrib.seq-utils))
+  (:use edu.berkeley.ai.util))
 
 ;;; Helpers for dealing with propositional domains and PDDL syntax
 
@@ -19,7 +19,7 @@
 ;    (prn type-map)
     (assert-is (= (count types) (count type-map)) "Duplicate type")
     (doseq [type (keys type-map)]
-      (let [distinct? (distinct-elts? (get-subtypes type-map type))]
+      (let [distinct? (apply distinct? (get-subtypes type-map type))]
 	(assert-is (identity distinct?) "Recursive type or duplicate inclusion %s" (take 100 (get-subtypes type-map type)))))
     type-map))
 
@@ -27,7 +27,7 @@
 (defn check-objects [types guaranteed-objs]
   (let [obj-map (reduce (fn [m [k & vs]] (assoc-cat m k (if (coll? (first vs)) (first vs) vs))) {} guaranteed-objs)]
     (doseq [k (keys obj-map)] (safe-get types k))
-    (assert-is (distinct-elts? (apply concat (vals obj-map))))
+    (assert-is (apply distinct? (apply concat (vals obj-map))))
     obj-map))
 
 (defn check-predicates [types predicates]

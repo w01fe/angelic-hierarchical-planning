@@ -1,6 +1,6 @@
 (ns edu.berkeley.ai.envs.states.explicit
  (:refer-clojure)
- (:use edu.berkeley.ai.envs.states)
+ (:use [edu.berkeley.ai.envs.states :as states])
  )
 
 (derive ::ExplicitStateSet ::edu.berkeley.ai.envs.states/StateSpace)

@@ -26,7 +26,7 @@
 
 (defmethod get-valuation-lower-bound ::PessimalValuation [val] Double/NEGATIVE_INFINITY)
 (defmethod get-valuation-upper-bound ::PessimalValuation [val] Double/NEGATIVE_INFINITY)
-(defmethod restrict-valuation [::PessimalValuation :edu.berkeley.ai.envs/Condition] [val cond] val)
+(defmethod restrict-valuation [::PessimalValuation :envs/Condition] [val cond] val)
 (defmethod explicit-valuation-map ::PessimalValuation [val] {})
 
 
@@ -39,13 +39,13 @@
 (defn make-conditional-valuation 
   [condition max-reward]
 ;  (prn condition max-reward)
-  (if (and (consistent-condition? condition) (> max-reward Double/NEGATIVE_INFINITY))
+  (if (and (envs/consistent-condition? condition) (> max-reward Double/NEGATIVE_INFINITY))
       (struct conditional-valuation ::ConditionalValuation condition max-reward)
     *pessimal-valuation*))
 
 (defn make-optimal-valuation  
   ([] (make-optimal-valuation Double/POSITIVE_INFINITY))
-  ([max-reward] (make-conditional-valuation *true-condition* max-reward)))
+  ([max-reward] (make-conditional-valuation envs/*true-condition* max-reward)))
 
 
 (defmethod get-valuation-lower-bound ::ConditionalValuation [val] 
@@ -54,10 +54,10 @@
 (defmethod get-valuation-upper-bound ::ConditionalValuation [val] 
   (:max-reward val))
 
-(defmethod restrict-valuation [::ConditionalValuation :edu.berkeley.ai.envs/Condition] 
+(defmethod restrict-valuation [::ConditionalValuation :envs/Condition] 
   [val cond]
   (make-conditional-valuation 
-   (conjoin-conditions (:condition val) cond) 
+   (envs/conjoin-conditions (:condition val) cond) 
    (:max-reward val)))
 
 (defmethod empty-valuation? ::ConditionalValuation [val] false)
@@ -86,7 +86,7 @@
 	   {} state-value-pairs)))
 
 (defmethod make-initial-valuation ::ExplicitValuation [type env]
-  (make-explicit-valuation [[(get-initial-state env) 0]]))
+  (make-explicit-valuation [[(envs/get-initial-state env) 0]]))
 
 (defmethod get-valuation-lower-bound ::ExplicitValuation [val]
   (if-let [v (vals (:state-map val))]
@@ -99,9 +99,9 @@
 (defmethod empty-valuation? ::ExplicitValuation [val]
   (empty? (:state-map val)))
 
-(defmethod restrict-valuation [::ExplicitValuation :edu.berkeley.ai.envs/Condition]
+(defmethod restrict-valuation [::ExplicitValuation :envs/Condition]
   [val condition]
-  (make-explicit-valuation- (into {} (filter (fn [[k v]] (satisfies-condition? k condition)) (:state-map val)))))
+  (make-explicit-valuation- (into {} (filter (fn [[k v]] (envs/satisfies-condition? k condition)) (:state-map val)))))
 
 (defmethod explicit-valuation-map ::ExplicitValuation [val]
   (:state-map val))

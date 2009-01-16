@@ -1,13 +1,16 @@
 (ns edu.berkeley.ai.angelic.ncstrips-descriptions
   (:refer-clojure)
-  (:use clojure.contrib.seq-utils [edu.berkeley.ai.util :as util] edu.berkeley.ai.util.propositions edu.berkeley.ai.angelic edu.berkeley.ai.angelic.dnf-simple-valuations)
+  (:use edu.berkeley.ai.angelic)
+  (:require [edu.berkeley.ai.util :as util] 
+            [edu.berkeley.ai.util.propositions :as props]
+            [edu.berkeley.ai.angelic.dnf-simple-valuations :as dsv])
   )
 
 ;;; NCStrips descriptions
 ; wow: calls to eval are expensive.  4x faster by precompiling eval!
 
 
-(derive ::NCStripsDescription :edu.berkeley.ai.angelic/PropositionalDescription)
+(derive ::NCStripsDescription :angelic/PropositionalDescription)
 
 
 ;; Single conditional dffects
@@ -20,10 +23,10 @@
 
 (defn- normalize-ncstrips-effect-atoms [types vars-and-objects predicates effect]
 ;  (prn "\n\n" effect "\n\n")
-  (let [atom-checker (partial check-atom types vars-and-objects predicates)]
+  (let [atom-checker (partial props/check-atom types vars-and-objects predicates)]
     (apply make-ncstrips-effect 
 	   (concat (for [f [:pos-preconditions :neg-preconditions :adds :deletes :possible-adds :possible-deletes]]
-		     (distinct (map atom-checker (safe-get effect f))))
+		     (distinct (map atom-checker (util/safe-get effect f))))
 		   [(:cost effect)]))))
 
 (defn- simplify-ncstrips-effect [effect]
@@ -36,8 +39,8 @@
 	possible-adds     (clojure.set/difference (set (:possible-adds effect)) pos-preconditions)
 	possible-deletes  (clojure.set/difference (set (:possible-deletes effect)) neg-preconditions)]
 ;    (prn adds deletes)
-;    (assert-is (empty? (clojure.set/intersection adds deletes)))
-    (assert-is (empty? (clojure.set/intersection (clojure.set/union adds deletes) (clojure.set/union possible-adds possible-deletes))))
+;    (util/assert-is (empty? (clojure.set/intersection adds deletes)))
+    (util/assert-is (empty? (clojure.set/intersection (clojure.set/union adds deletes) (clojure.set/union possible-adds possible-deletes))))
     (when (empty? (clojure.set/intersection pos-preconditions neg-preconditions))
       (make-ncstrips-effect pos-preconditions neg-preconditions adds deletes possible-adds possible-deletes (:cost effect)))))
       
@@ -58,27 +61,27 @@
   (struct ncstrips-description-schema ::NCStripsDescriptionSchema (doall (filter identity (map (partial check-ncstrips-effect types vars-and-objects predicates) effects))) vars))
 
 (defmethod parse-description :ncstrips [desc domain vars]  
-  (assert-is (isa? (:class domain) :edu.berkeley.ai.domains.strips/StripsPlanningDomain))
+  (util/assert-is (isa? (:class domain) :strips/StripsPlanningDomain))
   (make-ncstrips-description-schema 
-   (safe-get domain :types) 
-   (check-objects (safe-get domain :types) (concat (safe-get domain :guaranteed-objs) vars)) 
-   (safe-get domain :predicates)
+   (util/safe-get domain :types) 
+   (props/check-objects (util/safe-get domain :types) (concat (util/safe-get domain :guaranteed-objs) vars)) 
+   (util/safe-get domain :predicates)
    (for [clause (rest desc)]
-     (match [#{[:optional [:precondition    [unquote pre]]]
+     (util/match [#{[:optional [:precondition    [unquote pre]]]
 	       [:optional [:effect          [unquote eff]]]
 	       [:optional [:possible-effect [unquote poss]]]
 	       [:cost-expr [unquote cost-expr]]}
-	     (chunk 2 clause)]
-       (let [[pos-pre neg-pre] (parse-pddl-conjunction pre),
-	     [add     del    ] (parse-pddl-conjunction eff),
-	     [p-add   p-del  ] (parse-pddl-conjunction poss)]
+	     (util/partition-all 2 clause)]
+       (let [[pos-pre neg-pre] (props/parse-pddl-conjunction pre),
+	     [add     del    ] (props/parse-pddl-conjunction eff),
+	     [p-add   p-del  ] (props/parse-pddl-conjunction poss)]
 	 (make-ncstrips-effect pos-pre neg-pre add del p-add p-del
 		   (eval `(fn ~(vec (map second vars)) ~cost-expr))))))
    vars))
 
 
 (defmethod instantiate-description-schema ::NCStripsDescriptionSchema [desc inst]
-  (assert-is (isa? (:class inst) :edu.berkeley.ai.domains.strips/StripsPlanningInstance))
+  (util/assert-is (isa? (:class inst) :strips/StripsPlanningInstance))
   desc)
 
 
@@ -93,11 +96,11 @@
 
 ; TODO: is this definition of cost-expr sufficiently general?
 (defn- instantiate-ncstrips-effect-atoms [var-map effect hla-vars]
-  (let [instantiator (partial simplify-atom var-map)]
+  (let [instantiator (partial props/simplify-atom var-map)]
     (apply make-ncstrips-effect 
 	   (concat (for [f [:pos-preconditions :neg-preconditions :adds :deletes :possible-adds :possible-deletes]]
-		     (distinct (map instantiator (safe-get effect f))))
-		   [(apply (:cost effect) (map #(safe-get var-map (second %)) hla-vars))]))))
+		     (distinct (map instantiator (util/safe-get effect f))))
+		   [(apply (:cost effect) (map #(util/safe-get var-map (second %)) hla-vars))]))))
 ;		   [(eval `(let ~(vec (concat-elts (map (fn [[k v]] [k `'~v]) var-map))) 
 ;				   ~(:cost effect)))]))))
 
@@ -135,14 +138,14 @@
 		effect (:effects desc)]
 	    (progress-effect-clause effect clause)))]
 ;    (prn results)
-    (make-dnf-simple-valuation 
+    (dsv/make-dnf-simple-valuation 
      (map first results)
      (+ (:bound val) (reduce combiner (map second results))))))
       
-(defmethod progress-optimistic [:edu.berkeley.ai.angelic.dnf-simple-valuations/DNFSimpleValuation ::NCStripsDescription] [val desc]
+(defmethod progress-optimistic [:dsv/DNFSimpleValuation ::NCStripsDescription] [val desc]
   (progress-ncstrips val desc max))
 
-(defmethod progress-pessimistic [:edu.berkeley.ai.angelic.dnf-simple-valuations/DNFSimpleValuation ::NCStripsDescription] [val desc] ;TODO: improve
+(defmethod progress-pessimistic [:dsv/DNFSimpleValuation ::NCStripsDescription] [val desc] ;TODO: improve
   (progress-ncstrips val desc min))
 
 

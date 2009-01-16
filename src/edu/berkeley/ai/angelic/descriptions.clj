@@ -21,10 +21,10 @@
 
 (defn progress-explicit [val desc]
   (make-explicit-valuation
-    (merge-reduce min {}
+    (util/merge-reduce min {}
       (for [[state reward] (explicit-valuation-map val)
-	    action (applicable-actions state (:action-space desc))]
-	(let [[next step-reward] (next-state-and-reward state action)]
+	    action (envs/applicable-actions state (:action-space desc))]
+	(let [[next step-reward] (envs/next-state-and-reward state action)]
 	  [next (+ reward step-reward)])))))
 
 (defmethod progress-optimistic [::Valuation ::ExplicitDescription]  [val desc]
@@ -49,14 +49,14 @@
 (defstruct conditional-description :class :condition :max-reward)
 (derive ::ConditionalDescription ::Description)
 (defn make-conditional-description [condition max-reward]
-  (if (or (= condition *false-condition*)
+  (if (or (= condition envs/*false-condition*)
 	  (= max-reward Double/NEGATIVE_INFINITY))
       *pessimal-description*
     (struct conditional-description ::ConditionalDescription condition max-reward)))
 
 (defn make-optimal-description
   ([] (make-optimal-description Double/POSITIVE_INFINITY))
-  ([opt-rew] (make-conditional-description *true-condition* opt-rew)))
+  ([opt-rew] (make-conditional-description envs/*true-condition* opt-rew)))
 
 (defmethod progress-optimistic [::PessimalValuation ::ConditionalDescription] [val desc]
   val)

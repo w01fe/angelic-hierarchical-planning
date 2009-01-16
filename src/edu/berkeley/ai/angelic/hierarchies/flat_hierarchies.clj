@@ -25,15 +25,15 @@
 (defn make-flat-act-optimistic-description [goal upper-reward-fn]
   {:class ::FlatActOptimisticDescription :goal goal :upper-reward-fn upper-reward-fn})
 
-(defmethod progress-optimistic [:edu.berkeley.ai.angelic/Valuation ::FlatActOptimisticDescription] [val desc]
+(defmethod progress-optimistic [:angelic/Valuation ::FlatActOptimisticDescription] [val desc]
   (let [state-map (explicit-valuation-map val)]
-    (assert-is (= (count state-map) 1))
+    (util/assert-is (= (count state-map) 1))
     (let [[prev-state prev-reward] (first state-map)]
       (make-conditional-valuation 
        (:goal desc)
        (+ prev-reward ((:upper-reward-fn desc) prev-state))))))
    
-(defmethod progress-pessimistic [:edu.berkeley.ai.angelic/Valuation ::FlatActOptimisticDescription] [val desc]
+(defmethod progress-pessimistic [:angelic/Valuation ::FlatActOptimisticDescription] [val desc]
   (throw (UnsupportedOperationException.)))
 
 
@@ -41,7 +41,7 @@
 (defmethod instantiate-hierarchy ::FlatHierarchySchema [hierarchy instance]
   (make-flat-act-hla 
    instance 
-   (make-flat-act-optimistic-description (get-goal instance) (:upper-reward-fn hierarchy))))
+   (make-flat-act-optimistic-description (envs/get-goal instance) (:upper-reward-fn hierarchy))))
 
 
 (defmethod hla-primitive ::FlatPrimitiveHLA [hla] (:action hla))
@@ -50,31 +50,31 @@
 (defmethod hla-name ::FlatPrimitiveHLA [hla] (:name (:action hla)))
 (defmethod hla-name ::FlatActHLA [hla] 'act)
 
-(defmethod hla-immediate-refinements [::FlatPrimitiveHLA :edu.berkeley.ai.angelic/Valuation] [hla val] nil)
-(defmethod hla-immediate-refinements [::FlatActHLA :edu.berkeley.ai.angelic/Valuation]       [hla val]
+(defmethod hla-immediate-refinements [::FlatPrimitiveHLA :angelic/Valuation] [hla val] nil)
+(defmethod hla-immediate-refinements [::FlatActHLA :angelic/Valuation]       [hla val]
   (let [state-map (explicit-valuation-map val)]
-    (assert-is (= (count state-map) 1))
+    (util/assert-is (= (count state-map) 1))
     (let [[prev-state prev-reward] (first state-map)]
       (cons [] 
-	    (for [action (applicable-actions prev-state (get-action-space (:env hla)))]
+	    (for [action (envs/applicable-actions prev-state (envs/get-action-space (:env hla)))]
 	      [(make-flat-primitive-hla (:env hla) action) hla])))))
-;	(if (satisfies-condition? prev-state (get-goal (:env hla)))
+;	(if (envs/satisfies-condition? prev-state (envs/get-goal (:env hla)))
 ;	    (cons [] prim-act-refs)
 ;	  prim-act-refs)))))
 
 (defmethod hla-hierarchical-preconditions ::FlatPrimitiveHLA [hla] 
-  *true-condition*) ;TODO??
+  envs/*true-condition*) ;TODO??
 (defmethod hla-hierarchical-preconditions ::FlatActHLA [hla] 
-  *true-condition*) 
+  envs/*true-condition*) 
 
 (defmethod hla-optimistic-description ::FlatPrimitiveHLA [hla]
-  (make-explicit-description (make-enumerated-action-space [(:action hla)])))
+  (make-explicit-description (envs/make-enumerated-action-space [(:action hla)])))
 
 (defmethod hla-optimistic-description ::FlatActHLA [hla] 
   (:opt-desc hla))
 
 (defmethod hla-pessimistic-description ::FlatPrimitiveHLA [hla] 
-  (make-explicit-description (make-enumerated-action-space [(:action hla)])))
+  (make-explicit-description (envs/make-enumerated-action-space [(:action hla)])))
 
 (defmethod hla-pessimistic-description ::FlatActHLA [hla] 
   *pessimal-description*)

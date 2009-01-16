@@ -1,10 +1,10 @@
-; Textbook algorithms for fully observable, deterministic problems
-; with countable state spaces and finite action spaces.
-
 (ns edu.berkeley.ai.search.algorithms.real-time
   (:refer-clojure)
-  (:use (edu.berkeley.ai [util :as util] envs search))
+  (:use [edu.berkeley.ai.search :as search])
+  (:require [edu.berkeley.ai [util :as util] [envs :as envs]])
   )
+;;; Textbook algorithms for fully observable, deterministic problems
+;;; with countable state spaces and finite action spaces.
 
 
 (def *debug-level* 0)
@@ -14,11 +14,11 @@
   (loop [[state cur-seq] [state [[] 0]], max-steps max-steps]
 ;  (when (> *debug-level* 0) (prn (clojure.set/intersection state #{'(on d c) '(on c b) '(on b a)})))
     (let [node (state->search-node state)]
-      (when (> *debug-level* 0) (prn) (prln (node-str node)))
+      (when (> *debug-level* 0) (prn) (util/prln (search/node-str node)))
       (or (and (extract-optimal-solution node) cur-seq)
 	  (and (> max-steps 0) 
 	       (recur 
-		(next-initial-state
+		(envs/next-initial-state
 		 [state cur-seq]
 		 (action-fn node state))
 		(dec max-steps)))))))
@@ -29,7 +29,7 @@
   (real-time-search state state->search-node max-steps
     (fn [node state] 
       (node-first-action 
-       (random-maximal-element upper-reward-bound (refinements-depth node search-depth))))))
+       (util/random-maximal-element upper-reward-bound (refinements-depth node search-depth))))))
 
 
 (import '(java.util HashMap))
@@ -40,7 +40,7 @@
   (let [space (state-space-search-space env upper-reward-fn)
 	#^HashMap m (HashMap.)]
     (real-time-search 
-     (get-initial-state env)
+     (envs/get-initial-state env)
      (partial make-state-space-node space)
      max-steps
      (fn [node state]
@@ -50,7 +50,7 @@
 ;			(prn ". " (:state %) r (reward-so-far %) (upper-reward-bound (adjust-reward % (+ r (reward-so-far %)))))
 			(adjust-reward % (+ r (reward-so-far %))))
 		     search-depth)
-	     best (random-maximal-element upper-reward-bound nodes)]
+	     best (util/random-maximal-element upper-reward-bound nodes)]
 	 (.put m state (upper-reward-bound best))
 ;	 (prn (or (:state best) (cons "O" (:state (:node best)))) (upper-reward-bound best))
 	 (node-first-action best))))))
@@ -71,7 +71,7 @@
 	space (state-space-search-space instance (constantly 0))]
     (time 
      (lookahead-search 
-      (get-initial-state instance)
+      (envs/get-initial-state instance)
       (partial make-state-space-node space)
       100 1))) nil))
 
@@ -83,7 +83,7 @@
 	    space (state-space-search-space instance #(- (count (clojure.set/difference (set (:goal-atoms instance)) %))))]
 	(frequencies (map #(when % true) (take 1000 (repeatedly (fn []
      (lookahead-search 
-      (get-initial-state instance)
+      (envs/get-initial-state instance)
       (partial make-state-space-node space)
       100 1)))))))
 

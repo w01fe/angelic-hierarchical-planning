@@ -1,22 +1,14 @@
 (in-ns 'edu.berkeley.ai.util)
 
 (defn true-keys 
-  "Return a lazy seq of the keys corresponding to logically true values in map."
-  ([map] (for [[k v] map :when v] k))
+  "Return a lazy seq of the keys corresponding values satisfying pred in map."
+  ([pred map] (for [[k v] map :when (pred v)] k))
   {:test (fn [] (is (= #{ 3 4 6} (set (true-keys {1 nil 2 false 3 true 4 'asfd 5 nil 6 1})))))})
 
-(comment   ; group-by in clojure.contrib.seq-utils.
-(defn categorize 
-  "Return a map keyed by the output of key-fn with vals from s"
-  [key-fn s]
-  (reduce (fn [m item] 
-	    (let [k (key-fn item)]
-	      (assoc m k (cons item (get m k ())))))
-	  {} s))
-	  )
-
 (defn map-map "Like map, but expects f to return pairs/map entries that are combined to make a map return value."
- [f & maps] (reduce #(conj %1 %2) {} (apply map f maps)))
+  [f & maps] (into {} (map f maps)))
+     ;(reduce #(conj %1 %2) {} (apply map f maps)))
+
 
 (defmacro lazy-get "Like get but lazy about default"
   [m k d]
@@ -38,22 +30,8 @@
 (defn assoc-cat "Like assoc but for maps to lists"
   [m k v]
   (assoc m k (concat v (get m k))))
-
-(defn merge-cat "Like merge but concatenates duplicate values (in rev. order.)"
-  ([] {})
-  ([map] map)
-  ([m1 m2 & maps]
-     (apply merge-cat 
-	    (reduce (fn [m [k vs]] (assoc-cat m k vs))
-		    {} (concat m1 m2))
-	    maps)))
-
-(defn map-map-cat "A map-map that concatenates duplicate values"
-  [f m] (reduce (fn [m x] 
-		  (let [[k v] (f x)]
-		    (assoc-cat m k v)))
-		{} m))
   
+  ; TODO: replace with merge-with eventually
 (defn merge-reduce "Combines maps, reducing sets of values with same key. Assumes nil value = not present.  The first map entry must be a real map, but the remaining arguments can be seqs of map entries/pairs."
   ([f ] {})
   ([f m1 & maps]
@@ -65,4 +43,16 @@
 	     (concat-elts maps))))
 
       
+      
+(comment   ; group-by in clojure.contrib.seq-utils.
+(defn categorize 
+  "Return a map keyed by the output of key-fn with vals from s"
+  [key-fn s]
+  (reduce (fn [m item] 
+	    (let [k (key-fn item)]
+	      (assoc m k (cons item (get m k ())))))
+	  {} s))
+	  )
+
+
       

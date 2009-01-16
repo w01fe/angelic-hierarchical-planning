@@ -1,13 +1,16 @@
 (ns edu.berkeley.ai.angelic.dnf-simple-valuations
   (:refer-clojure)
-  (:use clojure.contrib.seq-utils [edu.berkeley.ai.util :as util] edu.berkeley.ai.envs edu.berkeley.ai.util.propositions edu.berkeley.ai.angelic edu.berkeley.ai.search.csps))
+  (:use [edu.berkeley.ai.angelic :as angelic])
+  (:require [edu.berkeley.ai [util :as util] [envs :as envs]]
+            [edu.berkeley.ai.util.propositions :as props]
+            [edu.berkeley.ai.search.csps :as csps]))
 
 ;;; A set of conjunctive clauses, maps from vars to :true or :unknown  (not present = :false)
 
 ; TODO: think about splitting out constant part of state.
 
 
-(derive ::DNFSimpleValuation :edu.berkeley.ai.angelic/PropositionalValuation)
+(derive ::DNFSimpleValuation :angelic/PropositionalValuation)
 
 (defstruct dnf-simple-valuation :class :dnf :bound)
 
@@ -19,7 +22,7 @@
 
   
 (defmethod make-initial-valuation     ::DNFSimpleValuation [type env]
-  (make-dnf-simple-valuation (list (map-map #(vector % :true) (get-initial-state env))) 0))
+  (make-dnf-simple-valuation (list (util/map-map #(vector % :true) (envs/get-initial-state env))) 0))
 
 (defmethod get-valuation-lower-bound ::DNFSimpleValuation [val] (:bound val))
 
@@ -42,7 +45,7 @@
 (defmethod explicit-valuation-map ::DNFSimpleValuation [val]
   (into {}
     (map #(vector % (:bound val))
-      (forcat [clause (:dnf val)]
+      (util/forcat [clause (:dnf val)]
 	(clause-instantiations clause)))))
 
 
@@ -57,9 +60,9 @@
 	    (= :true (get clause (first neg))) nil
 	    :else  (recur (rest neg) (dissoc clause (first neg)))))))
 
-(defmethod restrict-valuation       [::DNFSimpleValuation :edu.berkeley.ai.envs/ConjunctiveCondition] [val con]
-  (let [pos (get-positive-conjuncts con)
-	neg (get-negative-conjuncts con)]
+(defmethod restrict-valuation       [::DNFSimpleValuation :envs/ConjunctiveCondition] [val con]
+  (let [pos (envs/get-positive-conjuncts con)
+	neg (envs/get-negative-conjuncts con)]
     (make-dnf-simple-valuation 
      (filter identity (for [clause (:dnf val)] (restrict-clause clause pos neg)))
      (:bound val))))
@@ -74,8 +77,8 @@
 ; To be supported, a value must appear in at least one instantiation of each 
 (comment 
 (defn filter-domains [clause var-pos var-neg dummy-domains]
-  (let [pos-pred-map (map-map-cat #(vector (first %) [(rest %)]) var-pos)
-	neg-pred-map (map-map-cat #(vector (first %) [(rest %)]) var-pos)]
+  (let [pos-pred-map (util/merge-reduce concat {} (map #(vector (first %) [(rest %)]) var-pos))
+	neg-pred-map (util/merge-reduce concat {} (map #(vector (first %) [(rest %)]) var-pos))]
     (loop [allowed {}
 	   disallowed {}
 	   clause (seq clause)]
@@ -86,7 +89,7 @@
 	     allowed)
 	   
 	   (rest clause))
-	(map-map 
+	(util/map-map 
 	 (fn [dummy-var domain]
 	   [dummy-var
 	    (clojure.set/difference 
@@ -98,33 +101,33 @@
 (defn clause-consistent-mappings [clause var-pos var-neg dummy-domains]
   (let [dummy-seq (seq (filter-domains clause var-pos var-neg dummy-domains))]
     (filter #(restrict-clause clause 
-	       (map (partial simplify-atom %) var-pos) 
-	       (map (partial simplify-atom %) var-neg))
-	    (for [combo (combinations (map second dummy-seq))]
-	      (map-map (fn [dummy-map-entry dummy-val] [(first dummy-map-entry) dummy-val])
+	       (map (partial props/simplify-atom %) var-pos) 
+	       (map (partial props/simplify-atom %) var-neg))
+	    (for [combo (util/combinations (map second dummy-seq))]
+	      (util/map-map (fn [dummy-map-entry dummy-val] [(first dummy-map-entry) dummy-val])
 		       dummy-seq combo)))))
   
 
 (defn clause-consistent-mappings [clause var-pos var-neg dummy-domains]
   (let [dummy-seq (seq dummy-domains)]
     (filter #(restrict-clause clause 
-	       (map (partial simplify-atom %) var-pos) 
-	       (map (partial simplify-atom %) var-neg))
-	    (for [combo (combinations (map second dummy-seq))]
-	      (map-map (fn [dummy-map-entry dummy-val] [(first dummy-map-entry) dummy-val])
+	       (map (partial props/simplify-atom %) var-pos) 
+	       (map (partial props/simplify-atom %) var-neg))
+	    (for [combo (util/combinations (map second dummy-seq))]
+	      (util/map-map (fn [dummy-map-entry dummy-val] [(first dummy-map-entry) dummy-val])
 		       dummy-seq combo)))))
 )
 ; CSP approach cuts time in half for 25x25 nav-switch domains.
 (defn clause-consistent-mappings [clause var-pos var-neg dummy-domains]
-  (all-csp-solutions (make-conjunctive-propositional-csp dummy-domains var-pos var-neg clause)))
+  (csps/all-csp-solutions (csps/make-conjunctive-propositional-csp dummy-domains var-pos var-neg clause)))
 
-(defmethod valuation-consistent-mappings [::DNFSimpleValuation :edu.berkeley.ai.envs/ConjunctiveCondition]
+(defmethod valuation-consistent-mappings [::DNFSimpleValuation :envs/ConjunctiveCondition]
   [opt-val quasi-ground-condition dummy-domains]
-  (let [[var-pos ground-pos] (separate #(some is-dummy-var? (rest %)) 
-				       (get-positive-conjuncts quasi-ground-condition))
-	[var-neg ground-neg] (separate #(some is-dummy-var? (rest %)) 
-				       (get-negative-conjuncts quasi-ground-condition))
-	opt-val (restrict-valuation opt-val (make-conjunctive-condition ground-pos ground-neg))]
+  (let [[var-pos ground-pos] (util/separate #(some props/is-dummy-var? (rest %)) 
+				       (envs/get-positive-conjuncts quasi-ground-condition))
+	[var-neg ground-neg] (util/separate #(some props/is-dummy-var? (rest %)) 
+				       (envs/get-negative-conjuncts quasi-ground-condition))
+	opt-val (restrict-valuation opt-val (envs/make-conjunctive-condition ground-pos ground-neg))]
 ;    (prn dummy-domains ground-pos var-pos ground-neg var-neg opt-val)
     (when-not (empty-valuation? opt-val)
       (reduce clojure.set/union #{} (map #(clause-consistent-mappings % var-pos var-neg dummy-domains)

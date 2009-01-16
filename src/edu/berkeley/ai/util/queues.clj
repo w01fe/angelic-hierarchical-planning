@@ -1,16 +1,12 @@
+(ns edu.berkeley.ai.util.queues
+  (:refer-clojure)
+  (:import (java.util PriorityQueue HashMap HashSet) (com.bluemarsh.graphmaker.core.util FibonacciHeap))  
+  (:use edu.berkeley.ai.util)
+  )
+  
+
 ; Priority queues. 
 ; BEWARE; some of these will not save you from GHI-type problems. (depth-limited search).
-
-(ns edu.berkeley.ai.util
-  (:import (java.util PriorityQueue HashMap HashSet) (com.bluemarsh.graphmaker.core.util FibonacciHeap))
-  )
-
-(defn pst2
-   "Print the stack trace of the \"cause\" of the specified exception or *e if none passed"
-   ([] (.printStackTrace (.getCause *e)))
-   ([e] (.printStackTrace (.getCause e)))
-    )
-
 
 
 ; Priority queues for searching

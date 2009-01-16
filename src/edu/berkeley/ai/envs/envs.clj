@@ -39,15 +39,15 @@
   (let [action-space (get-action-space env)
 	init         (get-initial-state env)
 	goal         (get-goal env)
-	action-map   (map-map #(vector (:name %) %) (all-actions action-space))]
+	action-map   (util/map-map #(vector (:name %) %) (all-actions action-space))]
     (loop [state init rest-act-seq act-seq]
       (if (seq rest-act-seq)
 	  (let [next1 (safe-next-state state (first rest-act-seq))
-		next2 (safe-next-state state (safe-get action-map (:name (first rest-act-seq))))]
-	    (assert-is (= next1 next2))
-	    (assert-is (= (:reward ^next1) (:reward ^next2)))
+		next2 (safe-next-state state (util/safe-get action-map (:name (first rest-act-seq))))]
+	    (util/assert-is (= next1 next2))
+	    (util/assert-is (= (:reward ^next1) (:reward ^next2)))
 	    (recur next1 (rest rest-act-seq)))
 	(do 
-	  (assert-is (satisfies-condition? state goal))
-	  (assert-is (= reward (:reward ^state)))
+	  (util/assert-is (satisfies-condition? state goal))
+	  (util/assert-is (= reward (:reward ^state)))
 	  [act-seq reward state])))))

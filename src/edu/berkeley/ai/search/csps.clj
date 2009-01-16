@@ -1,6 +1,6 @@
 (ns edu.berkeley.ai.search.csps
  (:refer-clojure)
- (:use [edu.berkeley.ai.util :as util] edu.berkeley.ai.util.propositions)
+ (:require [edu.berkeley.ai.util :as util] [edu.berkeley.ai.util.propositions :as props])
  )
 
 ;;; CSP
@@ -65,11 +65,11 @@
   (make-pn-cp-csp-constraint pos neg))
 
 (defmethod conjoin-constraints [::PositiveCSPConstraint ::PositiveCSPConstraint] [p1 p2]
-  (assert-is (= (:index-map p1) (:index-map p2)))
+  (util/assert-is (= (:index-map p1) (:index-map p2)))
   (make-positive-cp-csp-constraint (:index-map p1) (clojure.set/intersection (set (:values p1)) (:values p2))))
 
 (defmethod conjoin-constraints [::NegativeCSPConstraint ::NegativeCSPConstraint] [n1 n2]
-  (assert-is (= (:index-map n1) (:index-map n2)))
+  (util/assert-is (= (:index-map n1) (:index-map n2)))
   (make-negative-cp-csp-constraint (:index-map n1) (clojure.set/union (set (:values n1)) (:values n2))))
 
 (defmethod conjoin-constraints [::PNCSPConstraint ::PositiveCSPConstraint] [c pos]
@@ -99,28 +99,28 @@
 ; Assume all non-variabilized atoms have been removed.
 (defn- process-args "Get [ground-args-parser var-map var-set]" [var-domains args pos?]
   (let [var-set (clojure.set/intersection (set args) (keys var-domains))
-	vars (make-safe (sort var-set))
-	all-inds (map #(positions % args) vars)
+	vars (util/make-safe (sort var-set))
+	all-inds (map #(util/positions % args) vars)
 	inds (map first all-inds)
 	dups (filter #(> (count %) 1) all-inds)
 	tmpl (map #(or (get var-domains %) %) args)]
 ;    (prn args pos? vars all-inds inds dups tmpl)
     [(fn [ground-args truth-val]
- ;      (prln "\n" ground-args truth-val "\n")
+ ;      (util/prln "\n" ground-args truth-val "\n")
        (when (and (or pos? (= truth-val :true))
-		  (mevery? (fn [t g] (if (set? t) (contains? t g) (= t g))) tmpl ground-args)
+		  (util/mevery? (fn [t g] (if (set? t) (contains? t g) (= t g))) tmpl ground-args)
 		  (every? (fn [l] (apply = (map #(nth ground-args %) l))) dups)) 
 	   (vec (map #(nth ground-args %) inds))))
-     (map-map vector vars (iterate inc 0))
+     (util/map-map vector vars (iterate inc 0))
      var-set]))
   
 
 ; TODO: split into csp-domains and instances, move much of pre-work to domains.  Domains should be sets!
 (defn make-conjunctive-propositional-csp [domains pos-atoms neg-atoms ground-clause-map]
-  (let [domains (map-map (fn [[k v]] [k (set v)]) domains)
+  (let [domains (util/map-map (fn [[k v]] [k (set v)]) domains)
 	pred-map
 	 (loop [pred-map  ; create map from predicates to lists of (value-set [p-fn var-map var-set] pos?) entries
-		(merge-reduce concat {} 
+		(util/merge-reduce concat {} 
 		  (map (fn [atom] [(first atom) [(list #{} (process-args domains (rest atom) true) true)]]) pos-atoms)
 		  (map (fn [atom] [(first atom) [(list #{} (process-args domains (rest atom) false) false)]]) neg-atoms))
 		grounds (seq ground-clause-map)]
@@ -132,23 +132,23 @@
 			         (for [elt constraints]
 				   (let [[value-set [parse-fn]] elt]
 				     (if-let [val-vec  (parse-fn args pos?)] 
-					          ; (prln (parse-fn args truth-val) (cons pred args) elt)]
+					          ; (util/prln (parse-fn args truth-val) (cons pred args) elt)]
 				         (cons (conj value-set val-vec)
 					       (rest elt))
 				       elt))))
 		        pred-map))
 		    (rest grounds))))
 	set-map          ; create constraints and merge them, intersecting domains of pos constraints and unioning neg.
-	  (merge-reduce conjoin-constraints {}
+	  (util/merge-reduce conjoin-constraints {}
 	    (mapcat (fn [[pred constraint-specs]]
 		      (for [[vals [p-fn var-map var-set] pos?] constraint-specs]
-		        ;(prln "AAA" pred vals p-fn var-map var-set pos?)
+		        ;(util/prln "AAA" pred vals p-fn var-map var-set pos?)
 			[var-set ((if pos? make-positive-cp-csp-constraint make-negative-cp-csp-constraint)
 				  var-map vals)]))
 		    pred-map))]
     (make-cp-csp 
      domains
-     (merge-reduce concat {} (mapcat (fn [s] (for [item s] [item [s]])) (keys set-map)))
+     (util/merge-reduce concat {} (mapcat (fn [s] (for [item s] [item [s]])) (keys set-map)))
      set-map)))
 
 
@@ -168,7 +168,7 @@
 ;  (prn csp var-domains)
   (if (empty? var-domains)
       [(:domains csp)]
-    (lazy-mapcat #(when-let [next-csp (set-variable-value csp (ffirst var-domains) %)]
+    (util/lazy-mapcat #(when-let [next-csp (set-variable-value csp (ffirst var-domains) %)]
 		    (all-csp-solutions- next-csp (rest var-domains)))
 		 (second (first var-domains)))))
 

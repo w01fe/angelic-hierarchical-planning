@@ -1,6 +1,12 @@
 (ns edu.berkeley.ai.angelic.hierarchies.strips-hierarchies
   (:refer-clojure)
-  (:use clojure.contrib.seq-utils [edu.berkeley.ai.util :as util] edu.berkeley.ai.envs edu.berkeley.ai.util.propositions edu.berkeley.ai.domains.strips edu.berkeley.ai.angelic edu.berkeley.ai.angelic.ncstrips-descriptions edu.berkeley.ai.angelic.hierarchies)
+  (:use [edu.berkeley.ai.angelic :as angelic] 
+        [edu.berkeley.ai.angelic.hierarchies :as hierarchies])
+  (:require [edu.berkeley.ai [util :as util] [envs :as envs]]
+        [edu.berkeley.ai.util.propositions :as props]
+        [edu.berkeley.ai.domains.strips :as strips]
+        [edu.berkeley.ai.angelic.ncstrips-descriptions :as ncstrips]
+        )
   )
 
 ;;; A strips-like hierarchy definition, essentially the one used in our ICAPS '07 and '08 papers.
@@ -26,35 +32,35 @@
 ; TODO: double check about removing precs from NCSTRIPS for primitives.
 ; TODO: some more general way to do this (without focusing on ncstrips)
 (defn- make-strips-primitive-hla-schema [types objects predicates action]
-  (let [desc (make-ncstrips-description-schema types (check-objects types (concat objects (:vars action))) predicates 
-					       [(make-ncstrips-effect (:pos-pre action) (:neg-pre action) (:add-list action) (:delete-list action) nil nil (constantly (:cost action)))] (:vars action))]
+  (let [desc (ncstrips/make-ncstrips-description-schema types (props/check-objects types (concat objects (:vars action))) predicates 
+					       [(ncstrips/make-ncstrips-effect (:pos-pre action) (:neg-pre action) (:add-list action) (:delete-list action) nil nil (constantly (:cost action)))] (:vars action))]
     (make-strips-hla-schema (:name action) (:vars action) (:pos-pre action) (:neg-pre action) :primitive desc desc action)))
 
 
 (defn parse-strips-hla-schema [hla domain]
-  (match [#{[:optional [:parameters   [unquote parameters]]]
+  (util/match [#{[:optional [:parameters   [unquote parameters]]]
 	    [:optional [:precondition [unquote precondition]]]
 	    [:multiple [:refinement   [unquote refinements]]]
 	    [:optional [:optimistic   [unquote optimistic]]]
 	    [:optional [:pessimistic  [unquote pessimistic]]]
 	    [:optional [:exact        [unquote exact]]]}
-	  (chunk 2 (rest hla))]
-    (when exact (assert-is (empty? optimistic)) (assert-is (empty? pessimistic)))
+	  (util/partition-all 2 (rest hla))]
+    (when exact (util/assert-is (empty? optimistic)) (util/assert-is (empty? pessimistic)))
     (let [name (first hla)
-	  [pos-pre neg-pre] (parse-pddl-conjunction precondition)
-	   params        (parse-typed-pddl-list parameters)] 
+	  [pos-pre neg-pre] (props/parse-pddl-conjunction precondition)
+	   params        (props/parse-typed-pddl-list parameters)] 
       (make-strips-hla-schema
        name
        params
        pos-pre
        neg-pre
        (map (fn [refinement]
-	      (match [[[:optional [:name [unquote ref-name]]]
+	      (util/match [[[:optional [:name [unquote ref-name]]]
 		       [:optional [:precondition [unquote precondition]]]
 		       [:expansion [unquote expansion]]]
-		      (chunk 2 refinement)]
-		(let [[pp np] (parse-pddl-conjunction precondition)] 
-		  [(if ref-name (symbol-cat name '- ref-name) (gensym name)) pp np nil expansion])))
+		      (util/partition-all 2 refinement)]
+		(let [[pp np] (props/parse-pddl-conjunction precondition)] 
+		  [(if ref-name (util/symbol-cat name '- ref-name) (gensym name)) pp np nil expansion])))
 	    refinements)
        (parse-description (or optimistic exact [:opt]) domain params)
        (parse-description (or pessimistic exact [:pess]) domain params)
@@ -66,29 +72,29 @@
   (for [action expansion]
     (do 
       (let [params (rest action)
-	    declared-types (safe-get all-actions (first action))]
-	(assert-is (= (count params) (count declared-types)))
+	    declared-types (util/safe-get all-actions (first action))]
+	(util/assert-is (= (count params) (count declared-types)))
 	(doseq [[type par] (map vector declared-types params)]
-	  (check-type types vars-and-objects par type)))      
+	  (props/check-type types vars-and-objects par type)))      
       (seq action)))))
 
 (defn get-dummy-var-type-map [types all-actions expansion]
-  (let [allowed-vars (filter is-dummy-var? (rest (first expansion)))]
-    (map-map (fn [[var ts]] [var (maximal-subtypes types ts)])
-	     (map-map-cat identity
+  (let [allowed-vars (filter props/is-dummy-var? (rest (first expansion)))]
+    (util/map-map (fn [[var ts]] [var (props/maximal-subtypes types ts)])
+	     (util/merge-reduce concat {} 
 	      (for [action expansion
-		    [var type] (map vector (rest action) (safe-get all-actions (first action)))
-		    :when (is-dummy-var? var)]
-		(do (assert-is (includes? var allowed-vars))
+		    [var type] (map vector (rest action) (util/safe-get all-actions (first action)))
+		    :when (props/is-dummy-var? var)]
+		(do (util/assert-is (util/includes? var allowed-vars))
 		    [var [type]]))))))
    
 
 (defn- check-hla-schema [types guaranteed-objs predicates all-actions hla-schema] 
-  (assert-is (not (map? (:vars hla-schema))))
-  (assert-is (distinct-elts? (map first (:refinement-schemata hla-schema))) "non-distinct refinement names %s" hla-schema)
-  (assert-is (not-any? #(is-dummy-var? (second %)) (:vars hla-schema))) 
-  (let [vars-and-objects (check-objects types (concat guaranteed-objs (:vars hla-schema)))
-	atom-checker     (fn [atoms] (map #(check-atom types vars-and-objects predicates %) atoms))]
+  (util/assert-is (not (map? (:vars hla-schema))))
+  (util/assert-is (apply distinct? (map first (:refinement-schemata hla-schema))) "non-distinct refinement names %s" hla-schema)
+  (util/assert-is (not-any? #(props/is-dummy-var? (second %)) (:vars hla-schema))) 
+  (let [vars-and-objects (props/check-objects types (concat guaranteed-objs (:vars hla-schema)))
+	atom-checker     (fn [atoms] (map #(props/check-atom types vars-and-objects predicates %) atoms))]
     (make-strips-hla-schema 
      (:name hla-schema)
      (:vars hla-schema)
@@ -96,13 +102,13 @@
      (atom-checker (:neg-pre hla-schema))
      (doall 
      (map (fn [[name pos-pre neg-pre dummy-map expansion]]
-	    (assert-is (empty? dummy-map))
+	    (util/assert-is (empty? dummy-map))
 	    (let [dummy-map (get-dummy-var-type-map types all-actions expansion)
-		  impl-vars-and-objects (merge-cat vars-and-objects   ; add dummy vars
+		  impl-vars-and-objects (util/merge-reduce concat  vars-and-objects   ; add dummy vars
 						   (for [[v ts] dummy-map
 							 t ts]
 						     [t [v]]))
-		  impl-atom-checker (fn [atoms] (map #(check-atom types impl-vars-and-objects predicates %) atoms))]
+		  impl-atom-checker (fn [atoms] (map #(props/check-atom types impl-vars-and-objects predicates %) atoms))]
 ;	      (prn (:name hla-schema) dummy-map)
 	      [name
 	       (impl-atom-checker pos-pre)
@@ -120,13 +126,13 @@
 
 (defn- check-hla-schemata [types guaranteed-objs predicates actions hla-schemata]
 ;  (prn hla-schemata)
-  (let [all-actions (merge (map-map #(vector (:name %) (map first (:vars %))) actions)
-			   (map-map #(vector (:name %) (map first (:vars %))) hla-schemata))]
+  (let [all-actions (merge (util/map-map #(vector (:name %) (map first (:vars %))) actions)
+			   (util/map-map #(vector (:name %) (map first (:vars %))) hla-schemata))]
 ;    (prn all-actions)
-    (assert-is (= (count all-actions) (+ (count actions) (count hla-schemata))))
+    (util/assert-is (= (count all-actions) (+ (count actions) (count hla-schemata))))
     (let [hla-schemata (doall (map (partial check-hla-schema types guaranteed-objs predicates all-actions) hla-schemata))]
-      (assert-is (some #(= (:name %) 'act) hla-schemata))
-      (map-map #(vector (:name %) %) 
+      (util/assert-is (some #(= (:name %) 'act) hla-schemata))
+      (util/map-map #(vector (:name %) %) 
 	       (concat hla-schemata
 		       (map (partial make-strips-primitive-hla-schema types guaranteed-objs predicates) actions))))))
 
@@ -135,8 +141,8 @@
 ;; Parse and check an entire hierarchy   
      
 (defmethod parse-hierarchy-type :strips-hierarchy [type contents domain]
-  (assert-is (isa? (:class domain) :edu.berkeley.ai.domains.strips/StripsPlanningDomain))
-  (match [[[:multiple (:hla [unquote-seq hlas])]] contents]
+  (util/assert-is (isa? (:class domain) :strips/StripsPlanningDomain))
+  (util/match [[[:multiple (:hla [unquote-seq hlas])]] contents]
     {:class ::StripsHierarchySchema, :hlas
      (check-hla-schemata (:types domain) (:guaranteed-objs domain) (:predicates domain) (:action-schemata domain)
 			 (map #(parse-strips-hla-schema % domain) hlas))}))
@@ -145,18 +151,18 @@
   {:class ::FlatActOptimisticDescriptionSchema :upper-reward-fn upper-reward-fn})
 
 (defmethod instantiate-description-schema ::FlatActOptimisticDescriptionSchema [desc instance]
-  (make-flat-act-optimistic-description (get-goal instance) (:upper-reward-fn desc)))
+  (make-flat-act-optimistic-description (envs/get-goal instance) (:upper-reward-fn desc)))
 
-(defmethod ground-description :edu.berkeley.ai.angelic.hierarchies/FlatActOptimisticDescription [desc var-map] desc)
+(defmethod ground-description :angelic.hierarchies/FlatActOptimisticDescription [desc var-map] desc)
 
 ; TODO: use ncstrips for Act description?
 ; Immediate refinements are [name pos-prec neg-prec unk-types expansion]
 ; TODO: check it's correct to ignore primitive precs.
 (defn make-flat-strips-hierarchy-schema [domain upper-reward-fn]
-  (assert-is (isa? (:class domain) :edu.berkeley.ai.domains.strips/StripsPlanningDomain))
+  (util/assert-is (isa? (:class domain) :strips/StripsPlanningDomain))
   {:class ::StripsHierarchySchema
    :hlas 
-     (map-map #(vector (:name %) %) 
+     (util/map-map #(vector (:name %) %) 
 	(cons
 	  (make-strips-hla-schema
 	   'act nil nil nil
@@ -181,7 +187,7 @@
 
 ;; Grounded STRIPS HLAs and hierarchies (for now, actual grounding done JIT)
 
-(derive ::StripsHLA :edu.berkeley.ai.angelic.hierarchies/HLA)
+(derive ::StripsHLA :angelic.hierarchies/HLA)
 (derive ::StripsPrimitiveHLA ::StripsHLA)
 
 
@@ -201,10 +207,10 @@
     :pessimistic-schema (instantiate-description-schema (:pessimistic-schema hla) instance)))
 
 (defmethod instantiate-hierarchy ::StripsHierarchySchema [hierarchy instance] 
-  (assert-is (isa? (:class instance) :edu.berkeley.ai.domains.strips/StripsPlanningInstance))
-  (let [hla-map (map-map (fn [[name hla]] [name (instantiate-strips-hla-schema hla instance)])
-			 (safe-get hierarchy :hlas))
-	act     (safe-get hla-map 'act)
+  (util/assert-is (isa? (:class instance) :strips/StripsPlanningInstance))
+  (let [hla-map (util/map-map (fn [[name hla]] [name (instantiate-strips-hla-schema hla instance)])
+			 (util/safe-get hierarchy :hlas))
+	act     (util/safe-get hla-map 'act)
 	opt-desc  (instantiate-description-schema (parse-description [:opt] :dummy :dummy) instance)
 	pess-desc (instantiate-description-schema (parse-description [:pess] :dummy :dummy) instance)
 	dummy-vars (for [[t v] (:vars act)] [(keyword (str "?" v)) [t]])]
@@ -212,11 +218,11 @@
      (struct strips-hierarchy ::StripsHierarchy hla-map instance)
      (make-strips-hla-schema (gensym "strips-top-level-action") {} nil nil 
 			     [[(gensym "strips-top-level-action-ref") nil nil
-			       (map-map identity dummy-vars) 
+			       (util/map-map identity dummy-vars) 
 			       (list (cons 'act (map first dummy-vars)))]]
 			     opt-desc pess-desc nil)  ; Dummy top-level action
      {}
-     (make-conjunctive-condition nil nil)
+     (envs/make-conjunctive-condition nil nil)
      false
      )))
 
@@ -239,7 +245,7 @@
 
 (defmethod hla-primitive ::StripsHLA [hla] nil)
 (defmethod hla-primitive ::StripsPrimitiveHLA [hla] 
-  (strips-action->action (get-strips-action-schema-instance (:primitive hla) (:var-map hla))))
+  (strips/strips-action->action (strips/get-strips-action-schema-instance (:primitive hla) (:var-map hla))))
 
 (defmethod hla-hierarchical-preconditions ::StripsHLA [hla]
   (:precondition hla))
@@ -253,62 +259,62 @@
 (defn- translate-var-map "Get the var mappings for hla, given this args and var-map" [hla args var-map pass-dummy?]
 ;  (prn (:vars hla) args var-map pass-dummy?)
   (let [hla-vars (:vars hla)]
-    (assert-is (= (count args) (count hla-vars)) "%s %s %s %s" (:name hla) (:vars hla) args var-map)
-    (map-map (fn [[arg hla-var]] [hla-var (if (and pass-dummy? (is-dummy-var? arg))
+    (util/assert-is (= (count args) (count hla-vars)) "%s %s %s %s" (:name hla) (:vars hla) args var-map)
+    (util/map-map (fn [[arg hla-var]] [hla-var (if (and pass-dummy? (props/is-dummy-var? arg))
 					      arg
-					    (safe-get var-map arg))]) 
+					    (util/safe-get var-map arg))]) 
 	     (map #(vector %1 (second %2)) args hla-vars))))
 
 
 (defn- refinement-instantiations [precondition hierarchy expansion opt-val var-map dummy-var-vals]
   (if (empty? expansion)   ; must handle empty expansion specially
-      (do (assert-is (empty? dummy-var-vals))
+      (do (util/assert-is (empty? dummy-var-vals))
 	  (when-not (empty-valuation? (restrict-valuation opt-val precondition))
 	    ['()]))
-    (let [hla-map      (safe-get hierarchy :hla-map),
-	  first-action (safe-get hla-map (ffirst expansion)),
+    (let [hla-map      (util/safe-get hierarchy :hla-map),
+	  first-action (util/safe-get hla-map (ffirst expansion)),
 	  first-var-map (translate-var-map first-action (rfirst expansion) var-map true)
-	  quasi-ground-first-precondition (conjoin-conditions
-					   (make-conjunctive-condition
-					    (map (partial simplify-atom first-var-map) (:pos-pre first-action))
-					    (map (partial simplify-atom first-var-map) (:neg-pre first-action)))
+	  quasi-ground-first-precondition (envs/conjoin-conditions
+					   (envs/make-conjunctive-condition
+					    (map (partial props/simplify-atom first-var-map) (:pos-pre first-action))
+					    (map (partial props/simplify-atom first-var-map) (:neg-pre first-action)))
 					   precondition)]
       (for [dummy-var-map (valuation-consistent-mappings opt-val quasi-ground-first-precondition dummy-var-vals)]
 	(let [final-var-map (merge var-map dummy-var-map)]
 	  (map (fn [call extra-preconditions]
-		 (let [hla (safe-get hla-map (first call))
+		 (let [hla (util/safe-get hla-map (first call))
 		       trans-var-map (translate-var-map hla (rest call) final-var-map false)]
 ;		   (prn (rest call) final-var-map trans-var-map)
 		   (make-strips-hla 
 		    hierarchy 
 		    hla 
 		    trans-var-map 
-		    (conjoin-conditions 
-		     (make-conjunctive-condition
-		      (map (partial simplify-atom trans-var-map) (safe-get hla :pos-pre)) 
-		      (map (partial simplify-atom trans-var-map) (safe-get hla :neg-pre))) 
+		    (envs/conjoin-conditions 
+		     (envs/make-conjunctive-condition
+		      (map (partial props/simplify-atom trans-var-map) (util/safe-get hla :pos-pre)) 
+		      (map (partial props/simplify-atom trans-var-map) (util/safe-get hla :neg-pre))) 
 		     extra-preconditions)
 		    (:primitive hla))))
 	       expansion 
-	       (cons (ground-propositional-condition  precondition dummy-var-map)
-		     (repeat (make-conjunctive-condition nil nil)))))))))
+	       (cons (envs/ground-propositional-condition  precondition dummy-var-map)
+		     (repeat (envs/make-conjunctive-condition nil nil)))))))))
 
 
-(defmethod hla-immediate-refinements [::StripsPrimitiveHLA :edu.berkeley.ai.angelic/Valuation] [hla] (throw (UnsupportedOperationException.)))
+(defmethod hla-immediate-refinements [::StripsPrimitiveHLA :angelic/Valuation] [hla] (throw (UnsupportedOperationException.)))
 
-(defmethod hla-immediate-refinements     [::StripsHLA :edu.berkeley.ai.angelic/PropositionalValuation] [hla opt-val]
+(defmethod hla-immediate-refinements     [::StripsHLA :angelic/PropositionalValuation] [hla opt-val]
   (let [opt-val (restrict-valuation opt-val (:precondition hla))
 	hierarchy (:hierarchy hla)
 	objects   (:trans-objects (:problem-instance hierarchy))
 	var-map   (:var-map hla)]
     (when-not (empty-valuation? opt-val)
-      (forcat [[name pos-pre neg-pre dummy-type-map expansion] (:refinement-schemata (:schema hla))]
-	 (let [quasi-ground-impl-pre (make-conjunctive-condition
-				      (map (partial simplify-atom var-map) pos-pre)
-				      (map (partial simplify-atom var-map) neg-pre))
-	       dummy-val-map (map-map (fn [[var types]] [var (forcat [t types] (safe-get objects t))]) 
+      (util/forcat [[name pos-pre neg-pre dummy-type-map expansion] (:refinement-schemata (:schema hla))]
+	 (let [quasi-ground-impl-pre (envs/make-conjunctive-condition
+				      (map (partial props/simplify-atom var-map) pos-pre)
+				      (map (partial props/simplify-atom var-map) neg-pre))
+	       dummy-val-map (util/map-map (fn [[var types]] [var (util/forcat [t types] (util/safe-get objects t))]) 
 				      dummy-type-map)]
-	   (refinement-instantiations (conjoin-conditions quasi-ground-impl-pre (:precondition hla))
+	   (refinement-instantiations (envs/conjoin-conditions quasi-ground-impl-pre (:precondition hla))
 				      hierarchy
 				      expansion
 				      opt-val

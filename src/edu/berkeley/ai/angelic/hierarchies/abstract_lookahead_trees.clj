@@ -53,7 +53,7 @@
   ([env upper-reward-fn] 
      (alt-search-space env (constantly Double/NEGATIVE_INFINITY) upper-reward-fn))
   ([env lower-reward-fn upper-reward-fn]
-     (make-alt-search-space- (get-alt env) (get-action-space env) (get-goal env) lower-reward-fn upper-reward-fn)))
+     (make-alt-search-space- (get-alt env) (envs/get-action-space env) (envs/get-goal env) lower-reward-fn upper-reward-fn)))
 
 (defn alt-search-node 
   ([env] 
@@ -62,8 +62,8 @@
      (alt-search-node env (constantly Double/NEGATIVE_INFINITY) upper-reward-fn))
   ([env lower-reward-fn upper-reward-fn]
      (make-alt-node 
-      (make-alt-search-space- (get-alt node) (get-action-space env) (get-goal env) lower-reward-fn upper-reward-fn)
-      (get-initial-state env))))  
+      (make-alt-search-space- (get-alt node) (envs/get-action-space env) (envs/get-goal env) lower-reward-fn upper-reward-fn)
+      (envs/get-initial-state env))))  
 
 ;;; Node methods 
 
@@ -80,9 +80,9 @@
   (let [search-space (:search-space node)
 	state (:state node)]
     (map #(make-alt-node search-space %) 
-	 (successor-states state (:action-space search-space)))))
+	 (envs/successor-states state (:action-space search-space)))))
 
-(defmethod primitive-refinement ::ALTNode [node] 
+(defmethod search/primitive-refinement ::ALTNode [node] 
   nil)
 
 (defmethod extract-optimal-solution ::ALTNode [node] 
@@ -94,8 +94,8 @@
   (when (satisfies-goal? (:state node) (:goal (:search-space node)))
     [(:act-seq ^(:state node)) (:reward ^(:state node))]))
 
-(defmethod node-str ::ALTNode [node] 
-  (state-str (:alt (:search-space node)) (:state node)))
+(defmethod search/node-str ::ALTNode [node] 
+  (states/state-str (:alt (:search-space node)) (:state node)))
 
 
 ;(defmethod node-parent ::ALTNode [node] 

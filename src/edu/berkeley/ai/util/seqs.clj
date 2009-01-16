@@ -1,17 +1,7 @@
-(ns edu.berkeley.ai.util
-  (:import (edu.berkeley.ai.util DelayedSeq)))
+(in-ns 'edu.berkeley.ai.util)
 
-(comment ; already in clojure.contrib with name includes? (no keys though)
-(defn member? 
-  "Is item a member of seq?"
-  ([item seq] (when-first [x seq] (or (= x item) (recur item (rest seq)))))
-  ([item seq key test] (when-first [x seq] (or (test (key x) (key item)) (recur item (rest seq) key test))))
-  {:test (fn [] (is (member? 1 '(2 1 3)))
-	        (is (not (member? 1 '(2 -1 3))))
-		(is (member? 1 '(2 -1 3) #(Math/abs %) =))
-		(is (member? [1 2] '([3 4] [1 2])))
-		(is (not (member? [1 2] '([3 4] [1 2]) identity ==))))})
-    )
+(import '(edu.berkeley.ai.util DelayedSeq))
+
 
 (defn random-permutation [s]
   "Return a random permutation of this seq." 
@@ -72,16 +62,16 @@
 
 ;(defn map-while "Like map but stops and returns nil on false result."
 
-(defn spread "Copied from clojure.core."
+(defmacro lazy-seq "Create a lazy seq.  Expands to a bunch of lazy-conses."
+  ([] nil)
+  ([arg & args] `(lazy-cons ~arg (lazy-seq ~@args))))
+
+(defn spread
   [arglist]
   (cond
    (nil? arglist) nil
    (nil? (rest arglist)) (seq (first arglist))
    :else (cons (first arglist) (spread (rest arglist)))))
-
-(defmacro lazy-seq "Create a lazy seq.  Expands to a bunch of lazy-conses."
-  ([] nil)
-  ([arg & args] `(lazy-cons ~arg (lazy-seq ~@args))))
 
 
 (defmacro delay-seq "Create a collection representing this sequence, *really* without evaluating it until needed.  May pass elements before the seq that will be consed onto the front, like apply."
@@ -99,21 +89,6 @@
 	(coll? x) (seq x)
 	:else     (list x)))
 
-(import '(java.util HashSet))
-(defn distinct-elts? "Are all of the elements of this sequence distinct?  Works on infinite sequences with repititions, making 
-                      it useful for, e.g., detecting cycles in graphs." 
-  [s]
-  (let [hs (HashSet.)]
-    (loop [s (seq s)]
-      (cond (empty? s)                    true
-	    (.contains hs (first s))        false
-            :else (do (.add hs (first s)) (recur (rest s)))))))
-	  
-(comment ; old version
-(defn distinct-elts? [s]
-  (let [s (seq s)]
-    (= (count s) (count (distinct s)))))
-  )
 
 (defn concat-elts "Lazily conctaenate a lazy seq of lazy seqs." [s] 
   (when (seq s) (lazy-cat (first s) (concat-elts (rest s)))))
@@ -132,19 +107,11 @@
       (when (rest coll)
         (report-seq msg (rest coll))))))
 
-(defn chunk "Lazily break s into chunks of length n (or less, for the final chunk)."
+(defn partition-all "Lazily break s into partition-alls of length n (or less, for the final partition-all)."
   [n s]
   (when (seq s)
     (lazy-cons (take n s)
-	       (chunk n (drop n s)))))
-  
-(defn combinations "Take a seq of seqs and return a lazy list of ordered combinations (pick 1 from each seq)" 
-  [seqs]
-  (if (empty? seqs) '(())
-    (forcat [item (first seqs)]
-      (map #(cons item %) (combinations (rest seqs))))))
-
-
+	       (partition-all n (drop n s)))))
 
 (defn position-if [f s]
   (loop [s (seq s) i (int 0)]
@@ -183,6 +150,15 @@
 	 (and (apply f (map first seqs))
 	      (recur f (map rest seqs))))))
 
+
+
+
+
+
+
+
+
+
 (comment   ; already in clojure.contrib with same name!
 (defn separate "Like filter, but returns [true-elts false-elts]"
   [pred coll]
@@ -198,3 +174,42 @@
 ;	true                 (lazy-
 
 ; (map (fn [[k v]] (list k (* (/ 6.0 10000) (count v)))) (categorize identity (take 10000 (repeatedly #(random-permutation '(1 2 3))))))
+
+
+(comment ; already in clojure.contrib with name includes? (no keys though)
+(defn member? 
+  "Is item a member of seq?"
+  ([item seq] (when-first [x seq] (or (= x item) (recur item (rest seq)))))
+  ([item seq key test] (when-first [x seq] (or (test (key x) (key item)) (recur item (rest seq) key test))))
+  {:test (fn [] (is (member? 1 '(2 1 3)))
+	        (is (not (member? 1 '(2 -1 3))))
+		(is (member? 1 '(2 -1 3) #(Math/abs %) =))
+		(is (member? [1 2] '([3 4] [1 2])))
+		(is (not (member? [1 2] '([3 4] [1 2]) identity ==))))})
+    )
+
+    (comment ; already in contrib  
+    (defn combinations "Take a seq of seqs and return a lazy list of ordered combinations (pick 1 from each seq)" 
+      [seqs]
+      (if (empty? seqs) '(())
+        (forcat [item (first seqs)]
+          (map #(cons item %) (combinations (rest seqs))))))
+       )
+
+       (comment ; not needed 
+       (import '(java.util HashSet))
+       (defn distinct-elts? "Are all of the elements of this sequence distinct?  Works on infinite sequences with repititions, making 
+                             it useful for, e.g., detecting cycles in graphs." 
+         [s]
+         (let [hs (HashSet.)]
+           (loop [s (seq s)]
+             (cond (empty? s)                    true
+       	    (.contains hs (first s))        false
+                   :else (do (.add hs (first s)) (recur (rest s)))))))
+       	  )
+
+       (comment ; old version
+       (defn distinct-elts? [s]
+         (let [s (seq s)]
+           (= (count s) (count (distinct s)))))
+         )

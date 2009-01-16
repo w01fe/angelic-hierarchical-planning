@@ -71,9 +71,9 @@
 
 ;(def *true-condition* (make-conjunctive-condition nil nil))
 
-(defn get-positive-conjuncts [c] (safe-get c :pos))
+(defn get-positive-conjuncts [c] (util/safe-get c :pos))
 
-(defn get-negative-conjuncts [c] (safe-get c :neg))
+(defn get-negative-conjuncts [c] (util/safe-get c :neg))
 
 
 (defmethod satisfies-condition? ::ConjunctiveCondition [s c]
@@ -87,8 +87,8 @@
 			      
 (defmethod ground-propositional-condition ::ConjunctiveCondition [c var-map]
   (make-conjunctive-condition
-   (map (partial simplify-atom var-map) (get-positive-conjuncts c))
-   (map (partial simplify-atom var-map) (get-negative-conjuncts c))))
+   (map (partial props/simplify-atom var-map) (get-positive-conjuncts c))
+   (map (partial props/simplify-atom var-map) (get-negative-conjuncts c))))
 
 (defmethod consistent-condition? ::ConjunctiveCondition [condition]
   (empty? (clojure.set/intersection (:pos condition) (:neg condition))))
