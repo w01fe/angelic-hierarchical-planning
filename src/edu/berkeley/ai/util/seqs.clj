@@ -18,9 +18,9 @@
   (nth s (rand-int (count s))))
 
 (defn maximal-elements [f s]
-  "Return the first element of s maximizing (f elt)."
+  "Return a seq of elements of s maximizing (f elt)."
   (when (seq s)
-    (loop [max-elts (first s), 
+    (loop [max-elts [(first s)], 
 	   max-val (f (first s)),
 	   rest-elts (rest s)]
       (if (empty? rest-elts) 

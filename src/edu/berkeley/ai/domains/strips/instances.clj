@@ -52,7 +52,7 @@
  
 (defn get-strips-predicate-instantiations [instance]
   (for [[pred args] (:predicates (:domain instance))
-	combo       (util/combinations (map #(util/safe-get (:trans-objects instance) %) args))]
+	combo       (apply util/combinations (map #(util/safe-get (:trans-objects instance) %) args))]
     (cons pred combo)))
 
 (defmethod envs/get-state-space   ::StripsPlanningInstance [instance]
@@ -75,7 +75,7 @@
 (defn get-strips-action-schema-instantiations [action-schema objects]
 ;  (prn action-schema) (util/prln
   (map (partial get-strips-action-schema-instance action-schema)
-       (for [combo (util/combinations (map #(util/safe-get objects (first %)) (:vars action-schema)))]
+       (for [combo (apply util/combinations (map #(util/safe-get objects (first %)) (:vars action-schema)))]
 	 (util/map-map (fn [[t v] val] [v val]) (:vars action-schema) combo))))
 
 (defn strips-action->action [schema]
@@ -89,7 +89,62 @@
       (- (:cost schema))])
    (envs/make-conjunctive-condition (:pos-pre schema) (:neg-pre schema))))
 
-;; TODO: speed up
+; Each pred has 3 options - yes, no, don't care.  Want to maximize # yes + no
+; MAYBE: Actually, would rather iterate through *true* literals in state than possible literals?
+; MAYBE: compile sequence of tests?
+; MATBE: change to pass in mutable hashmap or some such?
+; MAYBE: optimize compilation speed
+; but, seems fast enough for now!
+(defn- make-successor-generator 
+  ([actions] (make-successor-generator actions #{}))
+  ([actions blacklist]
+;  (prn (count actions) blacklist)
+  (let [most-common-pair
+  	  (first 
+	    (util/maximal-elements second
+	      (util/merge-reduce + {}
+	        (map #(vector % 1)
+                  (apply concat
+                    (for [action actions]
+		      (remove #(contains? blacklist %) (concat (:pos (:precondition action)) (:neg (:precondition action))))))))))]
+    (if (nil? most-common-pair) 
+        (fn [state] actions)
+      (let [most-common-atom (first most-common-pair)
+	    action-map
+	      (util/group-by
+	        (fn [action]
+	          (let [in-pos? (util/includes? (:pos (:precondition action)) most-common-atom)
+			in-neg? (util/includes? (:neg (:precondition action)) most-common-atom)]
+	  	    (cond (and in-pos? in-neg?) (do (prn "Warning: contradictory preconditions for action" action) 
+						  :trash)
+			  (and in-pos? (not in-neg?)) :positive
+			  (and in-neg? (not in-pos?)) :negative
+			  :else                       :dontcare)))
+		actions)
+	    {pos-actions :positive neg-actions :negative dc-actions :dontcare} action-map
+	    next-blacklist (conj blacklist most-common-atom)
+	    pos-branch (when pos-actions (make-successor-generator pos-actions next-blacklist))
+	    neg-branch (when neg-actions (make-successor-generator neg-actions next-blacklist))
+	    dc-branch  (when dc-actions  (make-successor-generator dc-actions  next-blacklist))]
+	(if pos-branch
+            (if neg-branch
+	        (if dc-branch 
+	            (fn [state] (concat (if (contains? state most-common-atom) (pos-branch state) (neg-branch state)) (dc-branch state)))
+  	          (fn [state] (if (contains? state most-common-atom) (pos-branch state) (neg-branch state))))
+	      (if dc-branch 
+	          (fn [state] (concat (if (contains? state most-common-atom) (pos-branch state) nil) (dc-branch state)))
+	        (fn [state] (if (contains? state most-common-atom) (pos-branch state) nil))))
+          (if neg-branch
+	      (if dc-branch 
+	          (fn [state] (concat (if (contains? state most-common-atom) nil (neg-branch state)) (dc-branch state)))
+	        (fn [state] (if (contains? state most-common-atom) nil (neg-branch state))))
+	    (if dc-branch 
+                dc-branch
+	      (fn [state] nil)))))))))
+
+	
+	
+        
 (defmethod envs/get-action-space  ::StripsPlanningInstance [instance]
   (let [domain  (:domain instance)
 	objects (:trans-objects instance)
@@ -97,7 +152,10 @@
 	instantiations (map #'strips-action->action 
 			    (mapcat #(get-strips-action-schema-instantiations % objects)
 				    schemas))]
-    (envs/make-enumerated-action-space instantiations)))
+    (envs/make-enumerated-action-space 
+     instantiations
+     (make-successor-generator instantiations)
+     )))
 
    
 

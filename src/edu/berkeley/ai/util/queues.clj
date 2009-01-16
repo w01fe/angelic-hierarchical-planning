@@ -1,6 +1,7 @@
 (ns edu.berkeley.ai.util.queues
   (:refer-clojure)
-  (:import (java.util PriorityQueue HashMap HashSet) (com.bluemarsh.graphmaker.core.util FibonacciHeap))  
+  (:import (java.util PriorityQueue HashMap HashSet) (com.bluemarsh.graphmaker.core.util FibonacciHeap) 
+	   (edu.berkeley.ai.util DelayedSeq))  ; TODO: remove, only for old clj
   (:use edu.berkeley.ai.util)
   )
   

@@ -15,7 +15,7 @@
 (defn make-binary-state-space [vars] 
   "Make a binary state space from a set of variables"
   (let [var-set (set vars)]
-    (util/assert-is (= (count vars) (count var-set)))
+    (util/assert-is (= (count vars) (count var-set)) "Duplicate vars in %s" vars)
     (struct binary-state-space ::BinaryStateSpace var-set)))
 
 

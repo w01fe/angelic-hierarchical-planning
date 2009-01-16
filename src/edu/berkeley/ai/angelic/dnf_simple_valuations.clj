@@ -103,7 +103,7 @@
     (filter #(restrict-clause clause 
 	       (map (partial props/simplify-atom %) var-pos) 
 	       (map (partial props/simplify-atom %) var-neg))
-	    (for [combo (util/combinations (map second dummy-seq))]
+	    (for [combo (apply util/combinations (map second dummy-seq))]
 	      (util/map-map (fn [dummy-map-entry dummy-val] [(first dummy-map-entry) dummy-val])
 		       dummy-seq combo)))))
   
@@ -113,7 +113,7 @@
     (filter #(restrict-clause clause 
 	       (map (partial props/simplify-atom %) var-pos) 
 	       (map (partial props/simplify-atom %) var-neg))
-	    (for [combo (util/combinations (map second dummy-seq))]
+	    (for [combo (apply util/combinations (map second dummy-seq))]
 	      (util/map-map (fn [dummy-map-entry dummy-val] [(first dummy-map-entry) dummy-val])
 		       dummy-seq combo)))))
 )
