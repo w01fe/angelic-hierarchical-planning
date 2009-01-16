@@ -10,7 +10,7 @@
 ; TODO: think about splitting out constant part of state.
 
 
-(derive ::DNFSimpleValuation :angelic/PropositionalValuation)
+(derive ::DNFSimpleValuation :edu.berkeley.ai.angelic/PropositionalValuation)
 
 (defstruct dnf-simple-valuation :class :dnf :bound)
 
@@ -60,7 +60,7 @@
 	    (= :true (get clause (first neg))) nil
 	    :else  (recur (rest neg) (dissoc clause (first neg)))))))
 
-(defmethod restrict-valuation       [::DNFSimpleValuation :envs/ConjunctiveCondition] [val con]
+(defmethod restrict-valuation       [::DNFSimpleValuation :edu.berkeley.ai.envs/ConjunctiveCondition] [val con]
   (let [pos (envs/get-positive-conjuncts con)
 	neg (envs/get-negative-conjuncts con)]
     (make-dnf-simple-valuation 
@@ -121,7 +121,7 @@
 (defn clause-consistent-mappings [clause var-pos var-neg dummy-domains]
   (csps/all-csp-solutions (csps/make-conjunctive-propositional-csp dummy-domains var-pos var-neg clause)))
 
-(defmethod valuation-consistent-mappings [::DNFSimpleValuation :envs/ConjunctiveCondition]
+(defmethod valuation-consistent-mappings [::DNFSimpleValuation :edu.berkeley.ai.envs/ConjunctiveCondition]
   [opt-val quasi-ground-condition dummy-domains]
   (let [[var-pos ground-pos] (util/separate #(some props/is-dummy-var? (rest %)) 
 				       (envs/get-positive-conjuncts quasi-ground-condition))

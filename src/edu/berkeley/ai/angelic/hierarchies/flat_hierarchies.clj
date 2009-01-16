@@ -25,7 +25,7 @@
 (defn make-flat-act-optimistic-description [goal upper-reward-fn]
   {:class ::FlatActOptimisticDescription :goal goal :upper-reward-fn upper-reward-fn})
 
-(defmethod progress-optimistic [:angelic/Valuation ::FlatActOptimisticDescription] [val desc]
+(defmethod progress-optimistic [:edu.berkeley.ai.angelic/Valuation ::FlatActOptimisticDescription] [val desc]
   (let [state-map (explicit-valuation-map val)]
     (util/assert-is (= (count state-map) 1))
     (let [[prev-state prev-reward] (first state-map)]
@@ -33,7 +33,7 @@
        (:goal desc)
        (+ prev-reward ((:upper-reward-fn desc) prev-state))))))
    
-(defmethod progress-pessimistic [:angelic/Valuation ::FlatActOptimisticDescription] [val desc]
+(defmethod progress-pessimistic [:edu.berkeley.ai.angelic/Valuation ::FlatActOptimisticDescription] [val desc]
   (throw (UnsupportedOperationException.)))
 
 
@@ -50,8 +50,8 @@
 (defmethod hla-name ::FlatPrimitiveHLA [hla] (:name (:action hla)))
 (defmethod hla-name ::FlatActHLA [hla] 'act)
 
-(defmethod hla-immediate-refinements [::FlatPrimitiveHLA :angelic/Valuation] [hla val] nil)
-(defmethod hla-immediate-refinements [::FlatActHLA :angelic/Valuation]       [hla val]
+(defmethod hla-immediate-refinements [::FlatPrimitiveHLA :edu.berkeley.ai.angelic/Valuation] [hla val] nil)
+(defmethod hla-immediate-refinements [::FlatActHLA :edu.berkeley.ai.angelic/Valuation]       [hla val]
   (let [state-map (explicit-valuation-map val)]
     (util/assert-is (= (count state-map) 1))
     (let [[prev-state prev-reward] (first state-map)]

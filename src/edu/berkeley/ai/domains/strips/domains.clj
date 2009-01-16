@@ -42,7 +42,7 @@
      (:cost action-schema))))
 
 (defn- check-action-schemata [types guaranteed-objs predicates action-schemata]
-  (util/assert-is (apply distinct? (map :name action-schemata)))
+  (util/assert-is (util/distinct-elts? (map :name action-schemata)))
   (map (partial check-action-schema types guaranteed-objs predicates) action-schemata))
 
 

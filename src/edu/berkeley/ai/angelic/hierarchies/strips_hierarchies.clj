@@ -85,13 +85,13 @@
 	      (for [action expansion
 		    [var type] (map vector (rest action) (util/safe-get all-actions (first action)))
 		    :when (props/is-dummy-var? var)]
-		(do (util/assert-is (util/includes? var allowed-vars))
+		(do (util/assert-is (util/includes? allowed-vars var))
 		    [var [type]]))))))
    
 
 (defn- check-hla-schema [types guaranteed-objs predicates all-actions hla-schema] 
   (util/assert-is (not (map? (:vars hla-schema))))
-  (util/assert-is (apply distinct? (map first (:refinement-schemata hla-schema))) "non-distinct refinement names %s" hla-schema)
+  (util/assert-is (util/distinct-elts? (map first (:refinement-schemata hla-schema))) "non-distinct refinement names %s" hla-schema)
   (util/assert-is (not-any? #(props/is-dummy-var? (second %)) (:vars hla-schema))) 
   (let [vars-and-objects (props/check-objects types (concat guaranteed-objs (:vars hla-schema)))
 	atom-checker     (fn [atoms] (map #(props/check-atom types vars-and-objects predicates %) atoms))]
@@ -141,7 +141,7 @@
 ;; Parse and check an entire hierarchy   
      
 (defmethod parse-hierarchy-type :strips-hierarchy [type contents domain]
-  (util/assert-is (isa? (:class domain) :strips/StripsPlanningDomain))
+  (util/assert-is (isa? (:class domain) :edu.berkeley.ai.domains.strips/StripsPlanningDomain))
   (util/match [[[:multiple (:hla [unquote-seq hlas])]] contents]
     {:class ::StripsHierarchySchema, :hlas
      (check-hla-schemata (:types domain) (:guaranteed-objs domain) (:predicates domain) (:action-schemata domain)
@@ -159,7 +159,7 @@
 ; Immediate refinements are [name pos-prec neg-prec unk-types expansion]
 ; TODO: check it's correct to ignore primitive precs.
 (defn make-flat-strips-hierarchy-schema [domain upper-reward-fn]
-  (util/assert-is (isa? (:class domain) :strips/StripsPlanningDomain))
+  (util/assert-is (isa? (:class domain) :edu.berkeley.ai.domains.strips/StripsPlanningDomain))
   {:class ::StripsHierarchySchema
    :hlas 
      (util/map-map #(vector (:name %) %) 
@@ -207,7 +207,7 @@
     :pessimistic-schema (instantiate-description-schema (:pessimistic-schema hla) instance)))
 
 (defmethod instantiate-hierarchy ::StripsHierarchySchema [hierarchy instance] 
-  (util/assert-is (isa? (:class instance) :strips/StripsPlanningInstance))
+  (util/assert-is (isa? (:class instance) :edu.berkeley.ai.domains.strips/StripsPlanningInstance))
   (let [hla-map (util/map-map (fn [[name hla]] [name (instantiate-strips-hla-schema hla instance)])
 			 (util/safe-get hierarchy :hlas))
 	act     (util/safe-get hla-map 'act)
@@ -300,9 +300,9 @@
 		     (repeat (envs/make-conjunctive-condition nil nil)))))))))
 
 
-(defmethod hla-immediate-refinements [::StripsPrimitiveHLA :angelic/Valuation] [hla] (throw (UnsupportedOperationException.)))
+(defmethod hla-immediate-refinements [::StripsPrimitiveHLA :edu.berkeley.ai.angelic/Valuation] [hla] (throw (UnsupportedOperationException.)))
 
-(defmethod hla-immediate-refinements     [::StripsHLA :angelic/PropositionalValuation] [hla opt-val]
+(defmethod hla-immediate-refinements     [::StripsHLA :edu.berkeley.ai.angelic/PropositionalValuation] [hla opt-val]
   (let [opt-val (restrict-valuation opt-val (:precondition hla))
 	hierarchy (:hierarchy hla)
 	objects   (:trans-objects (:problem-instance hierarchy))

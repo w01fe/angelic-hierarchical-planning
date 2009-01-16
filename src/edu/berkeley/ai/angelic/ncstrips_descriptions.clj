@@ -10,7 +10,7 @@
 ; wow: calls to eval are expensive.  4x faster by precompiling eval!
 
 
-(derive ::NCStripsDescription :angelic/PropositionalDescription)
+(derive ::NCStripsDescription :edu.berkeley.ai.angelic/PropositionalDescription)
 
 
 ;; Single conditional dffects
@@ -61,7 +61,7 @@
   (struct ncstrips-description-schema ::NCStripsDescriptionSchema (doall (filter identity (map (partial check-ncstrips-effect types vars-and-objects predicates) effects))) vars))
 
 (defmethod parse-description :ncstrips [desc domain vars]  
-  (util/assert-is (isa? (:class domain) :strips/StripsPlanningDomain))
+  (util/assert-is (isa? (:class domain) :edu.berkeley.ai.domains.strips/StripsPlanningDomain))
   (make-ncstrips-description-schema 
    (util/safe-get domain :types) 
    (props/check-objects (util/safe-get domain :types) (concat (util/safe-get domain :guaranteed-objs) vars)) 
@@ -81,7 +81,7 @@
 
 
 (defmethod instantiate-description-schema ::NCStripsDescriptionSchema [desc inst]
-  (util/assert-is (isa? (:class inst) :strips/StripsPlanningInstance))
+  (util/assert-is (isa? (:class inst) :edu.berkeley.ai.domains.strips/StripsPlanningInstance))
   desc)
 
 
@@ -142,10 +142,10 @@
      (map first results)
      (+ (:bound val) (reduce combiner (map second results))))))
       
-(defmethod progress-optimistic [:dsv/DNFSimpleValuation ::NCStripsDescription] [val desc]
+(defmethod progress-optimistic [:edu.berkeley.ai.angelic.dnf-simple-valuations/DNFSimpleValuation ::NCStripsDescription] [val desc]
   (progress-ncstrips val desc max))
 
-(defmethod progress-pessimistic [:dsv/DNFSimpleValuation ::NCStripsDescription] [val desc] ;TODO: improve
+(defmethod progress-pessimistic [:edu.berkeley.ai.angelic.dnf-simple-valuations/DNFSimpleValuation ::NCStripsDescription] [val desc] ;TODO: improve
   (progress-ncstrips val desc min))
 
 

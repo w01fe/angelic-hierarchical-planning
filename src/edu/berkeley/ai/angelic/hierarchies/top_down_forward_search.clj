@@ -6,7 +6,7 @@
 ;; Nodes
 ; note that valuations are metadata so they aren't used in comparisons.
 
-(derive ::TopDownForwardNode :search/Node)
+(derive ::TopDownForwardNode :edu.berkeley.ai.search/Node)
 (defstruct top-down-forward-node  :class :goal :hla :previous)
 
 (defn make-top-down-forward-node [goal hla previous-node]
@@ -142,7 +142,7 @@
     (map :name (first (a-star-search 
     (make-initial-top-down-forward-node 
      env
-     (make-initial-valuation :dsv/DNFSimpleValuation env)
+     (make-initial-valuation :edu.berkeley.ai.angelic.dnf-simple-valuations/DNFSimpleValuation env)
      (list (instantiate-hierarchy
 	    (parse-hierarchy "/Users/jawolfe/Projects/angel/src/edu/berkeley/ai/domains/nav_switch.hierarchy"
 			     domain)
@@ -151,7 +151,7 @@
 
 (let [domain (make-nav-switch-strips-domain)
 	env    (make-nav-switch-strips-env 2 2 [[0 0]] [1 0] true [0 1])
-	val (make-initial-valuation :dsv/DNFSimpleValuation env)
+	val (make-initial-valuation :edu.berkeley.ai.angelic.dnf-simple-valuations/DNFSimpleValuation env)
 	    node
     (make-initial-top-down-forward-node 
      env
@@ -164,7 +164,7 @@
 
 (let [domain (make-nav-switch-strips-domain)
 	env    (make-nav-switch-strips-env 2 2 [[0 0]] [1 0] true [0 1])
-	val (make-initial-valuation :dsv/DNFSimpleValuation env)
+	val (make-initial-valuation :edu.berkeley.ai.angelic.dnf-simple-valuations/DNFSimpleValuation env)
 	    node
     (make-initial-top-down-forward-node 
      env

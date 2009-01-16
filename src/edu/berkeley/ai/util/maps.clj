@@ -6,7 +6,7 @@
   {:test (fn [] (is (= #{ 3 4 6} (set (true-keys {1 nil 2 false 3 true 4 'asfd 5 nil 6 1})))))})
 
 (defn map-map "Like map, but expects f to return pairs/map entries that are combined to make a map return value."
-  [f & maps] (into {} (map f maps)))
+  [f & maps] (into {} (apply map f maps)))
      ;(reduce #(conj %1 %2) {} (apply map f maps)))
 
 

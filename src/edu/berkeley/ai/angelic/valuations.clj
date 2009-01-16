@@ -26,7 +26,7 @@
 
 (defmethod get-valuation-lower-bound ::PessimalValuation [val] Double/NEGATIVE_INFINITY)
 (defmethod get-valuation-upper-bound ::PessimalValuation [val] Double/NEGATIVE_INFINITY)
-(defmethod restrict-valuation [::PessimalValuation :envs/Condition] [val cond] val)
+(defmethod restrict-valuation [::PessimalValuation :edu.berkeley.ai.envs/Condition] [val cond] val)
 (defmethod explicit-valuation-map ::PessimalValuation [val] {})
 
 
@@ -54,7 +54,7 @@
 (defmethod get-valuation-upper-bound ::ConditionalValuation [val] 
   (:max-reward val))
 
-(defmethod restrict-valuation [::ConditionalValuation :envs/Condition] 
+(defmethod restrict-valuation [::ConditionalValuation :edu.berkeley.ai.envs/Condition] 
   [val cond]
   (make-conditional-valuation 
    (envs/conjoin-conditions (:condition val) cond) 
@@ -99,7 +99,7 @@
 (defmethod empty-valuation? ::ExplicitValuation [val]
   (empty? (:state-map val)))
 
-(defmethod restrict-valuation [::ExplicitValuation :envs/Condition]
+(defmethod restrict-valuation [::ExplicitValuation :edu.berkeley.ai.envs/Condition]
   [val condition]
   (make-explicit-valuation- (into {} (filter (fn [[k v]] (envs/satisfies-condition? k condition)) (:state-map val)))))
 

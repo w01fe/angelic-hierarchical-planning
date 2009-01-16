@@ -17,9 +17,9 @@
 (defn check-types [types]
   (let [type-map (map-map seq->vector-pair types)]
 ;    (prn type-map)
-    (assert-is (= (count types) (count type-map)) "Duplicate type")
+    (assert-is (= (count types) (count type-map)) "Duplicate type %s" (str types))
     (doseq [type (keys type-map)]
-      (let [distinct? (apply distinct? (get-subtypes type-map type))]
+      (let [distinct? (distinct-elts? (get-subtypes type-map type))]
 	(assert-is (identity distinct?) "Recursive type or duplicate inclusion %s" (take 100 (get-subtypes type-map type)))))
     type-map))
 
@@ -27,7 +27,7 @@
 (defn check-objects [types guaranteed-objs]
   (let [obj-map (reduce (fn [m [k & vs]] (assoc-cat m k (if (coll? (first vs)) (first vs) vs))) {} guaranteed-objs)]
     (doseq [k (keys obj-map)] (safe-get types k))
-    (assert-is (apply distinct? (apply concat (vals obj-map))))
+    (assert-is (distinct-elts? (apply concat (vals obj-map))))
     obj-map))
 
 (defn check-predicates [types predicates]
@@ -41,8 +41,8 @@
 (defn- maximal-subtypes- [types t1 t2]
   (let [s1 (get-subtypes types t1)
 	s2 (get-subtypes types t2)]
-    (cond (includes? t1 s2) [t1]
-	  (includes? t2 s1) [t2]
+    (cond (includes? s2 t1) [t1]
+	  (includes? s1 t2) [t2]
 	  :else             (concat-elts 
 			     (for [t1p (rest s1), t2p (rest s2)]
 			       (maximal-subtypes- types t1p t2p))))))
@@ -55,7 +55,8 @@
 	  (map hash-set parents)))
 	  
 (defn is-type? [types objects obj type]
-  (or (includes? obj (get objects type))
+ ; (prn types objects obj type)
+  (or (includes? (get objects type) obj)
       (some (partial is-type? types objects obj) (get types type))))
 
 (defn check-type [types objects obj type]

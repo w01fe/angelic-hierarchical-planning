@@ -38,6 +38,8 @@
   "Return a random element of s maximizing (f elt), throwing an exception if s empty."
   (random-element (make-safe (maximal-elements f s))))
 	   
+(defn distinct-elts? [s] ;; TODO: remove if core changed
+  (or (empty? s) (apply distinct? s)))
 
 (defn lazy-merge  "Lazily merge two sorted seqs in increasing order based on the supplied comparator, or compare otherwise"
   ([s1 s2] (lazy-merge s1 s2 compare))

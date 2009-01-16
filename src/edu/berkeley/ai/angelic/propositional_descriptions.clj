@@ -54,18 +54,18 @@
 
 
 (defmethod instantiate-description-schema ::VacuousPropositionalDescription [desc instance]
-  (util/assert-is (isa? (:class instance) :strips/StripsPlanningInstance))
+  (util/assert-is (isa? (:class instance) :edu.berkeley.ai.domains.strips/StripsPlanningInstance))
   (assoc desc :all-dnf (list (util/map-map #(vector % :unknown) (strips/get-strips-predicate-instantiations instance))))) 
 
 
 (defmethod ground-description ::VacuousPropositionalDescription [desc var-map] desc)
 
 
-(defmethod progress-optimistic [:dsv/DNFSimpleValuation ::VacuousPropositionalDescription] [val desc]
+(defmethod progress-optimistic [:edu.berkeley.ai.angelic.dnf-simple-valuations/DNFSimpleValuation ::VacuousPropositionalDescription] [val desc]
   (dsv/make-dnf-simple-valuation (:all-dnf desc) (if-let [c (:cost desc)] (+ c (:bound val)) Double/POSITIVE_INFINITY)))
 
 
-(defmethod progress-pessimistic [:dsv/DNFSimpleValuation ::VacuousPropositionalDescription] [val desc]
+(defmethod progress-pessimistic [:edu.berkeley.ai.angelic.dnf-simple-valuations/DNFSimpleValuation ::VacuousPropositionalDescription] [val desc]
   (dsv/make-dnf-simple-valuation nil (if-let [c (:cost desc)] (+ c (:bound val)) Double/NEGATIVE_INFINITY))) 
  )
 
