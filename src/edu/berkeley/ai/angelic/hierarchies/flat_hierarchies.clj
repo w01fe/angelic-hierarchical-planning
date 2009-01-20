@@ -9,10 +9,10 @@
 (defn make-flat-hierarchy-schema [upper-reward-fn]
   (struct flat-hierarchy-schema ::FlatHierarchySchema upper-reward-fn))
 
-(defstruct flat-act-hla :class :env :opt-desc)
+(defstruct flat-act-hla :class :env :opt-desc :action-space)
 (derive ::FlatActHLA ::HLA)
-(defn- make-flat-act-hla [env opt-desc]
-  (struct flat-act-hla ::FlatActHLA env opt-desc))
+(defn- make-flat-act-hla [env opt-desc action-space]
+  (struct flat-act-hla ::FlatActHLA env opt-desc action-space))
 
 (defstruct flat-primitive-hla :class :action :env)
 (derive ::FlatPrimitiveHLA ::HLA)
@@ -41,7 +41,8 @@
 (defmethod instantiate-hierarchy ::FlatHierarchySchema [hierarchy instance]
   (make-flat-act-hla 
    instance 
-   (make-flat-act-optimistic-description (envs/get-goal instance) (:upper-reward-fn hierarchy))))
+   (make-flat-act-optimistic-description (envs/get-goal instance) (:upper-reward-fn hierarchy))
+   (envs/get-action-space instance)))
 
 
 (defmethod hla-primitive ::FlatPrimitiveHLA [hla] (:action hla))
@@ -56,7 +57,7 @@
     (util/assert-is (= (count state-map) 1))
     (let [[prev-state prev-reward] (first state-map)]
       (cons [] 
-	    (for [action (envs/applicable-actions prev-state (envs/get-action-space (:env hla)))]
+	    (for [action (envs/applicable-actions prev-state (:action-space hla))]
 	      [(make-flat-primitive-hla (:env hla) action) hla])))))
 ;	(if (envs/satisfies-condition? prev-state (envs/get-goal (:env hla)))
 ;	    (cons [] prim-act-refs)

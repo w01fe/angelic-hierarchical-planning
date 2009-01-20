@@ -153,7 +153,7 @@
 (defmethod instantiate-description-schema ::FlatActOptimisticDescriptionSchema [desc instance]
   (make-flat-act-optimistic-description (envs/get-goal instance) (:upper-reward-fn desc)))
 
-(defmethod ground-description :angelic.hierarchies/FlatActOptimisticDescription [desc var-map] desc)
+(defmethod ground-description :edu.berkeley.ai.angelic.hierarchies/FlatActOptimisticDescription [desc var-map] desc)
 
 ; TODO: use ncstrips for Act description?
 ; Immediate refinements are [name pos-prec neg-prec unk-types expansion]
