@@ -30,6 +30,7 @@
 (defn truthify [x]
   (if x true false))
 
+(comment ; old version -- faster, but fouls up YourKit
 (defn sref-set! [sref val] 
   (aset sref 0 val))
 
@@ -42,7 +43,23 @@
 (defn sref "A non-thread-safe, reasonably fast mutable reference"
   ([] (make-array Object 1))
   ([init] (let [ret (sref)] (sref-set! ret init) ret)))
+  )
 
+
+;(comment ;; New versions - slower, but better for profiling.  TODO: switch back.
+(defn sref-set! [sref val] 
+  (reset! sref val))
+
+(defn sref-get [sref]
+  @sref)
+
+(defn sref-up! [sref fn & args]
+  (reset! sref (apply fn @sref args)))
+
+(defn sref "A non-thread-safe, reasonably fast mutable reference"
+  ([] (sref nil))
+  ([init] (atom init)))
+;  )
 
 (defn match-vars   "Return a seq of the variables mentioned in the tree."
   [var-tree]

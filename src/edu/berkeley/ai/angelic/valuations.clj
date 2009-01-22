@@ -73,9 +73,9 @@
 (derive ::ExplicitValuation ::Valuation)
 
 (defn- make-explicit-valuation- [state-map]
-  (if (empty? state-map)
-      *pessimal-valuation*
-    (struct explicit-valuation ::ExplicitValuation state-map)))
+;  (if (empty? state-map)
+;      *pessimal-valuation*
+    (struct explicit-valuation ::ExplicitValuation state-map));)
 
 (defn make-explicit-valuation [state-value-pairs]
   (make-explicit-valuation- 
@@ -101,7 +101,12 @@
 
 (defmethod restrict-valuation [::ExplicitValuation :edu.berkeley.ai.envs/Condition]
   [val condition]
-  (make-explicit-valuation- (into {} (filter (fn [[k v]] (envs/satisfies-condition? k condition)) (:state-map val)))))
+  (make-explicit-valuation- 
+   (reduce (fn [m k] (if (envs/satisfies-condition? k condition) 
+		         m
+		       (dissoc m k)))
+	   (:state-map val) (keys (:state-map val)))))
+;(into {} (filter (fn [[k v]] (envs/satisfies-condition? k condition)) (:state-map val)))))
 
 (defmethod explicit-valuation-map ::ExplicitValuation [val]
   (:state-map val))

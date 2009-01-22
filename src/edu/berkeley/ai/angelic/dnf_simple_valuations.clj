@@ -15,6 +15,7 @@
 (defstruct dnf-simple-valuation :class :dnf :bound)
 
 (defn make-dnf-simple-valuation [dnf bound]
+;  (prn "DNF!")
   (if-let [dnf (seq dnf)]
       (struct dnf-simple-valuation ::DNFSimpleValuation (set dnf) bound)
     (struct dnf-simple-valuation ::DNFSimpleValuation nil Double/NEGATIVE_INFINITY)))
@@ -103,7 +104,7 @@
     (filter #(restrict-clause clause 
 	       (map (partial props/simplify-atom %) var-pos) 
 	       (map (partial props/simplify-atom %) var-neg))
-	    (for [combo (apply util/combinations (map second dummy-seq))]
+	    (for [combo (apply util/my-combinations (map second dummy-seq))]
 	      (util/map-map (fn [dummy-map-entry dummy-val] [(first dummy-map-entry) dummy-val])
 		       dummy-seq combo)))))
   
@@ -113,7 +114,7 @@
     (filter #(restrict-clause clause 
 	       (map (partial props/simplify-atom %) var-pos) 
 	       (map (partial props/simplify-atom %) var-neg))
-	    (for [combo (apply util/combinations (map second dummy-seq))]
+	    (for [combo (apply util/my-combinations (map second dummy-seq))]
 	      (util/map-map (fn [dummy-map-entry dummy-val] [(first dummy-map-entry) dummy-val])
 		       dummy-seq combo)))))
 )

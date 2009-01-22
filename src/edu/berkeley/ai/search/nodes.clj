@@ -84,7 +84,8 @@
 	(if dead-end 
 	    (print " is a dead end.")
 	  (print " has refinements \n                    " 
-                        (util/str-join "\n                     " (map #(str (reward-bounds %) " " (node-str %)) refs)) "\n"))
+                        (util/str-join "\n                     " (map #(str (reward-bounds %) " " 
+									(node-str %)) refs)) "\n"))
 	(or (extract-a-solution next)
 	(when (loop []
 		(print "\n(d)rop, (n)ext, (s)ave, (q)uit, (r)eroot, go (#), (expr ... *n)? ")

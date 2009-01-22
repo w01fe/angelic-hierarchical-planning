@@ -96,7 +96,7 @@
 
 
 (derive ::TrueCondition ::ConjunctiveCondition)
-(def *true-condition* {:class ::TrueCondition})
+(def *true-condition* {:class ::TrueCondition :pos nil :neg nil})
 
 (defmethod satisfies-condition? ::TrueCondition [state condition] true)
 (defmethod consistent-condition? ::TrueCondition [condition] true)

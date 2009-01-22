@@ -30,9 +30,13 @@
 ;(defn uniform-cost-graph-search "Tree uniform-cost search"  [node]
 ;  (first-optimal-solution node (queues/make-graph-search-pq) #(- (reward-so-far %))))
 
+;(defn stupid-fn [f]
+;  #(- (f %)))
 
 (defn a-star-search             "Tree a* search"            [node]
-  (first-optimal-solution node (queues/make-tree-search-pq)  #(- (upper-reward-bound %))))
+  (first-optimal-solution node (queues/make-tree-search-pq)  (fn negator [x] (- (upper-reward-bound x)))))
+;  (first-optimal-solution node (queues/make-tree-search-pq)  #(- (upper-reward-bound %))))
+
 
 (defn a-star-graph-search       "Graph a* search"           [node]
   (first-optimal-solution node (queues/make-graph-search-pq) #(- (upper-reward-bound %))))

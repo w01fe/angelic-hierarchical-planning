@@ -190,13 +190,17 @@
 		(is (not (member? [1 2] '([3 4] [1 2]) identity ==))))})
     )
 
-    (comment ; already in contrib  
-    (defn combinations "Take a seq of seqs and return a lazy list of ordered combinations (pick 1 from each seq)" 
-      [seqs]
+;     (comment ; already in contrib    (but broken)
+    (defn my-combinations "Take a seq of seqs and return a lazy list of ordered combinations (pick 1 from each seq)" 
+      [& seqs]
       (if (empty? seqs) '(())
-        (forcat [item (first seqs)]
-          (map #(cons item %) (combinations (rest seqs))))))
-       )
+        (for [item (first seqs)
+	      rest (apply my-combinations (rest seqs))]
+	  (cons item rest))))
+;          (map #(cons item %) (combinations (rest seqs))))))
+       ; )
+
+
 
        (comment ; not needed 
        (import '(java.util HashSet))

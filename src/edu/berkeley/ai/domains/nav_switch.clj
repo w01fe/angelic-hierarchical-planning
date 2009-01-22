@@ -99,7 +99,13 @@
   (binding [*debug-level* 1] (lrta-star (make-nav-switch-env 2 2 [[0 0]] [1 0] true [0 1]) #(reduce + (map (comp (fn [x] (* -2 (Math/abs x))) -) (:pos %) [0 1])) 10 1))
 
   (dotimes [_ 3] (time (map :name (first (a-star-search (state-space-search-node (make-nav-switch-strips-env 6 6 [[1 1]] [5 0] true [0 5]) (constantly 0)))))))
-  ; right now STRIPS is about 10x slower (36 secs) than hand-coded (4 s) - from 5 s.  Optimizations: (--- why did this say 4 before? Looks like strips code has slowed down, due to greater indirection in applicable-actions, seems like ?--- ) ; Adding successor generator --> 10x speedup, equal to explicit!
+  ; right now STRIPS is about equal in speed to hand-coded, with new successor generator!
     ; TODO: reachability analysis (planning graph?)
+    ; TODO: flatten
     ; TODO: constant substitution
+
+  (time (second (a-star-search (make-initial-state-space-node (make-nav-switch-strips-env 6 6 [[1 1]] [5 0] true [0 5]) (constantly 0)))))
+ ; "Elapsed time: 3596.095 msecs"
+
+
   )

@@ -34,11 +34,11 @@
   ([env lower-reward-fn upper-reward-fn]
      (make-state-space-search-space- (envs/get-state-space env) (envs/get-action-space env) (envs/get-goal env) lower-reward-fn upper-reward-fn)))
 
-(defn state-space-search-node 
+(defn make-initial-state-space-node 
   ([env] 
-     (state-space-search-node env (constantly Double/POSITIVE_INFINITY)))
+     (make-initial-state-space-node env (constantly Double/POSITIVE_INFINITY)))
   ([env upper-reward-fn] 
-     (state-space-search-node env (constantly Double/NEGATIVE_INFINITY) upper-reward-fn))
+     (make-initial-state-space-node env (constantly Double/NEGATIVE_INFINITY) upper-reward-fn))
   ([env lower-reward-fn upper-reward-fn]
      (make-state-space-node 
       (make-state-space-search-space- (envs/get-state-space env) (envs/get-action-space env) (envs/get-goal env) lower-reward-fn upper-reward-fn)

@@ -6,20 +6,28 @@
 ;; Nodes
 ; note that valuations are metadata so they aren't used in comparisons.
 
+(defn first-nonprimitive [node]
+  (let [np (:first-np node)]
+    (cond (true? np) node
+	  np np)))
+
 (derive ::TopDownForwardNode :edu.berkeley.ai.search/Node)
-(defstruct top-down-forward-node  :class :goal :hla :previous)
+(defstruct top-down-forward-node  :class :goal :hla :previous :first-np)
 
 (defn make-top-down-forward-node [goal hla previous-node]
   (with-meta  
-   (struct top-down-forward-node ::TopDownForwardNode goal hla previous-node)
-   {:pessimistic-valuation (util/sref nil), :optimistic-valuation (util/sref nil)}))
+   (struct top-down-forward-node ::TopDownForwardNode goal hla previous-node 
+	   (or (first-nonprimitive previous-node) (and (not (hla-primitive hla)) true)))
+   {:pessimistic-valuation (util/sref nil), :optimistic-valuation (util/sref nil)
+    :lower-reward-bound (util/sref nil) :upper-reward-bound (util/sref nil)
+    }))
 
 
 (derive ::TopDownForwardRootNode ::TopDownForwardNode)
-(defstruct top-down-forward-root-node :class :goal :initial-valuation)
+(defstruct top-down-forward-root-node :class :goal :initial-valuation :first-np)
 
 (defn make-top-down-forward-root-node [goal initial-valuation]
-  (struct top-down-forward-root-node ::TopDownForwardRootNode goal initial-valuation))
+  (struct top-down-forward-root-node ::TopDownForwardRootNode goal initial-valuation nil))
 
 (defn make-initial-top-down-forward-node [env initial-valuation initial-plan]
   (loop [actions initial-plan
@@ -40,12 +48,16 @@
 (defmethod get-optimistic-valuation  ::TopDownForwardRootNode [node] (:initial-valuation node))
 (defmethod local-immediate-refinements ::TopDownForwardRootNode [node rest-actions]  nil)
 
+;; TODO: remove
+(defn do-restrict-valuation [x y]
+  (restrict-valuation x y))
+
 (defmethod get-pessimistic-valuation ::TopDownForwardNode [node]
   (let [s (:pessimistic-valuation ^node)]
     (or (util/sref-get s)
 	(util/sref-set! s 
 	  (progress-pessimistic 
-	   (restrict-valuation (get-pessimistic-valuation (:previous node)) 
+	   (do-restrict-valuation (get-pessimistic-valuation (:previous node)) 
 			       (hla-hierarchical-preconditions (:hla node)))
 	   (hla-pessimistic-description (:hla node)))))))
 
@@ -56,7 +68,7 @@
     (or (util/sref-get s)
 	(util/sref-set! s 
 	  (progress-optimistic 
-	   (restrict-valuation (get-optimistic-valuation (:previous node))
+	   (do-restrict-valuation (get-optimistic-valuation (:previous node))
 			       (hla-hierarchical-preconditions (:hla node)))
 	   (hla-optimistic-description (:hla node)))))))
 
@@ -76,49 +88,79 @@
 
 ;; Node methods 
 
-(defmethod search/dead-end?  ::TopDownForwardNode [node]
-  (empty-valuation? (get-optimistic-valuation node)))
+; Don't want this, doesn't take goal into account!
+;(defmethod search/dead-end?  ::TopDownForwardNode [node]
+;  (empty-valuation? (get-optimistic-valuation node)))
+
+
+
+(defmethod search/lower-reward-bound ::TopDownForwardRootNode [node] 
+  (get-valuation-lower-bound (do-restrict-valuation (get-pessimistic-valuation node) (:goal node))))
+
+(defmethod search/upper-reward-bound ::TopDownForwardRootNode [node] 
+  (get-valuation-upper-bound (do-restrict-valuation (get-optimistic-valuation node) (:goal node))))
 
 (defmethod search/lower-reward-bound ::TopDownForwardNode [node] 
-  (get-valuation-lower-bound (restrict-valuation (get-pessimistic-valuation node) (:goal node))))
+  (prn "lb")
+  (let [s (:lower-reward-bound ^node)]
+    (or (util/sref-get s)
+	(util/sref-set! s 
+	  (get-valuation-lower-bound (do-restrict-valuation (get-pessimistic-valuation node) (:goal node)))))))
+
 
 (defmethod search/upper-reward-bound ::TopDownForwardNode [node] 
-  (get-valuation-upper-bound (restrict-valuation (get-optimistic-valuation node) (:goal node))))
+;  (prn "ub")
+  (let [s (:upper-reward-bound ^node)]
+    (or (util/sref-get s)
+	(util/sref-set! s 
+          (get-valuation-upper-bound (do-restrict-valuation (get-optimistic-valuation node) (:goal node)))))))
+
 
 (defmethod search/reward-so-far ::TopDownForwardNode [node] 
+;  (prn "sf")
   0) ;TODO? 
 
 
-(def *ref-counter* (make-array Integer/TYPE 1))
+(def *ref-counter* (util/sref 0))
 
 (defn reset-ref-counter [] 
-  (aset *ref-counter* 0 0))
+  (util/sref-set! *ref-counter* 0))
+
+; Note: what follows assumes that descriptions for primitives are exact.
 
 ; TODO: add way to specify which HLA to refine.
 (defmethod search/immediate-refinements ::TopDownForwardNode [node] 
-  (aset *ref-counter* 0 (inc (aget *ref-counter* 0)))
-  (let [nodes (rest (reverse (util/iterate-while :previous node)))]
-    (when-let [rest-nodes (drop-while #(hla-primitive (:hla %)) nodes)]
-      (local-immediate-refinements (first rest-nodes) (map :hla (rest rest-nodes))))))
+  (util/sref-set! *ref-counter* (inc (util/sref-get *ref-counter*)))
+  (when-let [fnp (first-nonprimitive node)]
+    (local-immediate-refinements fnp (reverse (map :hla (take-while #(not= % fnp) (iterate :previous node))))))) 
+;  (let [nodes (rest (reverse (util/iterate-while :previous node)))]
+;    (when-let [rest-nodes (drop-while #(hla-primitive (:hla %)) nodes)]
+;      (local-immediate-refinements (first rest-nodes) (map :hla (rest rest-nodes))))))
 
 
 (defmethod search/primitive-refinement ::TopDownForwardNode [node]
-  (when-let [act-seq
-	     (loop [act-seq '()
-		    node node]
-	       (if (= (:class node) ::TopDownForwardRootNode)
-		   act-seq
-		 (if-let [prim (hla-primitive (:hla node))]
-		     (recur (cons prim act-seq) (:previous node))
-		   false)))]
-    (let [lower (search/lower-reward-bound node)
-	  upper (search/upper-reward-bound node)]
-      (util/assert-is (= lower upper))
-      [act-seq lower])))
+  (when-not (:first-np node)
+;  (when-let [act-seq
+;	     (loop [act-seq '()
+;		    node node]
+;	       (if (= (:class node) ::TopDownForwardRootNode)
+;		   act-seq
+;		 (if-let [prim (hla-primitive (:hla node))]
+;		     (recur (cons prim act-seq) (:previous node))
+;		   false)))]
+    (let [act-seq (map hla-primitive (rest (reverse (util/iterate-while :previous node)))) 
+;	  lower (get-valuation-lower-bound (get-pessimistic-valuation node))
+	  upper (get-valuation-upper-bound (get-optimistic-valuation node))] 
+ ;     (util/assert-is (= lower upper))
+      [act-seq upper])))
 
+;; Only primitive nodes can be solutions, by definition optimal ...
 (defmethod search/extract-optimal-solution ::TopDownForwardNode [node] 
-  (when-not (empty-valuation? (restrict-valuation (get-pessimistic-valuation node) (:goal node)))
+  (when (and (not (:first-np node))
+	     (> (search/upper-reward-bound node) Double/NEGATIVE_INFINITY))
+;	     (> (search/lower-reward-bound node) Double/NEGATIVE_INFINITY))
     (search/primitive-refinement node)))
+
 
 (defmethod search/node-str ::TopDownForwardNode [node] 
   (util/str-join " " (map (comp hla-name :hla) (rest (reverse (util/iterate-while :previous node))))))
@@ -177,7 +219,7 @@
 
 (let [domain (make-nav-switch-strips-domain), env (make-nav-switch-strips-env 2 2 [[0 0]] [1 0] true [0 1]), val (make-initial-valuation :edu.berkeley.ai.angelic.dnf-simple-valuations/DNFSimpleValuation env), node (make-initial-top-down-forward-node env val (list (instantiate-hierarchy (parse-hierarchy "/Users/jawolfe/Projects/angel/src/edu/berkeley/ai/domains/nav_switch.hierarchy" domain) env)))] (interactive-search node (make-queue-pq) (constantly 0)))
 
-(u util envs search search.algorithms.textbook angelic angelic.hierarchies domains.nav-switch domains.strips)
+(u util envs search search.algorithms.textbook angelic angelic.hierarchies domains.nav-switch domains.strips angelic.hierarchies.strips-hierarchies)
 
 (let [domain (make-nav-switch-strips-domain), env (make-nav-switch-strips-env 5 5 [[1 1]] [4 0] true [0 4]), val (make-initial-valuation :edu.berkeley.ai.angelic.dnf-simple-valuations/DNFSimpleValuation env), node (make-initial-top-down-forward-node env val (list (instantiate-hierarchy (parse-hierarchy "/Users/jawolfe/Projects/angel/src/edu/berkeley/ai/domains/nav_switch.hierarchy" domain) env)))] (check-solution env (a-star-search node)))
 
@@ -195,13 +237,34 @@
 
 (comment 
  ; Speed analysis, 6x6 nav-switch, no heuristic
- ; explicit domain, no hierarchy  : 3.5 s
+ ; explicit domain, no hierarchy  : 3.2 s
  ; strips   domain, no hierarchy  : 3.5 s
- ; explicit domain, flat hierarchy: 14.6 s
- ; strips   domain, flat hierarchy: 17.5
- ; strips domain, strips flat hier: 201 s
+ ; strips   domain, no hierarchy  : 2.5 s  (flattened and simplified)
+ ; explicit domain, flat hierarchy: 11.4 s
+ ; strips   domain, flat hierarchy: 14.6 s (13.3 flat/simple)
+ ; strips domain, strips flat hier: 152 s
+ ; strips comain, constant simplified, grounded strips flat hier: 35 s.
+ ;                               (un-simplified: 118)
+          ;           (still no real successor generator...)
+          ; without cs, 80% time in rg
+          ; with, 40% time in rg, 50% in upper-reward-bound
  ; -- long way to go 
 
+ ; First, look at diff between no hier and flat for explicit.  
+ ; roughtly same number of "next-s"- just diff order? 
+   ; Twice as many nodes on stack, since primitives generated
+   ; Overhead of creating valuation objects, hashing constituent states, ...
+   
+ ; Now, look at strips-flat-hier
+  ; 2/3 time going to refinement-instantiations!!
+  ; 1/3 to clause-consistent-mappings
+    ; Reasonable, since primitive args must be figured out each time (hierarchy saves!)
 
+ ; Now, profile time!
+  ; TODO: Fully instantiated STRIPS hierarchy.  
+    ; TODO: refinement generator (rather than / using CSP?)
+
+
+(let [domain (make-nav-switch-strips-domain), env (constant-predicate-simplify-strips-planning-instance (make-nav-switch-strips-env 6 6 [[1 1]] [5 0] true [0 5])), val (make-initial-valuation :edu.berkeley.ai.angelic.dnf-simple-valuations/DNFSimpleValuation env), node (make-initial-top-down-forward-node env val (list (instantiate-hierarchy (make-flat-strips-hierarchy-schema domain (constantly 0)) env)))] (time (second (a-star-search node))))
  )
 

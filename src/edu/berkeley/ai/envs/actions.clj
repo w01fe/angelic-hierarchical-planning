@@ -9,20 +9,22 @@
 
 
 
-(def *next-counter* (make-array Integer/TYPE 1))
+(def *next-counter* (util/sref 0))
 
 (defn reset-next-counter [] 
-  (aset *next-counter* 0 0))
+  (util/sref-set! *next-counter* 0))
 
 (defn next-state [state action]
-  (aset *next-counter* 0 (inc (aget *next-counter* 0)))
+;  (prn "next?" (:name action))
+  (util/sref-set! *next-counter* (inc (util/sref-get *next-counter*)))
   (let [[next reward] ((:fn action) state)]
     (with-meta next
       {:act-seq (conj (:act-seq ^state) action)
        :reward (+ reward (:reward ^state))})))
 
 (defn next-state-and-reward [state action]
-  (aset *next-counter* 0 (inc (aget *next-counter* 0)))
+;  (prn "next" (:name action))
+  (util/sref-set! *next-counter* (inc (util/sref-get *next-counter*)))
   (let [[next reward] ((:fn action) state)]
     [(with-meta next
        {:act-seq (conj (:act-seq ^state) action)

@@ -13,7 +13,7 @@
 (defmacro lazy-get "Like get but lazy about default"
   [m k d]
   `(if-let [pair# (find ~m ~k)] 
-       (second pair#)
+       (val pair#)
      ~d))
 
 (defn safe-get "Like get but throw an exception if not found"
@@ -42,6 +42,14 @@
 	     m1
 	     (concat-elts maps))))
 
+(defn restrict-map [m s]
+  "Remove all keys from m not in s."
+  (let [s (set s)]
+    (reduce (fn [result item]
+	      (if (contains? s item)
+		  result
+		(dissoc result item)))
+	    m (keys m))))
       
       
 (comment   ; group-by in clojure.contrib.seq-utils.

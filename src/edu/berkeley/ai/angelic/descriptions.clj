@@ -20,17 +20,19 @@
   (struct explicit-description ::ExplicitDescription action-space))
 
 (defn progress-explicit [val desc]
-  (make-explicit-valuation
-    (util/merge-reduce min {}
-      (for [[state reward] (explicit-valuation-map val)
-	    action (envs/applicable-actions state (:action-space desc))]
-	(let [[next step-reward] (envs/next-state-and-reward state action)]
-	  [next (+ reward step-reward)])))))
+  (make-explicit-valuation ; handles reduction
+;    (util/merge-reduce min {}
+   (for [[state reward] (explicit-valuation-map val)
+	 action (envs/applicable-actions state (:action-space desc))]
+     (let [[next step-reward] (envs/next-state-and-reward state action)]
+       [next (+ reward step-reward)])))) ;)
 
 (defmethod progress-optimistic [::Valuation ::ExplicitDescription]  [val desc]
+;  (prn "po")
   (progress-explicit val desc))
 
 (defmethod progress-pessimistic [::Valuation ::ExplicitDescription]  [val desc]
+;  (prn "pp")
   (progress-explicit val desc))
 
 
