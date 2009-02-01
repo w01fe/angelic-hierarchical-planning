@@ -174,10 +174,10 @@
 
 (defn constant-simplify-strips-action [action true-atoms false-atoms]
   (util/assert-is (nil? (util/safe-get action :vars)))
-  (let [pos-pre    (util/fast-difference (set (util/safe-get action :pos-pre)) true-atoms)
-	neg-pre    (util/fast-difference (set (util/safe-get action :neg-pre)) false-atoms)]
-    (when (and (empty? (util/fast-intersection pos-pre false-atoms))
-	       (empty? (util/fast-intersection neg-pre true-atoms)))
+  (let [pos-pre    (util/difference (set (util/safe-get action :pos-pre)) true-atoms)
+	neg-pre    (util/difference (set (util/safe-get action :neg-pre)) false-atoms)]
+    (when (and (empty? (util/intersection pos-pre false-atoms))
+	       (empty? (util/intersection neg-pre true-atoms)))
       (make-strips-action-schema 
        (util/safe-get action :name)
        nil
@@ -207,11 +207,11 @@
 				   (contains? ni-preds pred)    :ni
 				   :else                        :reg)))
 			 (util/safe-get instance :init-atoms))
-	always-true-atoms (util/fast-union (set const-init) pi-init)
-	always-false-atoms (util/fast-union (util/fast-difference all-const-atoms const-init)
-					    (util/fast-difference all-ni-atoms    ni-init))]
-    (util/assert-is (empty? (util/fast-intersection always-true-atoms always-false-atoms)))
-    (util/assert-is (empty? (util/fast-intersection always-false-atoms goal-atoms)))
+	always-true-atoms (util/union (set const-init) pi-init)
+	always-false-atoms (util/union (util/difference all-const-atoms const-init)
+					    (util/difference all-ni-atoms    ni-init))]
+    (util/assert-is (empty? (util/intersection always-true-atoms always-false-atoms)))
+    (util/assert-is (empty? (util/intersection always-false-atoms goal-atoms)))
     (assoc
       (make-strips-planning-instance- 
        (util/safe-get instance :name)
@@ -220,9 +220,9 @@
        (util/safe-get instance :trans-objects)
        reg-init
        (seq (clojure.set/difference goal-atoms always-true-atoms))
-       (util/fast-difference
+       (util/difference
 	(set (util/safe-get instance :all-atoms))
-	(util/fast-union always-true-atoms always-false-atoms))
+	(util/union always-true-atoms always-false-atoms))
        (filter identity (map #(constant-simplify-strips-action % always-true-atoms always-false-atoms) (util/safe-get instance :all-actions))))
       :always-true-atoms always-true-atoms :always-false-atoms always-false-atoms)))
 

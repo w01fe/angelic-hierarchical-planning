@@ -29,58 +29,80 @@
       (every? s1 s2))))
 
 
-(defn difference "Like clojure.set/difference, but faster.  
-                  First arg must be a set."
-  ([s] s)
-  ([s & colls]
-     (reduce 
-      (fn [s1 s2]
-	(if (or (not (set? s2))
-		(> (int (count s1)) (int (count s2))))
-	    (reduce disj s1 s2)
-	  (reduce (fn [result item] 
-		    (if (contains? s2 item) (disj result item) result))
-		  s1 s1)))
-      s colls)))
 
-(defn- intersection- "Expects s1 and s2 sets, s1 bigger than s2." [s1 s2]
-  (reduce (fn [result item] 
-		(if (contains? s1 item) 
-		  result 
-		  (disj result item)))
-	      s2 s2))
 
-(defn intersection "Like clojure.set/intersection, but faster.
-                    First arg must be a set."
-  ([s] s)
-  ([s & colls]
-     (reduce 
-      (fn [s1 s2]
-	(cond (not (set? s2)) 
- 	        (reduce (fn [result item]
-			  (if (contains? s1 item)
-			    (conj result item)
-			    result))
-			#{} s2)
-	      (> (int (count s1)) (int (count s2)))
-	        (fast-intersection- s1 s2)
-	      :else
-	        (fast-intersection- s2 s1)))
-      s colls)))
-
-    
-(defn union "Like union, but faster.  First arg must be a set." 
+(defn union
+  "Return a set that is the union of the input sets"
   ([] #{})
-  ([s] s)
-  ([s & colls]
-     (reduce 
-      (fn [s1 s2]
-	(if (or (not (set? s2)) 
-		(> (int (count s1)) (int (count s2))))
-  	    (reduce conj s1 s2)
-	  (reduce conj s2 s1)))
-      s colls)))
+  ([s1] s1)
+  ([s1 s2]
+     (if (< (count s1) (count s2))
+         (reduce conj s2 s1)
+       (reduce conj s1 s2)))
+  ([s1 s2 & sets] 
+     (loop [biggest s1
+	    biggest-size (count s1)
+	    not-biggest nil
+	    rest-colls (conj sets s2)]
+       (if rest-colls
+	 (let [first-coll (first rest-colls)
+	       size (count first-coll)]
+	   (if (> size biggest-size)
+	       (recur first-coll size (cons biggest not-biggest) (rest rest-colls))
+	     (recur biggest biggest-size (cons first-coll not-biggest) (rest rest-colls))))
+	 (reduce into biggest not-biggest)))))
 
+
+(defn- two-arg-intersection 
+  "Take the intersection of sets s1 and s2; faster when s2 bigger than s1." 
+  [s1 s2]
+  (reduce (fn [result item]
+	    (if (contains? s2 item)
+	      result
+	      (disj result item)))
+	  s1 s1))
+
+(defn intersection
+  "Return a set that is the intersection of the input sets"
+  ([s1] s1)
+  ([s1 s2]
+     (if (< (count s1) (count s2))
+         (two-arg-intersection s1 s2)
+       (two-arg-intersection s2 s1)))
+  ([s1 s2 & sets] 
+     (loop [smallest s1
+	    smallest-size (count s1)
+	    not-smallest nil
+	    rest-colls (conj sets s2)]
+       (if rest-colls
+	 (let [first-coll (first rest-colls)
+	       size (count first-coll)]
+	   (if (< size smallest-size)
+	       (recur first-coll size (cons smallest not-smallest) (rest rest-colls))
+	     (recur smallest smallest-size (cons first-coll not-smallest) (rest rest-colls))))
+	 (reduce two-arg-intersection smallest not-smallest)))))
+
+(defn- two-arg-difference 
+  "Return a set that is s1 without elements of s2."
+  [s1 s2]
+  (if (< (count s1) (count s2))
+      (reduce (fn [result item] (if (contains? s2 item) (disj result item) result))
+	      s1 s1)
+    (reduce disj s1 s2)))
+
+(defn difference
+  "Return a set that is the first set without elements of the remaining sets"
+  ([s1] s1)
+  ([s1 s2] (two-arg-difference s1 s2))
+  ([s1 s2 & sets] (reduce two-arg-difference s1 (conj sets s2))))
+
+
+ 	
+
+	
+	
+  
+  
 
     
 

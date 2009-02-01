@@ -383,7 +383,7 @@
 	      (util/assert-is (isa? (:class opt-val) :edu.berkeley.ai.angelic.dnf-simple-valuations/DNFSimpleValuation))
 	      (let [hla-map (util/safe-get hla :hla-map)
 		    allowed-refs 
-		    (reduce util/fast-union 
+		    (reduce util/union 
 		      (for [clause (util/safe-get opt-val :dnf)]
 			(real-fn clause)))]
 		;; TODO: empty ref here
@@ -464,12 +464,12 @@
 	{:keys [always-true-atoms always-false-atoms]} instance
 	grounder (partial props/simplify-atom var-map)
 	vm-translator #(translate-var-map (util/safe-get old-hla-map (first %)) (rest %) var-map false)
-	new-pos-pre (util/fast-difference (set (map grounder pos-pre)) always-true-atoms)
-	new-neg-pre (util/fast-difference (set (map grounder neg-pre)) always-false-atoms)
+	new-pos-pre (util/difference (set (map grounder pos-pre)) always-true-atoms)
+	new-neg-pre (util/difference (set (map grounder neg-pre)) always-false-atoms)
 	precondition (envs/make-conjunctive-condition new-pos-pre new-neg-pre)]
 ;    (prn name var-map)
-    (when (and (empty? (util/fast-intersection new-pos-pre always-false-atoms))
-	       (empty? (util/fast-intersection new-neg-pre always-true-atoms)))
+    (when (and (empty? (util/intersection new-pos-pre always-false-atoms))
+	       (empty? (util/intersection new-neg-pre always-true-atoms)))
       (if (empty? expansion) [precondition []] ; handle first action specially
 	(let [ground-first-action-name (grounder (first expansion))]
 	  (when (put-grounded-hlas (ffirst expansion) (vm-translator (first expansion)) 
@@ -514,16 +514,16 @@
       (let [{:keys [trans-objects always-true-atoms always-false-atoms]} instance
 	    {:keys [vars pos-pre neg-pre refinement-schemata optimistic-schema pessimistic-schema primitive]} schema
 	    grounder (partial props/simplify-atom var-map)
-	    new-pos-pre (util/fast-difference (set (map grounder pos-pre)) always-true-atoms)
-	    new-neg-pre (util/fast-difference (set (map grounder neg-pre)) always-false-atoms)
+	    new-pos-pre (util/difference (set (map grounder pos-pre)) always-true-atoms)
+	    new-neg-pre (util/difference (set (map grounder neg-pre)) always-false-atoms)
 	    new-precondition (envs/make-conjunctive-condition new-pos-pre new-neg-pre)
 	    opt-desc    (ground-description optimistic-schema  var-map)
 	    pess-desc   (ground-description pessimistic-schema var-map)]
 ;	(prn "step1 " full-name)
 	(.put new-mutable-hla-map full-name [:on-stack new-precondition])
 	(if-let [result 
-  	 (when (and (empty? (util/fast-intersection new-pos-pre always-false-atoms))
-		   (empty? (util/fast-intersection new-neg-pre always-true-atoms)))
+  	 (when (and (empty? (util/intersection new-pos-pre always-false-atoms))
+		   (empty? (util/intersection new-neg-pre always-true-atoms)))
 ;	  (prn "step2" refinement-schemata)
 	  (if primitive
 	      (do (.put new-mutable-hla-map full-name
