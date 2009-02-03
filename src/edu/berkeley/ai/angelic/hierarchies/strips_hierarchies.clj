@@ -19,7 +19,6 @@
 
 ; TODO: change over to use conditions everywhere? (and add propositional-condition)
 
-
 ;; HLA schemata
 
 (defstruct strips-hla-schema :class :name :vars :pos-pre :neg-pre :refinement-schemata :optimistic-schema :pessimistic-schema :primitive)
@@ -28,14 +27,19 @@
   (struct strips-hla-schema ::StripsHLASchema name parameters pos-preconditions neg-preconditions 
 	  refinement-schemata optimistic-schema pessimistic-schema primitive))
 
+(def *noop-strips-hla-schema* 
+     (make-strips-hla-schema (gensym "noop") nil nil nil nil *identity-description* *identity-description* :noop))
 
 ; TODO: double check about removing precs from NCSTRIPS for primitives.
 ; TODO: some more general way to do this (without focusing on ncstrips)
 (defn- make-strips-primitive-hla-schema [types objects predicates action]
-  (let [desc (ncstrips/make-ncstrips-description-schema types (props/check-objects types (concat objects (:vars action))) predicates 
-					       [(ncstrips/make-ncstrips-effect nil nil ; (:pos-pre action) (:neg-pre action) TODO: double check
-									       (:add-list action) (:delete-list action) nil nil (constantly (:cost action)))] (:vars action))]
-    (make-strips-hla-schema (:name action) (:vars action) (:pos-pre action) (:neg-pre action) :primitive desc desc action)))
+  (let [desc (ncstrips/make-ncstrips-description-schema 
+	      types (props/check-objects types (concat objects (:vars action))) predicates 
+	      [(ncstrips/make-ncstrips-effect nil nil ; (:pos-pre action) (:neg-pre action) TODO: double check
+					      (:add-list action) (:delete-list action) nil nil (constantly (:cost action)))] 
+	      (:vars action))]
+    (make-strips-hla-schema (:name action) (:vars action) (:pos-pre action) (:neg-pre action) 
+			    :primitive desc desc action)))
 
 
 (defn parse-strips-hla-schema [hla domain]
@@ -57,11 +61,11 @@
        neg-pre
        (map (fn [refinement]
 	      (util/match [[[:optional [:name [unquote ref-name]]]
-		       [:optional [:precondition [unquote precondition]]]
-		       [:expansion [unquote expansion]]]
-		      (util/partition-all 2 refinement)]
+			    [:optional [:precondition [unquote precondition]]]
+			    [:expansion [unquote expansion]]]
+			   (util/partition-all 2 refinement)]
 		(let [[pp np] (props/parse-pddl-conjunction precondition)] 
-		  [(if ref-name (util/symbol-cat name '- ref-name) (gensym name)) pp np nil expansion])))
+		  [(if ref-name (util/symbol-cat name '- ref-name) (gensym name)) pp np nil (or (seq expansion) (list (list (:name *noop-strips-hla-schema*))))])))
 	    refinements)
        (parse-description (or optimistic exact [:opt]) domain params)
        (parse-description (or pessimistic exact [:pess]) domain params)
@@ -91,6 +95,7 @@
    
 
 (defn- check-hla-schema [types guaranteed-objs predicates all-actions hla-schema] 
+  (util/assert-is (contains? #{nil :noop} (util/safe-get hla-schema :primitive)))
   (util/assert-is (not (map? (:vars hla-schema))))
   (util/assert-is (util/distinct-elts? (map first (:refinement-schemata hla-schema))) "non-distinct refinement names %s" hla-schema)
   (util/assert-is (not-any? #(props/is-dummy-var? (second %)) (:vars hla-schema))) 
@@ -123,7 +128,7 @@
 	  (:refinement-schemata hla-schema)))
      (:optimistic-schema hla-schema)
      (:pessimistic-schema hla-schema)
-     nil)))
+     (:primitive hla-schema))))
 
 (defn- check-hla-schemata [types guaranteed-objs predicates actions hla-schemata]
 ;  (prn hla-schemata)
@@ -146,7 +151,7 @@
   (util/match [[[:multiple (:hla [unquote-seq hlas])]] contents]
     {:class ::StripsHierarchySchema, :hlas
      (check-hla-schemata (:types domain) (:guaranteed-objs domain) (:predicates domain) (:action-schemata domain)
-			 (map #(parse-strips-hla-schema % domain) hlas))}))
+			 (cons *noop-strips-hla-schema* (map #(parse-strips-hla-schema % domain) hlas)))}))
 
 (defn make-flat-act-optimistic-description-schema [upper-reward-fn]
   {:class ::FlatActOptimisticDescriptionSchema :upper-reward-fn upper-reward-fn})
@@ -164,10 +169,11 @@
   {:class ::StripsHierarchySchema
    :hlas 
      (util/map-map #(vector (:name %) %) 
+       (cons *noop-strips-hla-schema*
 	(cons
 	  (make-strips-hla-schema
 	   'act nil nil nil
-	   (cons ['empty nil nil nil []]
+	   (cons ['empty nil nil nil [[(util/safe-get *noop-strips-hla-schema* :name)]]]
 		 (for [action (:action-schemata domain)]
 		   (let [dummy-vars (for [[t v] (:vars action)] [(keyword (str "?" v)) [t]])]
 		     [(:name action) nil nil (into {} dummy-vars) [(cons (:name action) (map first dummy-vars)) ['act]]]))) 
@@ -175,7 +181,7 @@
 	   *pessimal-description* nil)
 	  (map (partial make-strips-primitive-hla-schema 
                  (:types domain) (:guaranteed-objs domain) (:predicates domain))
-	       (:action-schemata domain))))})
+	       (:action-schemata domain)))))})
 
 
 
@@ -190,6 +196,7 @@
 
 (derive ::StripsHLA :angelic.hierarchies/HLA)
 (derive ::StripsPrimitiveHLA ::StripsHLA)
+(derive ::StripsNoopHLA ::StripsPrimitiveHLA)
 
 
 ; TODO TODO: should eventually remove all dependence on instance
@@ -198,9 +205,9 @@
 (defstruct strips-hla :class :hierarchy :schema :var-map :precondition :primitive)
 
 (defn make-strips-hla [hierarchy schema var-map precondition primitive]
-  (if primitive
-      (struct strips-hla ::StripsPrimitiveHLA hierarchy schema var-map precondition primitive)
-    (struct strips-hla ::StripsHLA hierarchy schema var-map precondition nil)))
+  (struct strips-hla 
+	  (cond (= primitive :noop) ::StripsNoopHLA primitive ::StripsPrimitiveHLA :else ::StripsHLA)
+	  hierarchy schema var-map precondition primitive))
 
 (defn- instantiate-strips-hla-schema [hla instance]
   (assoc hla
@@ -250,6 +257,8 @@
 (defmethod hla-primitive ::StripsHLA [hla] nil)
 (defmethod hla-primitive ::StripsPrimitiveHLA [hla] 
   (strips/strips-action->action (strips/get-strips-action-schema-instance (:primitive hla) (:var-map hla))))
+(defmethod hla-primitive ::StripsNoopHLA [hla] :noop) 
+
 
 (defmethod hla-hierarchical-preconditions ::StripsHLA [hla]
   (:precondition hla))
@@ -271,10 +280,11 @@
 
 
 (defn- refinement-instantiations [precondition hierarchy expansion opt-val var-map dummy-var-vals]
-  (if (empty? expansion)   ; must handle empty expansion specially
-      (do (util/assert-is (empty? dummy-var-vals))
-	  (when-not (empty-valuation? (restrict-valuation opt-val precondition))
-	    ['()]))
+  (util/assert-is (not (empty? expansion)))
+;  (if (empty? expansion)   ; must handle empty expansion specially
+;      (do (util/assert-is (empty? dummy-var-vals))
+;	  (when-not (empty-valuation? (restrict-valuation opt-val precondition))
+;	    ['()]))
     (let [hla-map      (util/safe-get hierarchy :hla-map),
 	  first-action (util/safe-get hla-map (ffirst expansion)),
 	  first-var-map (translate-var-map first-action (rfirst expansion) var-map true)
@@ -301,7 +311,7 @@
 		    (:primitive hla))))
 	       expansion 
 	       (cons (envs/ground-propositional-condition  precondition dummy-var-map)
-		     (repeat (envs/make-conjunctive-condition nil nil)))))))))
+		     (repeat (envs/make-conjunctive-condition nil nil))))))))
 
 
 (defmethod hla-immediate-refinements [::StripsPrimitiveHLA :edu.berkeley.ai.angelic/Valuation] [hla] (throw (UnsupportedOperationException.)))
@@ -327,7 +337,6 @@
 
 
 
-;(defstruct strips-hla-schema :class :name :vars :pos-pre :neg-pre :refinement-schemata :optimistic-schema :pessimistic-schema :primitive)
 
 
 ;;; Fully grounded and constant-simplified strips hierarchies 	
@@ -346,6 +355,10 @@
   (struct grounded-strips-hla-schema ::GroundedStripsHLASchema 
     name precondition refs ref-fn opt-desc pess-desc primitive))
 
+(def *noop-grounded-strips-hla-schema*
+     (make-grounded-strips-hla-schema 
+      (list (util/safe-get *noop-strips-hla-schema* :name)) envs/*true-condition* 
+      :noop #(throw (UnsupportedOperationException.)) *identity-description* *identity-description* :noop))
 
 (defstruct grounded-strips-hla :class :hla-map :schema :hierarchical-precondition)
 
@@ -386,16 +399,15 @@
 		    (reduce util/union 
 		      (for [clause (util/safe-get opt-val :dnf)]
 			(real-fn clause)))]
-		;; TODO: empty ref here
 		(for [exp allowed-refs]
-		  (when (seq exp)
+;		  (when (seq exp)
 		    (cons (let [first-schema (util/safe-get hla-map (first exp))]
 			    (make-grounded-strips-hla 
 			     hla-map first-schema  
 			     (envs/conjoin-conditions (util/safe-get hla :hierarchical-precondition) (util/safe-get first-schema :precondition))))
 			  (for [act (rest exp)]
 			    (let [schema (util/safe-get hla-map act)]
-			      (make-grounded-strips-hla hla-map schema (util/safe-get schema :precondition)))))))))))
+			      (make-grounded-strips-hla hla-map schema (util/safe-get schema :precondition))))))))))
   ([refs blacklist]
    (let [most-common-pair
   	  (first 
@@ -432,23 +444,6 @@
 		   :else         (concat (pos-branch clause) (neg-branch clause)))
 	     (dc-branch clause)))))))))
 
-;	(if pos-branch
-;            (if neg-branch
-;	        (if dc-branch 
-;	            (fn [clause] (concat (if (contains? state most-common-atom) (pos-branch state) (neg-branch state)) (dc-branch state)))
-;  	          (fn [clause] (if (contains? state most-common-atom) (pos-branch state) (neg-branch state))))
-;	      (if dc-branch 
-;	          (fn [clause] (concat (if (contains? state most-common-atom) (pos-branch state) nil) (dc-branch state)))
-;	        (fn [clause] (if (contains? state most-common-atom) (pos-branch state) nil))))
-;          (if neg-branch
-;	      (if dc-branch 
-;	          (fn [clause] (concat (if (contains? state most-common-atom) nil (neg-branch state)) (dc-branch state)))
-;	        (fn [clause] (if (contains? state most-common-atom) nil (neg-branch state))))
-;;	    (if dc-branch 
- ;               dc-branch
-;	      (fn [clause] nil)))))))))
-  
-
 
 (import '(java.util HashMap))
 
@@ -470,7 +465,8 @@
 ;    (prn name var-map)
     (when (and (empty? (util/intersection new-pos-pre always-false-atoms))
 	       (empty? (util/intersection new-neg-pre always-true-atoms)))
-      (if (empty? expansion) [precondition []] ; handle first action specially
+      (util/assert-is (not (empty? expansion)) "Test %s" ref-schema)
+;      (if (empty? expansion) [precondition []] ; handle first action specially
 	(let [ground-first-action-name (grounder (first expansion))]
 	  (when (put-grounded-hlas (ffirst expansion) (vm-translator (first expansion)) 
 				   instance old-hla-map new-mutable-hla-map)
@@ -484,7 +480,7 @@
 		(if (empty? expansion) [precondition ground-expansion]
 		  (when (put-grounded-hlas (ffirst expansion) (vm-translator (first expansion))
 					   instance old-hla-map new-mutable-hla-map)
-		    (recur (conj ground-expansion (grounder (first expansion))) (rest expansion))))))))))))
+		    (recur (conj ground-expansion (grounder (first expansion))) (rest expansion)))))))))))
 
 ; TODO: For now, do totally braindedad thing
 (defn get-possible-ref-schema-var-maps [ref-schema var-map objects always-true-atoms always-false-atoms]
@@ -551,7 +547,7 @@
 	  result
 	 (do (.put new-mutable-hla-map full-name [:bad]) false))))))
 
-
+; TODO TODO TODO: handle noop here!
      
 (defn ground-and-constant-simplify-strips-hierarchy [hla instance-simplifier]
   (util/assert-is (= (:class hla) ::StripsHLA))
@@ -561,6 +557,7 @@
 	instance           (instance-simplifier (util/safe-get old-hierarchy :problem-instance))
 	new-hla-map        (HashMap.)]
 ;    (prn (keys old-hla-map))
+    (.put new-hla-map (util/safe-get *noop-grounded-strips-hla-schema* :name) *noop-grounded-strips-hla-schema*) ; Must put this here, since it has no refs.
     (util/make-safe (put-grounded-hlas root-action-name {} instance old-hla-map new-hla-map))
     (doseq [[k v] (doall (seq new-hla-map))] (when (util/includes? [:on-stack :bad] (first v)) (.remove new-hla-map k)))
     (prn (count (keys new-hla-map)))

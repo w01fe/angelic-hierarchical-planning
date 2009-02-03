@@ -148,7 +148,9 @@
 ;		 (if-let [prim (hla-primitive (:hla node))]
 ;		     (recur (cons prim act-seq) (:previous node))
 ;		   false)))]
-    (let [act-seq (map hla-primitive (rest (reverse (util/iterate-while :previous node)))) 
+ ;   (clojure.inspector/inspect-tree node)
+    (let [act-seq (remove #(= % :noop)
+		   (map (comp hla-primitive :hla) (rest (reverse (util/iterate-while :previous node))))) 
 ;	  lower (get-valuation-lower-bound (get-pessimistic-valuation node))
 	  upper (get-valuation-upper-bound (get-optimistic-valuation node))] 
  ;     (util/assert-is (= lower upper))

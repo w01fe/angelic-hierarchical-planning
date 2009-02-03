@@ -1,0 +1,35 @@
+
+TODO: add tests!!!
+
+; Idea : JIT grounder for hlas?! 
+ 
+; TODO: too many instantiations?!
+     ; Allow vars in NCSTRIPS (reduce #), and/or 
+     ; improve JIT ref-generator (forget about grounding)
+     ;  - (compile expressions, using constants?)
+  ; !!! IF REFS don't depend on it, shouldn't be a var.
+        or something.
+
+randomize refinement ordering ??
+
+longer term
+ - planning graph (+ relaxed)
+
+ - warehouse world
+  - forall in ncstrips precondition
+ 
+ - quantified effects, etc.  
+
+ - variables in ncstrips, effects and costs
+
+ - add propositional-domain, propositional-instance interfaces?
+
+
+; Observation - constant simplifier doesn't help too much when
+ you have ref generator
+
+; Idea : JIT grounder for hlas?! 
+
+
+; Idea: angelic iwthout sets of states, just state abstraction?!
+

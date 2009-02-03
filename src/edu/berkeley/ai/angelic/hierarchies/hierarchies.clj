@@ -21,7 +21,11 @@
 
 (defmulti instantiate-hierarchy (fn [hierarchy instance] (:class hierarchy)))
 
-(defmulti #^{:doc "If this HLA is primitive, return the primitive action, else nil."} hla-primitive :class)
+
+
+(defmulti #^{:doc "If this HLA is primitive, return the primitive action, else nil. 
+                   Can return :noop, which must be filtered out."} 
+  hla-primitive :class)
 
 (defmulti hla-name                       :class)
 

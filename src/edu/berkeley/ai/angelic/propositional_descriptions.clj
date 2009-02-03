@@ -35,7 +35,9 @@
    (util/safe-get desc :max-reward)))
 
 
+(defmethod instantiate-description-schema ::IdentityDescription [desc instance]  desc)
 
+(defmethod ground-description ::IdentityDescription [desc var-map]  desc)
 
 
 
