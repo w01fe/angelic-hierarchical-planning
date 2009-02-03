@@ -1,6 +1,21 @@
 
 TODO: add tests!!!
 
+------------------------------------
+From earlier meeting
+
+- Bruce Donald ? ?? ?
+- Continuous blocks
+- Logistics
+- Tourism
+
+- fuel+time varaible-mpg navigation!
+- Merging / splitting
+
+Progression-free planning, with bhaskara's hierarchy (and JIt progression?)
+
+------------------------------------
+
 ; Idea : JIT grounder for hlas?! 
  
 ; TODO: too many instantiations?!
