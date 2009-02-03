@@ -12,7 +12,7 @@ TODO: add tests!!!
 
 randomize refinement ordering ??
 
-longer term
+longer term 
  - planning graph (+ relaxed)
 
  - warehouse world
