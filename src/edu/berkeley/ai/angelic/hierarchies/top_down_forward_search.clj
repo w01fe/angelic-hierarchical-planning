@@ -174,7 +174,7 @@
   ([hierarchy-schema env val-type simplifier]
      (make-initial-top-down-forward-node env
        (make-initial-valuation val-type env)
-       (list (instantiate-hierarchy hierarchy-schema env)))))
+       (list (simplifier (instantiate-hierarchy hierarchy-schema env))))))
 
 ;(defmethod search/node-parent ::TopDownForwardNode [node] 
 ;  Not implemented
@@ -226,7 +226,7 @@
       (= ['left 'flip 'down]
 	 (get-and-check-sol
 	  (make-flat-hierarchy-schema 
-	   (fn [state] (* -2 (+ (Math/abs (- (first (:pos state)) 0)) (Math/abs (- (second (:pos state)) 4))))))
+	   (fn [state] (* -2 (+ (Math/abs (- (first (:pos state)) 0)) (Math/abs (- (second (:pos state)) 1))))))
 	  (nav-switch/make-nav-switch-env 2 2 [[0 0]] [1 0] true [0 1])
 	  ::angelic/ExplicitValuation))))
     (util/testing "flat hierarchy, strips"
@@ -240,7 +240,7 @@
       (= '[[good-left x1 x0] [flip-v x0 y0] [good-down y0 y1]]
 	 (get-and-check-sol
 	  (make-flat-hierarchy-schema
-	   (fn [state] (* -2 (+ (Math/abs (- (util/desymbolize (first (strips/get-strips-state-pred-val state 'atx)) 1) 0)) (Math/abs (- (util/desymbolize (first (strips/get-strips-state-pred-val state 'aty)) 1) 4)))))) 
+	   (fn [state] (* -2 (+ (Math/abs (- (util/desymbolize (first (strips/get-strips-state-pred-val state 'atx)) 1) 0)) (Math/abs (- (util/desymbolize (first (strips/get-strips-state-pred-val state 'aty)) 1) 1)))))) 
 	  (nav-switch/make-nav-switch-strips-env 2 2 [[0 0]] [1 0] true [0 1])
 	  ::angelic/ExplicitValuation)))
      (util/is 
@@ -271,7 +271,7 @@
 	 (get-and-check-sol
 	  (strips-hierarchies/make-flat-strips-hierarchy-schema 
 	   (nav-switch/make-nav-switch-strips-domain)
-	   (fn [state] (* -2 (+ (Math/abs (- (util/desymbolize (first (strips/get-strips-state-pred-val state 'atx)) 1) 0)) (Math/abs (- (util/desymbolize (first (strips/get-strips-state-pred-val state 'aty)) 1) 4))))))
+	   (fn [state] (* -2 (+ (Math/abs (- (util/desymbolize (first (strips/get-strips-state-pred-val state 'atx)) 1) 0)) (Math/abs (- (util/desymbolize (first (strips/get-strips-state-pred-val state 'aty)) 1) 1))))))
 	  (nav-switch/make-nav-switch-strips-env 2 2 [[0 0]] [1 0] true [0 1])
 	  :edu.berkeley.ai.angelic.dnf-simple-valuations/DNFSimpleValuation)))
      (util/is

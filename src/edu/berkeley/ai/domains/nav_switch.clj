@@ -83,7 +83,7 @@
    (make-nav-switch-strips-domain)
    {:xc (map #(util/symbol-cat "x" %) (range width))
     :yc (map #(util/symbol-cat "y" %) (range height))}
-   (concat (if initial-hor? '[[horiz]] '[[vert]])
+   (concat (when initial-hor? '[[horiz]])
 	   [['atx (util/symbol-cat "x" (first initial-pos))] ['aty (util/symbol-cat "y" (second initial-pos))]]
 	   (map (fn [pos] ['switch-at (util/symbol-cat "x" (first pos)) (util/symbol-cat "y" (second pos))]) switch-coords)
 	   (map (fn [x] ['left-of (util/symbol-cat "x" (dec x)) (util/symbol-cat "x" x)]) (range 1 width))

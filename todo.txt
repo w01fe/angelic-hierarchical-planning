@@ -1,7 +1,7 @@
 
-TODO: add tests!!!
-
-TODO: add-list to add-set, etc. (many places)  ? (maybe not)
+Graph search
+Tiebreaking
+Progression cache
 
 ------------------------------------
 From earlier meeting

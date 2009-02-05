@@ -523,9 +523,10 @@
 			(make-grounded-strips-hla-schema 
 			 full-name new-precondition :primitive #(throw (UnsupportedOperationException.)) 
 			 opt-desc pess-desc
-			 (util/make-safe (strips/constant-simplify-strips-action ; some redundancy here... 
-					  (strips/get-strips-action-schema-instance primitive var-map)
-					  always-true-atoms always-false-atoms))))
+			 (strips/strips-action->action
+ 			    (util/make-safe (strips/constant-simplify-strips-action ; some redundancy here... 
+					     (strips/get-strips-action-schema-instance primitive var-map)
+					     always-true-atoms always-false-atoms)))))
 		  true)
 	    (when-let [refs 
 		       (doall 
@@ -557,7 +558,7 @@
     (.put new-hla-map (util/safe-get *noop-grounded-strips-hla-schema* :name) *noop-grounded-strips-hla-schema*) ; Must put this here, since it has no refs.
     (util/make-safe (put-grounded-hlas root-action-name {} instance old-hla-map new-hla-map))
     (doseq [[k v] (doall (seq new-hla-map))] (when (util/includes? [:on-stack :bad] (first v)) (.remove new-hla-map k)))
-    (prn (count (keys new-hla-map)))
+    (println "Number of grounded actions: " (count (keys new-hla-map)))
     (make-grounded-strips-hla
      new-hla-map 
      (util/safe-get new-hla-map (list root-action-name))
