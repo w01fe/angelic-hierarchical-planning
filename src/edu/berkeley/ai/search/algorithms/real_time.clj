@@ -12,7 +12,7 @@
 (defn real-time-search "Generic real-time search.  Action-fn maps node->primitive"
   [state state->search-node max-steps action-fn]
   (loop [[state cur-seq] [state [[] 0]], max-steps max-steps]
-;  (when (> *debug-level* 0) (prn (clojure.set/intersection state #{'(on d c) '(on c b) '(on b a)})))
+;  (when (> *debug-level* 0) (prn (util/intersection state #{'(on d c) '(on c b) '(on b a)})))
     (let [node (state->search-node state)]
       (when (> *debug-level* 0) (prn) (util/prln (search/node-str node)))
       (or (and (extract-optimal-solution node) cur-seq)
@@ -80,7 +80,7 @@
 	(read-strips-planning-instance
 	 (read-strips-planning-domain "/Users/jawolfe/Projects/research/IPC/IPC2/2000-Tests/Blocks/Track1/Typed/domain.pddl")
 	 "/Users/jawolfe/Projects/research/IPC/IPC2/2000-Tests/Blocks/Track1/Typed/probBLOCKS-4-0.pddl")
-	    space (state-space-search-space instance #(- (count (clojure.set/difference (set (:goal-atoms instance)) %))))]
+	    space (state-space-search-space instance #(- (count (util/difference (util/to-set (:goal-atoms instance)) %))))]
 	(frequencies (map #(when % true) (take 1000 (repeatedly (fn []
      (lookahead-search 
       (envs/get-initial-state instance)
@@ -96,7 +96,7 @@
   (frequencies (map #(when % true) (take 100 (repeatedly (fn []
      (lrta-star
       instance
-      #(- (count (clojure.set/difference (set (:goal-atoms instance)) %)))
+      #(- (count (util/difference (set (:goal-atoms instance)) %)))
       1000
       1)))))))
 
@@ -108,7 +108,7 @@
 		       
 ;      (state-space-search-node  
      
-;     #(- (count (clojure.set/intersection )
+;     #(- (count (util/intersection )
 ;     )))
 
 

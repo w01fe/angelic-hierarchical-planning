@@ -2,6 +2,7 @@
 
 (defn true-keys 
   "Return a lazy seq of the keys corresponding values satisfying pred in map."
+  ([map] (true-keys identity map))
   ([pred map] (for [[k v] map :when (pred v)] k))
   {:test (fn [] (is (= #{ 3 4 6} (set (true-keys {1 nil 2 false 3 true 4 'asfd 5 nil 6 1})))))})
 
@@ -44,13 +45,15 @@
 
 (defn restrict-map [m s]
   "Remove all keys from m not in s."
-  (let [s (set s)]
+  (let [s (to-set s)]
     (reduce (fn [result item]
 	      (if (contains? s item)
 		  result
 		(dissoc result item)))
 	    m (keys m))))
       
+(defn keyset [m] (set (keys m)))
+
       
 (comment   ; group-by in clojure.contrib.seq-utils.
 (defn categorize 

@@ -90,8 +90,38 @@
 	   (map (fn [x] ['above   (util/symbol-cat "y" (dec x)) (util/symbol-cat "y" x)]) (range 1 height)))
    [['atx (util/symbol-cat "x" (first goal-pos))] ['aty (util/symbol-cat "y" (second goal-pos))]]))
     
+(defn- get-and-check-sol [env]
+  (map :name
+    (first
+     (envs/check-solution env
+       (edu.berkeley.ai.search.algorithms.textbook/a-star-search 
+	(edu.berkeley.ai.search/make-initial-state-space-node 
+	 env   
+	 (constantly 0)))))))
+
+(util/deftest flat-nav-switch
+  (util/testing "non-strips"
+    (util/is (= ['left 'flip 'down]
+     (get-and-check-sol 
+      (make-nav-switch-env 2 2 [[0 0]] [1 0] true [0 1])))))
+  (util/testing "strips"
+    (util/is (= '[[good-left x1 x0] [flip-v x0 y0] [good-down y0 y1]]
+     (get-and-check-sol
+      (make-nav-switch-strips-env 2 2 [[0 0]] [1 0] true [0 1]))))
+    (util/is (= '[[good-left x1 x0] [flip-v x0 y0] [good-down y0 y1]]
+     (get-and-check-sol
+      (strips/constant-predicate-simplify-strips-planning-instance  
+       (make-nav-switch-strips-env 2 2 [[0 0]] [1 0] true [0 1])))))
+    (util/is (= '[[good-left x1 x0] [flip-v x0 y0] [good-down y0 y1]]
+     (get-and-check-sol
+      (strips/flatten-strips-instance
+       (strips/constant-predicate-simplify-strips-planning-instance  
+	(make-nav-switch-strips-env 2 2 [[0 0]] [1 0] true [0 1]))))))))
 
 
+
+  
+  
 (comment 
   (u util search search.algorithms.textbook domains.nav-switch)
   (binding [*debug-level* 1] (lrta-star (make-nav-switch-env 2 2 [[0 0]] [1 0] true [0 1]) (constantly 0) 100 1))

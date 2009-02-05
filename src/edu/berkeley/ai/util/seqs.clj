@@ -152,7 +152,11 @@
 	 (and (apply f (map first seqs))
 	      (recur f (map rest seqs))))))
 
+(defn to-set [x]
+  (if (set? x) x (set x))) 
 
+(defn to-vec [x] 
+  (if (vector? x) x (vec x)))
 
 
 

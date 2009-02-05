@@ -168,6 +168,14 @@
   (util/str-join " " (map (comp hla-name :hla) (rest (reverse (util/iterate-while :previous node))))))
 
 
+(defn make-initial-tdf-node "Short version of make-initial-top-down-forward-node"
+  ([hierarchy-schema env] (make-initial-tdf-node hierarchy-schema env 
+			   :edu.berkeley.ai.angelic.dnf-simple-valuations/DNFSimpleValuation identity))
+  ([hierarchy-schema env val-type simplifier]
+     (make-initial-top-down-forward-node env
+       (make-initial-valuation val-type env)
+       (list (instantiate-hierarchy hierarchy-schema env)))))
+
 ;(defmethod search/node-parent ::TopDownForwardNode [node] 
 ;  Not implemented
 
@@ -179,6 +187,127 @@
 
 
 
+
+
+
+(defn- get-and-check-sol 
+  ([hierarchy-schema env val-type]
+     (get-and-check-sol hierarchy-schema env val-type identity))
+  ([hierarchy-schema env val-type simplifier]
+   (map :name
+    (first
+      (envs/check-solution env
+        (edu.berkeley.ai.search.algorithms.textbook/a-star-search
+	 (make-initial-tdf-node
+	  hierarchy-schema
+	  env
+	  val-type
+	  simplifier)))))))
+
+
+
+(require '[edu.berkeley.ai.domains.nav-switch :as nav-switch])
+(require '[edu.berkeley.ai.domains.strips :as strips])
+(require '[edu.berkeley.ai.angelic.hierarchies.strips-hierarchies :as strips-hierarchies])
+(require '[edu.berkeley.ai.search.algorithms.textbook :as textbook])
+
+
+
+
+(util/deftest top-down-nav-switch
+    (util/testing "flat hierarchy, non-strips"
+     (util/is 
+      (= ['left 'flip 'down]
+	 (get-and-check-sol
+	  (make-flat-hierarchy-schema (constantly 0))
+	  (nav-switch/make-nav-switch-env 2 2 [[0 0]] [1 0] true [0 1])
+	  ::angelic/ExplicitValuation)))
+     (util/is 
+      (= ['left 'flip 'down]
+	 (get-and-check-sol
+	  (make-flat-hierarchy-schema 
+	   (fn [state] (* -2 (+ (Math/abs (- (first (:pos state)) 0)) (Math/abs (- (second (:pos state)) 4))))))
+	  (nav-switch/make-nav-switch-env 2 2 [[0 0]] [1 0] true [0 1])
+	  ::angelic/ExplicitValuation))))
+    (util/testing "flat hierarchy, strips"
+     (util/is 
+      (= '[[good-left x1 x0] [flip-v x0 y0] [good-down y0 y1]]
+	 (get-and-check-sol
+	  (make-flat-hierarchy-schema (constantly 0)) 
+	  (nav-switch/make-nav-switch-strips-env 2 2 [[0 0]] [1 0] true [0 1])
+	  ::angelic/ExplicitValuation)))
+     (util/is 
+      (= '[[good-left x1 x0] [flip-v x0 y0] [good-down y0 y1]]
+	 (get-and-check-sol
+	  (make-flat-hierarchy-schema
+	   (fn [state] (* -2 (+ (Math/abs (- (util/desymbolize (first (strips/get-strips-state-pred-val state 'atx)) 1) 0)) (Math/abs (- (util/desymbolize (first (strips/get-strips-state-pred-val state 'aty)) 1) 4)))))) 
+	  (nav-switch/make-nav-switch-strips-env 2 2 [[0 0]] [1 0] true [0 1])
+	  ::angelic/ExplicitValuation)))
+     (util/is 
+      (= '[[good-left x1 x0] [flip-v x0 y0] [good-down y0 y1]]
+	 (get-and-check-sol
+	  (make-flat-hierarchy-schema (constantly 0)) 
+	  (strips/constant-predicate-simplify-strips-planning-instance	  
+	   (nav-switch/make-nav-switch-strips-env 2 2 [[0 0]] [1 0] true [0 1]))
+	  ::angelic/ExplicitValuation)))
+     (util/is 
+      (= '[[good-left x1 x0] [flip-v x0 y0] [good-down y0 y1]]
+	 (get-and-check-sol
+	  (make-flat-hierarchy-schema (constantly 0)) 
+          (strips/flatten-strips-instance 
+	    (strips/constant-predicate-simplify-strips-planning-instance
+	     (nav-switch/make-nav-switch-strips-env 2 2 [[0 0]] [1 0] true [0 1])))
+	  ::angelic/ExplicitValuation))))
+    (util/testing "flat-strips hierarchy"
+     (util/is
+      (= '[[good-left x1 x0] [flip-v x0 y0] [good-down y0 y1]]
+	 (get-and-check-sol
+	  (strips-hierarchies/make-flat-strips-hierarchy-schema 
+	   (nav-switch/make-nav-switch-strips-domain) (constantly 0))
+	  (nav-switch/make-nav-switch-strips-env 2 2 [[0 0]] [1 0] true [0 1])
+	  :edu.berkeley.ai.angelic.dnf-simple-valuations/DNFSimpleValuation)))
+     (util/is
+      (= '[[good-left x1 x0] [flip-v x0 y0] [good-down y0 y1]]
+	 (get-and-check-sol
+	  (strips-hierarchies/make-flat-strips-hierarchy-schema 
+	   (nav-switch/make-nav-switch-strips-domain)
+	   (fn [state] (* -2 (+ (Math/abs (- (util/desymbolize (first (strips/get-strips-state-pred-val state 'atx)) 1) 0)) (Math/abs (- (util/desymbolize (first (strips/get-strips-state-pred-val state 'aty)) 1) 4))))))
+	  (nav-switch/make-nav-switch-strips-env 2 2 [[0 0]] [1 0] true [0 1])
+	  :edu.berkeley.ai.angelic.dnf-simple-valuations/DNFSimpleValuation)))
+     (util/is
+      (= '[[good-left x1 x0] [flip-v x0 y0] [good-down y0 y1]]
+	 (get-and-check-sol
+	  (strips-hierarchies/make-flat-strips-hierarchy-schema 
+	   (nav-switch/make-nav-switch-strips-domain) (constantly 0))
+	  (nav-switch/make-nav-switch-strips-env 2 2 [[0 0]] [1 0] true [0 1])
+	  :edu.berkeley.ai.angelic.dnf-simple-valuations/DNFSimpleValuation
+	  #(strips-hierarchies/ground-and-constant-simplify-strips-hierarchy %
+	    strips/dont-constant-simplify-strips-planning-instance))))
+     (util/is
+      (= '[[good-left x1 x0] [flip-v x0 y0] [good-down y0 y1]]
+	 (get-and-check-sol
+	  (strips-hierarchies/make-flat-strips-hierarchy-schema 
+	   (nav-switch/make-nav-switch-strips-domain) (constantly 0))
+	  (nav-switch/make-nav-switch-strips-env 2 2 [[0 0]] [1 0] true [0 1])
+	  :edu.berkeley.ai.angelic.dnf-simple-valuations/DNFSimpleValuation
+	  #(strips-hierarchies/ground-and-constant-simplify-strips-hierarchy %
+	    strips/constant-predicate-simplify-strips-planning-instance)))))
+   (util/testing "Ordinary strips hierarchy"
+     (let [domain (nav-switch/make-nav-switch-strips-domain)
+	   env (nav-switch/make-nav-switch-strips-env 2 2 [[0 0]] [1 0] true [0 1])
+	   schema (parse-hierarchy "/Users/jawolfe/Projects/angel/src/edu/berkeley/ai/domains/nav_switch.hierarchy" domain)]
+     (doseq [simplifier [identity
+		       #(strips-hierarchies/ground-and-constant-simplify-strips-hierarchy %
+	    strips/dont-constant-simplify-strips-planning-instance)
+		       #(strips-hierarchies/ground-and-constant-simplify-strips-hierarchy %
+	    strips/constant-predicate-simplify-strips-planning-instance)]]
+       (util/is
+	(= '[[good-left x1 x0] [flip-v x0 y0] [good-down y0 y1]]
+	   (get-and-check-sol schema env 	  :edu.berkeley.ai.angelic.dnf-simple-valuations/DNFSimpleValuation simplifier)))))))
+			      
+	    
+		       
+      
 
 (comment 
   (let [domain (make-nav-switch-strips-domain)
@@ -193,18 +322,7 @@
 	    env))) 
     ))))
 
-(let [domain (make-nav-switch-strips-domain)
-	env    (make-nav-switch-strips-env 2 2 [[0 0]] [1 0] true [0 1])
-	val (make-initial-valuation :edu.berkeley.ai.angelic.dnf-simple-valuations/DNFSimpleValuation env)
-	    node
-    (make-initial-top-down-forward-node 
-     env
-     val
-     (list (instantiate-hierarchy
-	    (parse-hierarchy "/Users/jawolfe/Projects/angel/src/edu/berkeley/ai/domains/nav_switch.hierarchy"
-			     domain)
-	    env)))] 
-        (map reward-bounds (immediate-refinements (first (immediate-refinements (first (immediate-refinements node)))))))
+
 
 (let [domain (make-nav-switch-strips-domain)
 	env    (make-nav-switch-strips-env 2 2 [[0 0]] [1 0] true [0 1])
@@ -230,9 +348,9 @@
 ; Flat hierarchies
 (let [env (make-nav-switch-env 6 6 [[1 1]] [5 0] true [0 5]), val (make-initial-valuation :edu.berkeley.ai.angelic/ExplicitValuation env), node (make-initial-top-down-forward-node env val (list (instantiate-hierarchy (make-flat-hierarchy-schema  (fn [state] (* -2 (+ (Math/abs (- (first (:pos state)) 0)) (Math/abs (- (second (:pos state)) 4))))) ) env)))] (time (second (a-star-search node))))
 
-(let [env (make-nav-switch-strips-env 5 5 [[1 1]] [4 0] true [0 4]), val (make-initial-valuation :edu.berkeley.ai.angelic/ExplicitValuation env), node (make-initial-top-down-forward-node env val (list (instantiate-hierarchy (make-flat-hierarchy-schema  (fn [state] (* -2 (+ (Math/abs (- (desymbolize (first (get-strips-state-pred-val state 'atx)) 1) 0)) (Math/abs (- (desymbolize (first (get-strips-state-pred-val state 'aty)) 1) 4))))) ) env)))] (time (second (a-star-search node))))
+(let [env (make-nav-switch-strips-env 5 5 [[1 1]] [4 0] true [0 4]), val (make-initial-valuation :edu.berkeley.ai.angelic/ExplicitValuation env), node (make-initial-top-down-forward-node env val (list (instantiate-hierarchy (make-flat-hierarchy-schema  (fn [state] (* -2 (+ (Math/abs (- (util/desymbolize (first (get-strips-state-pred-val state 'atx)) 1) 0)) (Math/abs (- (util/desymbolize (first (get-strips-state-pred-val state 'aty)) 1) 4))))) ) env)))] (time (second (a-star-search node))))
 
-(let [domain (make-nav-switch-strips-domain), env (make-nav-switch-strips-env 5 5 [[1 1]] [4 0] true [0 4]), val (make-initial-valuation :edu.berkeley.ai.angelic.dnf-simple-valuations/DNFSimpleValuation env), node (make-initial-top-down-forward-node env val (list (instantiate-hierarchy (make-flat-strips-hierarchy-schema domain (fn [state] (* -2 (+ (Math/abs (- (desymbolize (first (get-strips-state-pred-val state 'atx)) 1) 0)) (Math/abs (- (desymbolize (first (get-strips-state-pred-val state 'aty)) 1) 4))))) ) env)))] (time (second (a-star-search node))))
+(let [domain (make-nav-switch-strips-domain), env (make-nav-switch-strips-env 5 5 [[1 1]] [4 0] true [0 4]), val (make-initial-valuation :edu.berkeley.ai.angelic.dnf-simple-valuations/DNFSimpleValuation env), node (make-initial-top-down-forward-node env val (list (instantiate-hierarchy (make-flat-strips-hierarchy-schema domain (fn [state] (* -2 (+ (Math/abs (- (util/desymbolize (first (get-strips-state-pred-val state 'atx)) 1) 0)) (Math/abs (- (util/desymbolize (first (get-strips-state-pred-val state 'aty)) 1) 4))))) ) env)))] (time (second (a-star-search node))))
 
   )
 
@@ -267,6 +385,5 @@
     ; TODO: refinement generator (rather than / using CSP?)
 
 
-(let [domain (make-nav-switch-strips-domain), env (constant-predicate-simplify-strips-planning-instance (make-nav-switch-strips-env 6 6 [[1 1]] [5 0] true [0 5])), val (make-initial-valuation :edu.berkeley.ai.angelic.dnf-simple-valuations/DNFSimpleValuation env), node (make-initial-top-down-forward-node env val (list (instantiate-hierarchy (make-flat-strips-hierarchy-schema domain (constantly 0)) env)))] (time (second (a-star-search node))))
  )
 

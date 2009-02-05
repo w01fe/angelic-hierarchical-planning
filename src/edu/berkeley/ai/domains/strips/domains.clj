@@ -110,7 +110,7 @@
 (defn constant-annotate-strips-planning-domain [domain]
   (if (isa? (:class domain) ::CAStripsPlanningDomain) domain
     (let [action-schemata (util/safe-get domain :action-schemata)
-	  all-preds (set (keys (util/safe-get domain :predicates)))
+	  all-preds (util/keyset (util/safe-get domain :predicates))
 	  add-preds (set (for [as action-schemata, add (util/safe-get as :add-list)] (first add)))
 	  del-preds (set (for [as action-schemata, del (util/safe-get as :delete-list)] (first del)))]
       (struct ca-strips-planning-domain ::CAStripsPlanningDomain
@@ -119,9 +119,9 @@
 	(util/safe-get domain :guaranteed-objs)
 	(util/safe-get domain :predicates)
 	action-schemata
-	(clojure.set/difference (clojure.set/difference all-preds add-preds) del-preds)
-	(clojure.set/difference add-preds del-preds)
-	(clojure.set/difference del-preds add-preds)))))
+	(util/difference (util/difference all-preds add-preds) del-preds)
+	(util/difference add-preds del-preds)
+	(util/difference del-preds add-preds)))))
 	
   
 

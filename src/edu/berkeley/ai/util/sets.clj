@@ -10,21 +10,21 @@
   
 (defn subset? [s1 s2]
   "Is s1 a subset of s2?"
-  (every? (set s2) s1))
+  (every? (to-set s2) s1))
   
 (defn superset? [s1 s2]
   "Is s1 a superset of s2?"
-  (every? (set s1) s2))
+  (every? (to-set s1) s2))
   
 (defn proper-subset? [s1 s2]
   "Is s1 a proper subset of s2?"
-  (let [s1 (set s1) s2 (set s2)]
+  (let [s1 (to-set s1) s2 (to-set s2)]
     (and (not= (count s1) (count s2))
       (every? s2 s1))))
       
 (defn proper-superset? [s1 s2]
   "Is s1 a proper superset of s2?"
-  (let [s1 (set s1) s2 (set s2)]
+  (let [s1 (to-set s1) s2 (to-set s2)]
     (and (not= (count s1) (count s2))
       (every? s1 s2))))
 
@@ -97,6 +97,19 @@
   ([s1 s2 & sets] (reduce two-arg-difference s1 (conj sets s2))))
 
 
+(defn union-coll [s coll]
+  (into s coll))
+
+(defn difference-coll [s coll]
+  (reduce disj s coll))
+
+(defn intersection-coll [s coll]
+  (reduce (fn [result item]
+	    (if (contains? s item)
+	      (conj result item)
+	      result))
+	  #{} coll)) 
+  
  	
 
 	

@@ -1,6 +1,8 @@
 
 TODO: add tests!!!
 
+TODO: add-list to add-set, etc. (many places)  ? (maybe not)
+
 ------------------------------------
 From earlier meeting
 

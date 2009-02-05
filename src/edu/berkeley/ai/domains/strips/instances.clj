@@ -83,7 +83,7 @@
 ;; Methods for Environment interface
 
 (defmethod envs/get-initial-state ::StripsPlanningInstance [instance]
-  (envs/metafy-initial-state    (set (:init-atoms instance))))
+  (envs/metafy-initial-state    (util/to-set (:init-atoms instance))))
 
 (defmethod envs/get-state-space   ::StripsPlanningInstance [instance]
   (binary-states/make-binary-state-space (util/safe-get instance :all-atoms)))
@@ -93,8 +93,8 @@
   (envs/make-action 
    (:name schema)
    (fn [state]
-     [(clojure.set/union 
-       (clojure.set/difference state (:delete-list schema)) 
+     [(util/union-coll 
+       (util/difference-coll state (:delete-list schema)) 
        (:add-list schema))
       (- (:cost schema))])
    (envs/make-conjunctive-condition (:pos-pre schema) (:neg-pre schema))))
@@ -174,8 +174,8 @@
 
 (defn constant-simplify-strips-action [action true-atoms false-atoms]
   (util/assert-is (nil? (util/safe-get action :vars)))
-  (let [pos-pre    (util/difference (set (util/safe-get action :pos-pre)) true-atoms)
-	neg-pre    (util/difference (set (util/safe-get action :neg-pre)) false-atoms)]
+  (let [pos-pre    (util/difference (util/to-set (util/safe-get action :pos-pre)) true-atoms)
+	neg-pre    (util/difference (util/to-set (util/safe-get action :neg-pre)) false-atoms)]
     (when (and (empty? (util/intersection pos-pre false-atoms))
 	       (empty? (util/intersection neg-pre true-atoms)))
       (make-strips-action-schema 
@@ -196,9 +196,9 @@
 	pred-map (util/safe-get domain :predicates)
 	{const-preds :const-predicates, pi-preds :pi-predicates, ni-preds :ni-predicates} domain
 	trans-objects (util/safe-get instance :trans-objects)
-	goal-atoms    (set (util/safe-get instance :goal-atoms))
-	all-const-atoms  (set (get-predicate-instantiations (util/restrict-map pred-map const-preds) trans-objects))
-	all-ni-atoms     (set (get-predicate-instantiations (util/restrict-map pred-map ni-preds)    trans-objects))
+	goal-atoms    (util/to-set (util/safe-get instance :goal-atoms))
+	all-const-atoms  (util/to-set (get-predicate-instantiations (util/restrict-map pred-map const-preds) trans-objects))
+	all-ni-atoms     (util/to-set (get-predicate-instantiations (util/restrict-map pred-map ni-preds)    trans-objects))
 	{reg-init :reg, const-init :const, pi-init :pi, ni-init :ni}
  	  (util/group-by (fn [atom]
 			   (let [pred (first atom)]
@@ -207,9 +207,9 @@
 				   (contains? ni-preds pred)    :ni
 				   :else                        :reg)))
 			 (util/safe-get instance :init-atoms))
-	always-true-atoms (util/union (set const-init) pi-init)
-	always-false-atoms (util/union (util/difference all-const-atoms const-init)
-					    (util/difference all-ni-atoms    ni-init))]
+	always-true-atoms (util/union-coll (set const-init) pi-init)
+	always-false-atoms (util/union-coll (util/difference-coll all-const-atoms const-init)
+					    (util/difference-coll all-ni-atoms    ni-init))]
     (util/assert-is (empty? (util/intersection always-true-atoms always-false-atoms)))
     (util/assert-is (empty? (util/intersection always-false-atoms goal-atoms)))
     (assoc
@@ -219,9 +219,9 @@
        (util/safe-get instance :objects)
        (util/safe-get instance :trans-objects)
        reg-init
-       (seq (clojure.set/difference goal-atoms always-true-atoms))
+       (seq (util/difference goal-atoms always-true-atoms))
        (util/difference
-	(set (util/safe-get instance :all-atoms))
+	(util/to-set (util/safe-get instance :all-atoms))
 	(util/union always-true-atoms always-false-atoms))
        (filter identity (map #(constant-simplify-strips-action % always-true-atoms always-false-atoms) (util/safe-get instance :all-actions))))
       :always-true-atoms always-true-atoms :always-false-atoms always-false-atoms)))

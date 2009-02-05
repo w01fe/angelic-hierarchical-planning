@@ -82,8 +82,8 @@
 
 (defmethod conjoin-conditions [::ConjunctiveCondition ::ConjunctiveCondition] [c1 c2]
   (make-conjunctive-condition 
-   (clojure.set/union (get-positive-conjuncts c1) (get-positive-conjuncts c2))
-   (clojure.set/union (get-negative-conjuncts c1) (get-negative-conjuncts c2))))
+   (util/union (get-positive-conjuncts c1) (get-positive-conjuncts c2))
+   (util/union (get-negative-conjuncts c1) (get-negative-conjuncts c2))))
 			      
 (defmethod ground-propositional-condition ::ConjunctiveCondition [c var-map]
   (make-conjunctive-condition
@@ -91,7 +91,7 @@
    (map (partial props/simplify-atom var-map) (get-negative-conjuncts c))))
 
 (defmethod consistent-condition? ::ConjunctiveCondition [condition]
-  (empty? (clojure.set/intersection (:pos condition) (:neg condition))))
+  (empty? (util/intersection (:pos condition) (:neg condition))))
 
 
 

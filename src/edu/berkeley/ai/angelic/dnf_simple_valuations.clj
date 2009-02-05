@@ -17,7 +17,7 @@
 (defn make-dnf-simple-valuation [dnf bound]
 ;  (prn "DNF!")
   (if-let [dnf (seq dnf)]
-      (struct dnf-simple-valuation ::DNFSimpleValuation (set dnf) bound)
+      (struct dnf-simple-valuation ::DNFSimpleValuation (util/to-set dnf) bound)
     (struct dnf-simple-valuation ::DNFSimpleValuation nil Double/NEGATIVE_INFINITY)))
 
 
@@ -93,8 +93,8 @@
 	(util/map-map 
 	 (fn [dummy-var domain]
 	   [dummy-var
-	    (clojure.set/difference 
-	     (clojure.set/intersection domain (get allowed dummy-var))
+	    (util/difference 
+	     (util/intersection domain (get allowed dummy-var))
 	     (get disallowed dummy-var))])
 	 dummy-domains))))))
 
@@ -131,7 +131,7 @@
 	opt-val (restrict-valuation opt-val (envs/make-conjunctive-condition ground-pos ground-neg))]
 ;    (prn dummy-domains ground-pos var-pos ground-neg var-neg opt-val)
     (when-not (empty-valuation? opt-val)
-      (reduce clojure.set/union #{} (map #(clause-consistent-mappings % var-pos var-neg dummy-domains)
+      (distinct (mapcat #(clause-consistent-mappings % var-pos var-neg dummy-domains)
 				     (:dnf opt-val))))))
 
       

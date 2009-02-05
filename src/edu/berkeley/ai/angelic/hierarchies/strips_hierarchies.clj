@@ -395,10 +395,7 @@
 	    (fn [hla opt-val]
 	      (util/assert-is (isa? (:class opt-val) :edu.berkeley.ai.angelic.dnf-simple-valuations/DNFSimpleValuation))
 	      (let [hla-map (util/safe-get hla :hla-map)
-		    allowed-refs 
-		    (reduce util/union 
-		      (for [clause (util/safe-get opt-val :dnf)]
-			(real-fn clause)))]
+		    allowed-refs (distinct (mapcat real-fn (util/safe-get opt-val :dnf)))] 
 		(for [exp allowed-refs]
 ;		  (when (seq exp)
 		    (cons (let [first-schema (util/safe-get hla-map (first exp))]

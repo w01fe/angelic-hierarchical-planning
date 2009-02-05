@@ -66,11 +66,11 @@
 
 (defmethod conjoin-constraints [::PositiveCSPConstraint ::PositiveCSPConstraint] [p1 p2]
   (util/assert-is (= (:index-map p1) (:index-map p2)))
-  (make-positive-cp-csp-constraint (:index-map p1) (clojure.set/intersection (set (:values p1)) (:values p2))))
+  (make-positive-cp-csp-constraint (:index-map p1) (util/intersection-coll (set (:values p1)) (:values p2))))
 
 (defmethod conjoin-constraints [::NegativeCSPConstraint ::NegativeCSPConstraint] [n1 n2]
   (util/assert-is (= (:index-map n1) (:index-map n2)))
-  (make-negative-cp-csp-constraint (:index-map n1) (clojure.set/union (set (:values n1)) (:values n2))))
+  (make-negative-cp-csp-constraint (:index-map n1) (util/union-coll (set (:values n1)) (:values n2))))
 
 (defmethod conjoin-constraints [::PNCSPConstraint ::PositiveCSPConstraint] [c pos]
   (make-pn-cp-csp-constraint (conjoin-constraints (:pos c) pos) (:neg c)))
@@ -98,7 +98,7 @@
 
 ; Assume all non-variabilized atoms have been removed.
 (defn- process-args "Get [ground-args-parser var-map var-set]" [var-domains args pos?]
-  (let [var-set (clojure.set/intersection (set args) (keys var-domains))
+  (let [var-set (util/intersection (set args) (util/keyset var-domains))
 	vars (util/make-safe (sort var-set))
 	all-inds (map #(util/positions % args) vars)
 	inds (map first all-inds)
@@ -117,6 +117,7 @@
 
 ; TODO: split into csp-domains and instances, move much of pre-work to domains.  Domains should be sets!
 (defn make-conjunctive-propositional-csp [domains pos-atoms neg-atoms ground-clause-map]
+ ; (println domains pos-atoms neg-atoms ground-clause-map)
   (let [domains (util/map-map (fn [[k v]] [k (set v)]) domains)
 	pred-map
 	 (loop [pred-map  ; create map from predicates to lists of (value-set [p-fn var-map var-set] pos?) entries
@@ -173,7 +174,7 @@
 		 (second (first var-domains)))))
 
 ; TODO: improve?
-(defn all-csp-solutions "For now, braindead depth-first search with no heuristics." [csp]
+(defn all-csp-solutions "For now, braindead depth-first search with no heuristics. Returns a lazy seq of solutions" [csp]
   (all-csp-solutions- csp (seq (:domains csp))))
 		  
 (comment 

@@ -30,18 +30,18 @@
 		   [(:cost effect)]))))
 
 (defn- simplify-ncstrips-effect [effect]
-  (let [pos-preconditions (set (:pos-preconditions effect)),
-	neg-preconditions (set (:neg-preconditions effect)),
-	adds              (clojure.set/difference (set (:adds effect)) pos-preconditions)
-	deletes           (clojure.set/difference 
-			   (clojure.set/difference (set (:deletes effect)) neg-preconditions)
+  (let [pos-preconditions (util/to-set (:pos-preconditions effect)),
+	neg-preconditions (util/to-set (:neg-preconditions effect)),
+	adds              (util/difference (util/to-set (:adds effect)) pos-preconditions)
+	deletes           (util/difference 
+			   (util/difference (util/to-set (:deletes effect)) neg-preconditions)
 			   adds)
-	possible-adds     (clojure.set/difference (set (:possible-adds effect)) pos-preconditions)
-	possible-deletes  (clojure.set/difference (set (:possible-deletes effect)) neg-preconditions)]
+	possible-adds     (util/difference (util/to-set (:possible-adds effect)) pos-preconditions)
+	possible-deletes  (util/difference (util/to-set (:possible-deletes effect)) neg-preconditions)]
 ;    (prn adds deletes)
-;    (util/assert-is (empty? (clojure.set/intersection adds deletes)))
-    (util/assert-is (empty? (clojure.set/intersection (clojure.set/union adds deletes) (clojure.set/union possible-adds possible-deletes))))
-    (when (empty? (clojure.set/intersection pos-preconditions neg-preconditions))
+;    (util/assert-is (empty? (util/intersection adds deletes)))
+    (util/assert-is (empty? (util/intersection (util/union adds deletes) (util/union possible-adds possible-deletes))))
+    (when (empty? (util/intersection pos-preconditions neg-preconditions))
       (make-ncstrips-effect pos-preconditions neg-preconditions adds deletes possible-adds possible-deletes (:cost effect)))))
       
 

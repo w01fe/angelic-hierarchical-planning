@@ -49,7 +49,7 @@
 
 (defn maximal-subtypes [types parents]
   (assert-is (not (empty? parents)))
-  (reduce (fn [tl1 tl2] (reduce clojure.set/union
+  (reduce (fn [tl1 tl2] (apply union
 				(for [t1 tl1, t2 tl2]
 				  (set (maximal-subtypes- types t1 t2)))))
 	  (map hash-set parents)))
