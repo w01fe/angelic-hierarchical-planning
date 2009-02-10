@@ -17,7 +17,7 @@
 (defn make-top-down-forward-node [goal hla previous-node]
   (with-meta  
    (struct top-down-forward-node ::TopDownForwardNode goal hla previous-node 
-	   (or (first-nonprimitive previous-node) (and (not (hla-primitive hla)) true)))
+	   (or (first-nonprimitive previous-node) (and (not (hla-primitive? hla)) true)))
    {:pessimistic-valuation (util/sref nil), :optimistic-valuation (util/sref nil)
     :lower-reward-bound (util/sref nil) :upper-reward-bound (util/sref nil)
     }))
@@ -29,13 +29,17 @@
 (defn make-top-down-forward-root-node [goal initial-valuation]
   (struct top-down-forward-root-node ::TopDownForwardRootNode goal initial-valuation nil))
 
-(defn make-initial-top-down-forward-node [env initial-valuation initial-plan]
-  (loop [actions initial-plan
-	 previous (make-top-down-forward-root-node (envs/get-goal env) initial-valuation)]
-    (if (empty? actions)
+(defn make-initial-top-down-forward-node [valuation-class & initial-plan]
+  (util/assert-is (not (empty? initial-plan)))
+  (let [env (hla-environment (first initial-plan))]
+    (loop [actions initial-plan
+	   previous (make-top-down-forward-root-node 
+		     (envs/get-goal env) 
+		     (make-initial-valuation valuation-class env))]
+      (if (empty? actions)
         previous
-      (recur (rest actions)
-	     (make-top-down-forward-node (envs/get-goal env) (first actions) previous)))))
+	(recur (rest actions)
+	       (make-top-down-forward-node (envs/get-goal env) (first actions) previous))))))
 
 
 ;; Internal methods, used only in this file
@@ -75,7 +79,7 @@
 
 ; TODO: filter out dead ends here ???
 (defmethod local-immediate-refinements ::TopDownForwardNode [node rest-actions]
-  (when-not (hla-primitive (:hla node))
+  (when-not (hla-primitive? (:hla node))
     (for [refinement (hla-immediate-refinements (:hla node) (get-optimistic-valuation (:previous node)))]
       (loop [previous (:previous node),
 	     actions (concat refinement rest-actions)]
@@ -168,13 +172,7 @@
   (util/str-join " " (map (comp hla-name :hla) (rest (reverse (util/iterate-while :previous node))))))
 
 
-(defn make-initial-tdf-node "Short version of make-initial-top-down-forward-node"
-  ([hierarchy-schema env] (make-initial-tdf-node hierarchy-schema env 
-			   :edu.berkeley.ai.angelic.dnf-simple-valuations/DNFSimpleValuation identity))
-  ([hierarchy-schema env val-type simplifier]
-     (make-initial-top-down-forward-node env
-       (make-initial-valuation val-type env)
-       (list (simplifier (instantiate-hierarchy hierarchy-schema env))))))
+
 
 ;(defmethod search/node-parent ::TopDownForwardNode [node] 
 ;  Not implemented
@@ -194,15 +192,14 @@
   ([hierarchy-schema env val-type]
      (get-and-check-sol hierarchy-schema env val-type identity))
   ([hierarchy-schema env val-type simplifier]
-   (map :name
-    (first
-      (envs/check-solution env
-        (edu.berkeley.ai.search.algorithms.textbook/a-star-search
-	 (make-initial-tdf-node
-	  hierarchy-schema
-	  env
-	  val-type
-	  simplifier)))))))
+     (let [initial-hla (simplifier (instantiate-hierarchy hierarchy-schema env))]
+       (map :name
+	    (first
+	     (envs/check-solution (hla-environment initial-hla)
+				  (edu.berkeley.ai.search.algorithms.textbook/a-star-search
+				   (make-initial-top-down-forward-node 
+				    val-type
+				    initial-hla))))))))
 
 
 
@@ -296,14 +293,19 @@
      (let [domain (nav-switch/make-nav-switch-strips-domain)
 	   env (nav-switch/make-nav-switch-strips-env 2 2 [[0 0]] [1 0] true [0 1])
 	   schema (parse-hierarchy "/Users/jawolfe/Projects/angel/src/edu/berkeley/ai/domains/nav_switch.hierarchy" domain)]
-     (doseq [simplifier [identity
+       (doseq [simplifier [identity 
+		       #(strips-hierarchies/constant-simplify-strips-hierarchy %
+	    strips/dont-constant-simplify-strips-planning-instance)
+		       #(strips-hierarchies/constant-simplify-strips-hierarchy %
+	    strips/constant-predicate-simplify-strips-planning-instance)
 		       #(strips-hierarchies/ground-and-constant-simplify-strips-hierarchy %
 	    strips/dont-constant-simplify-strips-planning-instance)
 		       #(strips-hierarchies/ground-and-constant-simplify-strips-hierarchy %
 	    strips/constant-predicate-simplify-strips-planning-instance)]]
+	 (println simplifier)
        (util/is
 	(= '[[good-left x1 x0] [flip-v x0 y0] [good-down y0 y1]]
-	   (get-and-check-sol schema env 	  :edu.berkeley.ai.angelic.dnf-simple-valuations/DNFSimpleValuation simplifier)))))))
+	   (get-and-check-sol schema env :edu.berkeley.ai.angelic.dnf-simple-valuations/DNFSimpleValuation simplifier)))))))
 			      
 	    
 		       
@@ -314,43 +316,36 @@
 	env    (make-nav-switch-strips-env 2 2 [[0 0]] [1 0] true [0 1])] 
     (map :name (first (a-star-search 
     (make-initial-top-down-forward-node 
-     env
-     (make-initial-valuation :edu.berkeley.ai.angelic.dnf-simple-valuations/DNFSimpleValuation env)
-     (list (instantiate-hierarchy
+     :edu.berkeley.ai.angelic.dnf-simple-valuations/DNFSimpleValuation
+     (instantiate-hierarchy
 	    (parse-hierarchy "/Users/jawolfe/Projects/angel/src/edu/berkeley/ai/domains/nav_switch.hierarchy"
 			     domain)
-	    env))) 
+	    env)) 
     ))))
 
 
 
 (let [domain (make-nav-switch-strips-domain)
 	env    (make-nav-switch-strips-env 2 2 [[0 0]] [1 0] true [0 1])
-	val (make-initial-valuation :edu.berkeley.ai.angelic.dnf-simple-valuations/DNFSimpleValuation env)
 	    node
     (make-initial-top-down-forward-node 
-     env
-     val
-     (list (instantiate-hierarchy
+     :edu.berkeley.ai.angelic.dnf-simple-valuations/DNFSimpleValuation
+     (instantiate-hierarchy
 	    (parse-hierarchy "/Users/jawolfe/Projects/angel/src/edu/berkeley/ai/domains/nav_switch.hierarchy"
 			     domain)
-	    env)))] 
+	    env))] 
         (map #(vector (search/node-str %) (reward-bounds %)) (take 80 (all-refinements node (make-queue-pq) (constantly 0)))))
 
-(let [domain (make-nav-switch-strips-domain), env (make-nav-switch-strips-env 2 2 [[0 0]] [1 0] true [0 1]), val (make-initial-valuation :edu.berkeley.ai.angelic.dnf-simple-valuations/DNFSimpleValuation env), node (make-initial-top-down-forward-node env val (list (instantiate-hierarchy (parse-hierarchy "/Users/jawolfe/Projects/angel/src/edu/berkeley/ai/domains/nav_switch.hierarchy" domain) env)))] (interactive-search node (make-queue-pq) (constantly 0)))
+(let [domain (make-nav-switch-strips-domain), env (make-nav-switch-strips-env 2 2 [[0 0]] [1 0] true [0 1]), node (make-initial-top-down-forward-node  :edu.berkeley.ai.angelic.dnf-simple-valuations/DNFSimpleValuation  (instantiate-hierarchy (parse-hierarchy "/Users/jawolfe/Projects/angel/src/edu/berkeley/ai/domains/nav_switch.hierarchy" domain) env))] (interactive-search node (make-queue-pq) (constantly 0)))
 
 (u util envs search search.algorithms.textbook angelic angelic.hierarchies domains.nav-switch domains.strips angelic.hierarchies.strips-hierarchies)
 
-(let [domain (make-nav-switch-strips-domain), env (make-nav-switch-strips-env 5 5 [[1 1]] [4 0] true [0 4]), val (make-initial-valuation :edu.berkeley.ai.angelic.dnf-simple-valuations/DNFSimpleValuation env), node (make-initial-top-down-forward-node env val (list (instantiate-hierarchy (parse-hierarchy "/Users/jawolfe/Projects/angel/src/edu/berkeley/ai/domains/nav_switch.hierarchy" domain) env)))] (check-solution env (a-star-search node)))
-
-(let [domain (make-nav-switch-strips-domain), env (make-nav-switch-strips-env 35 35 [[1 1]] [34 0] true [0 34]), val (make-initial-valuation :edu.berkeley.ai.angelic.dnf-simple-valuations/DNFSimpleValuation env), node (make-initial-top-down-forward-node env val (list (instantiate-hierarchy (parse-hierarchy "/Users/jawolfe/Projects/angel/src/edu/berkeley/ai/domains/nav_switch.hierarchy" domain) env)))] (time (second (a-star-search node))))
-
 ; Flat hierarchies
-(let [env (make-nav-switch-env 6 6 [[1 1]] [5 0] true [0 5]), val (make-initial-valuation :edu.berkeley.ai.angelic/ExplicitValuation env), node (make-initial-top-down-forward-node env val (list (instantiate-hierarchy (make-flat-hierarchy-schema  (fn [state] (* -2 (+ (Math/abs (- (first (:pos state)) 0)) (Math/abs (- (second (:pos state)) 4))))) ) env)))] (time (second (a-star-search node))))
+(let [env (make-nav-switch-env 6 6 [[1 1]] [5 0] true [0 5]), node (make-initial-top-down-forward-node :edu.berkeley.ai.angelic/ExplicitValuation (instantiate-hierarchy (make-flat-hierarchy-schema  (fn [state] (* -2 (+ (Math/abs (- (first (:pos state)) 0)) (Math/abs (- (second (:pos state)) 4))))) ) env))] (time (second (a-star-search node))))
 
-(let [env (make-nav-switch-strips-env 5 5 [[1 1]] [4 0] true [0 4]), val (make-initial-valuation :edu.berkeley.ai.angelic/ExplicitValuation env), node (make-initial-top-down-forward-node env val (list (instantiate-hierarchy (make-flat-hierarchy-schema  (fn [state] (* -2 (+ (Math/abs (- (util/desymbolize (first (get-strips-state-pred-val state 'atx)) 1) 0)) (Math/abs (- (util/desymbolize (first (get-strips-state-pred-val state 'aty)) 1) 4))))) ) env)))] (time (second (a-star-search node))))
+(let [env (make-nav-switch-strips-env 5 5 [[1 1]] [4 0] true [0 4]), node (make-initial-top-down-forward-node  :edu.berkeley.ai.angelic/ExplicitValuation (instantiate-hierarchy (make-flat-hierarchy-schema  (fn [state] (* -2 (+ (Math/abs (- (util/desymbolize (first (get-strips-state-pred-val state 'atx)) 1) 0)) (Math/abs (- (util/desymbolize (first (get-strips-state-pred-val state 'aty)) 1) 4))))) ) env))] (time (second (a-star-search node))))
 
-(let [domain (make-nav-switch-strips-domain), env (make-nav-switch-strips-env 5 5 [[1 1]] [4 0] true [0 4]), val (make-initial-valuation :edu.berkeley.ai.angelic.dnf-simple-valuations/DNFSimpleValuation env), node (make-initial-top-down-forward-node env val (list (instantiate-hierarchy (make-flat-strips-hierarchy-schema domain (fn [state] (* -2 (+ (Math/abs (- (util/desymbolize (first (get-strips-state-pred-val state 'atx)) 1) 0)) (Math/abs (- (util/desymbolize (first (get-strips-state-pred-val state 'aty)) 1) 4))))) ) env)))] (time (second (a-star-search node))))
+(let [domain (make-nav-switch-strips-domain), env (make-nav-switch-strips-env 5 5 [[1 1]] [4 0] true [0 4]),  node (make-initial-top-down-forward-node  :edu.berkeley.ai.angelic.dnf-simple-valuations/DNFSimpleValuation  (instantiate-hierarchy (make-flat-strips-hierarchy-schema domain (fn [state] (* -2 (+ (Math/abs (- (util/desymbolize (first (get-strips-state-pred-val state 'atx)) 1) 0)) (Math/abs (- (util/desymbolize (first (get-strips-state-pred-val state 'aty)) 1) 4))))) ) env))] (time (second (a-star-search node))))
 
   )
 

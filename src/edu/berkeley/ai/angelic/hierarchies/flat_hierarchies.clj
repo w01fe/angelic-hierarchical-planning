@@ -45,8 +45,11 @@
    (envs/get-action-space instance)))
 
 
+(defmethod hla-primitive? ::FlatPrimitiveHLA [hla] true)
 (defmethod hla-primitive ::FlatPrimitiveHLA [hla] (:action hla))
-(defmethod hla-primitive ::FlatActHLA [hla] nil)
+
+(defmethod hla-primitive? ::FlatActHLA [hla] false)
+(defmethod hla-primitive ::FlatActHLA [hla] (throw (UnsupportedOperationException.)))
 
 (defmethod hla-name ::FlatPrimitiveHLA [hla] (:name (:action hla)))
 (defmethod hla-name ::FlatActHLA [hla] 'act)
@@ -80,4 +83,6 @@
 (defmethod hla-pessimistic-description ::FlatActHLA [hla] 
   *pessimal-description*)
 
+(defmethod hla-environment ::FlatActHLA [hla] (util/safe-get hla :env))
+(defmethod hla-environment ::FlatPrimitiveHLA [hla] (util/safe-get hla :env))
 

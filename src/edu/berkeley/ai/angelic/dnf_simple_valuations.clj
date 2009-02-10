@@ -16,8 +16,9 @@
 
 (defn make-dnf-simple-valuation [dnf bound]
 ;  (prn "DNF!")
-  (if-let [dnf (seq dnf)]
+  (if (not (empty? dnf))
       (struct dnf-simple-valuation ::DNFSimpleValuation (util/to-set dnf) bound)
+;    *pessimal-valuation*))
     (struct dnf-simple-valuation ::DNFSimpleValuation nil Double/NEGATIVE_INFINITY)))
 
 
@@ -135,3 +136,8 @@
 				     (:dnf opt-val))))))
 
       
+(defmethod valuation->pred-maps ::DNFSimpleValuation [val]
+  (for [clause (util/safe-get val :dnf)]
+    (reduce (fn [m pred]
+	      (assoc m (first pred) (cons (rest pred) (get m (first pred)))))
+	    {} (keys clause))))

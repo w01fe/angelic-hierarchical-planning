@@ -2,6 +2,15 @@
 Graph search
 Tiebreaking
 Progression cache
+Refinement cache?
+
+Merge iff right-recursive ??
+
+; Extend DNF valuations to keep track of unaries
+ ( and only include things in clauses where needed?)
+    
+  
+  
 
 ------------------------------------
 From earlier meeting
@@ -36,6 +45,8 @@ longer term
   - forall in ncstrips precondition
  
  - quantified effects, etc.  
+
+ - AADDs.
 
  - variables in ncstrips, effects and costs
 

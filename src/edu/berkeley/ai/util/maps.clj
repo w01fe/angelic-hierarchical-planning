@@ -10,6 +10,13 @@
   [f & maps] (into {} (apply map f maps)))
      ;(reduce #(conj %1 %2) {} (apply map f maps)))
 
+(defn map-vals [f m]
+  (into {} (map (fn [[k v]] [k (f v)]) m)))
+
+(defn assoc-cons [m k v]
+  (assoc m k
+    (cons v
+      (get m k))))
 
 (defmacro lazy-get "Like get but lazy about default"
   [m k d]

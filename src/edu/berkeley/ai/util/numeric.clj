@@ -6,5 +6,6 @@
   ([] (iterate inc 0))
   {:test (fn [] (is (= (take 5 (nats)) '(0 1 2 3 4))))})
  
- 
+(defn mean [coll]
+  (/ (reduce + coll) (count coll)))
 

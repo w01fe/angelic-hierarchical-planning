@@ -93,6 +93,14 @@
 (defmethod consistent-condition? ::ConjunctiveCondition [condition]
   (empty? (util/intersection (:pos condition) (:neg condition))))
 
+(defn constant-simplify-condition [condition always-true always-false]
+  (let [pos (:pos condition)
+	neg (:neg condition)]
+    (if (or (some always-true neg) (some always-false pos)) *false-condition*
+      (make-conjunctive-condition
+       (remove always-true pos)
+       (remove always-false neg)))))
+
 
 
 (derive ::TrueCondition ::ConjunctiveCondition)

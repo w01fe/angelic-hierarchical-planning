@@ -19,9 +19,14 @@
 
 ;; Methods
 
-(defmulti instantiate-hierarchy (fn [hierarchy instance] (:class hierarchy)))
+(defmulti #^{:doc "Take a hierarchy and instance and return an instantiated top-level HLA."} 
+  instantiate-hierarchy (fn [hierarchy instance] (:class hierarchy)))
 
+(defmulti #^{:doc "Get the env associated with this instantiated HLA."} 
+  hla-environment :class)
 
+(defmulti #^{:doc "Is the HLA primitive or noop?."} 
+  hla-primitive? :class)
 
 (defmulti #^{:doc "If this HLA is primitive, return the primitive action, else nil. 
                    Can return :noop, which must be filtered out."} 

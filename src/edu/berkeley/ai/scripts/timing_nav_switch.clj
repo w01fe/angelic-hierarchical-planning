@@ -42,13 +42,10 @@
 
 (defn- time-and-check-hierarchical [str reward hierarchy-schema env val-type simplifier]
   (println str)
-  (let [node (hierarchies/make-initial-tdf-node
-	hierarchy-schema
-	env
-	val-type
-	simplifier)]
+  (let [initial-hla (simplifier (instantiate-hierarchy hierarchy-schema env))
+		node (hierarchies/make-initial-top-down-forward-node val-type initial-hla)]
   (util/assert-is 
-   (= reward (second (envs/check-solution env
+   (= reward (second (envs/check-solution (hla-environment initial-hla)
      (time 
       (*search-fn* node
        ))))))))

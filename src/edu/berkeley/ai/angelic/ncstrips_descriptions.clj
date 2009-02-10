@@ -75,8 +75,11 @@
        (let [[pos-pre neg-pre] (props/parse-pddl-conjunction pre),
 	     [add     del    ] (props/parse-pddl-conjunction eff),
 	     [p-add   p-del  ] (props/parse-pddl-conjunction poss)]
+;	 (println cost-expr)
+;	 (println (eval '*ns*))
 	 (make-ncstrips-effect pos-pre neg-pre add del p-add p-del
-		   (eval `(fn ~(vec (map second vars)) ~cost-expr))))))
+	    (binding [*ns* (find-ns 'edu.berkeley.ai.angelic.ncstrips-descriptions)]
+	      (eval `(fn ~(vec (map second vars)) ~cost-expr)))))))
    vars))
 
 
@@ -138,9 +141,13 @@
 		effect (:effects desc)]
 	    (progress-effect-clause effect clause)))]
 ;    (prn results)
-    (dsv/make-dnf-simple-valuation 
-     (map first results)
-     (+ (:bound val) (reduce combiner (map second results))))))
+;    (println val desc combiner)
+    (if results  ; TODO: put back
+        (dsv/make-dnf-simple-valuation 
+          (map first results)
+	  (+ (:bound val) (reduce combiner (map second results))))
+      (do (println "Warning: empty valuation being produced in progress-ncstrips") *pessimal-valuation*))
+))
       
 (defmethod progress-optimistic [:edu.berkeley.ai.angelic.dnf-simple-valuations/DNFSimpleValuation ::NCStripsDescription] [val desc]
   (progress-ncstrips val desc max))

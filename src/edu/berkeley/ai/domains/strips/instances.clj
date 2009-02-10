@@ -188,7 +188,7 @@
        (util/safe-get action :cost))))) 
 
 (defn dont-constant-simplify-strips-planning-instance [instance]
-  (assoc instance :always-true-atoms nil :always-false-atoms nil))
+  (assoc instance :always-true-atoms #{} :always-false-atoms #{}))
 
 (defn constant-predicate-simplify-strips-planning-instance [instance]
 ;  (util/assert-is (= (:class instance) ::StripsPlanningInstance))

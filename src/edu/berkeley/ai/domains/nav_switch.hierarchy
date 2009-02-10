@@ -7,8 +7,6 @@
   (:hla act
        :parameters (?cx - :xc ?cy - :yc ?gx - :xc ?gy - :yc)
        :precondition (and (goal-atx ?gx) (goal-aty ?gy) (atx ?cx) (aty ?cy))
-       :refinement   (:precondition (and (atx ?gx) (aty ?gy))
-                      :expansion    ())
        :refinement   (:expansion    ((go ?cx ?cy ?gx ?gy)))    
        :optimistic   (:opt 0)
        :pessimistic  (:pess))

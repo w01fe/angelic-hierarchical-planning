@@ -109,12 +109,13 @@
       (when (rest coll)
         (report-seq msg (rest coll))))))
 
+(comment 
 (defn partition-all "Lazily break s into partition-alls of length n (or less, for the final partition-all)."
   [n s]
   (when (seq s)
     (lazy-cons (take n s)
 	       (partition-all n (drop n s)))))
-
+  )
 (defn position-if [f s]
   (loop [s (seq s) i (int 0)]
     (when s
