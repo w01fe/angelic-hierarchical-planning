@@ -23,7 +23,7 @@
 
 (defn- normalize-ncstrips-effect-atoms [types vars-and-objects predicates effect]
 ;  (prn "\n\n" effect "\n\n")
-  (let [atom-checker (partial props/check-atom types vars-and-objects predicates)]
+  (let [atom-checker #(props/check-atom types vars-and-objects predicates %)]
     (apply make-ncstrips-effect 
 	   (concat (for [f [:pos-preconditions :neg-preconditions :adds :deletes :possible-adds :possible-deletes]]
 		     (distinct (map atom-checker (util/safe-get effect f))))
@@ -96,25 +96,28 @@
 (defstruct ncstrips-description :class :effects)
 
 
-
+; TODO: this is still slow -- set accounts 10% of time! 
 ; TODO: is this definition of cost-expr sufficiently general?
+; TODO: lazy eval cost somehow?
 (defn- instantiate-ncstrips-effect-atoms [var-map effect hla-vars]
-  (let [instantiator (partial props/simplify-atom var-map)]
+  (let [instantiator #(props/simplify-atom var-map %)]
     (apply make-ncstrips-effect 
 	   (concat (for [f [:pos-preconditions :neg-preconditions :adds :deletes :possible-adds :possible-deletes]]
-		     (distinct (map instantiator (util/safe-get effect f))))
+		     (set (map instantiator (util/safe-get effect f))))
 		   [(apply (:cost effect) (map #(util/safe-get var-map (second %)) hla-vars))]))))
 ;		   [(eval `(let ~(vec (concat-elts (map (fn [[k v]] [k `'~v]) var-map))) 
 ;				   ~(:cost effect)))]))))
 
+; TODO: put back simplification?
 (defn- instantiate-ncstrips-effect [effect var-map hla-vars]
-  (simplify-ncstrips-effect
-   (instantiate-ncstrips-effect-atoms var-map effect hla-vars)))
+;  (simplify-ncstrips-effect
+   (instantiate-ncstrips-effect-atoms var-map effect hla-vars))
 
 
 (defmethod ground-description ::NCStripsDescriptionSchema [schema var-map]
   (struct ncstrips-description ::NCStripsDescription
-	  (filter identity (map #(instantiate-ncstrips-effect % var-map (:vars schema)) (:effects schema)))))
+;	  (filter identity 
+     (map #(instantiate-ncstrips-effect % var-map (:vars schema)) (:effects schema))))
 
   
 ; TODO: make more efficient
@@ -160,6 +163,4 @@
 
 
 
-;(defmethod regress-optimistic (partial (map :class)))
-;(defmethod regress-pessimistic (partial (map :class)))
 

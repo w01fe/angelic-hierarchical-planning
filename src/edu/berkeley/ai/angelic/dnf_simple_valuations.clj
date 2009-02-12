@@ -76,49 +76,6 @@
 
 ; 
 
-; To be supported, a value must appear in at least one instantiation of each 
-(comment 
-(defn filter-domains [clause var-pos var-neg dummy-domains]
-  (let [pos-pred-map (util/merge-reduce concat {} (map #(vector (first %) [(rest %)]) var-pos))
-	neg-pred-map (util/merge-reduce concat {} (map #(vector (first %) [(rest %)]) var-pos))]
-    (loop [allowed {}
-	   disallowed {}
-	   clause (seq clause)]
-      (if clause
-	  (recur 
-	   (if-let [pos (get pos-pred-map (ffirst clause))]
-	       ...
-	     allowed)
-	   
-	   (rest clause))
-	(util/map-map 
-	 (fn [dummy-var domain]
-	   [dummy-var
-	    (util/difference 
-	     (util/intersection domain (get allowed dummy-var))
-	     (get disallowed dummy-var))])
-	 dummy-domains))))))
-
-(comment 
-(defn clause-consistent-mappings [clause var-pos var-neg dummy-domains]
-  (let [dummy-seq (seq (filter-domains clause var-pos var-neg dummy-domains))]
-    (filter #(restrict-clause clause 
-	       (map (partial props/simplify-atom %) var-pos) 
-	       (map (partial props/simplify-atom %) var-neg))
-	    (for [combo (apply util/my-combinations (map second dummy-seq))]
-	      (util/map-map (fn [dummy-map-entry dummy-val] [(first dummy-map-entry) dummy-val])
-		       dummy-seq combo)))))
-  
-
-(defn clause-consistent-mappings [clause var-pos var-neg dummy-domains]
-  (let [dummy-seq (seq dummy-domains)]
-    (filter #(restrict-clause clause 
-	       (map (partial props/simplify-atom %) var-pos) 
-	       (map (partial props/simplify-atom %) var-neg))
-	    (for [combo (apply util/my-combinations (map second dummy-seq))]
-	      (util/map-map (fn [dummy-map-entry dummy-val] [(first dummy-map-entry) dummy-val])
-		       dummy-seq combo)))))
-)
 ; CSP approach cuts time in half for 25x25 nav-switch domains.
 (defn clause-consistent-mappings [clause var-pos var-neg dummy-domains]
   (csps/all-csp-solutions (csps/make-conjunctive-propositional-csp dummy-domains var-pos var-neg clause)))

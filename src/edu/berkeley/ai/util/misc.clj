@@ -27,6 +27,14 @@
 (defn desymbolize [symbol n]
   (read-string (apply str (nthrest (name symbol) n))))
 
+(defn symbol-abs-diff [sym1 sym2 n]
+  (let [s1 (.substring (name sym1) n)
+	s2 (.substring (name sym2) n)]
+    (Math/abs (unchecked-subtract (Integer/parseInt s1) (Integer/parseInt s2)))))
+
+(defn desymbolize-int [symbol n]
+  (read-string (apply str (nthrest (name symbol) n))))
+
 (defn truthify [x]
   (if x true false))
 

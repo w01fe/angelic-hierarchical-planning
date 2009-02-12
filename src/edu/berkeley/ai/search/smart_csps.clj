@@ -6,30 +6,7 @@
  )
 
 ; TODO: Remove vars with no active constraints.
-
-; Make dummy var so 0-ary preds can be treated uniformly.
-
-;; For now, ignore inertia preds and just focus on consts
-;; Must also handle guaranteed objects?  just throw error for now.
-   ; In solution generator, don't check vars against valuation (???)
-   ; Each var has set of preds it cares about, updates map by advancing them.
-   ; MAY need multiple copies of each pred, for each variable ordering. -- gensym them.
-   ; For now, will be one pred-map-thing per each prec.
-   
-; TWO types of vars - args and unks
-; TWO classes of constraints -- const and non-const (+ pos/neg ...)
-
-; Main question: how are constraints handled?
-;  Pre-build domains for each var, as fns of previous relevant vars (+ valuation?)
-;  ==> one scan for each time we reach a var.  
-;  ==> Make one pass through valuation, on-demand as first needed, build up map?
-;  ==> Map is indexed like pred --> var1 --> var2 --> var3 --> true
-;     - look up each keyset, intersect, try assignments.
-;     - Should also drop clauses as we go along, only look up key preds, .....
-
-; Question: solve once per clause or once per valuation
-;  -- i.e., how detailed?  Could just use set of possible tuples from valuation, but this will ignore correlations.
-   ; (correlations need not be explicit -- atx(:?1) and aty(:?2) is good enough.)  
+; TODO: order vars and constraints to put const first
 
 ; TODO: for now,
  ; no multi-occurances
@@ -44,8 +21,9 @@
 ; inst-map        ==> dummy variables instantiated so far, with values
 
 ; Returns new-domain
+; TODO: change to use keyset
 (defn filter-pos-domain [map pred domain]
-  (util/intersection domain (util/keyset (get map pred {}))))
+  (util/intersection-coll domain (keys (get map pred {}))))
 
 ;; TODO: make smarter?
 (defn filter-neg-domain [map pred domain]

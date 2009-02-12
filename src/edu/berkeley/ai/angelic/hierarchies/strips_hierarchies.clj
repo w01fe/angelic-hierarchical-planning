@@ -137,11 +137,11 @@
 			   (util/map-map #(vector (:name %) (map first (:vars %))) hla-schemata))]
 ;    (prn all-actions)
     (util/assert-is (= (count all-actions) (+ (count actions) (count hla-schemata))))
-    (let [hla-schemata (doall (map (partial check-hla-schema types guaranteed-objs predicates all-actions) hla-schemata))]
+    (let [hla-schemata (doall (map #(check-hla-schema types guaranteed-objs predicates all-actions %) hla-schemata))]
       (util/assert-is (some #(= (:name %) 'act) hla-schemata))
       (util/map-map #(vector (:name %) %) 
 	       (concat hla-schemata
-		       (map (partial make-strips-primitive-hla-schema types guaranteed-objs predicates) actions))))))
+		       (map #(make-strips-primitive-hla-schema types guaranteed-objs predicates %) actions))))))
 
 
 
@@ -181,8 +181,8 @@
 		     [(:name action) nil nil (into {} dummy-vars) [(cons (:name action) (map first dummy-vars)) ['act]]]))) 
 	   (make-flat-act-optimistic-description-schema upper-reward-fn)
 	   *pessimal-description* nil)
-	  (map (partial make-strips-primitive-hla-schema 
-                 (:types domain) (:guaranteed-objs domain) (:predicates domain))
+	  (map #(make-strips-primitive-hla-schema 
+                 (:types domain) (:guaranteed-objs domain) (:predicates domain) %)
 	       (:action-schemata domain)))))})
 
 
@@ -295,16 +295,18 @@
     (let [hla-map      (util/safe-get hierarchy :hla-map),
 	  first-action (util/safe-get hla-map (ffirst expansion)),
 	  first-var-map (translate-var-map first-action (rfirst expansion) var-map true)
+	  simplifier #(props/simplify-atom first-var-map %)
 	  quasi-ground-first-precondition (envs/conjoin-conditions
 					   (envs/make-conjunctive-condition
-					    (map (partial props/simplify-atom first-var-map) (:pos-pre first-action))
-					    (map (partial props/simplify-atom first-var-map) (:neg-pre first-action)))
+					    (map simplifier (:pos-pre first-action))
+					    (map simplifier (:neg-pre first-action)))
 					   precondition)]
       (for [dummy-var-map (valuation-consistent-mappings opt-val quasi-ground-first-precondition dummy-var-vals)]
 	(let [final-var-map (merge var-map dummy-var-map)]
 	  (map (fn [call extra-preconditions]
 		 (let [hla (util/safe-get hla-map (first call))
-		       trans-var-map (translate-var-map hla (rest call) final-var-map false)]
+		       trans-var-map (translate-var-map hla (rest call) final-var-map false)
+		       simplifier #(props/simplify-atom trans-var-map %) ]
 ;		   (prn (rest call) final-var-map trans-var-map)
 		   (make-strips-hla 
 		    hierarchy 
@@ -312,8 +314,8 @@
 		    trans-var-map 
 		    (envs/conjoin-conditions 
 		     (envs/make-conjunctive-condition
-		      (map (partial props/simplify-atom trans-var-map) (util/safe-get hla :pos-pre)) 
-		      (map (partial props/simplify-atom trans-var-map) (util/safe-get hla :neg-pre))) 
+		      (map simplifier (util/safe-get hla :pos-pre)) 
+		      (map simplifier (util/safe-get hla :neg-pre))) 
 		     extra-preconditions)
 		    (:primitive hla))))
 	       expansion 
@@ -330,9 +332,10 @@
 	var-map   (:var-map hla)]
     (when-not (empty-valuation? opt-val)
       (util/forcat [[name pos-pre neg-pre dummy-type-map expansion] (:refinement-schemata (:schema hla))]
-	 (let [quasi-ground-impl-pre (envs/make-conjunctive-condition
-				      (map (partial props/simplify-atom var-map) pos-pre)
-				      (map (partial props/simplify-atom var-map) neg-pre))
+	 (let [simplifier #(props/simplify-atom var-map %)
+	       quasi-ground-impl-pre (envs/make-conjunctive-condition
+				      (map simplifier pos-pre)
+				      (map simplifier neg-pre))
 	       dummy-val-map (util/map-map (fn [[var types]] [var (util/forcat [t types] (util/safe-get objects t))]) 
 				      dummy-type-map)]
 	   (refinement-instantiations (envs/conjoin-conditions quasi-ground-impl-pre (:precondition hla))
@@ -381,10 +384,11 @@
 (defn extract-preconditions [var-map action-inst hla-map] "Returns [pos neg]"
   (let [[act-name & args] action-inst
 	hla (util/safe-get hla-map act-name)
-	trans-var-map (translate-var-map hla args var-map false)]
+	trans-var-map (translate-var-map hla args var-map false)
+	simplifier #(props/simplify-atom trans-var-map %)]
     ;(println act-name (:pos-pre hla) (:neg-pre hla))
-    [(map (partial props/simplify-atom trans-var-map) (:pos-pre hla))
-     (map (partial props/simplify-atom trans-var-map) (:neg-pre hla))]))
+    [(map simplifier (:pos-pre hla))
+     (map simplifier (:neg-pre hla))]))
 	
 ;(def *csps* nil)  
 ; CSP takes on sole responsibility for handling constant predicates.
@@ -473,7 +477,7 @@
   	  (for [[name pos-pre neg-pre csp expansion] (:refinement-schemata (:schema hla))
 	        dummy-var-map (smart-csps/get-smart-csp-solutions csp var-map val-pred-maps)]
 	    (let [final-var-map (merge var-map dummy-var-map)
-		  simplifier (partial props/simplify-atom final-var-map)
+		  simplifier #(props/simplify-atom final-var-map %)
 		  ground-impl-pre (envs/make-conjunctive-condition
 				   (map simplifier pos-pre)
 				   (map simplifier neg-pre))]
@@ -482,7 +486,7 @@
 	      (map (fn [call extra-preconditions]
 		     (let [hla (util/safe-get hla-map (first call))
 			   trans-var-map (translate-var-map hla (rest call) final-var-map false)
- 	   		   simplifier (partial props/simplify-atom trans-var-map)
+ 	   		   simplifier #(props/simplify-atom trans-var-map %)
 			   precond 
 			   (envs/constant-simplify-condition
 			    (envs/conjoin-conditions 
@@ -640,7 +644,7 @@
 ;  (util/sref-up! *x* inc)
   (let [[name pos-pre neg-pre unk-types expansion] ref-schema
 	{:keys [always-true-atoms always-false-atoms]} instance
-	grounder (partial props/simplify-atom var-map)
+	grounder #(props/simplify-atom var-map %)
 	vm-translator #(translate-var-map (util/safe-get old-hla-map (first %)) (rest %) var-map false)
 	new-pos-pre (util/difference (set (map grounder pos-pre)) always-true-atoms)
 	new-neg-pre (util/difference (set (map grounder neg-pre)) always-false-atoms)
@@ -692,7 +696,7 @@
 	  :else 
       (let [{:keys [trans-objects always-true-atoms always-false-atoms]} instance
 	    {:keys [vars pos-pre neg-pre refinement-schemata optimistic-schema pessimistic-schema primitive]} schema
-	    grounder (partial props/simplify-atom var-map)
+	    grounder #(props/simplify-atom var-map %)
 	    new-pos-pre (util/difference (set (map grounder pos-pre)) always-true-atoms)
 	    new-neg-pre (util/difference (set (map grounder neg-pre)) always-false-atoms)
 	    new-precondition (envs/make-conjunctive-condition new-pos-pre new-neg-pre)

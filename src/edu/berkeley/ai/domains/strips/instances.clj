@@ -17,7 +17,7 @@
 
 (defn get-strips-action-schema-instance [schema var-map]
 ;  (prn schema var-map)
-  (let [simplifier #(map (partial props/simplify-atom var-map) %)]
+  (let [simplifier (fn [x] (map #(props/simplify-atom var-map %) x))]
     (make-strips-action-schema
      (cons (:name schema) (map #(util/safe-get var-map (second %)) (:vars schema)))
      nil

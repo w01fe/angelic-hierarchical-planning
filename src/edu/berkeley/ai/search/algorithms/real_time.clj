@@ -41,7 +41,7 @@
 	#^HashMap m (HashMap.)]
     (real-time-search 
      (envs/get-initial-state env)
-     (partial make-state-space-node space)
+     #(make-state-space-node space %)
      max-steps
      (fn [node state]
        (let [nodes (map-leaf-refinements-depth 

@@ -65,7 +65,7 @@
 (defstruct enumerated-action-space :class :fn :all-actions)
 
 (defn make-enumerated-action-space "if provided, function is a map from states to lazy seq of action objects"
-  ([acts] (make-enumerated-action-space acts #(filter (partial legal-action? %) acts)))
+  ([acts] (make-enumerated-action-space acts (fn [x] (filter #(legal-action? x %) acts))))
   ([acts fn] (struct enumerated-action-space ::EnumeratedActionSpace fn acts)))
 
 (defmethod applicable-actions ::EnumeratedActionSpace [state action-space]

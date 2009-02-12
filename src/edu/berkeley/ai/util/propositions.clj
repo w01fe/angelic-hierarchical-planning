@@ -12,7 +12,7 @@
 (defn get-subtypes "Return all subtypes of type, starting with itself." [types type]
   (when type
     (lazy-cons type 
-	       (lazy-mapcat  (partial get-subtypes types) (safe-get types type)))))
+	       (lazy-mapcat  #(get-subtypes types %) (safe-get types type)))))
 
 (defn check-types [types]
   (let [type-map (map-map seq->vector-pair types)]
@@ -57,7 +57,7 @@
 (defn is-type? [types objects obj type]
  ; (prn types objects obj type)
   (or (includes? (get objects type) obj)
-      (some (partial is-type? types objects obj) (get types type))))
+      (some #(is-type? types objects obj %) (get types type))))
 
 (defn check-type [types objects obj type]
   (assert-is (is-type? types objects obj type)))

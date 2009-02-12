@@ -86,9 +86,10 @@
    (util/union (get-negative-conjuncts c1) (get-negative-conjuncts c2))))
 			      
 (defmethod ground-propositional-condition ::ConjunctiveCondition [c var-map]
-  (make-conjunctive-condition
-   (map (partial props/simplify-atom var-map) (get-positive-conjuncts c))
-   (map (partial props/simplify-atom var-map) (get-negative-conjuncts c))))
+  (let [simplifier #(props/simplify-atom var-map %)]
+    (make-conjunctive-condition
+     (map simplifier (get-positive-conjuncts c))
+     (map simplifier (get-negative-conjuncts c)))))
 
 (defmethod consistent-condition? ::ConjunctiveCondition [condition]
   (empty? (util/intersection (:pos condition) (:neg condition))))

@@ -1,17 +1,28 @@
+; Now, between 400 and 600 refinements per second (i.e., 1200 and 2400 nodes per second)
+; c.f. 40,000 for grounded, constant-simplified strips.
+
+; Check strips, figure out cost bounds.
 
 Graph search
-Tiebreaking
-Progression cache
-Refinement cache?
+ ; Doing lower bounds too will slow down
+  ; Would like to know when descriptions are exact ...? Meh
+ ;  Must care about hierarchical preconds of rest of plan too :(
+ 
+Merging nodes - do it iff rest of plan is the same ??
+ ; Generalizes right-recursive thing.
+ ; Can't actually prune easily, since states will be same
+ ; Without pruning, this will end up with being everywhere at once -- slow!
+   ; After progressing through *just next HLA*, may collapse, and can prune!!
+     ; But this is just graph ? ? 
+     ; Except: can save on plan suffix comparisions (push out list?) .....
 
-Merge iff right-recursive ??
+; Add abstract lookahead trees. 
 
-; Extend DNF valuations to keep track of unaries
- ( and only include things in clauses where needed?)
-    
+; Add AHA* and AHSS ...
+
+; Add weighted A* or that version I saw at ICAPS?
+
   
-  
-
 ------------------------------------
 From earlier meeting
 
@@ -21,19 +32,27 @@ From earlier meeting
 - Tourism
 
 - fuel+time varaible-mpg navigation!
+
 - Merging / splitting
 
 Progression-free planning, with bhaskara's hierarchy (and JIt progression?)
 
-------------------------------------
+--------------- next ---------------
 
-; Idea : JIT grounder for hlas?! 
+Look at state estimation
+  - Stuart + Eyal or Satish
+  - Hector Levesque  
+  - Sheila McIlraith.
+Have a setting where it's obviously more efficient to do it this way.
+
+Totem destroyer.
+
+
+------------------------------------
  
 ; TODO: too many instantiations?!
      ; Allow vars in NCSTRIPS (reduce #), and/or 
-     ; improve JIT ref-generator (forget about grounding)
-     ;  - (compile expressions, using constants?)
-  ; !!! IF REFS don't depend on it, shouldn't be a var.
+     ; !!! IF REFS don't depend on it, shouldn't be a var.
         or something.
 
 randomize refinement ordering ??
@@ -52,12 +71,34 @@ longer term
 
  - add propositional-domain, propositional-instance interfaces?
 
+ - Extend DNF valuations to keep track of unaries?
+  ( and only include things in clauses where needed?)
+
+ - Tiebreaking?
+
+
+Efficiency
+  Progression cache  (only 25% for now, skip)
+   ; Superseded by graph search?
+   ; Let descriptions do caching, or do within top-down-forward-search?
+     ; Would capture restrict too
+     ; Possible issue: differing hierarchical preconditions
+   ; Cache instantiated NCStrips descriptions?
+   ;  (allow identityhashmap...
+  
+ 
+ - Refinement cache? (i.e., JIT grounding)?
+
+ - Combine refinement CSPs to save on making pred-maps
+ - Use keyset in smart-csp filter-pos-domains when integrated- save 10%
+ 
+ 
+ 
 
 ; Observation - constant simplifier doesn't help too much when
  you have ref generator
 
-; Idea : JIT grounder for hlas?! 
-
-
 ; Idea: angelic iwthout sets of states, just state abstraction?!
 
+; Merge iff right-recursive ??
+  
