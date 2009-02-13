@@ -67,10 +67,10 @@
    (props/check-objects (util/safe-get domain :types) (concat (util/safe-get domain :guaranteed-objs) vars)) 
    (util/safe-get domain :predicates)
    (for [clause (rest desc)]
-     (util/match [#{[:optional [:precondition    [unquote pre]]]
-	       [:optional [:effect          [unquote eff]]]
-	       [:optional [:possible-effect [unquote poss]]]
-	       [:cost-expr [unquote cost-expr]]}
+     (util/match [#{[:optional [:precondition    ~pre]]
+	       [:optional [:effect          ~eff]]
+	       [:optional [:possible-effect ~poss]]
+	       [:cost-expr ~cost-expr]}
 	     (util/partition-all 2 clause)]
        (let [[pos-pre neg-pre] (props/parse-pddl-conjunction pre),
 	     [add     del    ] (props/parse-pddl-conjunction eff),

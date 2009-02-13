@@ -65,11 +65,11 @@
 	    (parse-pddl-objects (nthrest rst 2))))))
 
 (defn read-strips-planning-instance [domain file]
-  (util/match [[define [problem [unquote name]]
-	   [:domain  [unquote domain-name]]
-	   [:objects [unquote-seq objects]]
-	   [:init    [unquote-seq init-facts]]
-	   [:goal    [unquote goal-conj]]]
+  (util/match [[define [problem ~name]
+	   [:domain  ~domain-name]
+	   [:objects ~@objects]
+	   [:init    ~@init-facts]
+	   [:goal    ~goal-conj]]
 	  (read-string (.toLowerCase (slurp file)))]
     (util/assert-is (= domain-name (:name domain)))
     (make-strips-planning-instance

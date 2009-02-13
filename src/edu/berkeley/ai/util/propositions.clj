@@ -87,7 +87,7 @@
 
 (defn parse-typed-pddl-list [s]
   (when (seq s)
-    (match [[[unquote v] - [unquote t] [unquote-seq rst]] s]
+    (match [[~v - ~t ~@rst] s]
       (cons [t v]
 	    (parse-typed-pddl-list rst)))))
 

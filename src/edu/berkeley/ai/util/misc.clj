@@ -27,6 +27,17 @@
 (defn desymbolize [symbol n]
   (read-string (apply str (nthrest (name symbol) n))))
 
+(import '(java.io File))
+
+(def *local-root*
+  (let [my-path (.getParent (.getAbsoluteFile (File. ".")))
+	my-suffix (.getParent (File. *file*))]
+    (assert-is (.endsWith my-path my-suffix))
+    (.substring my-path 0 (- (count my-path) (count my-suffix)))))
+
+(defn path-local [s]
+  (str *local-root* (.getParent (File. *file*)) "/" s))
+
 (defn symbol-abs-diff [sym1 sym2 n]
   (let [s1 (.substring (name sym1) n)
 	s2 (.substring (name sym2) n)]
@@ -72,8 +83,8 @@
 (defn match-vars   "Return a seq of the variables mentioned in the tree."
   [var-tree]
   (cond (not (coll? var-tree)) nil
-	(= (first var-tree) 'unquote) [(second var-tree)]
-	(and (coll? (first var-tree)) (= (ffirst var-tree) 'unquote-seq)) [(second (first var-tree))]
+	(= (first var-tree) 'clojure.core/unquote) [(second var-tree)]
+	(and (coll? (first var-tree)) (= (ffirst var-tree) 'clojure.core/unquote-splicing)) [(second (first var-tree))]
 	:else (concat (match-vars (first var-tree)) (match-vars (rest var-tree)))))
 
 
@@ -117,19 +128,19 @@
 
 
 (defn match-mappings "Return a lazy seq of maps of variable bindings for this matching.
-                      Binds variables in (unquote x) and (unquote-seq x) - greedy forms, 
+                      Binds variables in (clojure.core/unquote x) and (clojure.core/unquote-splicing x) - greedy forms, 
                       matches any order for sets, and hangles (:optional ... )"
   [var-tree match-tree]
  ; (prn "match-mappings " var-tree match-tree)
   (distinct 
-    (cond (not (coll? var-tree))
-	    (when (= var-tree match-tree)
+    (cond (not (coll? (seq-coll var-tree)))
+	    (when (= (seq-coll var-tree) (seq-coll match-tree))
 	      [{}])
 	  (set? var-tree)
 	    (match-set var-tree match-tree)
-	  (= (first var-tree) 'unquote)
+	  (= (first var-tree) 'clojure.core/unquote)
 	    [{(second var-tree) match-tree}]
-	  (and (coll? (first var-tree)) (= (ffirst var-tree) 'unquote-seq))
+	  (and (coll? (first var-tree)) (= (ffirst var-tree) 'clojure.core/unquote-splicing))
 	    [{(second (first var-tree)) match-tree}]
   	  (and (coll? (first var-tree)) (= (ffirst var-tree) :optional))
 	    (do (assert-is (= (count (first var-tree)) 2))
@@ -153,7 +164,7 @@
     (when (rest matches) (throw (IllegalArgumentException. (str "Multiple matches: " var-tree " " match-tree "\n" (take 2 matches)))))
     (first matches)))
 
-(defmacro match "Take a var-tree with (unquote x) and (unquote-seq y) expressions
+(defmacro match "Take a var-tree with (clojure.core/unquote x) and (clojure.core/unquote-splicing y) expressions
                  and match it with match-tree, binding these variables, and
                  throwing an exception if a valid matching cannot be found."
   [[var-tree match-tree] & body]
@@ -183,20 +194,20 @@
 
 (comment 
   (match-mappings 
-   '[[:optional [:FOO [unquote x]]]
-     [:BAR [unquote y]]]
+   '[[:optional [:FOO [clojure.core/unquote x]]]
+     [:BAR [clojure.core/unquote y]]]
    [[:FOO 12] [:BAR 14]])
 
   (match-mappings
-   '#{[:FOO [unquote x]]
-      [:BAR [unquote y]]
-      [:optional [:BAZ [unquote z]]]}
+   '#{[:FOO ~x]
+      [:BAR ~y]
+      [:optional [:BAZ ~z]]}
    [[:FOO 12] [:BAR 14]])
 
   (match-mappings
-   '#{[:FOO [unquote x]]
-      [:BAR [unquote y]]
-      [:multiple [:BAZ [unquote z]]]}
+   '#{[:FOO [clojure.core/unquote x]]
+      [:BAR [clojure.core/unquote y]]
+      [:multiple [:BAZ [clojure.core/unquote z]]]}
    [[:FOO 12] [:BAR 14]])
      
 
@@ -204,11 +215,11 @@
                      throw an error if a matching is not possible."
   [var-tree match-tree]
   (cond (not (coll? var-tree))
-	  (when (not= var-tree match-tree)
+	  (when (not= (seq var-tree) (seq match-tree))
 	    (throw (Exception. (str "Bad Match: " var-tree " " match-tree))))
-	(= (first var-tree) 'unquote)
+	(= (first var-tree) 'clojure.core/unquote)
 	  {(second var-tree) match-tree}
-	(and (coll? (first var-tree)) (= (ffirst var-tree) 'unquote-seq))
+	(and (coll? (first var-tree)) (= (ffirst var-tree) 'clojure.core/unquote-splicing))
 	  {(second (first var-tree)) match-tree}
 	(not (coll? match-tree))
 	  (throw (Exception. (str "Bad Match: " var-tree " " match-tree)))

@@ -5,7 +5,7 @@
 (define (hierarchy nav-switch)
   (:type :strips-hierarchy)
   (:hla act
-       :parameters (?cx - :xc ?cy - :yc ?gx - :xc ?gy - :yc)
+       :parameters (?cx - xc ?cy - yc ?gx - xc ?gy - yc)
        :precondition (and (goal-atx ?gx) (goal-aty ?gy) (atx ?cx) (aty ?cy))
        :refinement   (:expansion    ((go-h ?cx ?cy ?gx ?gy)))    
        :refinement   (:expansion    ((go-v ?cx ?cy ?gx ?gy)))    
@@ -13,7 +13,7 @@
        :pessimistic  (:pess))
        
   (:hla go-h
-       :parameters (?cx - :xc ?cy - :yc ?dx - :xc ?dy - :yc)
+       :parameters (?cx - xc ?cy - yc ?dx - xc ?dy - yc)
        :precondition (and (horiz))
        :refinement (:expansion ((nav-h ?cx ?cy ?dx ?dy)))
        :refinement (:precondition (and (switch-at :?1 :?2))
@@ -28,7 +28,7 @@
                                                     (util/symbol-abs-diff ?dy ?cy 1))))))
   
   (:hla go-v
-       :parameters (?cx - :xc ?cy - :yc ?dx - :xc ?dy - :yc)
+       :parameters (?cx - xc ?cy - yc ?dx - xc ?dy - yc)
        :precondition (and (not (horiz)))
        :refinement (:expansion ((nav-v ?cx ?cy ?dx ?dy)))
        :refinement (:precondition (and (switch-at :?1 :?2)) 
@@ -43,7 +43,7 @@
                                                     (util/symbol-abs-diff ?dy ?cy 1))))))
        
   (:hla nav-h       
-       :parameters (?cx - :xc ?cy - :yc ?dx - :xc ?dy - :yc)
+       :parameters (?cx - xc ?cy - yc ?dx - xc ?dy - yc)
        :precondition (and (horiz))
        :refinement (:precondition (and (atx ?dx) (aty ?dy)) :expansion ())
        :refinement (:expansion ((bad-up     ?cy :?) (nav-h ?cx :? ?dx ?dy)))
@@ -55,7 +55,7 @@
                                                (* 4 (util/symbol-abs-diff ?dy ?cy 1))))))
 
   (:hla nav-v       
-       :parameters (?cx - :xc ?cy - :yc ?dx - :xc ?dy - :yc)
+       :parameters (?cx - xc ?cy - yc ?dx - xc ?dy - yc)
        :precondition (and (not (horiz)))
        :refinement (:precondition (and (atx ?dx) (aty ?dy)) :expansion ())
        :refinement (:expansion ((bad-left   ?cx :?) (nav-v :? ?cy ?dx ?dy)))

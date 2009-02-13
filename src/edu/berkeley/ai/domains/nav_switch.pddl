@@ -6,46 +6,70 @@
   (:requirements :strips :typing)
   (:types xc yc)
   (:predicates (atx ?x - xc)
-         (aty ?y - yc) 
-         (horiz)
-         (vert)
-         (above ?y1 - yc ?y2 - yc)
-         (left-of ?x1 - xc ?x2 - xc)
-         (switch-at ?x - xc ?y - yc)
+	       (aty ?y - yc) 
+	       (horiz)
+	       (above ?y1 - yc ?y2 - yc)
+	       (left-of ?x1 - xc ?x2 - xc)
+	       (switch-at ?x - xc ?y - yc)
 	       )
 
-  (:action flip-h
-	     :parameters (?x - block)
-	     :precondition (and (clear ?x) (ontable ?x) (handempty))
-	     :effect
-	     (and (not (ontable ?x))
-		   (not (clear ?x))
-		   (not (handempty))
-		   (holding ?x)))
+  (:action flip-v
+	     :parameters   (?x - xc ?y - yc)
+	     :precondition (and (switch-at ?x ?y) (horiz) (atx ?x) (aty ?y))
+	     :effect       (and (not (horiz)))
+	     :cost         1)
 
-  (:action put-down
-	     :parameters (?x - block)
-	     :precondition (holding ?x)
-	     :effect
-	     (and (not (holding ?x))
-		   (clear ?x)
-		   (handempty)
-		   (ontable ?x)))
-  (:action stack
-	     :parameters (?x - block ?y - block)
-	     :precondition (and (holding ?x) (clear ?y))
-	     :effect
-	     (and (not (holding ?x))
-		   (not (clear ?y))
-		   (clear ?x)
-		   (handempty)
-		   (on ?x ?y)))
-  (:action unstack
-	     :parameters (?x - block ?y - block)
-	     :precondition (and (on ?x ?y) (clear ?x) (handempty))
-	     :effect
-	     (and (holding ?x)
-		   (clear ?y)
-		   (not (clear ?x))
-		   (not (handempty))
-		   (not (on ?x ?y)))))
+  (:action flip-h
+	     :parameters   (?x - xc ?y - yc)
+	     :precondition (and (switch-at ?x ?y) (not (horiz)) (atx ?x) (aty ?y))
+	     :effect       (and (horiz))
+	     :cost         1)
+
+  (:action good-left
+	     :parameters   (?old - xc ?new - xc)
+	     :precondition (and (left-of ?new ?old) (horiz) (atx ?old)) 
+	     :effect       (and (not (atx ?old)) (atx ?new))
+	     :cost         2)
+
+  (:action bad-left
+	     :parameters   (?old - xc ?new - xc)
+	     :precondition (and (left-of ?new ?old) (not (horiz)) (atx ?old)) 
+	     :effect       (and (not (atx ?old)) (atx ?new))
+	     :cost         4)
+
+  (:action good-right
+	     :parameters   (?old - xc ?new - xc)
+	     :precondition (and (left-of ?old ?new) (horiz) (atx ?old)) 
+	     :effect       (and (not (atx ?old)) (atx ?new))
+	     :cost         2)
+
+  (:action bad-right
+	     :parameters   (?old - xc ?new - xc)
+	     :precondition (and (left-of ?old ?new) (not (horiz)) (atx ?old)) 
+	     :effect       (and (not (atx ?old)) (atx ?new))
+	     :cost         4)
+
+  (:action good-up
+	     :parameters   (?old - yc ?new - yc)
+	     :precondition (and (above ?new ?old) (not (horiz)) (aty ?old)) 
+	     :effect       (and (not (aty ?old)) (aty ?new))
+	     :cost         2)
+
+  (:action bad-up
+	     :parameters   (?old - yc ?new - yc)
+	     :precondition (and (above ?new ?old) (horiz) (aty ?old)) 
+	     :effect       (and (not (aty ?old)) (aty ?new))
+	     :cost         4)
+
+  (:action good-down
+	     :parameters   (?old - yc ?new - yc)
+	     :precondition (and (above ?old ?new) (not (horiz)) (aty ?old)) 
+	     :effect       (and (not (aty ?old)) (aty ?new))
+	     :cost         2)
+
+  (:action bad-down
+	     :parameters   (?old - yc ?new - yc)
+	     :precondition (and (above ?old ?new) (horiz) (aty ?old)) 
+	     :effect       (and (not (aty ?old)) (aty ?new))
+	     :cost         4)
+  )

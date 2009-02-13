@@ -91,6 +91,11 @@
 	(coll? x) (seq x)
 	:else     (list x)))
 
+(defn seq-coll 
+  "Make x a seq if it is a seq or coll, otherwise leave it alone. 
+   Useful for normalizing, since (= [] nil) --> false"
+  [x]
+  (if (coll? x) (seq x) x))
 
 (defn concat-elts "Lazily conctaenate a lazy seq of lazy seqs." [s] 
   (when (seq s) (lazy-cat (first s) (concat-elts (rest s)))))

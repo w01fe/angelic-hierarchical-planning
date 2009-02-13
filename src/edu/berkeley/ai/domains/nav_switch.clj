@@ -60,29 +60,16 @@
 			  (envs/make-simple-condition #(legal-coord?- (map + (:pos %) delta) height width))))))))
      (envs/make-simple-condition #(= (:pos %) goal-pos) true))))
 
-(defn make-nav-switch-strips-domain []
-  (strips/make-strips-planning-domain 
-   'nav-switch
-   [:xc :yc]
-   nil
-   '[[atx :xc] [aty :yc] [horiz] [above :yc :yc] [left-of :xc :xc] [switch-at :xc :yc]]
-   [(strips/make-strips-action-schema 'flip-h '[[:xc x] [:yc y]] '[[atx x] [aty y] [switch-at x y]] '[[horiz]] '[[horiz]] [] (- +flip-reward+))
-    (strips/make-strips-action-schema 'flip-v '[[:xc x] [:yc y]] '[[atx x] [aty y] [switch-at x y] [horiz]] [] [] '[[horiz]] (- +flip-reward+))
-    (strips/make-strips-action-schema 'good-up [[:yc 'old] [:yc 'new]] '[[aty old] [above new old]] '[[horiz]] '[[aty new]] '[[aty old]] (- +goodmove-reward+))
-    (strips/make-strips-action-schema 'bad-up  [[:yc 'old] [:yc 'new]] '[[horiz] [aty old] [above new old]] [] '[[aty new]] '[[aty old]] (- +badmove-reward+))
-    (strips/make-strips-action-schema 'good-down [[:yc 'old] [:yc 'new]] '[[aty old] [above old new]] '[[horiz]] '[[aty new]] '[[aty old]] (- +goodmove-reward+))
-    (strips/make-strips-action-schema 'bad-down  [[:yc 'old] [:yc 'new]] '[[horiz] [aty old] [above old new]] [] '[[aty new]] '[[aty old]] (- +badmove-reward+))
-    (strips/make-strips-action-schema 'good-left [[:xc 'old] [:xc 'new]] '[[horiz] [atx old] [left-of new old]] [] '[[atx new]] '[[atx old]] (- +goodmove-reward+))
-    (strips/make-strips-action-schema 'bad-left  [[:xc 'old] [:xc 'new]] '[[atx old] [left-of new old]] '[[horiz]] '[[atx new]] '[[atx old]] (- +badmove-reward+))
-    (strips/make-strips-action-schema 'good-right [[:xc 'old] [:xc 'new]] '[[horiz] [atx old] [left-of old new]] [] '[[atx new]] '[[atx old]] (- +goodmove-reward+))
-    (strips/make-strips-action-schema 'bad-right  [[:xc 'old] [:xc 'new]] '[[atx old] [left-of old new]] '[[horiz]] '[[atx new]] '[[atx old]] (- +badmove-reward+))]))
-
+(let [f (util/path-local "nav_switch.pddl")]
+  (defn make-nav-switch-strips-domain []
+    (strips/read-strips-planning-domain f)))
+ 
 (defn make-nav-switch-strips-env [height width switch-coords initial-pos initial-hor? goal-pos]
   (strips/make-strips-planning-instance 
    "nav-switch"
    (make-nav-switch-strips-domain)
-   {:xc (map #(util/symbol-cat "x" %) (range width))
-    :yc (map #(util/symbol-cat "y" %) (range height))}
+   {'xc (map #(util/symbol-cat "x" %) (range width))
+    'yc (map #(util/symbol-cat "y" %) (range height))}
    (concat (when initial-hor? '[[horiz]])
 	   [['atx (util/symbol-cat "x" (first initial-pos))] ['aty (util/symbol-cat "y" (second initial-pos))]]
 	   (map (fn [pos] ['switch-at (util/symbol-cat "x" (first pos)) (util/symbol-cat "y" (second pos))]) switch-coords)
@@ -90,6 +77,7 @@
 	   (map (fn [x] ['above   (util/symbol-cat "y" (dec x)) (util/symbol-cat "y" x)]) (range 1 height)))
    [['atx (util/symbol-cat "x" (first goal-pos))] ['aty (util/symbol-cat "y" (second goal-pos))]]))
     
+
 (defn- get-and-check-sol [env]
   (map :name
     (first
@@ -139,3 +127,22 @@
 
 
   )
+
+
+(comment ; old version
+  (defn make-nav-switch-strips-domain []
+  (strips/make-strips-planning-domain 
+   'nav-switch
+   [:xc :yc]
+   nil
+   '[[atx :xc] [aty :yc] [horiz] [above :yc :yc] [left-of :xc :xc] [switch-at :xc :yc]]
+   [(strips/make-strips-action-schema 'flip-h '[[:xc x] [:yc y]] '[[atx x] [aty y] [switch-at x y]] '[[horiz]] '[[horiz]] [] (- +flip-reward+))
+    (strips/make-strips-action-schema 'flip-v '[[:xc x] [:yc y]] '[[atx x] [aty y] [switch-at x y] [horiz]] [] [] '[[horiz]] (- +flip-reward+))
+    (strips/make-strips-action-schema 'good-up [[:yc 'old] [:yc 'new]] '[[aty old] [above new old]] '[[horiz]] '[[aty new]] '[[aty old]] (- +goodmove-reward+))
+    (strips/make-strips-action-schema 'bad-up  [[:yc 'old] [:yc 'new]] '[[horiz] [aty old] [above new old]] [] '[[aty new]] '[[aty old]] (- +badmove-reward+))
+    (strips/make-strips-action-schema 'good-down [[:yc 'old] [:yc 'new]] '[[aty old] [above old new]] '[[horiz]] '[[aty new]] '[[aty old]] (- +goodmove-reward+))
+    (strips/make-strips-action-schema 'bad-down  [[:yc 'old] [:yc 'new]] '[[horiz] [aty old] [above old new]] [] '[[aty new]] '[[aty old]] (- +badmove-reward+))
+    (strips/make-strips-action-schema 'good-left [[:xc 'old] [:xc 'new]] '[[horiz] [atx old] [left-of new old]] [] '[[atx new]] '[[atx old]] (- +goodmove-reward+))
+    (strips/make-strips-action-schema 'bad-left  [[:xc 'old] [:xc 'new]] '[[atx old] [left-of new old]] '[[horiz]] '[[atx new]] '[[atx old]] (- +badmove-reward+))
+    (strips/make-strips-action-schema 'good-right [[:xc 'old] [:xc 'new]] '[[horiz] [atx old] [left-of old new]] [] '[[atx new]] '[[atx old]] (- +goodmove-reward+))
+    (strips/make-strips-action-schema 'bad-right  [[:xc 'old] [:xc 'new]] '[[atx old] [left-of old new]] '[[horiz]] '[[atx new]] '[[atx old]] (- +badmove-reward+))])))

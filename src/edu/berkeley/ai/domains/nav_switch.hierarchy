@@ -5,14 +5,14 @@
 (define (hierarchy nav-switch)
   (:type :strips-hierarchy)
   (:hla act
-       :parameters (?cx - :xc ?cy - :yc ?gx - :xc ?gy - :yc)
+       :parameters (?cx - xc ?cy - yc ?gx - xc ?gy - yc)
        :precondition (and (goal-atx ?gx) (goal-aty ?gy) (atx ?cx) (aty ?cy))
        :refinement   (:expansion    ((go ?cx ?cy ?gx ?gy)))    
        :optimistic   (:opt 0)
        :pessimistic  (:pess))
        
   (:hla go
-       :parameters (?cx - :xc ?cy - :yc ?dx - :xc ?dy - :yc)
+       :parameters (?cx - xc ?cy - yc ?dx - xc ?dy - yc)
        :refinement (:expansion ((nav ?cx ?cy ?dx ?dy)))
        :refinement (:precondition (and (switch-at :?1 :?2) (horiz))
                     :expansion ((nav ?cx ?cy :?1 :?2) (flip-v :?1 :?2) (go :?1 :?2 ?dx ?dy)))
@@ -28,7 +28,7 @@
                                                     (util/symbol-abs-diff ?dy ?cy 1))))))
        
   (:hla nav       
-       :parameters (?cx - :xc ?cy - :yc ?dx - :xc ?dy - :yc)
+       :parameters (?cx - xc ?cy - yc ?dx - xc ?dy - yc)
        :refinement (:precondition (and (atx ?dx) (aty ?dy)) :expansion ())
        :refinement (:expansion ((bad-left   ?cx :?) (nav :? ?cy ?dx ?dy)))
        :refinement (:expansion ((bad-up     ?cy :?) (nav ?cx :? ?dx ?dy)))

@@ -9,9 +9,9 @@
 (defmulti parse-hierarchy-type (fn [type contents domain] type))
 
 (defn parse-hierarchy "Call this method to parse a hierarchy.  Will delegate based on declared type." [file domain]
-  (util/match [(define (hierarchy [unquote name])
-	    (:type [unquote type])
-	    [unquote-seq meat])
+  (util/match [(define (hierarchy ~name)
+	    (:type ~type)
+	    ~@meat)
 	  (read-string (slurp file))] ;(.toLowerCase (slurp file)))]
     (util/assert-is (= name (:name domain)))
     (parse-hierarchy-type type meat domain)))

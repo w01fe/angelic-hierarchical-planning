@@ -10,11 +10,12 @@
   (struct strips-action-schema ::StripsActionSchema name vars pos-pre neg-pre add-list delete-list cost))
 
 (defn- parse-pddl-action-schema [action]
-  (util/match [[:action       [unquote name]
-	   :parameters   [unquote parameters]
-	   :precondition [unquote precondition]
-	   :effect       [unquote effect]]
-	  action]
+  (util/match [[[:action       ~name]
+		[:parameters   ~parameters]
+		[:precondition ~precondition]
+		[:effect       ~effect]
+		[:optional [:cost  ~cost]]]
+	       (util/partition-all 2 action)]
     (let [[adds deletes]    (props/parse-pddl-conjunction effect)
 	  [pos-pre neg-pre] (props/parse-pddl-conjunction precondition)] 
       (make-strips-action-schema 
@@ -24,7 +25,7 @@
        neg-pre
        adds
        deletes
-       1))))
+       (or cost 1)))))
 
 
 (defn- check-action-schema [types guaranteed-objs predicates action-schema] 
@@ -86,11 +87,11 @@
 	    )))
 
 (defn read-strips-planning-domain [file]
-  (util/match [[define [domain [unquote name]]
+  (util/match [[define [domain ~name]
 	   [:requirements :strips :typing]
-	   [:types [unquote-seq types]]
-	   [:predicates [unquote-seq predicates]]
-	   [unquote-seq actions]]
+	   [:types ~@types]
+	   [:predicates ~@predicates]
+	   ~@actions]
 	  (read-string (.toLowerCase (slurp file)))]
     (make-strips-planning-domain 
      name

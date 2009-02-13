@@ -44,12 +44,12 @@
 
 
 (defn parse-strips-hla-schema [hla domain]
-  (util/match [#{[:optional [:parameters   [unquote parameters]]]
-	    [:optional [:precondition [unquote precondition]]]
-	    [:multiple [:refinement   [unquote refinements]]]
-	    [:optional [:optimistic   [unquote optimistic]]]
-	    [:optional [:pessimistic  [unquote pessimistic]]]
-	    [:optional [:exact        [unquote exact]]]}
+  (util/match [#{[:optional [:parameters   ~parameters]]
+	    [:optional [:precondition ~precondition]]
+	    [:multiple [:refinement   ~refinements]]
+	    [:optional [:optimistic   ~optimistic]]
+	    [:optional [:pessimistic  ~pessimistic]]
+	    [:optional [:exact        ~exact]]}
 	  (util/partition-all 2 (rest hla))]
     (when exact (util/assert-is (empty? optimistic)) (util/assert-is (empty? pessimistic)))
     (let [name (first hla)
@@ -61,9 +61,9 @@
        pos-pre
        neg-pre
        (map (fn [refinement]
-	      (util/match [[[:optional [:name [unquote ref-name]]]
-			    [:optional [:precondition [unquote precondition]]]
-			    [:expansion [unquote expansion]]]
+	      (util/match [[[:optional [:name ~ref-name]]
+			    [:optional [:precondition ~precondition]]
+			    [:expansion ~expansion]]
 			   (util/partition-all 2 refinement)]
 		(let [[pp np] (props/parse-pddl-conjunction precondition)] 
 		  [(if ref-name (util/symbol-cat name '- ref-name) (gensym name)) pp np nil (or (seq expansion) (list (list (:name *noop-strips-hla-schema*))))])))
@@ -149,7 +149,7 @@
      
 (defmethod parse-hierarchy-type :strips-hierarchy [type contents domain]
   (util/assert-is (isa? (:class domain) :edu.berkeley.ai.domains.strips/StripsPlanningDomain))
-  (util/match [[[:multiple (:hla [unquote-seq hlas])]] contents]
+  (util/match [[[:multiple (:hla ~@hlas)]] contents]
     {:class ::StripsHierarchySchema, :hlas
      (check-hla-schemata (:types domain) (:guaranteed-objs domain) (:predicates domain) (:action-schemata domain)
 			 (cons *noop-strips-hla-schema* (map #(parse-strips-hla-schema % domain) hlas)))}))
