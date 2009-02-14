@@ -1,5 +1,6 @@
 (ns edu.berkeley.ai.search.smart-csps
  (:refer-clojure)
+ (:import [java.util HashMap])
  (:require [edu.berkeley.ai.util :as util] 
 	   [edu.berkeley.ai.util.propositions :as props]
 	   )
@@ -176,7 +177,7 @@
         (reduce #(assoc-in %1 (permuter %2) true) {} allowed-tuples))
     (when (seq allowed-tuples) {dummy-unary-val true})))
 
-(import '(java.util HashMap))
+
 (defn make-value-pred-map
   [pos-pred-name-map neg-pred-name-map pred-instance-map var-ordering true-tuple-map poss-tuple-map dummy-unary-var dummy-unary-val]
 ;  (println "\n\n\n" "pred-map " pos-pred-name-map neg-pred-name-map pred-instance-map var-ordering true-tuple-map poss-tuple-map "n\n\n")
