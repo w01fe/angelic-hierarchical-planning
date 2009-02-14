@@ -37,6 +37,7 @@
 
 
 (defn- all-solutions [vars-left initial-domains var-map const-map clause-maps inst-map]
+;  (println vars-left initial-domains var-map const-map clause-maps inst-map "\n\n")
   (if (empty? vars-left) [inst-map]
     (let [[var arg?]    (first vars-left)
 	  [pos-const neg-const pos-fluent neg-fluent] (util/safe-get var-map var)
@@ -55,14 +56,15 @@
 	                const-domain
 	              pos-fluent)
 	          neg-fluent)])
-	     clause-maps)]	  
+	     clause-maps)]
+;      (println clause-domains "\n\n\n\n")
       (util/forcat [val (apply util/union (map second clause-domains))]
 	(all-solutions 
 	 (rest vars-left)
 	 initial-domains
 	 var-map
 	 (simplify-map const-map (concat pos-const neg-const) val)
-	 (map #(simplify-map % (concat pos-fluent neg-fluent) val) (map first (filter (comp seq second) clause-domains)))
+	 (map #(simplify-map % (concat pos-fluent neg-fluent) val) (map first (filter #((second %) val) clause-domains)))
 	 (if arg? inst-map (assoc inst-map var val)))))))
 
 
@@ -90,7 +92,7 @@
       (do (util/assert-is (not (const-preds (first prec))))
 	  (list (first prec) dummy-unary-var)))))
 
-(defn fill-pred-map [atoms vars pred-names pred-instances]
+(defn fill-pred-map [atoms vars #^HashMap pred-names #^HashMap pred-instances]
   (util/merge-reduce concat {}
     (util/forcat [atom atoms]
       (let [pred-name (first atom)
@@ -159,7 +161,7 @@
 	  (map #(vector % false) (get-unk-ordering unks all-domains var-pred-map pred-instances const-tuples args []))))
 
 
-;;; Making final maps
+;;; Making final maps.  TODO: precompile?
 (defn make-permuter [args var-ordering]
   (let [arg-positions (map vector (iterate inc 0) (map #(util/position % var-ordering) args))
 	arg-permutation (map first (sort-by second arg-positions))]
@@ -167,23 +169,41 @@
    
 ;; TODO: filter based on domains?
 (defn make-value-map "Take a set of allowed tuples and make a multi-stage map following the var-ordering."
-  [args var-ordering allowed-tuples]
-;  (util/prln "val-map " args var-ordering allowed-tuples)
-  (let [permuter (make-permuter args var-ordering)]
-    (reduce #(assoc-in %1 (permuter %2) true) {} allowed-tuples)))
+  [args var-ordering dummy-unary-var dummy-unary-val allowed-tuples]
+;  (println "val-map " args var-ordering allowed-tuples)
+  (if (not= (first args) dummy-unary-var) ;; TODO
+      (let [permuter (make-permuter args var-ordering)]
+        (reduce #(assoc-in %1 (permuter %2) true) {} allowed-tuples))
+    (when (seq allowed-tuples) {dummy-unary-val true})))
 
+(import '(java.util HashMap))
 (defn make-value-pred-map
-  [pred-name-map pred-instance-map var-ordering allowed-tuple-map]
-;  (util/prln "pred-map " pred-name-map pred-instance-map var-ordering allowed-tuple-map)
+  [pos-pred-name-map neg-pred-name-map pred-instance-map var-ordering true-tuple-map poss-tuple-map dummy-unary-var dummy-unary-val]
+;  (println "\n\n\n" "pred-map " pos-pred-name-map neg-pred-name-map pred-instance-map var-ordering true-tuple-map poss-tuple-map "n\n\n")
   (into {}
-    (for [[pred pred-gens] pred-name-map
+    (for [[pos? pred-name-map] [[true pos-pred-name-map] [false neg-pred-name-map]]
+	  [pred pred-gens] pred-name-map
 	  pred-gen pred-gens]
       [pred-gen
        (make-value-map 
 	(rest (util/safe-get pred-instance-map pred-gen)) 
-	var-ordering 
-	(get allowed-tuple-map pred))])))
+	var-ordering
+	dummy-unary-var dummy-unary-val
+	(if pos? 
+	    (concat (get true-tuple-map pred) (get poss-tuple-map pred))
+	  (get true-tuple-map pred)))])))
+
   
+;(defn dummy-fluent-unaries [tuple-map unary-val]
+;  (doseq [unary unaries]
+;    (when (seq (get tuple-map unary))
+;      (.put tuple-map unary [[dummy-unary-val]]))) 
+
+;  (reduce (fn [unary]
+;	    (if (seq (get tuple-map unary))
+;	      (assoc tuple-map unary [[dummy-unary-val]])
+;	      tuple-map))
+;	  tuple-map unaries))
 
 (import '(java.util HashMap))
 (defn create-smart-csp [pos-pre neg-pre arg-domains unk-domains const-pred-map]
@@ -194,7 +214,7 @@
 	arg-domains (assoc (util/map-vals set arg-domains) dummy-unary-var (hash-set dummy-unary-val))
 	unk-domains (util/map-vals set unk-domains)
 	const-preds (util/keyset const-pred-map)
-	unaries (map first (distinct (filter #(= (count %) 1) (concat pos-pre neg-pre))))
+;	unaries (set (map first (filter #(= (count %) 1) (concat pos-pre neg-pre))))
 	pos-pre (fix-unaries pos-pre const-preds dummy-unary-var)
 	neg-pre (fix-unaries neg-pre const-preds dummy-unary-var)
 	[pos-const pos-fluent]   (util/separate #(const-preds (first %)) pos-pre)
@@ -202,16 +222,19 @@
 	args (util/keyset arg-domains)
 	unks (util/keyset unk-domains)
 	vars (util/union args unks)
-	pred-names (HashMap.)     ; A map from real predicate names to seqs of gensym-names
+	pos-const-pred-names (HashMap.)     ; A map from real predicate names to seqs of gensym-names
+	neg-const-pred-names (HashMap.)     ; A map from real predicate names to seqs of gensym-names
+	pos-fluent-pred-names (HashMap.)     ; A map from real predicate names to seqs of gensym-names
+	neg-fluent-pred-names (HashMap.)     ; A map from real predicate names to seqs of gensym-names
 	pred-instances (HashMap.) ; A map from gensym-names to actual pred instances (non-gensym + seqs of vars)
-	pos-const-map  (fill-pred-map pos-const vars pred-names pred-instances)
-	neg-const-map  (fill-pred-map neg-const vars pred-names pred-instances)
-	pos-fluent-map (fill-pred-map pos-fluent vars pred-names pred-instances)
-	neg-fluent-map (fill-pred-map neg-fluent vars pred-names pred-instances)
-	pred-names (into {} pred-names)
+	pos-const-map  (fill-pred-map pos-const vars pos-const-pred-names pred-instances)
+	neg-const-map  (fill-pred-map neg-const vars neg-const-pred-names pred-instances)
+	pos-fluent-map (fill-pred-map pos-fluent vars pos-fluent-pred-names pred-instances)
+	neg-fluent-map (fill-pred-map neg-fluent vars neg-fluent-pred-names pred-instances)
+;	pred-names (into {} pred-names)
 	pred-instances (into {} pred-instances)
-	const-pred-names  (reduce dissoc pred-names (util/difference (util/keyset pred-names) const-preds))
-	fluent-pred-names (reduce dissoc pred-names const-preds)
+;	const-pred-names  (reduce dissoc pred-names (util/difference (util/keyset pred-names) const-preds))
+;	fluent-pred-names (reduce dissoc pred-names const-preds)
 	var-pred-map   (into {}
 			 (map (fn [var] [var 
 					 [(pos-const-map var)
@@ -228,14 +251,10 @@
       ordered-vars
       unk-domains
       var-pred-map
-      (make-value-pred-map const-pred-names pred-instances var-ordering const-pred-map)
-      (fn [fluent-tuples]
-	(make-value-pred-map fluent-pred-names pred-instances var-ordering
-			    (reduce (fn [tuple-map unary]
-				       (if (seq (get tuple-map unary))
-					   (assoc tuple-map unary [[dummy-unary-val]])
-					 tuple-map))
-				     fluent-tuples unaries)))
+      (make-value-pred-map pos-const-pred-names neg-const-pred-names pred-instances var-ordering const-pred-map {} dummy-unary-var dummy-unary-val)
+      (fn [[true-fluent-tuples poss-fluent-tuples]]
+	(make-value-pred-map pos-fluent-pred-names neg-fluent-pred-names pred-instances var-ordering
+			     true-fluent-tuples poss-fluent-tuples dummy-unary-var dummy-unary-val))
       dummy-unary-var
       dummy-unary-val)))
 
@@ -251,22 +270,38 @@
 			  {:a #{1 2} :b #{3 4}} 
 			  {'boo [[1 3] [1 4] [2 3]] 'bap [[1 3]]})
 	{:c 5}
-	[{}]))
-      #{{:a 1 :b 4} {:a 2 :b 3}})
+	[[{} {}]]))
+      #{{:a 1 :b 4} {:a 2 :b 3}}))
   (util/is
    (= (set 
        (get-smart-csp-solutions 
-	(create-smart-csp #{['boo :a :b] ['bee :a :d] ['box :d]} #{['bap :a :b]} 
+	(create-smart-csp #{['boo] ['bee :a]} #{['bap]} 
+			  {}
+			  {:a #{1 2 3 4 5}}
+			  {})
+	{}
+	(angelic/valuation->pred-maps 
+	 (dnf-simple-valuations/make-dnf-simple-valuation 
+	  #{'{[boo] :unknown [bap] :unknown [bee 1] :unknown} 
+	    '{[bee 1] :true [bee 2] :unknown [bee 3] :true}
+	    '{[bap] :true [bee 2] :true [bee 3] :true [bee 4] :true}
+	    '{[boo] :true [bap] :unknown [bee 5] :unknown}}
+	  0))))
+      #{{:a 1} {:a 5}}))
+  (util/is
+   (= (set 
+       (get-smart-csp-solutions 
+	(create-smart-csp #{['boo :a :b] ['bee :a :d] ['box :d]} #{['bap :a :b] ['biz :a :b] ['bat :a :b :d]} 
 			  {:c #{5 6}}
-			  {:a #{1 2} :b #{3 4} :d #{4 5 6}} 
-			  {'boo [[1 3] [1 4] [2 3]] 'bap [[1 3]]})
+			  {:a #{1 2} :b #{3 4 5} :d #{4 5 6}} 
+			  {'boo [[1 3] [1 4] [2 3] [2 5] [1 5]] 'bap [[1 3]]})
 	{:c 5}
 	(angelic/valuation->pred-maps 
 	 (dnf-simple-valuations/make-dnf-simple-valuation 
-	  #{'{[bee 1 4] :true [bee 2 5] :unknown [bee 1 6] :true [box 4] :true [box 5] :true} 
-	    '{[bee 1 4] :true [bee 2 5] :unknown [bee 1 6] :true [box 6] :unknown}}
+	  #{'{[bee 1 4] :true [bee 2 5] :unknown [bee 1 6] :true [box 4] :true [box 5] :true [biz 1 5] :true [biz 2 5] :true [biz 1 4] :unknown [bat 1 5 4] :true} 
+	    '{[bee 1 4] :true [bee 2 5] :unknown [bee 1 6] :true [box 6] :unknown [biz 1 5] :unknown [biz 2 5] :true [biz 1 4] :unknown}}
 	  0))))
-      #{{:a 1 :b 4 :d 4} {:a 2 :b 3 :d 5} {:a 1 :b 4 :d 6}}))))
+      #{{:a 1 :b 4 :d 4} {:a 2 :b 3 :d 5} {:a 1 :b 4 :d 6} {:a 1 :b 5 :d 6}})))
       
 		  
 (comment

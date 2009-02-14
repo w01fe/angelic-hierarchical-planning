@@ -29,11 +29,12 @@
 
 (import '(java.io File))
 
-(def *local-root*
-  (let [my-path (.getParent (.getAbsoluteFile (File. ".")))
-	my-suffix (.getParent (File. *file*))]
-    (assert-is (.endsWith my-path my-suffix))
-    (.substring my-path 0 (- (count my-path) (count my-suffix)))))
+(def *local-root* "/Users/jawolfe/Projects/angel/src/")
+;  (let [my-path (.getParent (.getAbsoluteFile (File. ".")))
+;	my-suffix (.getParent (File. *file*))]
+;    (assert-is (.endsWith my-path my-suffix))
+;    (.substring my-path 0 (- (count my-path) (count my-suffix)))))
+
 
 (defn path-local [s]
   (str *local-root* (.getParent (File. *file*)) "/" s))

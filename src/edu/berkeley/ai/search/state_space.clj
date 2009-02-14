@@ -74,7 +74,7 @@
     [(:act-seq ^(:state node)) (:reward ^(:state node))]))
 
 (defmethod node-str ::StateSpaceNode [node] 
-  (states/state-str (:state-space (:search-space node)) (:state node)))
+  (envs/state-str (:state-space (:search-space node)) (:state node)))
 
 
 ;(defmethod node-parent ::StateSpaceNode [node] 

@@ -2,7 +2,9 @@
  (:refer-clojure)
  (:require [edu.berkeley.ai.util :as util] 
            [edu.berkeley.ai.util.propositions :as props]
-           [edu.berkeley.ai.envs states conditions actions envs])
+           [edu.berkeley.ai.envs init [states :as states] conditions actions envs])
  )
+
+
 
 

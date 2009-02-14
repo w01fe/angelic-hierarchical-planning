@@ -195,7 +195,9 @@
 	  (number? n)          (if (< cost n)
 				   (throw (IllegalArgumentException. "Heuristic inconsistency detected."))
 				 :ignored)
-	  (< cost (.getKey n)) (let [#^com.bluemarsh.graphmaker.core.util.FibonacciHeap$Node n n]
+	  (let [#^com.bluemarsh.graphmaker.core.util.FibonacciHeap$Node n n] 
+		(< cost (.getKey n))) 
+		(let [#^com.bluemarsh.graphmaker.core.util.FibonacciHeap$Node n n]
 				 (do (.decreaseKey heap n cost)        :decreased))
 	  true                 :ignored)))
 

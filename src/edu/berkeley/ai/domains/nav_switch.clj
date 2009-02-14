@@ -1,5 +1,4 @@
 (ns edu.berkeley.ai.domains.nav-switch
- (:refer-clojure)
  (:require [edu.berkeley.ai [util :as util] [envs :as envs]] 
            [edu.berkeley.ai.envs.states :as states]
            [edu.berkeley.ai.domains.strips :as strips])
@@ -75,7 +74,20 @@
 	   (map (fn [pos] ['switch-at (util/symbol-cat "x" (first pos)) (util/symbol-cat "y" (second pos))]) switch-coords)
 	   (map (fn [x] ['left-of (util/symbol-cat "x" (dec x)) (util/symbol-cat "x" x)]) (range 1 width))
 	   (map (fn [x] ['above   (util/symbol-cat "y" (dec x)) (util/symbol-cat "y" x)]) (range 1 height)))
-   [['atx (util/symbol-cat "x" (first goal-pos))] ['aty (util/symbol-cat "y" (second goal-pos))]]))
+   [['atx (util/symbol-cat "x" (first goal-pos))] ['aty (util/symbol-cat "y" (second goal-pos))]]
+   (fn [state]
+     (let [pos [(util/desymbolize (first (strips/get-strips-state-pred-val state 'atx)) 1)
+		(util/desymbolize (first (strips/get-strips-state-pred-val state 'aty)) 1)]
+	   hor? (contains? state '[horiz])]
+	(util/str-join "\n"
+	  (for [y (range height)]
+	    (apply str
+	      (for [x (range width)]
+		(let [coord [x y]]
+		  (if (contains? (set switch-coords)  coord)
+		      (if (= coord pos) \b \s)
+		    (if (= coord pos) \o (if hor? \- \|))))))))))
+   ))
     
 
 (defn- get-and-check-sol [env]
@@ -125,24 +137,6 @@
   (time (second (a-star-search (make-initial-state-space-node (make-nav-switch-strips-env 6 6 [[1 1]] [5 0] true [0 5]) (constantly 0)))))
  ; "Elapsed time: 3596.095 msecs"
 
+  (time (second (a-star-search (make-initial-state-space-node (constant-predicate-simplify-strips-planning-instance (make-nav-switch-strips-env 2 2 [[0 0]] [1 0] true [0 1])) (constantly 0)))))
 
   )
-
-
-(comment ; old version
-  (defn make-nav-switch-strips-domain []
-  (strips/make-strips-planning-domain 
-   'nav-switch
-   [:xc :yc]
-   nil
-   '[[atx :xc] [aty :yc] [horiz] [above :yc :yc] [left-of :xc :xc] [switch-at :xc :yc]]
-   [(strips/make-strips-action-schema 'flip-h '[[:xc x] [:yc y]] '[[atx x] [aty y] [switch-at x y]] '[[horiz]] '[[horiz]] [] (- +flip-reward+))
-    (strips/make-strips-action-schema 'flip-v '[[:xc x] [:yc y]] '[[atx x] [aty y] [switch-at x y] [horiz]] [] [] '[[horiz]] (- +flip-reward+))
-    (strips/make-strips-action-schema 'good-up [[:yc 'old] [:yc 'new]] '[[aty old] [above new old]] '[[horiz]] '[[aty new]] '[[aty old]] (- +goodmove-reward+))
-    (strips/make-strips-action-schema 'bad-up  [[:yc 'old] [:yc 'new]] '[[horiz] [aty old] [above new old]] [] '[[aty new]] '[[aty old]] (- +badmove-reward+))
-    (strips/make-strips-action-schema 'good-down [[:yc 'old] [:yc 'new]] '[[aty old] [above old new]] '[[horiz]] '[[aty new]] '[[aty old]] (- +goodmove-reward+))
-    (strips/make-strips-action-schema 'bad-down  [[:yc 'old] [:yc 'new]] '[[horiz] [aty old] [above old new]] [] '[[aty new]] '[[aty old]] (- +badmove-reward+))
-    (strips/make-strips-action-schema 'good-left [[:xc 'old] [:xc 'new]] '[[horiz] [atx old] [left-of new old]] [] '[[atx new]] '[[atx old]] (- +goodmove-reward+))
-    (strips/make-strips-action-schema 'bad-left  [[:xc 'old] [:xc 'new]] '[[atx old] [left-of new old]] '[[horiz]] '[[atx new]] '[[atx old]] (- +badmove-reward+))
-    (strips/make-strips-action-schema 'good-right [[:xc 'old] [:xc 'new]] '[[horiz] [atx old] [left-of old new]] [] '[[atx new]] '[[atx old]] (- +goodmove-reward+))
-    (strips/make-strips-action-schema 'bad-right  [[:xc 'old] [:xc 'new]] '[[atx old] [left-of old new]] '[[horiz]] '[[atx new]] '[[atx old]] (- +badmove-reward+))])))

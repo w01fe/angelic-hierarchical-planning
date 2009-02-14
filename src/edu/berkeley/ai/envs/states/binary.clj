@@ -10,13 +10,15 @@
 
 (derive ::BinaryStateSpace ::edu.berkeley.ai.envs.states/StateSpace)
 
-(defstruct binary-state-space :class :vars) 
+(defstruct binary-state-space :class :vars :str-fn) 
 
-(defn make-binary-state-space [vars] 
+(defn make-binary-state-space 
   "Make a binary state space from a set of variables"
+  ([vars] (make-binary-state-space vars str))
+  ([vars str-fn]
   (let [var-set (set vars)]
     (util/assert-is (= (count vars) (count var-set)) "Duplicate vars in %s" vars)
-    (struct binary-state-space ::BinaryStateSpace var-set)))
+    (struct binary-state-space ::BinaryStateSpace var-set str-fn))))
 
 
 (defmethod list-states ::BinaryStateSpace [state-set]

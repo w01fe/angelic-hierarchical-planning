@@ -678,12 +678,28 @@
     (for [combo (apply util/my-combinations (map second dummy-vals))]
       (into var-map (map vector (map first dummy-vals) combo)))))
 
+
+(defn constant-simplify-strips-action [action true-atoms false-atoms]
+  (util/assert-is (nil? (util/safe-get action :vars)))
+  (let [pos-pre    (util/difference (util/to-set (util/safe-get action :pos-pre)) true-atoms)
+        neg-pre    (util/difference (util/to-set (util/safe-get action :neg-pre)) false-atoms)]
+    (when (and (empty? (util/intersection pos-pre false-atoms))
+               (empty? (util/intersection neg-pre true-atoms)))
+      (strips/make-strips-action-schema 
+       (util/safe-get action :name)
+       nil
+       pos-pre
+       neg-pre
+       (util/safe-get action :add-list)
+       (util/safe-get action :delete-list)
+       (util/safe-get action :cost))))) 
+
 ; Puts this action and descendents into new-hla-map, returning
 ; true for success or nil for "bad action" (or no refs.)
 ; Do braindead way for now, speed up later.
 ; TODO: should really check cycles better, to get rid of things with only infinite refinements.
 ; TODO: special case, top-level should match only against initial state ????
-(defn put-grounded-hlas [root-name var-map instance old-hla-map new-mutable-hla-map]
+(defn put-grounded-hlas [root-name var-map instance old-hla-map #^HashMap new-mutable-hla-map]
 ;  (print ".")
 ;  (prn "Put " root-name var-map)
   (let [schema (util/safe-get old-hla-map root-name)
@@ -714,7 +730,7 @@
 			 full-name new-precondition :primitive #(throw (UnsupportedOperationException.)) 
 			 opt-desc pess-desc
 			 (strips/strips-action->action
- 			    (util/make-safe (strips/constant-simplify-strips-action ; some redundancy here... 
+ 			    (util/make-safe (constant-simplify-strips-action ; some redundancy here... 
 					     (strips/get-strips-action-schema-instance primitive var-map)
 					     always-true-atoms always-false-atoms)))))
 		  true)

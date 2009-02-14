@@ -93,8 +93,13 @@
 				     (:dnf opt-val))))))
 
       
+(import '(java.util HashMap))
 (defmethod valuation->pred-maps ::DNFSimpleValuation [val]
   (for [clause (util/safe-get val :dnf)]
-    (reduce (fn [m pred]
-	      (assoc m (first pred) (cons (rest pred) (get m (first pred)))))
-	    {} (keys clause))))
+    (let [true-map (HashMap.) poss-map (HashMap.)]
+      (doseq [[pred stat] clause]
+	(let [#^HashMap m (if (= stat :true) true-map poss-map)
+	      pred-name (first pred)
+	      pred-args (rest pred)] 
+	  (.put m pred-name (cons pred-args (.get m pred-name)))))
+      [true-map poss-map])))

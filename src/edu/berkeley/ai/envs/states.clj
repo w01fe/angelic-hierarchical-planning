@@ -1,6 +1,7 @@
 (ns edu.berkeley.ai.envs.states
  (:refer-clojure)
- (:require [edu.berkeley.ai.envs.states states explicit binary])
+ (:use     edu.berkeley.ai.envs)
+ (:require  [edu.berkeley.ai.envs.states states explicit binary])
  )
 
 

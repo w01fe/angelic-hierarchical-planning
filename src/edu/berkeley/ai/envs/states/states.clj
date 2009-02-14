@@ -4,7 +4,6 @@
 (defmulti count-states :class)
 (defmulti canonicalize :class)
 (defmulti set-contains? (fn [state-set elt] (:class state-set)))
-(defmulti state-str (fn [state-set elt] (:class state-set)))
 
 
 (derive ::StateSpace ::StateSet)

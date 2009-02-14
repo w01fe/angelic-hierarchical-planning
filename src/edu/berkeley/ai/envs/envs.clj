@@ -28,7 +28,8 @@
 
 (defmethod get-goal          ::Environment [env]
   (:goal env))
-  
+
+(defmethod state-str  ::Environment [env state] (state-str (get-state-space env) state))  
 
 ;; Useful sanity check
 

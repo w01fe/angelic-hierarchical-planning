@@ -28,6 +28,12 @@
   [m k] 
   (lazy-get m k (throw (IllegalArgumentException. (format "Key %s not found" k)))))
 
+(defn safe-get-in 
+  [m ks]
+  (if (seq ks) 
+      (recur (safe-get m (first ks)) (rest ks))
+    m))
+
 (defn merge-agree "Like merge but returns nil if there are inconsistencies."
   ([] {})
   ([map] map)

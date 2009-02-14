@@ -36,16 +36,22 @@
 
 ;; Problem instance structures and parsing.   
 
-(defstruct strips-planning-instance :class :name :domain :objects :trans-objects :init-atoms :goal-atoms :all-atoms :all-actions)
+(derive ::StripsPlanningInstance ::envs/Environment)
 
-(defn- make-strips-planning-instance- [name domain objects trans-objects init-atoms goal-atoms all-atoms all-actions]
-  (struct strips-planning-instance ::StripsPlanningInstance name domain objects trans-objects init-atoms goal-atoms all-atoms all-actions))
+(defstruct strips-planning-instance :class :name :domain :objects :trans-objects :init-atoms :goal-atoms :all-atoms :all-actions :state-str-fn)
 
-(defn make-strips-planning-instance [name domain objects init-atoms goal-atoms]
+(defn- make-strips-planning-instance- [name domain objects trans-objects init-atoms goal-atoms all-atoms all-actions state-str-fn]
+  (struct strips-planning-instance ::StripsPlanningInstance name domain objects trans-objects init-atoms goal-atoms all-atoms all-actions state-str-fn))
+
+(defn make-strips-planning-instance 
+  ([name domain objects init-atoms goal-atoms]
+     (make-strips-planning-instance name domain objects init-atoms goal-atoms str))
+  ([name domain objects init-atoms goal-atoms state-str-fn]
   (let [types           (:types domain)
 	guaranteed-objs (:guaranteed-objs domain)
 	predicates      (:predicates domain)
 	all-objects     (props/check-objects types (concat objects guaranteed-objs))]
+    ;(println types guaranteed-objs predicates all-objects)
     (make-strips-planning-instance-
 	    name
 	    domain
@@ -55,7 +61,8 @@
 		    (map #(props/check-atom types all-objects predicates (cons (goal-ize (first %)) (rest %))) goal-atoms))
 	    (map (partial props/check-atom types all-objects predicates) goal-atoms)
 	    (get-predicate-instantiations (:predicates domain) all-objects)
-	    (get-strips-action-instantiations (util/safe-get domain :action-schemata) all-objects))))
+	    (get-strips-action-instantiations (util/safe-get domain :action-schemata) all-objects)
+	    state-str-fn))))
 
 (defn- parse-pddl-objects [s]
   (when s
@@ -86,7 +93,7 @@
   (envs/metafy-initial-state    (util/to-set (:init-atoms instance))))
 
 (defmethod envs/get-state-space   ::StripsPlanningInstance [instance]
-  (binary-states/make-binary-state-space (util/safe-get instance :all-atoms)))
+  (binary-states/make-binary-state-space (util/safe-get instance :all-atoms) (:state-str-fn instance)))
 
 (defn strips-action->action [schema]
   (util/assert-is (empty? (:vars schema)))
@@ -171,21 +178,30 @@
 
 
 ;;; Constant predicate-simplified strips domain and modified methods.
+ 
 
-(defn constant-simplify-strips-action [action true-atoms false-atoms]
-  (util/assert-is (nil? (util/safe-get action :vars)))
-  (let [pos-pre    (util/difference (util/to-set (util/safe-get action :pos-pre)) true-atoms)
-	neg-pre    (util/difference (util/to-set (util/safe-get action :neg-pre)) false-atoms)]
-    (when (and (empty? (util/intersection pos-pre false-atoms))
-	       (empty? (util/intersection neg-pre true-atoms)))
-      (make-strips-action-schema 
-       (util/safe-get action :name)
-       nil
-       pos-pre
-       neg-pre
-       (util/safe-get action :add-list)
-       (util/safe-get action :delete-list)
-       (util/safe-get action :cost))))) 
+(defn- get-cps-strips-action-instantiations  [action-schemata all-objects fluent-atoms always-true-atoms always-false-atoms]
+  (let [allowed-pred-inst-maps 
+	  [[(reduce (fn [m atom] (util/assoc-cons m (first atom) (rest atom))) {} always-true-atoms)
+	    (reduce (fn [m atom] (util/assoc-cons m (first atom) (rest atom))) {} fluent-atoms)]]]
+;    (println allowed-pred-inst-maps)
+    (filter identity
+      (util/forcat [schema action-schemata]
+        (let [{:keys [name vars pos-pre neg-pre add-list delete-list cost]} schema
+	      unk-domains (util/map-map (fn [[t v]] [v (set (util/safe-get all-objects t))]) vars)
+  	      csp (smart-csps/create-smart-csp pos-pre neg-pre {} unk-domains {})]
+;	  (println name vars pos-pre neg-pre unk-domains)
+	  (for [var-map (smart-csps/get-smart-csp-solutions csp {} allowed-pred-inst-maps)]
+	    (let [simplifier (fn [x] (set (filter fluent-atoms (map #(props/simplify-atom var-map %) x))))
+		  pos-pre (simplifier pos-pre)
+		  neg-pre (simplifier neg-pre)
+		  add-list (simplifier add-list)
+		  delete-list (simplifier delete-list)]
+	      (when (empty? (util/intersection pos-pre neg-pre))
+		(make-strips-action-schema
+		 (cons name (map #(util/safe-get var-map (second %)) vars))
+		 nil pos-pre neg-pre add-list delete-list cost)))))))))
+
 
 (defn dont-constant-simplify-strips-planning-instance [instance]
   (assoc instance :always-true-atoms #{} :always-false-atoms #{}))
@@ -209,9 +225,14 @@
 			 (util/safe-get instance :init-atoms))
 	always-true-atoms (util/union-coll (set const-init) pi-init)
 	always-false-atoms (util/union-coll (util/difference-coll all-const-atoms const-init)
-					    (util/difference-coll all-ni-atoms    ni-init))]
+					    (util/difference-coll all-ni-atoms    ni-init))
+	fluent-atoms  (util/difference
+		    (util/to-set (util/safe-get instance :all-atoms))
+		    (util/union always-true-atoms always-false-atoms))]
     (util/assert-is (empty? (util/intersection always-true-atoms always-false-atoms)))
     (util/assert-is (empty? (util/intersection always-false-atoms goal-atoms)))
+;    (util/assert-is (empty? pi-preds))  ; For now, since
+;    (util/assert-is (empty? ni-preds))  ; smart-csp doesn't support this.
     (assoc
       (make-strips-planning-instance- 
        (util/safe-get instance :name)
@@ -220,10 +241,10 @@
        (util/safe-get instance :trans-objects)
        reg-init
        (seq (util/difference goal-atoms always-true-atoms))
-       (util/difference
-	(util/to-set (util/safe-get instance :all-atoms))
-	(util/union always-true-atoms always-false-atoms))
-       (filter identity (map #(constant-simplify-strips-action % always-true-atoms always-false-atoms) (util/safe-get instance :all-actions))))
+       fluent-atoms
+       (get-cps-strips-action-instantiations (util/safe-get-in instance [:domain :action-schemata])
+					     trans-objects fluent-atoms always-true-atoms always-false-atoms)
+       (util/safe-get instance :state-str-fn))
       :always-true-atoms always-true-atoms :always-false-atoms always-false-atoms)))
 
 
@@ -264,7 +285,8 @@
        (flattener (util/safe-get instance :init-atoms))
        (flattener (util/safe-get instance :goal-atoms))
        (flattener (util/safe-get instance :all-atoms))
-       (map #(flatten-action % flattener) (util/safe-get instance :all-actions)))
+       (map #(flatten-action % flattener) (util/safe-get instance :all-actions))
+       (util/safe-get instance :state-str-fn))
       :unflatten-map (into {} backward-map))))
    
 

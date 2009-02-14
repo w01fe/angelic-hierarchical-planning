@@ -2,7 +2,7 @@
 
 (import '(edu.berkeley.ai.util DelayedSeq))
 
-
+(comment 
 (defn random-permutation [s]
   "Return a random permutation of this seq." 
   (let [arr (to-array s) len (alength arr)]
@@ -12,10 +12,12 @@
 	(aset arr i (aget arr r))
 	(aset arr r prev)))
      (seq arr)))
+  )
 
 (defn random-element [s]
   "Return a random element of this seq"
   (nth s (rand-int (count s))))
+   
 
 (defn maximal-elements [f s]
   "Return a seq of elements of s maximizing (f elt)."

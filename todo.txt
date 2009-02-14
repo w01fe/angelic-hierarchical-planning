@@ -1,11 +1,8 @@
 ; Now, between 400 and 600 refinements per second (i.e., 1200 and 2400 nodes per second)
 ; c.f. 40,000 for grounded, constant-simplified strips.
 
-; Check strips, figure out cost bounds.
-
-; Change match to use new unquote, unquote-splicing
-
-fix parse-pddl-actino-schema
+; Construct action space on-demand, without filter, in constant-simplified.
+; AAH smart-csp is slow ... (should differentiate between known-true and poss-true!)
 
 Graph search
  ; Doing lower bounds too will slow down
@@ -51,6 +48,7 @@ Have a setting where it's obviously more efficient to do it this way.
 
 Totem destroyer.
 
+Planning graph with HLAs (big state spaces)
 
 ------------------------------------
  
