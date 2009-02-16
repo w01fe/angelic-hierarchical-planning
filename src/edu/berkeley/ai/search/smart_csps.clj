@@ -1,6 +1,6 @@
 (ns edu.berkeley.ai.search.smart-csps
  (:refer-clojure)
- (:import [java.util HashMap])
+ (:import [java.util HashMap Map ArrayList])
  (:require [edu.berkeley.ai.util :as util] 
 	   [edu.berkeley.ai.util.propositions :as props]
 	   )
@@ -23,23 +23,42 @@
 
 ; Returns new-domain
 ; TODO: change to use keyset
-(defn filter-pos-domain [map pred domain]
-  (util/intersection-coll domain (keys (get map pred {}))))
+(defn filter-pos-domain [#^HashMap map pred domain]
+;  (println "fpd" map pred domain)
+  (util/intersection-coll domain (if-let [#^Map m (first (.get map pred))] (.keySet m) nil)))
 
 ;; TODO: make smarter?
 (defn filter-neg-domain [map pred domain]
 ;  (println map pred domain)
-   (reduce (fn [domain val] (if (true? (get (get map pred) val)) (disj domain val) domain)) domain domain))
+  (let [sub (first (get map pred))]
+    (reduce (fn [domain val] (if (true? (get sub val)) (disj domain val) domain)) domain domain)))
 ;  (util/difference domain (util/keyset (get map pred {}))))
 
-(defn simplify-map [map preds val]
-  (reduce (fn [map pred] (assoc map pred (get (get map pred) val)))
-	  map preds))
+;(defn simplify-map [#^HashMap map preds val]
+;  (if (empty? preds) map
+;    (let [#^HashMap m (.clone map)]
+;      (doseq [pred preds]
+;        (.put m pred (get (.get m pred) val)))
+;      m))) 
+
+(defn simplify-map [#^HashMap map preds val]
+;  (println "simpl" map preds val)
+  (doseq [pred preds]
+    (let [sub (.get map pred)
+	  fs (first sub)]
+      (.put map pred (cons (get fs val) sub)))))
 
 
-(defn- all-solutions [vars-left initial-domains var-map const-map clause-maps inst-map]
+(defn unsimplify-map [#^HashMap map preds val]
+  (doseq [pred preds]
+    (.put map pred (rest (.get map pred)))))
+;  (reduce (fn [map pred] (assoc map pred (get (get map pred) val)))
+;	  map preds))
+
+
+(defn- all-solutions [vars-left initial-domains var-map const-map clause-maps inst-map #^ArrayList results]
 ;  (println vars-left initial-domains var-map const-map clause-maps inst-map "\n\n")
-  (if (empty? vars-left) [inst-map]
+  (if (empty? vars-left) (.add results inst-map);[inst-map]
     (let [[var arg?]    (first vars-left)
 	  [pos-const neg-const pos-fluent neg-fluent] (util/safe-get var-map var)
 	  const-domain 
@@ -57,22 +76,40 @@
 	                const-domain
 	              pos-fluent)
 	          neg-fluent)])
-	     clause-maps)]
+	     clause-maps)
+	  all-const (concat pos-const neg-const)
+	  all-fluent (concat pos-fluent neg-fluent)
+	    ]
 ;      (println clause-domains "\n\n\n\n")
-      (util/forcat [val (apply util/union (map second clause-domains))]
-	(all-solutions 
-	 (rest vars-left)
-	 initial-domains
-	 var-map
-	 (simplify-map const-map (concat pos-const neg-const) val)
-	 (map #(simplify-map % (concat pos-fluent neg-fluent) val) (map first (filter #((second %) val) clause-domains)))
-	 (if arg? inst-map (assoc inst-map var val)))))))
+;      (doall (util/forcat [val (apply util/union (map second clause-domains))]
+      (doseq [val (apply util/union (map second clause-domains))]
+	(let [rel-clause-maps (map first (filter #((second %) val) clause-domains))]
+	  (when (rest vars-left)
+	    (simplify-map const-map all-const val)
+	    (doseq [c rel-clause-maps] (simplify-map c all-fluent val)))
+;	  (let [ret 
+		(all-solutions 
+		 (rest vars-left)
+		 initial-domains
+		 var-map
+		 const-map
+		 rel-clause-maps
+		 (if arg? inst-map (assoc inst-map var val)) results);]
+	    (when (rest vars-left)
+	      (unsimplify-map const-map all-const val)
+	      (doseq [c rel-clause-maps] (unsimplify-map c all-fluent val)))
+	   ; ret
+	    )))))
+;	 (simplify-map const-map (concat pos-const neg-const) val)
+;	 (map #(simplify-map % (concat pos-fluent neg-fluent) val) (map first (filter #((second %) val) clause-domains)))
+;	 (if arg? inst-map (assoc inst-map var val)))))))
 
 
 
 (defstruct smart-csp :ordered-vars :unk-domains :var-pred-map :const-map :fluent-map-maker :unary-var :unary-val)
 
 (defn get-smart-csp-solutions [csp var-values allowed-pred-inst-maps]
+  (let [r (ArrayList.)]
   (all-solutions 
    (util/safe-get csp :ordered-vars)
    (assoc
@@ -81,7 +118,8 @@
    (util/safe-get csp :var-pred-map)
    (util/safe-get csp :const-map)
    (map (util/safe-get csp :fluent-map-maker) allowed-pred-inst-maps)
-   {}))
+   {} r)
+  (seq r)))
 
 
 
@@ -163,11 +201,29 @@
 
 
 ;;; Making final maps.  TODO: precompile?
-(defn make-permuter [args var-ordering]
-  (let [arg-positions (map vector (iterate inc 1) (map #(util/position % var-ordering) args))
-	arg-permutation (map first (sort-by second arg-positions))]
-    (fn permute [#^clojure.lang.APersistentVector tuple] 
-      (map (fn [ind] (.get tuple ind)) arg-permutation))))
+;(defn make-permuter [args var-ordering]
+;  (let [arg-positions (map vector (iterate inc 1) (map #(util/position % var-ordering) args))
+;	arg-permutation (map first (sort-by second arg-positions))]
+;    (fn permute [#^clojure.lang.APersistentVector tuple] 
+;      (util/vec-map (fn [ind] (.get tuple ind)) arg-permutation))))
+
+(defn get-permutation [args var-ordering]
+  (let [arg-positions (map vector (iterate inc 1) (map #(util/position % var-ordering) args))]
+    (vec (map first (sort-by second arg-positions)))))
+
+
+; TODO: be smarter about map sizes?
+(defn my-assoc-in [#^HashMap m #^clojure.lang.APersistentVector key-vec #^clojure.lang.APersistentVector perm ind]
+;  (println m key-vec perm ind)
+  (if (< (inc ind) (count perm))
+      (let [key (.get key-vec (.get perm ind))
+	    #^HashMap m2 
+             (or (.get m key) 
+		 (let [#^HashMap m2 (HashMap.)]
+		   (.put m key m2)
+		   m2))]
+	(recur m2 key-vec perm (inc ind)))
+    (.put m (.get key-vec (.get perm ind)) true)))
 
   
 ;; TODO: filter based on domains?
@@ -180,12 +236,20 @@
 	    (when (or (seq (get true-tuple-map pred)) (seq (get poss-tuple-map pred))) {dummy-unary-val true}))
 	(fn value-map-maker-unary2 [true-tuple-map poss-tuple-map] 
 	  (when (seq (get true-tuple-map pred)) {dummy-unary-val true})))
-    (let [permuter (make-permuter args var-ordering)]
+    (let [permutation (get-permutation args var-ordering)]
       (if pos?
   	  (fn value-map-maker1 [true-tuple-map poss-tuple-map] 
-	    (reduce (fn [m t] (assoc-in m (permuter t) true)) {} (concat (get true-tuple-map pred) (get poss-tuple-map pred))))
+	    (let [#^HashMap m (HashMap.)]
+	      (doseq [tuple (concat (get true-tuple-map pred) (get poss-tuple-map pred))]
+		(my-assoc-in m tuple permutation 0))
+	      m))
+;	    (reduce (fn [m t] (assoc-in m (permuter t) true)) {} (concat (get true-tuple-map pred) (get poss-tuple-map pred))))
 	(fn value-map-maker2 [true-tuple-map poss-tuple-map] 
-	  (reduce (fn [m t] (assoc-in m (permuter t) true)) {} (get true-tuple-map pred)))))))
+	  (let [#^HashMap m (HashMap.)]
+	      (doseq [tuple (get true-tuple-map pred)]
+		(my-assoc-in m tuple permutation 0))
+	      m))))))
+;	  (reduce (fn [m t] (assoc-in m (permuter t) true)) {} (get true-tuple-map pred)))))))
 
 (defn make-value-pred-map-maker
   [pos-pred-name-map neg-pred-name-map pred-instance-map var-ordering dummy-unary-var dummy-unary-val]
@@ -200,11 +264,18 @@
 	       pred
 	       (rest (util/safe-get pred-instance-map pred-gen)) 
 	       var-ordering
-	       dummy-unary-var dummy-unary-val)])]
+	       dummy-unary-var dummy-unary-val)])
+	sz (count map-makers)
+	bigsz (int (inc (* 1.12 sz)))]
     (fn pred-map-maker [[true-tuple-map poss-tuple-map]]
-      (util/map-map
-       (fn [[pn map-maker]] [pn (map-maker true-tuple-map poss-tuple-map)])
-       map-makers))))
+      (let [#^HashMap m (HashMap. bigsz 0.9)]
+	(doseq [[pn map-maker] map-makers]
+	  (.put m pn (list (map-maker true-tuple-map poss-tuple-map))))
+	m))))
+;      (HashMap.
+;      (util/map-map
+;       (fn [[pn map-maker]] [pn (map-maker true-tuple-map poss-tuple-map)])
+;       map-makers)))))
 
 
 
