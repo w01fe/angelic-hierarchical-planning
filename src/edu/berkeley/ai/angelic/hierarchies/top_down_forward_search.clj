@@ -52,7 +52,6 @@
 (defmethod get-optimistic-valuation  ::TopDownForwardRootNode [node] (:initial-valuation node))
 (defmethod local-immediate-refinements ::TopDownForwardRootNode [node rest-actions]  nil)
 
-;; TODO: remove
 (defn do-restrict-valuation [x y]
   (restrict-valuation x y))
 
@@ -399,10 +398,6 @@
   ; 2/3 time going to refinement-instantiations!!
   ; 1/3 to clause-consistent-mappings
     ; Reasonable, since primitive args must be figured out each time (hierarchy saves!)
-
- ; Now, profile time!
-  ; TODO: Fully instantiated STRIPS hierarchy.  
-    ; TODO: refinement generator (rather than / using CSP?)
 
 
  )

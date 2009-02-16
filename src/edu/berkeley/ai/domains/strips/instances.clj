@@ -144,26 +144,7 @@
 	    pos-branch (if pos-actions (make-successor-generator pos-actions next-blacklist) (constantly nil))
 	    neg-branch (if neg-actions (make-successor-generator neg-actions next-blacklist) (constantly nil))
 	    dc-branch  (if dc-actions  (make-successor-generator dc-actions  next-blacklist) (constantly nil))]
-	(fn [state] (concat (if (contains? state most-common-atom) (pos-branch state) (neg-branch state)) (dc-branch state)))))))) ; TODO TODO TODO ???
-
-;	    pos-branch (when pos-actions (make-successor-generator pos-actions next-blacklist))
-;	    neg-branch (when neg-actions (make-successor-generator neg-actions next-blacklist))
-;	    dc-branch  (when dc-actions  (make-successor-generator dc-actions  next-blacklist))]
-;	(if pos-branch
-;            (if neg-branch
-;	        (if dc-branch 
-;	            (fn [state] (concat (if (contains? state most-common-atom) (pos-branch state) (neg-branch state)) (dc-branch state)))
-;  	          (fn [state] (if (contains? state most-common-atom) (pos-branch state) (neg-branch state))))
-;	      (if dc-branch 
-;	          (fn [state] (concat (if (contains? state most-common-atom) (pos-branch state) nil) (dc-branch state)))
-;	        (fn [state] (if (contains? state most-common-atom) (pos-branch state) nil))))
-;          (if neg-branch
-;	      (if dc-branch 
-;	          (fn [state] (concat (if (contains? state most-common-atom) nil (neg-branch state)) (dc-branch state)))
-;	        (fn [state] (if (contains? state most-common-atom) nil (neg-branch state))))
-;	    (if dc-branch 
-;                dc-branch
-;	      (fn [state] nil)))))))))
+	(fn [state] (concat (if (contains? state most-common-atom) (pos-branch state) (neg-branch state)) (dc-branch state)))))))) 
 
          
 (defmethod envs/get-action-space  ::StripsPlanningInstance [instance]

@@ -70,11 +70,8 @@
      (:bound val))))
 
 
-; TODO: full CSP solution ?
 ; TODO: special case non-constraint case ?
-;; TODO TODO: filter domains first in linear time
 
-; 
 
 ; CSP approach cuts time in half for 25x25 nav-switch domains.
 (defn clause-consistent-mappings [clause var-pos var-neg dummy-domains]
@@ -94,9 +91,8 @@
 
       
 
-; TODO: remove (for timing) -- and make lazy!!
 (defn- do-valuation->pred-maps [val]
-  (doall
+;  (doall
   (for [clause (util/safe-get val :dnf)]
     (let [true-map (HashMap.) poss-map (HashMap.)]
       (doseq [[#^clojure.lang.APersistentVector pred stat] clause]
@@ -104,7 +100,7 @@
 	      pred-name (.get pred 0)]
 ;	      pred-args (rest pred)] 
 	  (.put m pred-name (cons pred (.get m pred-name)))))
-      [true-map poss-map]))))
+      [true-map poss-map])));)
 
 (import '(java.util HashMap))
 (defmethod valuation->pred-maps ::DNFSimpleValuation [val]

@@ -6,6 +6,7 @@
 	   )
  )
 
+; TODO: all unary constraints should be resolved first, domains filtered? 
 ; TODO: Remove vars with no active constraints.
 ; TODO: order vars and constraints to put const first
 

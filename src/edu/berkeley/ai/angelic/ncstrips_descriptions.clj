@@ -145,7 +145,7 @@
 	    (progress-effect-clause effect clause)))]
 ;    (prn results)
 ;    (println val desc combiner)
-    (if results  ; TODO: put back
+    (if results  
         (dsv/make-dnf-simple-valuation 
           (map first results)
 	  (+ (:bound val) (reduce combiner (map second results))))
