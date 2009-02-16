@@ -13,13 +13,14 @@
 (defn get-predicate-instantiations [predicates trans-objects]
   (for [[pred args] predicates
 	combo       (apply util/my-combinations (map #(util/safe-get trans-objects %) args))]
-    (cons pred combo)))
+    (into [pred] combo)))
+;    (cons pred combo)))
 
 (defn get-strips-action-schema-instance [schema var-map]
 ;  (prn schema var-map)
   (let [simplifier (fn [x] (map #(props/simplify-atom var-map %) x))]
     (make-strips-action-schema
-     (cons (:name schema) (map #(util/safe-get var-map (second %)) (:vars schema)))
+     (into [(:name schema)] (map #(util/safe-get var-map (second %)) (:vars schema)))
      nil
      (simplifier (:pos-pre schema))
      (simplifier (:neg-pre schema))
@@ -182,8 +183,8 @@
 
 (defn- get-cps-strips-action-instantiations  [action-schemata all-objects fluent-atoms always-true-atoms always-false-atoms]
   (let [allowed-pred-inst-maps 
-	  [[(reduce (fn [m atom] (util/assoc-cons m (first atom) (rest atom))) {} always-true-atoms)
-	    (reduce (fn [m atom] (util/assoc-cons m (first atom) (rest atom))) {} fluent-atoms)]]]
+	  [[(reduce (fn [m atom] (util/assoc-cons m (first atom) atom)) {} always-true-atoms)
+	    (reduce (fn [m atom] (util/assoc-cons m (first atom) atom)) {} fluent-atoms)]]]
 ;    (println allowed-pred-inst-maps)
     (filter identity
       (util/forcat [schema action-schemata]
@@ -199,7 +200,7 @@
 		  delete-list (simplifier delete-list)]
 	      (when (empty? (util/intersection pos-pre neg-pre))
 		(make-strips-action-schema
-		 (cons name (map #(util/safe-get var-map (second %)) vars))
+		 (into [name] (map #(util/safe-get var-map (second %)) vars))
 		 nil pos-pre neg-pre add-list delete-list cost)))))))))
 
 

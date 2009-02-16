@@ -91,7 +91,7 @@
   (for [prec precs]
     (if (> (count prec) 1) prec
       (do (util/assert-is (not (const-preds (first prec))))
-	  (list (first prec) dummy-unary-var)))))
+	  [(first prec) dummy-unary-var]))))
 
 (defn fill-pred-map [atoms vars #^HashMap pred-names #^HashMap pred-instances]
   (util/merge-reduce concat {}
@@ -113,7 +113,7 @@
 (defn expected-const-prop- [pred args arg-index const-tuples unk all-domains instantiated-set]
 ;  (println "ecp- " pred args arg-index const-tuples unk instantiated-set (all-domains unk))
   (cond (= arg-index (count args))
-	  (let [unk-index (util/position unk args)]
+	  (let [unk-index (inc (util/position unk args))]
 	    (count (distinct (map #(nth % unk-index) const-tuples))))
         (contains? instantiated-set (nth args arg-index))
           (util/mean
@@ -124,7 +124,7 @@
         :else
 	  (recur pred args (inc arg-index) 
 		 (filter #(contains? (util/safe-get all-domains (nth args arg-index)) 
-				     (nth % arg-index)) 
+				     (nth % (inc arg-index))) 
 			 const-tuples) 
 		 unk all-domains instantiated-set)))
 
@@ -164,35 +164,49 @@
 
 ;;; Making final maps.  TODO: precompile?
 (defn make-permuter [args var-ordering]
-  (let [arg-positions (map vector (iterate inc 0) (map #(util/position % var-ordering) args))
+  (let [arg-positions (map vector (iterate inc 1) (map #(util/position % var-ordering) args))
 	arg-permutation (map first (sort-by second arg-positions))]
-    (fn [tuple] (map #(nth tuple %) arg-permutation))))
-   
+    (fn permute [#^clojure.lang.APersistentVector tuple] 
+      (map (fn [ind] (.get tuple ind)) arg-permutation))))
+
+  
 ;; TODO: filter based on domains?
-(defn make-value-map "Take a set of allowed tuples and make a multi-stage map following the var-ordering."
-  [args var-ordering dummy-unary-var dummy-unary-val allowed-tuples]
+(defn make-value-map-maker "Take a set of allowed tuples and make a multi-stage map following the var-ordering."
+  [pos? pred args var-ordering dummy-unary-var dummy-unary-val]
 ;  (println "val-map " args var-ordering allowed-tuples)
-  (if (not= (first args) dummy-unary-var) ;; TODO
-      (let [permuter (make-permuter args var-ordering)]
-        (reduce #(assoc-in %1 (permuter %2) true) {} allowed-tuples))
-    (when (seq allowed-tuples) {dummy-unary-val true})))
+  (if (= (first args) dummy-unary-var) ;; TODO
+      (if pos?
+	  (fn value-map-maker-unary1 [true-tuple-map poss-tuple-map] 
+	    (when (or (seq (get true-tuple-map pred)) (seq (get poss-tuple-map pred))) {dummy-unary-val true}))
+	(fn value-map-maker-unary2 [true-tuple-map poss-tuple-map] 
+	  (when (seq (get true-tuple-map pred)) {dummy-unary-val true})))
+    (let [permuter (make-permuter args var-ordering)]
+      (if pos?
+  	  (fn value-map-maker1 [true-tuple-map poss-tuple-map] 
+	    (reduce (fn [m t] (assoc-in m (permuter t) true)) {} (concat (get true-tuple-map pred) (get poss-tuple-map pred))))
+	(fn value-map-maker2 [true-tuple-map poss-tuple-map] 
+	  (reduce (fn [m t] (assoc-in m (permuter t) true)) {} (get true-tuple-map pred)))))))
 
-
-(defn make-value-pred-map
-  [pos-pred-name-map neg-pred-name-map pred-instance-map var-ordering true-tuple-map poss-tuple-map dummy-unary-var dummy-unary-val]
+(defn make-value-pred-map-maker
+  [pos-pred-name-map neg-pred-name-map pred-instance-map var-ordering dummy-unary-var dummy-unary-val]
 ;  (println "\n\n\n" "pred-map " pos-pred-name-map neg-pred-name-map pred-instance-map var-ordering true-tuple-map poss-tuple-map "n\n\n")
-  (into {}
-    (for [[pos? pred-name-map] [[true pos-pred-name-map] [false neg-pred-name-map]]
-	  [pred pred-gens] pred-name-map
-	  pred-gen pred-gens]
-      [pred-gen
-       (make-value-map 
-	(rest (util/safe-get pred-instance-map pred-gen)) 
-	var-ordering
-	dummy-unary-var dummy-unary-val
-	(if pos? 
-	    (concat (get true-tuple-map pred) (get poss-tuple-map pred))
-	  (get true-tuple-map pred)))])))
+  (let [map-makers
+	   (for [[pos? pred-name-map] [[true pos-pred-name-map] [false neg-pred-name-map]]
+		 [pred pred-gens] pred-name-map
+		 pred-gen pred-gens]
+	     [pred-gen
+	      (make-value-map-maker 
+	       pos?
+	       pred
+	       (rest (util/safe-get pred-instance-map pred-gen)) 
+	       var-ordering
+	       dummy-unary-var dummy-unary-val)])]
+    (fn pred-map-maker [[true-tuple-map poss-tuple-map]]
+      (util/map-map
+       (fn [[pn map-maker]] [pn (map-maker true-tuple-map poss-tuple-map)])
+       map-makers))))
+
+
 
   
 ;(defn dummy-fluent-unaries [tuple-map unary-val]
@@ -251,10 +265,9 @@
       ordered-vars
       unk-domains
       var-pred-map
-      (make-value-pred-map pos-const-pred-names neg-const-pred-names pred-instances var-ordering const-pred-map {} dummy-unary-var dummy-unary-val)
-      (fn [[true-fluent-tuples poss-fluent-tuples]]
-	(make-value-pred-map pos-fluent-pred-names neg-fluent-pred-names pred-instances var-ordering
-			     true-fluent-tuples poss-fluent-tuples dummy-unary-var dummy-unary-val))
+      ((make-value-pred-map-maker pos-const-pred-names neg-const-pred-names pred-instances var-ordering dummy-unary-var dummy-unary-val)
+       [const-pred-map {}])
+      (make-value-pred-map-maker pos-fluent-pred-names neg-fluent-pred-names pred-instances var-ordering dummy-unary-var dummy-unary-val)
       dummy-unary-var
       dummy-unary-val)))
 
@@ -268,7 +281,7 @@
 	(create-smart-csp #{['boo :a :b]} #{['bap :a :b]} 
 			  {:c #{5 6}}
 			  {:a #{1 2} :b #{3 4}} 
-			  {'boo [[1 3] [1 4] [2 3]] 'bap [[1 3]]})
+			  {'boo '[[boo 1 3] [boo 1 4] [boo 2 3]] 'bap '[[bap 1 3]]})
 	{:c 5}
 	[[{} {}]]))
       #{{:a 1 :b 4} {:a 2 :b 3}}))
@@ -294,7 +307,7 @@
 	(create-smart-csp #{['boo :a :b] ['bee :a :d] ['box :d]} #{['bap :a :b] ['biz :a :b] ['bat :a :b :d]} 
 			  {:c #{5 6}}
 			  {:a #{1 2} :b #{3 4 5} :d #{4 5 6}} 
-			  {'boo [[1 3] [1 4] [2 3] [2 5] [1 5]] 'bap [[1 3]]})
+			  {'boo '[[boo 1 3] [boo 1 4] [boo 2 3] [boo 2 5] [boo 1 5]] 'bap '[[bap 1 3]]})
 	{:c 5}
 	(angelic/valuation->pred-maps 
 	 (dnf-simple-valuations/make-dnf-simple-valuation 
@@ -304,10 +317,13 @@
       #{{:a 1 :b 4 :d 4} {:a 2 :b 3 :d 5} {:a 1 :b 4 :d 6} {:a 1 :b 5 :d 6}})))
       
 		  
+
+
+
 (comment
 
   
-		     
+		 ; These should use vectors...    
 (all-csp-solutions 
    (make-conjunctive-propositional-csp 
     {:a #{1 2 3} :b #{4 5}} 

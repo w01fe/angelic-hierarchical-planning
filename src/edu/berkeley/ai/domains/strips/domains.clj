@@ -58,11 +58,11 @@
 
 (defn goal-ize [pred-name] (util/symbol-cat 'goal- pred-name))
 
-(defn de-goal [pred]
-  (let [name (name (first pred))]
-    (if (.startsWith name "goal-")
-      (cons (symbol (.substring name 5))
-	    (rest pred)))))
+;(defn de-goal [pred]
+;  (let [name (name (first pred))]
+;    (if (.startsWith name "goal-")
+;      (assoc pred 0 (symbol (.substring name 5))))))
+
 
 (defn add-goal-predicates [predicates]
   (let [all-preds (merge predicates (util/map-map (fn [[pred args]] [(goal-ize pred) args]) predicates))]

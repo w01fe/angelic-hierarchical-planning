@@ -93,8 +93,13 @@
   (u util domains.strips domains.warehouse envs search search.algorithms.textbook)
   (time (map :name (first (a-star-search (make-initial-state-space-node (constant-predicate-simplify-strips-planning-instance (make-warehouse-strips-env 2 2 [1 1] false {0 '[a]} nil ['[a table1]])) (constantly 0))))))
   (time (map :name (first (a-star-search (make-initial-state-space-node (constant-predicate-simplify-strips-planning-instance (make-warehouse-strips-env 3 3 [1 1] false {0 '[a] 2 '[b]} nil ['[a b]])) (constantly 0))))))
+  (time (map :name (first (a-star-search (make-initial-state-space-node (constant-predicate-simplify-strips-planning-instance (make-warehouse-strips-env 3 3 [1 1] false {0 '[a] 2 '[b]} nil ['[b a]])) (constantly 0))))))
   (time (map :name (first (a-star-graph-search (make-initial-state-space-node (constant-predicate-simplify-strips-planning-instance (make-warehouse-strips-env 3 4 [1 2] true {0 '[b a] 2 '[c]} nil ['[a b c]])) (constantly 0))))))
   (time (map :name (first (a-star-graph-search (make-initial-state-space-node (constant-predicate-simplify-strips-planning-instance (make-warehouse-strips-env 4 4 [1 2] false {0 '[a] 2 '[c b]} nil ['[a c table1]])) (constantly 0))))))
+
+
+  (let [node (make-initial-state-space-node (constant-predicate-simplify-strips-planning-instance (make-warehouse-strips-env 3 3 [1 1] false {0 '[a] 2 '[b]} nil ['[ b a]])) (constantly 0))]
+    (time (map :name (first (a-star-search node)))))
 
   (let [env (constant-predicate-simplify-strips-planning-instance
 	     (make-warehouse-strips-env 4 4 [1 2] false {0 '[a] 2 '[c b]} nil ['[a c table1]]))]

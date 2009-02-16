@@ -82,7 +82,7 @@
 	(util/assert-is (= (count params) (count declared-types)))
 	(doseq [[type par] (map vector declared-types params)]
 	  (props/check-type types vars-and-objects par type)))      
-      (seq action)))))
+      (vec action)))))
 
 (defn get-dummy-var-type-map [types all-actions expansion]
   (let [allowed-vars (filter props/is-dummy-var? (rest (first expansion)))]
@@ -178,7 +178,7 @@
 	   (cons ['empty nil nil nil [[(util/safe-get *noop-strips-hla-schema* :name)]]]
 		 (for [action (:action-schemata domain)]
 		   (let [dummy-vars (for [[t v] (:vars action)] [(keyword (str "?" v)) [t]])]
-		     [(:name action) nil nil (into {} dummy-vars) [(cons (:name action) (map first dummy-vars)) ['act]]]))) 
+		     [(:name action) nil nil (into {} dummy-vars) [(into [(:name action)] (map first dummy-vars)) ['act]]]))) 
 	   (make-flat-act-optimistic-description-schema upper-reward-fn)
 	   *pessimal-description* nil)
 	  (map #(make-strips-primitive-hla-schema 
@@ -231,7 +231,7 @@
 	  (make-strips-hla-schema (gensym "strips-top-level-action") {} nil nil 
 			     [[(gensym "strips-top-level-action-ref") nil nil
 			       (util/map-map identity dummy-vars) 
-			       (list (cons 'act (map first dummy-vars)))]]
+			       (list (into '[act] (map first dummy-vars)))]]
 			     opt-desc pess-desc nil)
 	final-hla-map (assoc hla-map (util/safe-get top-level-schema :name) top-level-schema)]
     (make-strips-hla 
@@ -257,7 +257,7 @@
 (defmethod hla-environment ::StripsHLA [hla] (util/safe-get (util/safe-get hla :hierarchy) :problem-instance))
 
 (defmethod hla-name                       ::StripsHLA [hla] 
-  (cons (:name (:schema hla))
+  (into [(:name (:schema hla))]
 	(replace (:var-map hla) (map second (:vars (:schema hla))))))
 
 (defmethod hla-primitive? ::StripsHLA [hla] false)
@@ -446,7 +446,7 @@
 	always-true        (util/safe-get instance :always-true-atoms)
 	always-false       (util/safe-get instance :always-false-atoms)
 	const-preds        (get (util/safe-get instance :domain) :const-predicates)
-	const-pred-map     (reduce (fn [m [pred & args]] (util/assoc-cons m pred args)) {} always-true)
+	const-pred-map     (reduce (fn [m pred] (util/assoc-cons m (nth pred 0) pred)) {} always-true)
 	new-hla-map        (util/map-vals #(add-schema-ref-csps % old-hla-map (util/safe-get instance :trans-objects) const-pred-map) 
 					  old-hla-map)]
     (util/assert-is (= envs/*true-condition* root-hla-precond))
@@ -703,7 +703,7 @@
 ;  (print ".")
 ;  (prn "Put " root-name var-map)
   (let [schema (util/safe-get old-hla-map root-name)
-	full-name (cons (util/safe-get schema :name)
+	full-name (into [(util/safe-get schema :name)]
 			(map #(util/safe-get var-map (second %)) (util/safe-get schema :vars)))
 	old-val (.get new-mutable-hla-map full-name)]
 ;    (prn (if (<= (count old-val) 2) old-val "

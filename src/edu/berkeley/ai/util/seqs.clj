@@ -31,6 +31,17 @@
 (defn vec-filter [f v]
   (reduce (fn [v item] (if (f item) (conj v item) v)) [] v))
 
+(defn vec-replace [m v]
+  (reduce (fn [v item]
+	    (conj v
+	      (if-let [e (find m item)]
+		(val e)
+		item)))
+	  [] v))
+
+
+
+
 
 
 ;(defn vec-map3 [f v]

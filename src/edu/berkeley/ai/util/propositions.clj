@@ -68,12 +68,20 @@
     (assert-is (= (count args) (count type-sig)) "Wrong number of predicate args.")
     (doseq [[obj type] (map vector args type-sig)]
       (check-type types objects obj type))
-    (seq atom)))
+    (vec atom)))
 
-(defn simplify-atom 
-  ([var obj atom] (simplify-atom {var obj} atom))
-  ([m atom]       (cons (first atom) (replace m (rest atom)))))
-    
+
+(defn simplify-atom  [m #^clojure.lang.APersistentVector atom]
+;  (print (class m))
+  (reduce (fn [v item]
+	    (conj v 
+	      (if-let [e (find m item)]
+		  (val e)
+                item)))
+	  [(.get atom 0)] (rest atom)))
+
+(defn single-simplify-atom [var obj atom]
+  (simplify-atom (hash-map var obj) atom))    
 
 ;;; Misc
 

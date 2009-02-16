@@ -99,11 +99,11 @@
   (doall
   (for [clause (util/safe-get val :dnf)]
     (let [true-map (HashMap.) poss-map (HashMap.)]
-      (doseq [[pred stat] clause]
+      (doseq [[#^clojure.lang.APersistentVector pred stat] clause]
 	(let [#^HashMap m (if (= stat :true) true-map poss-map)
-	      pred-name (first pred)
-	      pred-args (rest pred)] 
-	  (.put m pred-name (cons pred-args (.get m pred-name)))))
+	      pred-name (.get pred 0)]
+;	      pred-args (rest pred)] 
+	  (.put m pred-name (cons pred (.get m pred-name)))))
       [true-map poss-map]))))
 
 (import '(java.util HashMap))
