@@ -1,6 +1,6 @@
 (ns edu.berkeley.ai.angelic.dnf-simple-valuations
-  (:refer-clojure)
   (:use [edu.berkeley.ai.angelic :as angelic])
+  (:import [java.util HashMap])
   (:require [edu.berkeley.ai [util :as util] [envs :as envs]]
             [edu.berkeley.ai.util.propositions :as props]
             [edu.berkeley.ai.search.csps :as csps]))
@@ -93,8 +93,10 @@
 				     (:dnf opt-val))))))
 
       
-(import '(java.util HashMap))
-(defmethod valuation->pred-maps ::DNFSimpleValuation [val]
+
+; TODO: remove (for timing) -- and make lazy!!
+(defn- do-valuation->pred-maps [val]
+  (doall
   (for [clause (util/safe-get val :dnf)]
     (let [true-map (HashMap.) poss-map (HashMap.)]
       (doseq [[pred stat] clause]
@@ -102,4 +104,8 @@
 	      pred-name (first pred)
 	      pred-args (rest pred)] 
 	  (.put m pred-name (cons pred-args (.get m pred-name)))))
-      [true-map poss-map])))
+      [true-map poss-map]))))
+
+(import '(java.util HashMap))
+(defmethod valuation->pred-maps ::DNFSimpleValuation [val]
+  (do-valuation->pred-maps val))

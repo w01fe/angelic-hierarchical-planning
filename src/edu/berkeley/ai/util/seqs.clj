@@ -14,10 +14,28 @@
      (seq arr)))
   )
 
+(comment 
 (defn random-element [s]
   "Return a random element of this seq"
   (nth s (rand-int (count s))))
-   
+   )
+
+;(defn vec-map [f v]
+;  (reduce (fn [v i] (assoc v i (f (nth v i)))) v (range (count v))))
+
+;(defn coll-seq [#^clojure.lang.IPersistentCollection coll] (.seq coll))
+
+(defn vec-map [f v]
+  (reduce (fn [v item] (conj v (f item))) [] v))
+
+(defn vec-filter [f v]
+  (reduce (fn [v item] (if (f item) (conj v item) v)) [] v))
+
+
+
+;(defn vec-map3 [f v]
+;  (reduce (fn [v item] (conj v (f item))) [] (coll-seq v)))
+
 
 (defn maximal-elements [f s]
   "Return a seq of elements of s maximizing (f elt)."
@@ -38,7 +56,7 @@
 
 (defn random-maximal-element [f s]
   "Return a random element of s maximizing (f elt), throwing an exception if s empty."
-  (random-element (make-safe (maximal-elements f s))))
+  (rand-elt (make-safe (maximal-elements f s))))
 	   
 (defn distinct-elts? [s] ;; TODO: remove if core changed
   (or (empty? s) (apply distinct? s)))

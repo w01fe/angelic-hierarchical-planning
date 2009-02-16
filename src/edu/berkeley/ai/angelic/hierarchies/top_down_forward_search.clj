@@ -205,6 +205,7 @@
 
 (require '[edu.berkeley.ai.domains.nav-switch :as nav-switch])
 (require '[edu.berkeley.ai.domains.strips :as strips])
+(require '[edu.berkeley.ai.domains.warehouse :as warehouse])
 (require '[edu.berkeley.ai.angelic.hierarchies.strips-hierarchies :as strips-hierarchies])
 (require '[edu.berkeley.ai.search.algorithms.textbook :as textbook])
 
@@ -278,6 +279,15 @@
 	   (nav-switch/make-nav-switch-strips-domain) (constantly 0))
 	  (nav-switch/make-nav-switch-strips-env 2 2 [[0 0]] [1 0] true [0 1])
 	  :edu.berkeley.ai.angelic.dnf-simple-valuations/DNFSimpleValuation
+	  #(strips-hierarchies/constant-simplify-strips-hierarchy %
+	    strips/constant-predicate-simplify-strips-planning-instance))))
+     (util/is
+      (= '[[good-left x1 x0] [flip-v x0 y0] [good-down y0 y1]]
+	 (get-and-check-sol
+	  (strips-hierarchies/make-flat-strips-hierarchy-schema 
+	   (nav-switch/make-nav-switch-strips-domain) (constantly 0))
+	  (nav-switch/make-nav-switch-strips-env 2 2 [[0 0]] [1 0] true [0 1])
+	  :edu.berkeley.ai.angelic.dnf-simple-valuations/DNFSimpleValuation
 	  #(strips-hierarchies/ground-and-constant-simplify-strips-hierarchy %
 	    strips/dont-constant-simplify-strips-planning-instance))))
      (util/is
@@ -307,8 +317,18 @@
 	(= '[[good-left x1 x0] [flip-v x0 y0] [good-down y0 y1]]
 	   (get-and-check-sol schema env :edu.berkeley.ai.angelic.dnf-simple-valuations/DNFSimpleValuation simplifier)))))))
 			      
-	    
-		       
+
+(util/deftest top-down-warehouse
+ (util/testing "flat-strips hierarchy"
+     (util/is
+      (= '((get-l a table0 x0 x1 y1) (left x1 x0 y1) (turn-r x0 y1) (put-r a table1 x1 x0 y0 y1))
+	 (get-and-check-sol
+	  (strips-hierarchies/make-flat-strips-hierarchy-schema 
+	   (warehouse/make-warehouse-strips-domain) (constantly 0))
+	  (warehouse/make-warehouse-strips-env 2 2 [1 1] false {0 '[a]} nil ['[a table1]])
+	  :edu.berkeley.ai.angelic.dnf-simple-valuations/DNFSimpleValuation
+	  #(strips-hierarchies/constant-simplify-strips-hierarchy %
+	    strips/constant-predicate-simplify-strips-planning-instance))))))
       
 
 (comment 

@@ -63,7 +63,7 @@
   (defn make-nav-switch-strips-domain []
     (strips/read-strips-planning-domain f)))
  
-(defn make-nav-switch-strips-env [height width switch-coords initial-pos initial-hor? goal-pos]
+(defn make-nav-switch-strips-env [width height switch-coords initial-pos initial-hor? goal-pos]
   (strips/make-strips-planning-instance 
    "nav-switch"
    (make-nav-switch-strips-domain)

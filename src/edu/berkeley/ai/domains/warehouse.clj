@@ -9,9 +9,10 @@
   (defn make-warehouse-strips-domain []
     (strips/read-strips-planning-domain f)))
  
+
 ; initial-stacks is map from column number to stacks of block names (top-down).
 ; goal-stacks is seq of desired stacks
-(defn make-warehouse-strips-env [height width initial-pos initial-faceright? initial-stacks initial-holding goal-stacks]
+(defn make-warehouse-strips-env [width height initial-pos initial-faceright? initial-stacks initial-holding goal-stacks]
   (strips/make-strips-planning-instance 
    "nav-switch"
    (make-warehouse-strips-domain)
@@ -39,7 +40,73 @@
    (for [goal-stack goal-stacks
 	 [b c] (partition 2 1 goal-stack)]
      ['on b c])
-   str))
+   (fn [state]
+;     (println state)
+     (let [pos (map #(util/desymbolize % 1) (strips/get-strips-state-pred-val state 'gripperat))
+	   holding (if (contains? state '[gripperempty]) nil (first (strips/get-strips-state-pred-val state 'holding)))
+	   facingright? (contains? state '[facingright])
+	   square-map (assoc (into {} (filter identity (for [c state] 
+							(when (= (first c) 'blockat) 
+							  [(map #(util/desymbolize % 1) [(nth c 2) (nth c 3)])
+							   (.toUpperCase (name (nth c 1)))]))))
+			pos (if holding (.toLowerCase (name holding)) "#"))]
+;       (println pos holding facingright? square-map)
+       (util/str-join "\n"
+	 (for [y (reverse (range 1 height))]
+	   (apply str
+	     (for [x (range width)]
+	       (get square-map [x y] (if facingright? ">" "<"))))))))))
+
+
+
+
+(defn- get-and-check-sol [env graph?]
+  (map :name
+    (first
+     (envs/check-solution env
+       ((if graph? 
+	  edu.berkeley.ai.search.algorithms.textbook/a-star-graph-search 
+	  edu.berkeley.ai.search.algorithms.textbook/a-star-search)
+	(edu.berkeley.ai.search/make-initial-state-space-node 
+	 env   
+	 (constantly 0)))))))
+
+(util/deftest flat-warehouse
+  (util/testing "tiny instance"
+    (let [env (make-warehouse-strips-env 2 2 [1 1] false {0 '[a]} nil ['[a table1]])]
+      (doseq [graph? [true false]
+	      simplifier [identity strips/constant-predicate-simplify-strips-planning-instance
+			  (comp strips/flatten-strips-instance strips/constant-predicate-simplify-strips-planning-instance)]]
+	(util/is (= '((get-l a table0 x0 x1 y1) (left x1 x0 y1) (turn-r x0 y1) (put-r a table1 x1 x0 y0 y1))
+		    (get-and-check-sol (simplifier env) graph?))))))
+  (util/testing "bigger instance"
+    (let [env (make-warehouse-strips-env 3 4 [1 2] true {0 '[b a] 2 '[c]} nil ['[a b c]])]
+      (doseq [simplifier [strips/constant-predicate-simplify-strips-planning-instance
+			  (comp strips/flatten-strips-instance strips/constant-predicate-simplify-strips-planning-instance)]]
+	(util/is (= 17 
+		    (count (get-and-check-sol (simplifier env) true))))))))
+
+
+
+
+(comment 
+  (u util domains.strips domains.warehouse envs search search.algorithms.textbook)
+  (time (map :name (first (a-star-search (make-initial-state-space-node (constant-predicate-simplify-strips-planning-instance (make-warehouse-strips-env 2 2 [1 1] false {0 '[a]} nil ['[a table1]])) (constantly 0))))))
+  (time (map :name (first (a-star-search (make-initial-state-space-node (constant-predicate-simplify-strips-planning-instance (make-warehouse-strips-env 3 3 [1 1] false {0 '[a] 2 '[b]} nil ['[a b]])) (constantly 0))))))
+  (time (map :name (first (a-star-graph-search (make-initial-state-space-node (constant-predicate-simplify-strips-planning-instance (make-warehouse-strips-env 3 4 [1 2] true {0 '[b a] 2 '[c]} nil ['[a b c]])) (constantly 0))))))
+  (time (map :name (first (a-star-graph-search (make-initial-state-space-node (constant-predicate-simplify-strips-planning-instance (make-warehouse-strips-env 4 4 [1 2] false {0 '[a] 2 '[c b]} nil ['[a c table1]])) (constantly 0))))))
+
+  (let [env (constant-predicate-simplify-strips-planning-instance
+	     (make-warehouse-strips-env 4 4 [1 2] false {0 '[a] 2 '[c b]} nil ['[a c table1]]))]
+    (println 
+     (str-join "\n\n"
+     (map #(state-str env %)
+       (nth
+        (check-solution env
+	  (a-star-graph-search (make-initial-state-space-node env (constantly 0)))) 2)))))
+
+
+  )
 
 
 
