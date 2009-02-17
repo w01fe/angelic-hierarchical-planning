@@ -120,7 +120,7 @@
 		  (pddl-conjunction->seq conj))]
     [pos 
      (map (fn [term] (assert-is (= 2 (count term))) (second term)) neg)
-     (map (fn [[typed-list prec eff]] 
+     (map (fn [[_ typed-list prec eff]]
 	    [(parse-typed-pddl-list typed-list)
 	     (parse-pddl-conjunction prec)
 	     (parse-pddl-conjunction eff)])

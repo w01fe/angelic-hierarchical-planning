@@ -33,8 +33,8 @@
 (defn- make-strips-primitive-hla-schema [types objects predicates action]
   (let [desc (ncstrips/make-ncstrips-description-schema 
 	      types (props/check-objects types (concat objects (:vars action))) predicates 
-	      [(ncstrips/make-ncstrips-effect nil nil ; (:pos-pre action) (:neg-pre action) TODO: double check
-					      (:add-list action) (:delete-list action) nil nil (constantly (:cost action)))] 
+	      [(ncstrips/make-ncstrips-effect-schema nil nil nil ; (:pos-pre action) (:neg-pre action) TODO: double check
+					      (:add-list action) (:delete-list action) nil nil nil nil nil (constantly (:cost action)))] 
 	      (:vars action))]
     (make-strips-hla-schema (:name action) (:vars action) (:pos-pre action) (:neg-pre action) 
 			    :primitive desc desc action)))
@@ -453,13 +453,11 @@
 	instance           (instance-simplifier (util/safe-get old-hierarchy :problem-instance))
 	always-true        (util/safe-get instance :always-true-atoms)
 	always-false       (util/safe-get instance :always-false-atoms)
-	const-preds        (get (util/safe-get instance :domain) :const-predicates)
-	const-pred-map     (reduce (fn [m pred] (util/assoc-cons m (nth pred 0) pred)) {} always-true)
+	const-pred-map     (strips/get-strips-const-pred-map instance)
 	new-hla-map        (util/map-vals #(add-schema-ref-csps % old-hla-map (util/safe-get instance :trans-objects) const-pred-map) 
 					  old-hla-map)]
     (util/assert-is (= envs/*true-condition* root-hla-precond))
     (util/assert-is (not root-hla-primitive))
-    (doseq [pred (concat always-true always-false)] (util/assert-is (const-preds (first pred))))  ; Only const preds, no inertia
     (make-strips-cs-hla
      (struct strips-cs-hierarchy ::StripsCSHierarchy new-hla-map instance always-true always-false)
      (util/safe-get new-hla-map root-hla-name)

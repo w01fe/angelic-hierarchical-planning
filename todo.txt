@@ -2,6 +2,8 @@ For WW hierarchy, need forall in 3 places:
  ncstrips precond, ncstrips effect, refinement precondition
  Can drop last by making special ":goal" precondition, or just ignoring it 
  
+ Move-block should not take position argument :(.  Need vars in NCSTRIPS after all.
+ 
 ; Make WW hierarchy
 
 ; make WW heuristics ?

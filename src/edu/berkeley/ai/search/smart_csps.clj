@@ -7,7 +7,6 @@
  )
 
 ; TODO: all unary constraints should be resolved first, domains filtered? 
-; TODO: Remove vars with no active constraints.
 ; TODO: order vars and constraints to put const first
 
 ; TODO: for now,
@@ -107,7 +106,9 @@
 
 
 
-(defstruct smart-csp :ordered-vars :unk-domains :var-pred-map :const-map :fluent-map-maker :unary-var :unary-val)
+(defstruct smart-csp :ordered-vars :unk-domains :var-pred-map :const-map :fluent-map-maker :unary-var :unary-val :const?)
+
+(defn smart-csp-const? [csp] (:const? csp))
 
 (defn get-smart-csp-solutions [csp var-values allowed-pred-inst-maps]
   (let [r (ArrayList.)]
@@ -197,8 +198,12 @@
 	(recur (disj unk-set next) all-domains var-pred-map pred-instances const-tuples (conj instantiated-set next) (conj unk-order next)))))
 
 (defn get-var-ordering [args unks all-domains var-pred-map pred-instances const-tuples]
-  (concat (map #(vector % true)  args)
-	  (map #(vector % false) (get-unk-ordering unks all-domains var-pred-map pred-instances const-tuples args []))))
+  (let [filterer (fn [vars] (set (remove (fn [var] (every? empty? (util/safe-get var-pred-map var))) vars)))
+	args (filterer args)]
+;	unks (filterer unks)]
+;    (println "GVO " args unks var-pred-map)
+    (concat (map #(vector % true)  args)
+  	    (map #(vector % false) (get-unk-ordering unks all-domains var-pred-map pred-instances const-tuples args [])))))
 
 
 ;;; Making final maps.  TODO: precompile?
@@ -331,7 +336,7 @@
 			      vars))
 	ordered-vars (get-var-ordering args unks (merge unk-domains arg-domains) var-pred-map pred-instances const-pred-map)
 	var-ordering (vec (map first ordered-vars))]
-;    (println "Var ordering: " var-ordering)
+    (println "Var ordering: " var-ordering)
     (util/assert-is (empty? (util/intersection args unks)))
     (struct smart-csp 
       ordered-vars
@@ -341,7 +346,9 @@
        [const-pred-map {}])
       (make-value-pred-map-maker pos-fluent-pred-names neg-fluent-pred-names pred-instances var-ordering dummy-unary-var dummy-unary-val)
       dummy-unary-var
-      dummy-unary-val)))
+      dummy-unary-val
+      (and (empty? pos-fluent) (empty? neg-fluent)))
+      ))
 
 (require '[edu.berkeley.ai.angelic :as angelic])
 (require '[edu.berkeley.ai.angelic.dnf-simple-valuations :as dnf-simple-valuations] )
@@ -373,6 +380,22 @@
 	    '{[boo] :true [bap] :unknown [bee 5] :unknown}}
 	  0))))
       #{{:a 1} {:a 5}}))
+  (util/is
+   (= (set 
+       (get-smart-csp-solutions 
+	(create-smart-csp #{['boo] ['bee :a]} #{['bap]} 
+			  {}
+			  {:a #{1 2 3 4 5} :b #{7 8}}
+			  {})
+	{}
+	(angelic/valuation->pred-maps 
+	 (dnf-simple-valuations/make-dnf-simple-valuation 
+	  #{'{[boo] :unknown [bap] :unknown [bee 1] :unknown} 
+	    '{[bee 1] :true [bee 2] :unknown [bee 3] :true}
+	    '{[bap] :true [bee 2] :true [bee 3] :true [bee 4] :true}
+	    '{[boo] :true [bap] :unknown [bee 5] :unknown}}
+	  0))))
+      #{{:a 1 :b 7} {:a 5 :b 7} {:a 1 :b 8} {:a 5 :b 8}}))
   (util/is
    (= (set 
        (get-smart-csp-solutions 

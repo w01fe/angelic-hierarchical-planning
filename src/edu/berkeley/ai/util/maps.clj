@@ -26,7 +26,7 @@
 
 (defn safe-get "Like get but throw an exception if not found"
   [m k] 
-  (lazy-get m k (throw (IllegalArgumentException. (format "Key %s not found" k)))))
+  (lazy-get m k (throw (IllegalArgumentException. (format "Key %s not found in %s" k m)))))
 
 (defn safe-get-in 
   [m ks]

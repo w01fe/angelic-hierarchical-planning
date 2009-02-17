@@ -229,6 +229,13 @@
        (util/safe-get instance :state-str-fn))
       :always-true-atoms always-true-atoms :always-false-atoms always-false-atoms)))
 
+(defn get-strips-const-pred-map [instance]
+  (let [always-true        (get instance :always-true-atoms)
+	always-false       (get instance :always-false-atoms)
+	const-preds        (-> instance :domain :const-predicates)]
+    (doseq [pred (concat always-true always-false)] (util/assert-is (const-preds (first pred))))  ; Only const preds, no inertia
+    (reduce (fn [m pred] (util/assoc-cons m (nth pred 0) pred)) {} always-true)))
+
 
 
 ;;; Flattened STRIPS instances
