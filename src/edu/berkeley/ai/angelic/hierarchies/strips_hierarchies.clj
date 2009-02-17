@@ -12,11 +12,8 @@
 
 ;;; A strips-like hierarchy definition, essentially the one used in our ICAPS '07 and '08 papers.
 
-;; dummy variables
-; Right now, only allow :?s to be introduced by the *first* HLA of an expansion
-; Eventually, relax this by an automatic translation?  
-
 ; Immediate refinements are [name pos-prec neg-prec unk-types expansion]
+;; TODO: when instantiated, change unk-types to unk-domains
 
 ; TODO: change over to use conditions everywhere? (and add propositional-condition)
 
@@ -62,11 +59,14 @@
        neg-pre
        (map (fn [refinement]
 	      (util/match [[[:optional [:name ~ref-name]]
+			    [:optional [:parameters ~parameters]]
 			    [:optional [:precondition ~precondition]]
 			    [:expansion ~expansion]]
 			   (util/partition-all 2 refinement)]
-		(let [[pp np] (props/parse-pddl-conjunction precondition)] 
-		  [(if ref-name (util/symbol-cat name '- ref-name) (gensym name)) pp np nil (or (seq expansion) (list (list (:name *noop-strips-hla-schema*))))])))
+		(let [[pp np] (props/parse-pddl-conjunction precondition)]
+		  [(if ref-name (util/symbol-cat name '- ref-name) (gensym name)) pp np 
+		   (util/map-map (fn [[x y]] [y x]) (props/parse-typed-pddl-list parameters)) 
+		   (or (seq expansion) (list (list (:name *noop-strips-hla-schema*))))])))
 	    refinements)
        (parse-description (or optimistic exact [:opt]) domain params)
        (parse-description (or pessimistic exact [:pess]) domain params)
@@ -84,23 +84,23 @@
 	  (props/check-type types vars-and-objects par type)))      
       (vec action)))))
 
-(defn get-dummy-var-type-map [types all-actions expansion]
- ; (let [allowed-vars (filter props/is-dummy-var? (rest (first expansion)))]
-    (util/map-map 
-        (fn [[var ts]] [var (props/maximal-subtypes types ts)])
-      (util/merge-reduce concat {} 
-	(for [action expansion
-	      [var type] (map vector (rest action) (util/safe-get all-actions (first action)))
-	      :when (props/is-dummy-var? var)]
-;		(do (util/assert-is (util/includes? allowed-vars var))
-	  [var [type]]))));))
-   
+(comment  ; TODO: fix this up when actually using union types
+(defn get-dummy-var-type-map [types all-actions declared-types expansion]
+  (util/map-vals #(props/maximal-subtypes types %)
+    (reduce 
+     (fn [type-map [var type]]
+       (if (contains? type-map var)
+	   (util/assoc-cons type-map var type)
+         type-map))
+     (util/map-map (fn [[t v]] [v [t]]) declared-types)
+     (util/forcat [action expansion]
+       (map vector (rest action) (util/safe-get all-actions (first action)))))))
+   )
 
 (defn- check-hla-schema [types guaranteed-objs predicates all-actions hla-schema] 
   (util/assert-is (contains? #{nil :noop} (util/safe-get hla-schema :primitive)))
   (util/assert-is (not (map? (:vars hla-schema))))
   (util/assert-is (util/distinct-elts? (map first (:refinement-schemata hla-schema))) "non-distinct refinement names %s" hla-schema)
-  (util/assert-is (not-any? #(props/is-dummy-var? (second %)) (:vars hla-schema))) 
   (let [vars-and-objects (props/check-objects types (concat guaranteed-objs (:vars hla-schema)))
 	atom-checker     (fn [atoms] (map #(props/check-atom types vars-and-objects predicates %) atoms))]
     (make-strips-hla-schema 
@@ -110,12 +110,12 @@
      (atom-checker (:neg-pre hla-schema))
      (doall 
      (map (fn [[name pos-pre neg-pre dummy-map expansion]]
-	    (util/assert-is (empty? dummy-map))
-	    (let [dummy-map (get-dummy-var-type-map types all-actions expansion)
-		  impl-vars-and-objects (util/merge-reduce concat  vars-and-objects   ; add dummy vars
-						   (for [[v ts] dummy-map
-							 t ts]
-						     [t [v]]))
+	    (let [;dummy-map 
+		  ;impl-vars-and-objects (util/merge-reduce concat  vars-and-objects   ; add dummy vars
+		  ;				   (for [[v ts] dummy-map
+		  ;					 t ts]
+		  ;				     [t [v]]))
+		  impl-vars-and-objects (reduce (fn [m [v t]] (util/assoc-cons m t v)) vars-and-objects dummy-map) 
 		  impl-atom-checker (fn [atoms] (map #(props/check-atom types impl-vars-and-objects predicates %) atoms))]
 ;	      (prn (:name hla-schema) dummy-map)
 	      [name
@@ -178,8 +178,8 @@
 	   'act nil nil nil
 	   (cons ['empty nil nil nil [[(util/safe-get *noop-strips-hla-schema* :name)]]]
 		 (for [action (:action-schemata domain)]
-		   (let [dummy-vars (for [[t v] (:vars action)] [(keyword (str "?" v)) [t]])]
-		     [(:name action) nil nil (into {} dummy-vars) [(into [(:name action)] (map first dummy-vars)) ['act]]]))) 
+		   (let [dummy-vars (for [[t v] (:vars action)] [(keyword (str "?" v)) t])]
+		     [(:name action) nil nil (into {} dummy-vars) [(into [(:name action)] (map first dummy-vars)) ['act]]])))
 	   (make-flat-act-optimistic-description-schema upper-reward-fn)
 	   *pessimal-description* nil)
 	  (map #(make-strips-primitive-hla-schema 
@@ -227,11 +227,11 @@
 	act     (util/safe-get hla-map 'act)
 	opt-desc  (instantiate-description-schema (parse-description [:opt] :dummy :dummy) instance)
 	pess-desc (instantiate-description-schema (parse-description [:pess] :dummy :dummy) instance)
-	dummy-vars (for [[t v] (:vars act)] [(keyword (str "?" v)) [t]])
+	dummy-vars (for [[t v] (:vars act)] [(keyword (str "?" v)) t])
 	top-level-schema 
 	  (make-strips-hla-schema (gensym "strips-top-level-action") {} nil nil 
 			     [[(gensym "strips-top-level-action-ref") nil nil
-			       (util/map-map identity dummy-vars) 
+			       (into {} dummy-vars) 
 			       (list (into '[act] (map first dummy-vars)))]]
 			     opt-desc pess-desc nil)
 	final-hla-map (assoc hla-map (util/safe-get top-level-schema :name) top-level-schema)]
@@ -242,6 +242,7 @@
      envs/*true-condition*
      false
      )))
+
 
 
 (comment 
@@ -281,21 +282,29 @@
 (defmethod hla-pessimistic-description    ::StripsHLA [hla]
   (ground-description (:pessimistic-schema (:schema hla)) (:var-map hla)))
 
-(defn- translate-var-map "Get the var mappings for hla, given this args and var-map" [hla args var-map pass-dummy?]
+(defn- translate-var-map "Get the var mappings for hla, given this args and var-map" [hla args var-map]
 ;  (prn (:vars hla) args var-map pass-dummy?)
   (let [hla-vars (:vars hla)]
-    (util/assert-is (= (count args) (count hla-vars)) "%s %s %s %s" (:name hla) (:vars hla) args var-map)
-    (util/map-map (fn [[arg hla-var]] [hla-var (if (and pass-dummy? (props/is-dummy-var? arg))
-					      arg
-					    (util/safe-get var-map arg))]) 
-	     (map #(vector %1 (second %2)) args hla-vars))))
+;    (util/assert-is (= (count args) (count hla-vars)) "%s %s %s %s" (:name hla) (:vars hla) args var-map)
+    (loop [ret {}, args (seq args), vars (seq (:vars hla))]
+      (util/assert-is (not (util/xor args vars)))
+      (if (not args) ret
+	(recur (assoc ret (second (first vars)) (util/safe-get var-map (first args)))
+	       (rest args) (rest vars))))))
+
+(defn- get-dummy-var-val-map [objects dummy-var-type-map]
+  (util/map-vals (fn [t] (util/safe-get objects t)) dummy-var-type-map)) 
+
+; (util/map-map (fn [[var types]] [var (util/forcat [t types] (util/safe-get objects t))]) 
+;				      dummy-type-map)]
 
 
 (defn- refinement-instantiations [precondition hierarchy expansion opt-val var-map dummy-var-vals]
   (util/assert-is (not (empty? expansion)))
     (let [hla-map      (util/safe-get hierarchy :hla-map),
 	  first-action (util/safe-get hla-map (ffirst expansion)),
-	  first-var-map (translate-var-map first-action (rfirst expansion) var-map true)
+	  first-var-map (translate-var-map first-action (rfirst expansion) 
+			  (into var-map (map #(let [x (first %)] (vector x x)) dummy-var-vals)))
 	  simplifier #(props/simplify-atom first-var-map %)
 	  quasi-ground-first-precondition (envs/conjoin-conditions
 					   (envs/make-conjunctive-condition
@@ -306,7 +315,7 @@
 	(let [final-var-map (merge var-map dummy-var-map)]
 	  (map (fn [call extra-preconditions]
 		 (let [hla (util/safe-get hla-map (first call))
-		       trans-var-map (translate-var-map hla (rest call) final-var-map false)
+		       trans-var-map (translate-var-map hla (rest call) final-var-map)
 		       simplifier #(props/simplify-atom trans-var-map %) ]
 ;		   (prn (rest call) final-var-map trans-var-map)
 		   (make-strips-hla 
@@ -337,8 +346,7 @@
 	       quasi-ground-impl-pre (envs/make-conjunctive-condition
 				      (map simplifier pos-pre)
 				      (map simplifier neg-pre))
-	       dummy-val-map (util/map-map (fn [[var types]] [var (util/forcat [t types] (util/safe-get objects t))]) 
-				      dummy-type-map)]
+	       dummy-val-map         (get-dummy-var-val-map objects dummy-type-map)]
 	   (refinement-instantiations (envs/conjoin-conditions quasi-ground-impl-pre (:precondition hla))
 				      hierarchy
 				      expansion
@@ -385,7 +393,7 @@
 (defn extract-preconditions [var-map action-inst hla-map] "Returns [pos neg]"
   (let [[act-name & args] action-inst
 	hla (util/safe-get hla-map act-name)
-	trans-var-map (translate-var-map hla args var-map false)
+	trans-var-map (translate-var-map hla args var-map)
 	simplifier #(props/simplify-atom trans-var-map %)]
     ;(println act-name (:pos-pre hla) (:neg-pre hla))
     [(map simplifier (:pos-pre hla))
@@ -403,8 +411,7 @@
        (doall
      (for [[r-name pos-prec neg-prec dummy-type-map expansion] refinement-schemata]   
 	 (let [arg-val-map   (util/map-map (fn [[type var]] [var (util/safe-get trans-objects type)]) vars)
-	       dummy-val-map (util/map-map (fn [[var types]] [var (util/forcat [t types] (util/safe-get trans-objects t))]) 
-					   dummy-type-map)
+	       dummy-val-map (get-dummy-var-val-map trans-objects dummy-type-map)
 	       var-map      (into {} (map #(vector % %) (concat (map second vars) (map first dummy-type-map))))
 	       [all-pos-pre all-neg-pre]
 	          (map concat
@@ -486,7 +493,7 @@
 ;	      (println "fv " name dummy-var-map)
 	      (map (fn [call extra-preconditions]
 		     (let [hla (util/safe-get hla-map (first call))
-			   trans-var-map (translate-var-map hla (rest call) final-var-map false)
+			   trans-var-map (translate-var-map hla (rest call) final-var-map)
  	   		   simplifier #(props/simplify-atom trans-var-map %)
 			   precond 
 			   (envs/constant-simplify-condition
@@ -646,7 +653,7 @@
   (let [[name pos-pre neg-pre unk-types expansion] ref-schema
 	{:keys [always-true-atoms always-false-atoms]} instance
 	grounder #(props/simplify-atom var-map %)
-	vm-translator #(translate-var-map (util/safe-get old-hla-map (first %)) (rest %) var-map false)
+	vm-translator #(translate-var-map (util/safe-get old-hla-map (first %)) (rest %) var-map)
 	new-pos-pre (util/difference (set (map grounder pos-pre)) always-true-atoms)
 	new-neg-pre (util/difference (set (map grounder neg-pre)) always-false-atoms)
 	precondition (envs/make-conjunctive-condition new-pos-pre new-neg-pre)]
@@ -672,9 +679,7 @@
 
 ; TODO: For now, do totally braindedad thing
 (defn get-possible-ref-schema-var-maps [ref-schema var-map objects always-true-atoms always-false-atoms]
-  (let [unk-types (nth ref-schema 3)
-	dummy-vals (seq (util/map-map (fn [[var types]] [var (util/forcat [t types] (util/safe-get objects t))]) 
-				      unk-types))]
+  (let [dummy-vals (seq (get-dummy-var-val-map objects (nth ref-schema 3)))]
 ;    (prn (count (apply util/my-combinations (map second dummy-vals))))
     (for [combo (apply util/my-combinations (map second dummy-vals))]
       (into var-map (map vector (map first dummy-vals) combo)))))

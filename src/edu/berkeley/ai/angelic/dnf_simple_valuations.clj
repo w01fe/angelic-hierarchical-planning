@@ -79,9 +79,9 @@
 
 (defmethod valuation-consistent-mappings [::DNFSimpleValuation :edu.berkeley.ai.envs/ConjunctiveCondition]
   [opt-val quasi-ground-condition dummy-domains]
-  (let [[var-pos ground-pos] (util/separate #(some props/is-dummy-var? (rest %)) 
+  (let [[var-pos ground-pos] (util/separate (fn [atom] (some #(contains? dummy-domains %) (rest atom)))
 				       (envs/get-positive-conjuncts quasi-ground-condition))
-	[var-neg ground-neg] (util/separate #(some props/is-dummy-var? (rest %)) 
+	[var-neg ground-neg] (util/separate (fn [atom] (some #(contains? dummy-domains %) (rest atom))) 
 				       (envs/get-negative-conjuncts quasi-ground-condition))
 	opt-val (restrict-valuation opt-val (envs/make-conjunctive-condition ground-pos ground-neg))]
 ;    (prn dummy-domains ground-pos var-pos ground-neg var-neg opt-val)
