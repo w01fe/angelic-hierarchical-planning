@@ -85,14 +85,15 @@
       (vec action)))))
 
 (defn get-dummy-var-type-map [types all-actions expansion]
-  (let [allowed-vars (filter props/is-dummy-var? (rest (first expansion)))]
-    (util/map-map (fn [[var ts]] [var (props/maximal-subtypes types ts)])
-	     (util/merge-reduce concat {} 
-	      (for [action expansion
-		    [var type] (map vector (rest action) (util/safe-get all-actions (first action)))
-		    :when (props/is-dummy-var? var)]
-		(do (util/assert-is (util/includes? allowed-vars var))
-		    [var [type]]))))))
+ ; (let [allowed-vars (filter props/is-dummy-var? (rest (first expansion)))]
+    (util/map-map 
+        (fn [[var ts]] [var (props/maximal-subtypes types ts)])
+      (util/merge-reduce concat {} 
+	(for [action expansion
+	      [var type] (map vector (rest action) (util/safe-get all-actions (first action)))
+	      :when (props/is-dummy-var? var)]
+;		(do (util/assert-is (util/includes? allowed-vars var))
+	  [var [type]]))));))
    
 
 (defn- check-hla-schema [types guaranteed-objs predicates all-actions hla-schema] 
@@ -414,7 +415,7 @@
 			 (map #(extract-preconditions var-map % hla-map)
 			      (rest expansion)))))]
 	   (util/assert-is (not (empty? expansion)))
-	   (print "Constructing CSP for " name " " r-name ": " );(set all-pos-pre) (set all-neg-pre)) 
+;	   (print "Constructing CSP for " name " " r-name ": " );(set all-pos-pre) (set all-neg-pre)) 
 ;	   (def *csps* (cons [(str name ":" r-name) (smart-csps/create-smart-csp (set all-pos-pre) (set all-neg-pre) arg-val-map dummy-val-map const-pred-map)] *csps*))
 	   [r-name pos-prec neg-prec 
 	    (smart-csps/create-smart-csp (set all-pos-pre) (set all-neg-pre) arg-val-map dummy-val-map const-pred-map)

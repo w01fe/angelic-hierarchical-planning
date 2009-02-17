@@ -112,3 +112,16 @@
   (let [[pos neg]
 	(separate #(not= (first %) 'not) (pddl-conjunction->seq conj))]
     [pos (map (fn [term] (assert-is (= 2 (count term))) (second term)) neg)]))
+
+(defn parse-pddl-conjunction-forall [conj]
+  (let [{:keys [pos neg forall]}
+	(group-by #(cond (= (first %) 'not) :not (= (first %) 'forall) :forall :else :pos)
+		  (pddl-conjunction->seq conj))]
+    [pos 
+     (map (fn [term] (assert-is (= 2 (count term))) (second term)) neg)
+     (map (fn [[typed-list prec eff]] 
+	    [(parse-typed-pddl-list typed-list)
+	     (parse-pddl-conjunction prec)
+	     (parse-pddl-conjunction eff)])
+	  forall)
+     ]))

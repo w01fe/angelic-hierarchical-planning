@@ -110,6 +110,7 @@
         (check-solution env
 	  (a-star-graph-search (make-initial-state-space-node env (constantly 0)))) 2)))))
 
+  (parse-hierarchy "/Users/jawolfe/projects/angel/src/edu/berkeley/ai/domains/warehouse.hierarchy" (make-warehouse-strips-domain))
 
   )
 

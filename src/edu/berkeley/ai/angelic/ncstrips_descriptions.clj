@@ -7,7 +7,6 @@
   )
 
 ;;; NCStrips descriptions
-; wow: calls to eval are expensive.  4x faster by precompiling eval!
 
 
 (derive ::NCStripsDescription :edu.berkeley.ai.angelic/PropositionalDescription)
@@ -15,11 +14,11 @@
 
 ;; Single conditional dffects
 
+
 (defstruct ncstrips-effect :pos-preconditions :neg-preconditions :adds :deletes :possible-adds :possible-deletes :cost)
 
 (defn make-ncstrips-effect [pos-preconditions neg-preconditions adds deletes possible-adds possible-deletes cost-expr]
   (struct ncstrips-effect pos-preconditions neg-preconditions adds deletes possible-adds possible-deletes cost-expr))
-
 
 (defn- normalize-ncstrips-effect-atoms [types vars-and-objects predicates effect]
 ;  (prn "\n\n" effect "\n\n")
@@ -68,13 +67,13 @@
    (util/safe-get domain :predicates)
    (for [clause (rest desc)]
      (util/match [#{[:optional [:precondition    ~pre]]
-	       [:optional [:effect          ~eff]]
-	       [:optional [:possible-effect ~poss]]
-	       [:cost-expr ~cost-expr]}
-	     (util/partition-all 2 clause)]
-       (let [[pos-pre neg-pre] (props/parse-pddl-conjunction pre),
-	     [add     del    ] (props/parse-pddl-conjunction eff),
-	     [p-add   p-del  ] (props/parse-pddl-conjunction poss)]
+		    [:optional [:effect          ~eff]]
+		    [:optional [:possible-effect ~poss]]
+		    [:cost-expr ~cost-expr]}
+		  (util/partition-all 2 clause)]
+       (let [[pos-pre neg-pre forall-pre] (props/parse-pddl-conjunction-forall pre),
+	     [add     del     forall-eff] (props/parse-pddl-conjunction-forall eff),
+	     [p-add   p-del   forall-p-eff] (props/parse-pddl-conjunction-forall poss)]
 ;	 (println cost-expr)
 ;	 (println (eval '*ns*))
 	 (make-ncstrips-effect pos-pre neg-pre add del p-add p-del
@@ -82,6 +81,13 @@
 	      (eval `(fn ~(vec (map second vars)) ~cost-expr)))))))
    vars))
 
+
+
+
+;(defstruct ncstrips-effect :pos-preconditions :neg-preconditions :adds :deletes :possible-adds :possible-deletes :cost)
+
+;(defn make-ncstrips-effect [pos-preconditions neg-preconditions adds deletes possible-adds possible-deletes cost-expr]
+;  (struct ncstrips-effect pos-preconditions neg-preconditions adds deletes possible-adds possible-deletes cost-expr))
 
 (defmethod instantiate-description-schema ::NCStripsDescriptionSchema [desc inst]
   (util/assert-is (isa? (:class inst) :edu.berkeley.ai.domains.strips/StripsPlanningInstance))

@@ -1,11 +1,10 @@
-; Now, between 400 and 600 refinements per second (i.e., 1200 and 2400 nodes per second)
-; c.f. 40,000 for grounded, constant-simplified strips.
-
-   
-; Fix valuation->pred-maps  (timing negligible!!!)
-
+For WW hierarchy, need forall in 3 places:
+ ncstrips precond, ncstrips effect, refinement precondition
+ Can drop last by making special ":goal" precondition, or just ignoring it 
+ 
 ; Make WW hierarchy
-; make WW heuristic ?
+
+; make WW heuristics ?
 
 ; Threaded timing infrastructure.
 
