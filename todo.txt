@@ -4,6 +4,20 @@ For WW hierarchy, need forall in 3 places:
  
  Move-block should not take position argument :(.  Need vars in NCSTRIPS after all.
  
+ TODO: combine constant-simplify and instantiate; possibly get rid of instantiate alogether (after a bit of experimentation)
+   (this will break current ncstrips)
+  
+ 
+ 
+ What do var bindings mean?
+ May as well be one set per effect
+ Do we evaluate the effect once per binding??
+  Types of mentions (outside of forall)
+    precon
+ 
+ 
+ For NCStrips, want one CSP per clause??
+ 
 ; Make WW hierarchy
 
 ; make WW heuristics ?
@@ -55,6 +69,29 @@ Have a setting where it's obviously more efficient to do it this way.
 Totem destroyer.
 
 Planning graph with HLAs (big state spaces)
+
+------------------------------------
+
+Almost done with warehouse hierarchy
+ - Blind (graph) search solves "hard" example instance in 2 seconds ...
+ - Almost hard to compete -- move-block = max w * h * 4 states.
+
+How much to follow existing implementation ? 
+  (hierarchy, etc.)
+Some design choices may not make sense in my optimized implementation
+  (number of params, etc.)
+
+What should we shoot for for journal paper?
+ - Continuous
+ - AADD
+....
+Stuart's view of continuous.
+smart bisection
+cell decomposition planners are angelic.
+freespace
+assembly or construction?  Where you can't separate the two problems.
+
+Email about domains.
 
 ------------------------------------
  

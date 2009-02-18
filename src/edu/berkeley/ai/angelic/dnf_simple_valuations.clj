@@ -18,8 +18,8 @@
 ;  (prn "DNF!")
   (if (not (empty? dnf))
       (struct dnf-simple-valuation ::DNFSimpleValuation (util/to-set dnf) bound)
-;    *pessimal-valuation*))
-    (struct dnf-simple-valuation ::DNFSimpleValuation nil Double/NEGATIVE_INFINITY)))
+    *pessimal-valuation*))
+;    (struct dnf-simple-valuation ::DNFSimpleValuation nil Double/NEGATIVE_INFINITY)))
 
 
   

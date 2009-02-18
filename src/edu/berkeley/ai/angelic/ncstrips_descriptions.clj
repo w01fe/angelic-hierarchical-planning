@@ -124,8 +124,8 @@
 
 (defn instantiate-ncstrips-forall-schema [[args [pos neg] body] vars instance]
   (let [trans-objects (util/safe-get instance :trans-objects)]
-     (println "futzing " args pos neg body vars        (util/map-map (fn [[type var]] [var (util/safe-get trans-objects type)]) vars)
-       (util/map-map (fn [[type var]] [var (util/safe-get trans-objects type)]) args))
+  ;   (println "futzing " args pos neg body vars        (util/map-map (fn [[type var]] [var (util/safe-get trans-objects type)]) vars)
+       (util/map-map (fn [[type var]] [var (util/safe-get trans-objects type)]) args)
     [args
      (smart-csps/create-smart-csp pos neg 
        (util/map-map (fn [[type var]] [var (util/safe-get trans-objects type)]) vars)
@@ -208,10 +208,13 @@
 	(fn [pred-maps] result))
     (let [early-args (map #(util/safe-get var-map (second %)) hla-vars)
 	  [args csp _] forall]
+;      (println csp var-map hla-vars)
       (fn [pred-maps]
+;	(println pred-maps)
         (apply max
 	  (for [combo (smart-csps/get-smart-csp-solutions csp var-map pred-maps)]
-	    (apply cost-fn (concat early-args (map #(util/safe-get combo (second %)) args)))))))))
+	    (let [final-map (merge combo var-map)]
+	      (apply cost-fn (concat early-args (map #(util/safe-get final-map (second %)) args))))))))))
     
 
 ; TODO: this is still slow -- set accounts 10% of time! 
@@ -251,14 +254,17 @@
   
 ; TODO: make more efficient
 (defn- progress-effect-clause [effect clause]
+;  (println "Progress " effect clause)
   (let [pos-pre (util/safe-get effect :pos-preconditions)
 	neg-pre (util/safe-get effect :neg-preconditions)]
     (when (and (every? clause pos-pre)
 	       (every? #(not (= :true (clause %))) neg-pre))
-      (let [pred-maps (lazy-cons (valuation->pred-maps (dsv/make-dnf-simple-valuation #{clause} 0)) nil)
+      (let [pred-maps (valuation->pred-maps (dsv/make-dnf-simple-valuation #{clause} 0))
 	    [more-pos-pre more-neg-pre] (apply map concat [nil nil] (map #(% pred-maps) (util/safe-get effect :precondition-fns)))]
+;	(println more-pos-pre more-neg-pre)
 	(when (and (every? clause more-pos-pre)
 		   (every? #(not (= :true (clause %))) more-neg-pre))
+;	  (println "go")
 	  (let [all-pos-pre   (concat more-pos-pre pos-pre)
 		all-neg-pre   (concat more-neg-pre neg-pre)
 		clause        (into (reduce dissoc clause all-neg-pre) (map #(vector % :true) all-pos-pre))
@@ -268,12 +274,13 @@
 				      (map #(% pred-maps) (util/safe-get effect :possible-effect-fns)))
 		unks          (concat (filter #(not= :true (clause %)) padds)
 				      (filter #(= :true (clause %))    pdels))]
-	    [(into (reduce dissoc clause dels)
+	   [(into (reduce dissoc clause dels)
 	      (concat (map #(vector % :true) adds)
 		      (map #(vector % :unknown) unks)))
 	     (- ((util/safe-get effect :cost-fn) pred-maps))]))))))
 
 (defn- progress-ncstrips [val desc combiner]
+;  (println "proggy " val combiner)
   (let [results 
 	(filter identity
 	  (for [clause (:dnf val)

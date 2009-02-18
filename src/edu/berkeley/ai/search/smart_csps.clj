@@ -336,7 +336,7 @@
 			      vars))
 	ordered-vars (get-var-ordering args unks (merge unk-domains arg-domains) var-pred-map pred-instances const-pred-map)
 	var-ordering (vec (map first ordered-vars))]
-    (println "Var ordering: " var-ordering)
+ ;   (println "Var ordering: " var-ordering)
     (util/assert-is (empty? (util/intersection args unks)))
     (struct smart-csp 
       ordered-vars

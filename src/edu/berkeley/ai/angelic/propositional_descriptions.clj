@@ -2,6 +2,8 @@
 
 ;; More method for propositional descriptions
 
+(derive ::PropositionalDescription ::Description)
+
 (defmulti parse-description              (fn [desc domain params] (first desc)))
 (defmulti instantiate-description-schema (fn [desc instance] (:class desc)))
 (defmulti ground-description             (fn [desc var-map] (:class desc)))
@@ -44,6 +46,7 @@
 
 (comment 
 ;; Vacuous descriptions
+
 
 (derive ::VacuousPropositionalDescription ::PropositionalDescription)
 

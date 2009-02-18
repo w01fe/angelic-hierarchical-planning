@@ -47,6 +47,12 @@
 (defmethod progress-pessimistic [::Valuation ::PessimalDescription] [val desc]
   *pessimal-valuation*)
 
+(defmethod progress-optimistic [::PessimalValuation ::Description] [val desc]
+  *pessimal-valuation*)
+
+(defmethod progress-pessimistic [::PessimalValuation ::Description] [val desc]
+  *pessimal-valuation*)
+
 
 (defstruct conditional-description :class :condition :max-reward)
 (derive ::ConditionalDescription ::Description)

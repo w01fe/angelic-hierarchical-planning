@@ -373,6 +373,8 @@
 
 (let [domain (make-warehouse-strips-domain), env (make-warehouse-strips-env 3 3 [1 1] false {0 '[a] 2 '[b]} nil ['[b a]]),  node (make-initial-top-down-forward-node  :edu.berkeley.ai.angelic.dnf-simple-valuations/DNFSimpleValuation  (constant-simplify-strips-hierarchy (instantiate-hierarchy (make-flat-strips-hierarchy-schema domain (constantly 0)) env) constant-predicate-simplify-strips-planning-instance))] (time (second (a-star-search node))))
 
+(let [domain (make-warehouse-strips-domain), env (make-warehouse-strips-env 2 2 [1 1] false {0 '[a]} nil ['[a table1]]),  node (make-initial-top-down-forward-node  :edu.berkeley.ai.angelic.dnf-simple-valuations/DNFSimpleValuation  (constant-simplify-strips-hierarchy (instantiate-hierarchy (parse-hierarchy "/Users/jawolfe/projects/angel/src/edu/berkeley/ai/domains/warehouse.hierarchy" (make-warehouse-strips-domain)) env) constant-predicate-simplify-strips-planning-instance))] (time (second (a-star-search node))))
+
   )
 
 
