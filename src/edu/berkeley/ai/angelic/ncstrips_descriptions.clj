@@ -198,7 +198,7 @@
 ; Make a function that takes pred-maps as arguments and returns grounded [pos neg]
 (defn- ground-ncstrips-csp [[args csp [pos neg]] var-map]
   (if (smart-csps/smart-csp-const? csp)
-      (let [results (get-csp-results csp pos neg var-map [:dummy])]
+      (let [results (get-csp-results csp pos neg var-map [[:dummy :dummy]])]
 	(fn [pred-maps] results))
     (fn [pred-maps] (get-csp-results csp pos neg var-map pred-maps))))
 

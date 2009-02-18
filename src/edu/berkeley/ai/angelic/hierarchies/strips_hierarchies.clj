@@ -246,7 +246,7 @@
   (let [{:keys [name vars pos-pre neg-pre refinement-schemata optimistic-schema pessimistic-schema primitive]} schema
 	const-preds  (util/keyset const-pred-map)
 	deconst      (fn [atoms] (remove #(const-preds (first %)) atoms))]
-    (println name refinement-schemata)
+ ;   (println name refinement-schemata)
     (make-strips-hla-schema 
      name vars (deconst pos-pre) (deconst neg-pre)
      (or (and (not (coll? refinement-schemata)) refinement-schemata)
