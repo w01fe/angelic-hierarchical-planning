@@ -110,12 +110,12 @@
       (make-nav-switch-strips-env 2 2 [[0 0]] [1 0] true [0 1]))))
     (util/is (= '[[good-left x1 x0] [flip-v x0 y0] [good-down y0 y1]]
      (get-and-check-sol
-      (strips/constant-predicate-simplify-strips-planning-instance  
+      (strips/constant-predicate-simplify
        (make-nav-switch-strips-env 2 2 [[0 0]] [1 0] true [0 1])))))
     (util/is (= '[[good-left x1 x0] [flip-v x0 y0] [good-down y0 y1]]
      (get-and-check-sol
       (strips/flatten-strips-instance
-       (strips/constant-predicate-simplify-strips-planning-instance  
+       (strips/constant-predicate-simplify
 	(make-nav-switch-strips-env 2 2 [[0 0]] [1 0] true [0 1]))))))))
 
 
@@ -135,6 +135,6 @@
   (time (second (a-star-search (make-initial-state-space-node (make-nav-switch-strips-env 6 6 [[1 1]] [5 0] true [0 5]) (constantly 0)))))
  ; "Elapsed time: 3596.095 msecs"
 
-  (time (second (a-star-search (make-initial-state-space-node (constant-predicate-simplify-strips-planning-instance (make-nav-switch-strips-env 2 2 [[0 0]] [1 0] true [0 1])) (constantly 0)))))
+  (time (second (a-star-search (make-initial-state-space-node (constant-predicate-simplify (make-nav-switch-strips-env 2 2 [[0 0]] [1 0] true [0 1])) (constantly 0)))))
 
   )

@@ -36,14 +36,14 @@
 
 (def *strips-simplifiers*
      {"unsimplified" identity,
-      "constant simplified" strips/constant-predicate-simplify-strips-planning-instance, 
+      "constant simplified" strips/constant-predicate-simplify
       "constant simplified, flat" (comp strips/flatten-strips-instance
-					strips/constant-predicate-simplify-strips-planning-instance)})
+					strips/constant-predicate-simplify)})
 
-(defn- time-and-check-hierarchical [str reward hierarchy-schema env val-type simplifier]
+(defn- time-and-check-hierarchical [str reward hierarchy-schema env val-type]
   (println str)
-  (let [initial-hla (simplifier (hierarchies/instantiate-hierarchy hierarchy-schema env))
-		node (hierarchies/make-initial-top-down-forward-node val-type initial-hla)]
+  (let [initial-hla (hierarchies/instantiate-hierarchy hierarchy-schema env)
+	node (hierarchies/make-initial-top-down-forward-node val-type initial-hla)]
   (util/assert-is 
    (= reward (second (envs/check-solution (hierarchies/hla-environment initial-hla)
      (time 
@@ -51,15 +51,7 @@
        ))))))))
 
 (def *strips-hierarchy-simplifiers*
-     {"ungrounded" identity,
-      "smart" #(strips-hierarchies/constant-simplify-strips-hierarchy %
-		    strips/dont-constant-simplify-strips-planning-instance), 
-      "smart, constant simplified" #(strips-hierarchies/constant-simplify-strips-hierarchy %
-	    strips/constant-predicate-simplify-strips-planning-instance),
-     "grounded" #(strips-hierarchies/ground-and-constant-simplify-strips-hierarchy %
-		    strips/dont-constant-simplify-strips-planning-instance), 
-     "grounded, constant simplified" #(strips-hierarchies/ground-and-constant-simplify-strips-hierarchy %
-	    strips/constant-predicate-simplify-strips-planning-instance)})
+     (dissoc *strips-simplifiers* "constant simplified, flat"))
 
 
 (comment
@@ -81,30 +73,30 @@
 (time-and-check-hierarchical "5x5 flat-hierarchy, non-strips, 0 heuristic" *small-ns-reward*
   (hierarchies/make-flat-hierarchy-schema (constantly 0))
   (apply nav-switch/make-nav-switch-env *small-ns-args*)
-  ::angelic/ExplicitValuation identity)
+  ::angelic/ExplicitValuation)
   
 (doseq [[name simplifier] *strips-simplifiers*]
   (time-and-check-hierarchical (format  "5x5 flat-hierarchy, strips, %s, 0 heuristic" name) 
     *small-ns-reward*
     (hierarchies/make-flat-hierarchy-schema (constantly 0))    
     (simplifier  (apply nav-switch/make-nav-switch-strips-env *small-ns-args*))
-    ::angelic/ExplicitValuation identity))
+    ::angelic/ExplicitValuation))
 
 (doseq [[name simplifier] *strips-hierarchy-simplifiers*]
   (time-and-check-hierarchical (format  "5x5 flat-strips-hierarchy, %s, 0 heuristic" name) 
     *small-ns-reward*
     (strips-hierarchies/make-flat-strips-hierarchy-schema 
      (nav-switch/make-nav-switch-strips-domain) (constantly 0))    
-    (apply nav-switch/make-nav-switch-strips-env *small-ns-args*)
-    ::dnf-simple-valuations/DNFSimpleValuation simplifier))
+    (simplifier (apply nav-switch/make-nav-switch-strips-env *small-ns-args*))
+    ::dnf-simple-valuations/DNFSimpleValuation))
 
 (doseq [[name simplifier] *strips-hierarchy-simplifiers*]
   (time-and-check-hierarchical (format  "6x6 flat-strips-hierarchy, %s, 0 heuristic" name) 
     *big-ns-reward*
     (strips-hierarchies/make-flat-strips-hierarchy-schema 
      (nav-switch/make-nav-switch-strips-domain) (constantly 0))    
-    (apply nav-switch/make-nav-switch-strips-env *big-ns-args*)
-    ::dnf-simple-valuations/DNFSimpleValuation simplifier))
+    (simplifier (apply nav-switch/make-nav-switch-strips-env *big-ns-args*))
+    ::dnf-simple-valuations/DNFSimpleValuation ))
 
   )
 ;;;; On to heuristics.
@@ -130,8 +122,8 @@
      (nav-switch/make-nav-switch-strips-domain) 
      (fn [state] (* -2 (+ (Math/abs (- (util/desymbolize (first (strips/get-strips-state-pred-val state 'atx)) 1) 0)) (Math/abs (- (util/desymbolize (first (strips/get-strips-state-pred-val state 'aty)) 1) (dec *huge-ns-size*))))))
      )    
-    (apply nav-switch/make-nav-switch-strips-env *huge-ns-args*)
-    ::dnf-simple-valuations/DNFSimpleValuation simplifier))
+    (simplifier (apply nav-switch/make-nav-switch-strips-env *huge-ns-args*))
+    ::dnf-simple-valuations/DNFSimpleValuation))
 
 
 (doseq [[name simplifier]  (take 3 *strips-hierarchy-simplifiers*)]
@@ -139,6 +131,6 @@
     *huge-ns-reward*
     (hierarchies/parse-hierarchy "/Users/jawolfe/Projects/angel/src/edu/berkeley/ai/domains/nav_switch2.hierarchy" 
      (nav-switch/make-nav-switch-strips-domain)) 
-    (apply nav-switch/make-nav-switch-strips-env *huge-ns-args*)
-    ::dnf-simple-valuations/DNFSimpleValuation simplifier))
+    (simplifier (apply nav-switch/make-nav-switch-strips-env *huge-ns-args*))
+    ::dnf-simple-valuations/DNFSimpleValuation))
  )

@@ -75,14 +75,14 @@
   (util/testing "tiny instance"
     (let [env (make-warehouse-strips-env 2 2 [1 1] false {0 '[a]} nil ['[a table1]])]
       (doseq [graph? [true false]
-	      simplifier [identity strips/constant-predicate-simplify-strips-planning-instance
-			  (comp strips/flatten-strips-instance strips/constant-predicate-simplify-strips-planning-instance)]]
+	      simplifier [identity strips/constant-predicate-simplify
+			  (comp strips/flatten-strips-instance strips/constant-predicate-simplify)]]
 	(util/is (= '((get-l a table0 x0 x1 y1) (left x1 x0 y1) (turn-r x0 y1) (put-r a table1 x1 x0 y0 y1))
 		    (get-and-check-sol (simplifier env) graph?))))))
   (util/testing "bigger instance"
     (let [env (make-warehouse-strips-env 3 4 [1 2] true {0 '[b a] 2 '[c]} nil ['[a b c]])]
-      (doseq [simplifier [strips/constant-predicate-simplify-strips-planning-instance
-			  (comp strips/flatten-strips-instance strips/constant-predicate-simplify-strips-planning-instance)]]
+      (doseq [simplifier [strips/constant-predicate-simplify
+			  (comp strips/flatten-strips-instance strips/constant-predicate-simplify)]]
 	(util/is (= 17 
 		    (count (get-and-check-sol (simplifier env) true))))))))
 
@@ -91,17 +91,17 @@
 
 (comment 
   (u util domains.strips domains.warehouse envs search search.algorithms.textbook)
-  (time (map :name (first (a-star-search (make-initial-state-space-node (constant-predicate-simplify-strips-planning-instance (make-warehouse-strips-env 2 2 [1 1] false {0 '[a]} nil ['[a table1]])) (constantly 0))))))
-  (time (map :name (first (a-star-search (make-initial-state-space-node (constant-predicate-simplify-strips-planning-instance (make-warehouse-strips-env 3 3 [1 1] false {0 '[a] 2 '[b]} nil ['[a b]])) (constantly 0))))))
-  (time (map :name (first (a-star-search (make-initial-state-space-node (constant-predicate-simplify-strips-planning-instance (make-warehouse-strips-env 3 3 [1 1] false {0 '[a] 2 '[b]} nil ['[b a]])) (constantly 0))))))
-  (time (map :name (first (a-star-graph-search (make-initial-state-space-node (constant-predicate-simplify-strips-planning-instance (make-warehouse-strips-env 3 4 [1 2] true {0 '[b a] 2 '[c]} nil ['[a b c]])) (constantly 0))))))
-  (time (map :name (first (a-star-graph-search (make-initial-state-space-node (constant-predicate-simplify-strips-planning-instance (make-warehouse-strips-env 4 4 [1 2] false {0 '[a] 2 '[c b]} nil ['[a c table1]])) (constantly 0))))))
+  (time (map :name (first (a-star-search (make-initial-state-space-node (constant-predicate-simplify (make-warehouse-strips-env 2 2 [1 1] false {0 '[a]} nil ['[a table1]])) (constantly 0))))))
+  (time (map :name (first (a-star-search (make-initial-state-space-node (constant-predicate-simplify (make-warehouse-strips-env 3 3 [1 1] false {0 '[a] 2 '[b]} nil ['[a b]])) (constantly 0))))))
+  (time (map :name (first (a-star-search (make-initial-state-space-node (constant-predicate-simplify (make-warehouse-strips-env 3 3 [1 1] false {0 '[a] 2 '[b]} nil ['[b a]])) (constantly 0))))))
+  (time (map :name (first (a-star-graph-search (make-initial-state-space-node (constant-predicate-simplify (make-warehouse-strips-env 3 4 [1 2] true {0 '[b a] 2 '[c]} nil ['[a b c]])) (constantly 0))))))
+  (time (map :name (first (a-star-graph-search (make-initial-state-space-node (constant-predicate-simplify (make-warehouse-strips-env 4 4 [1 2] false {0 '[a] 2 '[c b]} nil ['[a c table1]])) (constantly 0))))))
 
 
-  (let [node (make-initial-state-space-node (constant-predicate-simplify-strips-planning-instance (make-warehouse-strips-env 3 3 [1 1] false {0 '[a] 2 '[b]} nil ['[ b a]])) (constantly 0))]
+  (let [node (make-initial-state-space-node (constant-predicate-simplify (make-warehouse-strips-env 3 3 [1 1] false {0 '[a] 2 '[b]} nil ['[ b a]])) (constantly 0))]
     (time (map :name (first (a-star-search node)))))
 
-  (let [env (constant-predicate-simplify-strips-planning-instance
+  (let [env (constant-predicate-simplify
 	     (make-warehouse-strips-env 4 4 [1 2] false {0 '[a] 2 '[c b]} nil ['[a c table1]]))]
     (println 
      (str-join "\n\n"

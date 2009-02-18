@@ -130,7 +130,7 @@
      (smart-csps/create-smart-csp pos neg 
        (util/map-map (fn [[type var]] [var (util/safe-get trans-objects type)]) vars)
        (util/map-map (fn [[type var]] [var (util/safe-get trans-objects type)]) args)
-       (strips/get-strips-const-pred-map instance))
+       (:const-pred-map instance))
      body]))
        
 	       

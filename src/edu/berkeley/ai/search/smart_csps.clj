@@ -348,7 +348,7 @@
       dummy-unary-val
       pos-fluent 
       neg-fluent
-      ))
+      )))
 
 (defn smart-csp-pos-fluent-constraints [csp] (:pos-fluent csp))
 (defn smart-csp-neg-fluent-constraints [csp] (:neg-fluent csp))
