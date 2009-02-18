@@ -105,10 +105,9 @@
 ;	 (if arg? inst-map (assoc inst-map var val)))))))
 
 
+; pos-fluent and neg-fluent are just for prying eyes, like ground-strips-hierarhcy
+(defstruct smart-csp :ordered-vars :unk-domains :var-pred-map :const-map :fluent-map-maker :unary-var :unary-val :pos-fluent :neg-fluent)
 
-(defstruct smart-csp :ordered-vars :unk-domains :var-pred-map :const-map :fluent-map-maker :unary-var :unary-val :const?)
-
-(defn smart-csp-const? [csp] (:const? csp))
 
 (defn get-smart-csp-solutions [csp var-values allowed-pred-inst-maps]
   (let [r (ArrayList.)]
@@ -347,8 +346,17 @@
       (make-value-pred-map-maker pos-fluent-pred-names neg-fluent-pred-names pred-instances var-ordering dummy-unary-var dummy-unary-val)
       dummy-unary-var
       dummy-unary-val
-      (and (empty? pos-fluent) (empty? neg-fluent)))
+      pos-fluent 
+      neg-fluent
       ))
+
+(defn smart-csp-pos-fluent-constraints [csp] (:pos-fluent csp))
+(defn smart-csp-neg-fluent-constraints [csp] (:neg-fluent csp))
+(defn smart-csp-const? [csp]
+  (and (empty? (smart-csp-pos-fluent-constraints csp))
+       (empty? (smart-csp-neg-fluent-constraints csp))))
+       
+
 
 (require '[edu.berkeley.ai.angelic :as angelic])
 (require '[edu.berkeley.ai.angelic.dnf-simple-valuations :as dnf-simple-valuations] )

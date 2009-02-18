@@ -1,23 +1,18 @@
-For WW hierarchy, need forall in 3 places:
- ncstrips precond, ncstrips effect, refinement precondition
- Can drop last by making special ":goal" precondition, or just ignoring it 
- 
- Move-block should not take position argument :(.  Need vars in NCSTRIPS after all.
  
  TODO: combine constant-simplify and instantiate; possibly get rid of instantiate alogether (after a bit of experimentation)
    (this will break current ncstrips)
+
+make ground use instantiated hierarchy?  
+Just call CSPs on "all-unk" valuation?
+TODO: finish?  or just fuck it, change to JIT ?
+ ; Seems pointless... if move vars to NCStrips, still need to call CSP.
+ 
+TODO:  Way to combine benefits of ref-generator and CSP??
   
- 
- 
- What do var bindings mean?
- May as well be one set per effect
- Do we evaluate the effect once per binding??
-  Types of mentions (outside of forall)
-    precon
- 
- 
- For NCStrips, want one CSP per clause??
- 
+Check for dead-ends somewhere?.
+
+, don't fail nastily.  (Where do they come from?) 
+  
 ; Make WW hierarchy
 
 ; make WW heuristics ?

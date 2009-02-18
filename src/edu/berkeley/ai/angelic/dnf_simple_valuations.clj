@@ -3,7 +3,7 @@
   (:import [java.util HashMap])
   (:require [edu.berkeley.ai [util :as util] [envs :as envs]]
             [edu.berkeley.ai.util.propositions :as props]
-            [edu.berkeley.ai.search.csps :as csps]))
+	    ))
 
 ;;; A set of conjunctive clauses, maps from vars to :true or :unknown  (not present = :false)
 
@@ -71,25 +71,6 @@
 
 
 ; TODO: special case non-constraint case ?
-
-
-; CSP approach cuts time in half for 25x25 nav-switch domains.
-(defn clause-consistent-mappings [clause var-pos var-neg dummy-domains]
-  (csps/all-csp-solutions (csps/make-conjunctive-propositional-csp dummy-domains var-pos var-neg clause)))
-
-(defmethod valuation-consistent-mappings [::DNFSimpleValuation :edu.berkeley.ai.envs/ConjunctiveCondition]
-  [opt-val quasi-ground-condition dummy-domains]
-  (let [[var-pos ground-pos] (util/separate (fn [atom] (some #(contains? dummy-domains %) (rest atom)))
-				       (envs/get-positive-conjuncts quasi-ground-condition))
-	[var-neg ground-neg] (util/separate (fn [atom] (some #(contains? dummy-domains %) (rest atom))) 
-				       (envs/get-negative-conjuncts quasi-ground-condition))
-	opt-val (restrict-valuation opt-val (envs/make-conjunctive-condition ground-pos ground-neg))]
-;    (prn dummy-domains ground-pos var-pos ground-neg var-neg opt-val)
-    (when-not (empty-valuation? opt-val)
-      (distinct (mapcat #(clause-consistent-mappings % var-pos var-neg dummy-domains)
-				     (:dnf opt-val))))))
-
-      
 
 (defn- do-valuation->pred-maps [val]
 ;  (doall

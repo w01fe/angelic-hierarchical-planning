@@ -110,12 +110,7 @@
      (atom-checker (:neg-pre hla-schema))
      (doall 
      (map (fn [[name pos-pre neg-pre dummy-map expansion]]
-	    (let [;dummy-map 
-		  ;impl-vars-and-objects (util/merge-reduce concat  vars-and-objects   ; add dummy vars
-		  ;				   (for [[v ts] dummy-map
-		  ;					 t ts]
-		  ;				     [t [v]]))
-		  impl-vars-and-objects (reduce (fn [m [v t]] (util/assoc-cons m t v)) vars-and-objects dummy-map) 
+	    (let [impl-vars-and-objects (reduce (fn [m [v t]] (util/assoc-cons m t v)) vars-and-objects dummy-map) 
 		  impl-atom-checker (fn [atoms] (map #(props/check-atom types impl-vars-and-objects predicates %) atoms))]
 ;	      (prn (:name hla-schema) dummy-map)
 	      [name
@@ -199,49 +194,97 @@
 
 
 ;; Grounded STRIPS HLAs and hierarchies (here, actual grounding done JIT)
+; Immediate refinements are [name pos-prec neg-prec CSP (not unk-types) expansion !!!]
 
 (derive ::StripsHLA :angelic.hierarchies/HLA)
 (derive ::StripsPrimitiveHLA ::StripsHLA)
 (derive ::StripsNoopHLA ::StripsPrimitiveHLA)
 
 
-; TODO TODO: should eventually remove all dependence on instance
 (defstruct strips-hierarchy :class :hla-map :problem-instance)
 
-(defstruct strips-hla :class :hierarchy :schema :var-map :precondition :primitive)
+(defstruct strips-hla :class :hierarchy :schema :var-map :precondition)
 
 (defn make-strips-hla [hierarchy schema var-map precondition primitive]
   (struct strips-hla 
 	  (cond (= primitive :noop) ::StripsNoopHLA primitive ::StripsPrimitiveHLA :else ::StripsHLA)
-	  hierarchy schema var-map precondition primitive))
+	  hierarchy schema var-map precondition))
 
-(defn- instantiate-strips-hla-schema [hla instance]
-  (assoc hla
-    :optimistic-schema  (instantiate-description-schema (:optimistic-schema hla) instance)
-    :pessimistic-schema (instantiate-description-schema (:pessimistic-schema hla) instance)))
+
+
+;; pulls all ***constant*** constraints from refinement, not just first action? 
+(defn extract-preconditions [var-map action-inst hla-map] "Returns [pos neg]"
+  (let [[act-name & args] action-inst
+	hla (util/safe-get hla-map act-name)
+	trans-var-map (translate-var-map hla args var-map)
+	simplifier #(props/simplify-atom trans-var-map %)]
+    ;(println act-name (:pos-pre hla) (:neg-pre hla))
+    [(map simplifier (:pos-pre hla))
+     (map simplifier (:neg-pre hla))]))
+	
+; This is needed because constant-simplified strips primtitive schemata are in-between full schemata and instances.
+(defn- constant-simplify-strips-primitive-schema [primitive const-preds]
+  (reduce (fn [m f] (assoc m f (remove #(const-preds (first %)) (util/safe-get m f))))
+	  primitive [:pos-pre :neg-pre :add-list :delete-list]))
+
+; CSP takes on sole responsibility for handling *all* constant predicates.  Really (?)
+; TODO: drop all constants here!  BUT must do it in right order?
+(defn- instantiate-strips-hla-schema [schema instance hla-map trans-objects const-pred-map]
+  (let [{:keys [name vars pos-pre neg-pre refinement-schemata optimistic-schema pessimistic-schema primitive]} schema
+	const-preds  (util/keyset const-pred-map)
+	deconst      (fn [atoms] (remove #(const-preds (first %)) atoms))]
+    (make-strips-hla-schema 
+     name vars (deconst pos-pre) (deconst neg-pre)
+     (or (and (not (coll? refinement-schemata)) refinement-schemata)
+      (doall
+       (for [[r-name pos-prec neg-prec dummy-type-map expansion] refinement-schemata]   
+	 (let [arg-val-map   (util/map-map (fn [[type var]] [var (util/safe-get trans-objects type)]) vars)
+	       dummy-val-map (get-dummy-var-val-map trans-objects dummy-type-map)
+	       var-map      (into {} (map #(vector % %) (concat (map second vars) (map first dummy-type-map))))
+	       [all-pos-pre all-neg-pre]
+	          (map concat
+		    [pos-prec neg-prec]
+                    (extract-preconditions var-map (first expansion) hla-map)
+		    (map (fn [precs] (filter #(const-preds (first %)) precs))
+		       (apply map concat [nil nil]
+			 (map #(extract-preconditions var-map % hla-map)
+			      (rest expansion)))))]
+	   (util/assert-is (not (empty? expansion)))
+;	   (print "Constructing CSP for " name " " r-name ": " );(set all-pos-pre) (set all-neg-pre)) 
+	   [r-name (deconst pos-prec) (deconst neg-prec) 
+	    (smart-csps/create-smart-csp (set all-pos-pre) (set all-neg-pre) arg-val-map dummy-val-map const-pred-map)
+	    expansion]))))
+     (instantiate-description-schema optimistic-schema instance)
+     (instantiate-description-schema pessimistic-schema instance)
+     (if (or (not primitive) (= primitive :noop)) primitive  ; TODO: hacky.
+	 (constant-simplify-strips-primitive-schema primitive const-preds)))))
+
+
 
 (defmethod instantiate-hierarchy ::StripsHierarchySchema [hierarchy instance] 
   (util/assert-is (isa? (:class instance) :edu.berkeley.ai.domains.strips/StripsPlanningInstance))
-  (let [hla-map (util/map-map (fn [[name hla]] [name (instantiate-strips-hla-schema hla instance)])
-			 (util/safe-get hierarchy :hlas))
-	act     (util/safe-get hla-map 'act)
-	opt-desc  (instantiate-description-schema (parse-description [:opt] :dummy :dummy) instance)
-	pess-desc (instantiate-description-schema (parse-description [:pess] :dummy :dummy) instance)
-	dummy-vars (for [[t v] (:vars act)] [(keyword (str "?" v)) t])
-	top-level-schema 
-	  (make-strips-hla-schema (gensym "strips-top-level-action") {} nil nil 
-			     [[(gensym "strips-top-level-action-ref") nil nil
-			       (into {} dummy-vars) 
-			       (list (into '[act] (map first dummy-vars)))]]
-			     opt-desc pess-desc nil)
-	final-hla-map (assoc hla-map (util/safe-get top-level-schema :name) top-level-schema)]
+  (let [old-hla-map    (util/safe-get hierarchy :hlas)
+	act-vars       (util/safe-get-in old-hla-map 'act :vars)
+	root-hla-name  (gensym "strips-top-level-action")
+	old-hla-map    (assoc old-hla-map root-hla-name
+			 (make-strips-hla-schema root-hla-name [] nil nil 
+			   [["act" nil nil (util/map-map (fn [[t v]] [v t]) act-vars) 
+			     (into '[act] (map second act-vars))]]
+			   (parse-description [:opt] :dummy :dummy)
+			   (parse-description [:pess] :dummy :dummy)
+			   nil))
+	trans-objects  (util/safe-get instance :trans-objects)
+	const-pred-map (:const-pred-map instance)
+	new-hla-map    (util/map-vals 
+			#(instantiate-strips-hla-schema % instance old-hla-map trans-objects const-pred-map)
+			old-hla-map)]
     (make-strips-hla 
-     (struct strips-hierarchy ::StripsHierarchy final-hla-map instance)
-     top-level-schema
+     (struct strips-hierarchy ::StripsHierarchy new-hla-map instance)
+     (util/safe-get new-hla-map root-hla-name)
      {}
      envs/*true-condition*
-     false
-     )))
+     false)))    
+
 
 
 
@@ -267,14 +310,13 @@
 
 (defmethod hla-primitive? ::StripsPrimitiveHLA [hla] true) 
 (defmethod hla-primitive ::StripsPrimitiveHLA [hla] 
-  (strips/strips-action->action (strips/get-strips-action-schema-instance (:primitive hla) (:var-map hla))))
+  (strips/strips-action->action (strips/get-strips-action-schema-instance (:primitive (:schema hla)) (:var-map hla))))
 
 (defmethod hla-primitive? ::StripsNoopHLA [hla] true) 
 (defmethod hla-primitive ::StripsNoopHLA [hla] :noop) 
 
 
-(defmethod hla-hierarchical-preconditions ::StripsHLA [hla]
-  (:precondition hla))
+(defmethod hla-hierarchical-preconditions ::StripsHLA [hla]  (:precondition hla))
 
 (defmethod hla-optimistic-description     ::StripsHLA [hla]
   (ground-description (:optimistic-schema (:schema hla)) (:var-map hla)))
@@ -282,10 +324,10 @@
 (defmethod hla-pessimistic-description    ::StripsHLA [hla]
   (ground-description (:pessimistic-schema (:schema hla)) (:var-map hla)))
 
+
+
 (defn- translate-var-map "Get the var mappings for hla, given this args and var-map" [hla args var-map]
-;  (prn (:vars hla) args var-map pass-dummy?)
   (let [hla-vars (:vars hla)]
-;    (util/assert-is (= (count args) (count hla-vars)) "%s %s %s %s" (:name hla) (:vars hla) args var-map)
     (loop [ret {}, args (seq args), vars (seq (:vars hla))]
       (util/assert-is (not (util/xor args vars)))
       (if (not args) ret
@@ -295,191 +337,17 @@
 (defn- get-dummy-var-val-map [objects dummy-var-type-map]
   (util/map-vals (fn [t] (util/safe-get objects t)) dummy-var-type-map)) 
 
-; (util/map-map (fn [[var types]] [var (util/forcat [t types] (util/safe-get objects t))]) 
-;				      dummy-type-map)]
-
-
-(defn- refinement-instantiations [precondition hierarchy expansion opt-val var-map dummy-var-vals]
-  (util/assert-is (not (empty? expansion)))
-    (let [hla-map      (util/safe-get hierarchy :hla-map),
-	  first-action (util/safe-get hla-map (ffirst expansion)),
-	  first-var-map (translate-var-map first-action (rfirst expansion) 
-			  (into var-map (map #(let [x (first %)] (vector x x)) dummy-var-vals)))
-	  simplifier #(props/simplify-atom first-var-map %)
-	  quasi-ground-first-precondition (envs/conjoin-conditions
-					   (envs/make-conjunctive-condition
-					    (map simplifier (:pos-pre first-action))
-					    (map simplifier (:neg-pre first-action)))
-					   precondition)]
-      (for [dummy-var-map (valuation-consistent-mappings opt-val quasi-ground-first-precondition dummy-var-vals)]
-	(let [final-var-map (merge var-map dummy-var-map)]
-	  (map (fn [call extra-preconditions]
-		 (let [hla (util/safe-get hla-map (first call))
-		       trans-var-map (translate-var-map hla (rest call) final-var-map)
-		       simplifier #(props/simplify-atom trans-var-map %) ]
-;		   (prn (rest call) final-var-map trans-var-map)
-		   (make-strips-hla 
-		    hierarchy 
-		    hla 
-		    trans-var-map 
-		    (envs/conjoin-conditions 
-		     (envs/make-conjunctive-condition
-		      (map simplifier (util/safe-get hla :pos-pre)) 
-		      (map simplifier (util/safe-get hla :neg-pre))) 
-		     extra-preconditions)
-		    (:primitive hla))))
-	       expansion 
-	       (cons (envs/ground-propositional-condition  precondition dummy-var-map)
-		     (repeat envs/*true-condition*)))))))
-
 
 (defmethod hla-immediate-refinements [::StripsPrimitiveHLA :edu.berkeley.ai.angelic/Valuation] [hla] (throw (UnsupportedOperationException.)))
 
 (defmethod hla-immediate-refinements     [::StripsHLA :edu.berkeley.ai.angelic/PropositionalValuation] [hla opt-val]
-  (let [opt-val (restrict-valuation opt-val (:precondition hla))
-	hierarchy (:hierarchy hla)
-	objects   (:trans-objects (:problem-instance hierarchy))
-	var-map   (:var-map hla)]
-    (when-not (empty-valuation? opt-val)
-      (util/forcat [[name pos-pre neg-pre dummy-type-map expansion] (:refinement-schemata (:schema hla))]
-	 (let [simplifier #(props/simplify-atom var-map %)
-	       quasi-ground-impl-pre (envs/make-conjunctive-condition
-				      (map simplifier pos-pre)
-				      (map simplifier neg-pre))
-	       dummy-val-map         (get-dummy-var-val-map objects dummy-type-map)]
-	   (refinement-instantiations (envs/conjoin-conditions quasi-ground-impl-pre (:precondition hla))
-				      hierarchy
-				      expansion
-				      opt-val
-				      var-map
-				      dummy-val-map))))))
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-;;;;;;;;; Ungrounded but constant-simplified strips-hierarchies.
-
-(derive ::StripsCSHLA          ::StripsHLA)
-
-; Immediate refinements are [name pos-prec neg-prec CSP (not unk-types) expansion !!!]
-;(defstruct strips-hla-schema :class :name :vars :pos-pre :neg-pre :refinement-schemata :optimistic-schema :pessimistic-schema :primitive)
-
-; TODO: tricky part here will be to handle constants & properly prepare CSPs -- move stuff from immediate-refs to instantiation time.
-
-(defstruct strips-cs-hierarchy :class :hla-map :problem-instance :always-true :always-false)
-
-(defstruct strips-cs-hla :class :hierarchy :schema :var-map :precondition :primitive)
-
-(defn make-strips-cs-hla [hierarchy schema var-map precondition primitive]
-  (struct strips-cs-hla (cond (= primitive :noop) ::StripsNoopHLA primitive ::StripsPrimitiveHLA :else ::StripsCSHLA)
-	  hierarchy schema var-map precondition primitive))
-
-;; pulls all ***constant*** constraints from refinement, not just first action?  Meh, you can restate it if you want.
-;; this way we don't need to filter in hla-immediate-refinements
- ; (assuming no inertia, only constant.)
-
-; TODO: pull *all* hierarchical constraints i.e., when unary refinements?  NO.
-
-(defn extract-preconditions [var-map action-inst hla-map] "Returns [pos neg]"
-  (let [[act-name & args] action-inst
-	hla (util/safe-get hla-map act-name)
-	trans-var-map (translate-var-map hla args var-map)
-	simplifier #(props/simplify-atom trans-var-map %)]
-    ;(println act-name (:pos-pre hla) (:neg-pre hla))
-    [(map simplifier (:pos-pre hla))
-     (map simplifier (:neg-pre hla))]))
-	
-;(def *csps* nil)  
-; CSP takes on sole responsibility for handling constant predicates.
-(defn add-schema-ref-csps [schema hla-map trans-objects const-pred-map]
-  (let [{:keys [name vars pos-pre neg-pre refinement-schemata optimistic-schema pessimistic-schema primitive]} schema
-	const-preds  (util/keyset const-pred-map)]
-;    (println name refinement-schemata vars)
-    (make-strips-hla-schema 
-     name vars pos-pre neg-pre
-     (if (coll? refinement-schemata) 
-       (doall
-     (for [[r-name pos-prec neg-prec dummy-type-map expansion] refinement-schemata]   
-	 (let [arg-val-map   (util/map-map (fn [[type var]] [var (util/safe-get trans-objects type)]) vars)
-	       dummy-val-map (get-dummy-var-val-map trans-objects dummy-type-map)
-	       var-map      (into {} (map #(vector % %) (concat (map second vars) (map first dummy-type-map))))
-	       [all-pos-pre all-neg-pre]
-	          (map concat
-		    [pos-prec neg-prec]
-                    (extract-preconditions var-map (first expansion) hla-map)
-		    (map (fn [precs] (filter #(const-preds (first %)) precs))
-		       (apply map concat [nil nil]
-			 (map #(extract-preconditions var-map % hla-map)
-			      (rest expansion)))))]
-	   (util/assert-is (not (empty? expansion)))
-;	   (print "Constructing CSP for " name " " r-name ": " );(set all-pos-pre) (set all-neg-pre)) 
-;	   (def *csps* (cons [(str name ":" r-name) (smart-csps/create-smart-csp (set all-pos-pre) (set all-neg-pre) arg-val-map dummy-val-map const-pred-map)] *csps*))
-	   [r-name pos-prec neg-prec 
-	    (smart-csps/create-smart-csp (set all-pos-pre) (set all-neg-pre) arg-val-map dummy-val-map const-pred-map)
-	    expansion])))
-     refinement-schemata)
-     optimistic-schema pessimistic-schema 
-     (if (or (not primitive) (= primitive :noop)) primitive  ; TODO: hacky.
-       (strips/make-strips-action-schema 
-	(:name primitive)
-	(:vars primitive)
-	(remove #(const-preds (first %)) (:pos-pre primitive))
-	(remove #(const-preds (first %)) (:neg-pre primitive))
-	(remove #(const-preds (first %)) (:add-list primitive))
-	(remove #(const-preds (first %)) (:delete-list primitive))
-	(:cost primitive))))))
-
-    
-
-
-
-(defn constant-simplify-strips-hierarchy [hla instance-simplifier]
-  (util/assert-is (= (:class hla) ::StripsHLA))
-  (let [old-hierarchy      (util/safe-get hla :hierarchy)
-	root-hla-name      (util/safe-get (util/safe-get hla :schema) :name) 
-	root-hla-precond   (util/safe-get hla :precondition)
-	root-hla-primitive (util/safe-get hla :primitive)
-	old-hla-map        (util/safe-get old-hierarchy :hla-map)
-	instance           (instance-simplifier (util/safe-get old-hierarchy :problem-instance))
-	always-true        (util/safe-get instance :always-true-atoms)
-	always-false       (util/safe-get instance :always-false-atoms)
-	const-pred-map     (strips/get-strips-const-pred-map instance)
-	new-hla-map        (util/map-vals #(add-schema-ref-csps % old-hla-map (util/safe-get instance :trans-objects) const-pred-map) 
-					  old-hla-map)]
-    (util/assert-is (= envs/*true-condition* root-hla-precond))
-    (util/assert-is (not root-hla-primitive))
-    (make-strips-cs-hla
-     (struct strips-cs-hierarchy ::StripsCSHierarchy new-hla-map instance always-true always-false)
-     (util/safe-get new-hla-map root-hla-name)
-     (util/safe-get hla :var-map)
-     root-hla-precond
-     root-hla-primitive)))
-
-
-;; HLA methods mostly inherited from above
-
-
-(defmethod hla-immediate-refinements     [::StripsCSHLA :edu.berkeley.ai.angelic/PropositionalValuation] [hla opt-val]
   (let [opt-val      (restrict-valuation opt-val (:precondition hla))
 	var-map      (:var-map hla)	
 	hierarchy    (:hierarchy hla)
 	precondition (:precondition hla)
-	always-true  (:always-true hierarchy)
-	always-false (:always-false hierarchy)
 	hla-map      (:hla-map hierarchy)]
     (when-not (empty-valuation? opt-val)
       (let [val-pred-maps (valuation->pred-maps opt-val)]
-;	  (println val-pred-maps (map first (:refinement-schemata (:schema hla))))
   	  (for [[name pos-pre neg-pre csp expansion] (:refinement-schemata (:schema hla))
 	        dummy-var-map (smart-csps/get-smart-csp-solutions csp var-map val-pred-maps)]
 	    (let [final-var-map (merge var-map dummy-var-map)
@@ -487,23 +355,17 @@
 		  ground-impl-pre (envs/make-conjunctive-condition
 				   (map simplifier pos-pre)
 				   (map simplifier neg-pre))]
-;	      (println val-pred-maps ground-impl-pre)
-;	      (println "fv " name dummy-var-map)
 	      (map (fn [call extra-preconditions]
 		     (let [hla (util/safe-get hla-map (first call))
 			   trans-var-map (translate-var-map hla (rest call) final-var-map)
  	   		   simplifier #(props/simplify-atom trans-var-map %)
 			   precond 
-			   (envs/constant-simplify-condition
-			    (envs/conjoin-conditions 
-			     (envs/make-conjunctive-condition
-			      (map simplifier (util/safe-get hla :pos-pre)) 
-			      (map simplifier (util/safe-get hla :neg-pre))) 
-			     extra-preconditions)
-			    always-true always-false)]
-;		       (println "tv " trans-var-map)
-;		       (when-not (= precond envs/*false-condition*)
-		       (make-strips-cs-hla hierarchy hla trans-var-map precond (:primitive hla)))) 
+			   (envs/conjoin-conditions 
+			    (envs/make-conjunctive-condition
+			     (map simplifier (util/safe-get hla :pos-pre)) 
+			     (map simplifier (util/safe-get hla :neg-pre))) 
+			    extra-preconditions)]
+		       (make-strips-hla hierarchy hla trans-var-map precond (:primitive hla)))) 
 		   expansion
 		   (cons (envs/conjoin-conditions precondition ground-impl-pre)
 			 (repeat envs/*true-condition*)))))))))
@@ -533,17 +395,41 @@
 
 
 
-
-
 ;;; Fully grounded and constant-simplified strips hierarchies 	
-; For now, generate refinements by filtering, later add refinement generator. 	 
 
 ; can't fully fully bottom out because of hierarchical preconditions!?!??!?
 ; ref-fn should automagically handle hierarchical preconds . . . takes grounded-hla and valuation as args.
 ; Immediate refinements are [name pos-prec neg-prec unk-types expansion]
 
-; refs in :refs are [name precondition expansion-names]
+; refs in :refs are [precondition expansion-names]
 ; ref-fn must process these.
+
+
+; TODO: just change to JIT grounder?
+
+;;; TODO: de-uglify this to re-use above work
+; Issues: would like access to fluent preconditions (can provide this service from CSPs).
+
+;(defstruct strips-hierarchy :class :hla-map :problem-instance)
+
+;(defstruct strips-hla :class :hierarchy :schema :var-map :precondition)
+
+;(defn make-strips-hla [hierarchy schema var-map precondition primitive]
+;  (struct strips-hla 
+;	  (cond (= primitive :noop) ::StripsNoopHLA primitive ::StripsPrimitiveHLA :else ::StripsHLA)
+;	  hierarchy schema var-map precondition))
+
+
+; Immediate refinements are [name pos-prec neg-prec csp expansion]
+
+;(defstruct strips-hla-schema :class :name :vars :pos-pre :neg-pre :refinement-schemata :optimistic-schema :pessimistic-;schema :primitive)
+
+;; TODO: ref generator should replace prec. of first action with that of ref.
+
+;; TODO: just call hla-immediate-refinements!
+
+;(defn- make-grounded-strips-hla-schema [env name precondition refs ref-fn opt-desc pess-desc primitive]
+
 
 (defstruct grounded-strips-hla-schema :class :env :name :precondition :refs :ref-fn :opt-desc :pess-desc :primitive) ; TODO: remove refs?
 
@@ -561,30 +447,27 @@
 (defn- make-grounded-strips-hla [hla-map schema hierarchical-precondition]
   (struct grounded-strips-hla ::GroundedStripsHLA hla-map schema hierarchical-precondition))
 
-; TODO: (maybe): ground out high-level preconditions too???
+
+(defn ground-strips-hierarchy [hla]
+  (util/assert-is (= (:class hla) ::StripsHLA))
+  (let [{:keys [hierarchy schema var-map precondition primitive]} hla
+	instance       (util/safe-get hierarchy :problem-instance)
+	hla-map        (HashMap. (util/safe-get hierarchy :hla-map))]
+    (make-grounded-strips-hla hla-map schema
+    (util/make-safe (put-grounded-hlas root-action-name {} instance old-hla-map new-hla-map))
+    (doseq [[k v] (doall (seq new-hla-map))] (when (util/includes? [:on-stack :bad] (first v)) (.remove new-hla-map k)))
+    (println "Number of grounded actions: " (count (keys new-hla-map)))
+    (make-grounded-strips-hla
+     new-hla-map 
+     (util/safe-get new-hla-map (list root-action-name))
+     envs/*true-condition*)))
+  
+
 ; input refs are [precondition expansion-names]
 ; output refs, seqs of grounded-strips-hal,  (given grounded-strips-hla and optimistic-valuations)
 ; Keep in mind, high-level precondition of first action already taken into account!
   ; TODO: no-op for empty refinement!
  ; For now, do simplest stupid thing. TODO: improve!
-; TODO TODO TODO: make lazy again; this is just for profiling
-
-(comment ;old version
-(defn make-refinement-generator [refs]
-  (fn generate-refinements [hla opt-val]
-    (doall 
-    (let [{:keys [hla-map hierarchical-precondition]} hla]
-      (for [[prec exp] refs :when (not (empty-valuation? (restrict-valuation opt-val prec)))]
-	;; TODO: empty ref here!
-	(when (seq exp)
-	  (cons (let [first-schema (util/safe-get hla-map (first exp))]
-		  (make-grounded-strips-hla 
-		   hla-map first-schema  
-		   (envs/conjoin-conditions hierarchical-precondition (util/safe-get first-schema :precondition))))
-	    (for [act (rest exp)]
-	      (let [schema (util/safe-get hla-map act)]
-		(make-grounded-strips-hla hla-map schema (util/safe-get schema :precondition)))))))))))
- )
 
 (defn- make-refinement-generator
   ([refs] (let [real-fn (make-refinement-generator refs #{})]
@@ -638,16 +521,148 @@
 	     (dc-branch clause)))))))))
 
 
+
+  
+
+(defn get-grounded-refinement-schema-instantiations [ref-schema var-map old-hla-map new-mutable-hla-map pred-maps]
+  (let [[_ _ _ csp expansion] ref-schema]
+    (doall
+     (filter identity
+      (for [unk-map (smart-csps/get-smart-csp-solutions csp var-map pred-maps)]
+        (let [final-map      (merge var-map unk-map)
+	      grounder       #(cons (first %) (props/simplify-atom final-map (rest %)))
+	      vm-translator  #(translate-var-map (util/safe-get old-hla-map (first %)) (rest %) final-map)]
+	  (when (every? #(put-grounded-hlas (first %) (vm-translator (first %)) old-hla-map new-mutable-hla-map pred-maps)
+			expansion)
+	    [(envs/make-conjunctive-condition 
+			       (set (map grounder (smart-csp-pos-fluent-constraints)))
+			       (set (map grounder (smart-csp-neg-fluent-constraints))))
+	     (map grounder expansion)))))))))
+
+(comment 
+(defn constant-simplify-strips-action [action true-atoms false-atoms]
+  (util/assert-is (nil? (util/safe-get action :vars)))
+  (let [pos-pre    (util/difference (util/to-set (util/safe-get action :pos-pre)) true-atoms)
+        neg-pre    (util/difference (util/to-set (util/safe-get action :neg-pre)) false-atoms)]
+    (when (and (empty? (util/intersection pos-pre false-atoms))
+               (empty? (util/intersection neg-pre true-atoms)))
+      (strips/make-strips-action-schema 
+       (util/safe-get action :name)
+       nil
+       pos-pre
+       neg-pre
+       (util/safe-get action :add-list)
+       (util/safe-get action :delete-list)
+       (util/safe-get action :cost))))) 
+ )
+
+
 (import '(java.util HashMap))
-
 (declare put-grounded-hlas)
-; Return [precondition expansion-names], or nil for fail. Maybe: save name?
-; TODO: may leave bad actions in map... oh well? 
 
-;(def *x* (util/sref 0))
+(defn put-grounded-hlas [strips-hla instance #^HashMap new-mutable-hla-map dummy-valuation]
+  (let [{:keys [hierarchy schema var-map precondition]} strips-hla
+	full-name (hla-name strips-hla)
+	old-val   (.get new-mutable-hla-map full-name)]
+    (cond (= old-val :bad)   false
+	  (= old-val :stack) true
+	  :else
+      (let [opt  (hla-optimistic-description strips-hla)
+	    pess (hla-pessimistic-description strips-hla)]
+        (if (hla-primitive? strips-hla)
+	    (do  
+	      (.put new-mutable-hla-map full-name
+		(make-grounded-strips-hla-schema instance full-name precondition #(throw (UnsupportedOperationException.))
+						 opt pess (hla-primitive strips-hla))) ;todo: simplify prim?
+	      true)
+	  (do 
+	    (.put new-mutable-hla-map full-name :stack)
+	    (let [strips-hla (assoc strips-hla :precondition nil)
+		  refs
+		   (doall
+		    (filter 
+		     (fn [ref] (every? #(put-grounded-hlas % instance new-mutable-hla-map dummy-valuation) ref)) 
+		     (hla-immediate-refinements strips-hla dummy-valuation)))]
+	      (if refs 
+		  (do 
+		    (.put new-mutable-hla-map full-name
+ 		      (make-grounded-strips-hla-schema instance full-name precondition (make-refinement-generator refs)
+						       opt pess false))
+		    true)
+		(do
+		  (.put new-mutable-hla-map full-name :bad)
+		  false)))))))))
+		
+	      
+
+;; Blank out precondition;
+  
+
+; Puts this action and descendents into new-hla-map, returning
+; true for success or nil for "bad action" (or no refs.)
+; Do braindead way for now, speed up later.
+; TODO: should really check cycles better, to get rid of things with only infinite refinements.
+; Are we even handling refinement preconditions???
+; TODO: special case, top-level should match only against initial state ????
+	    (when-let [refs 
+		       (doall 
+			(filter identity
+			      (for [ref-schema refinement-schemata
+				    full-var-map (get-possible-ref-schema-var-maps ref-schema 
+						   var-map trans-objects always-true-atoms always-false-atoms)]
+				(do ;(prn "try " ref-schema full-var-map)
+				(get-grounded-refinement-schema-instantiation 
+				 ref-schema full-var-map instance old-hla-map new-mutable-hla-map)))))]
+;	      (prn "step3")
+	      (.put new-mutable-hla-map full-name		    
+		    (make-grounded-strips-hla-schema instance
+		     full-name new-precondition refs (make-refinement-generator refs) opt-desc pess-desc nil))
+	      true)))]
+	  result
+	 (do (.put new-mutable-hla-map full-name [:bad]) false))))))
+
+
+     
+(defn ground-and-constant-simplify-strips-hierarchy [hla instance-simplifier]
+  (util/assert-is (= (:class hla) ::StripsHLA))
+  (let [old-hierarchy      (util/safe-get hla :hierarchy)
+	root-action-name   (util/safe-get (util/safe-get hla :schema) :name)
+	old-hla-map        (util/safe-get old-hierarchy :hla-map)
+	instance           (instance-simplifier (util/safe-get old-hierarchy :problem-instance))
+	noop-schema        (make-grounded-strips-noop-schema instance)
+	new-hla-map        (HashMap.)]
+;    (prn (keys old-hla-map))
+    (.put new-hla-map (util/safe-get noop-schema :name) noop-schema) ; Must put this here, since it has no refs.
+    (util/make-safe (put-grounded-hlas root-action-name {} instance old-hla-map new-hla-map))
+    (doseq [[k v] (doall (seq new-hla-map))] (when (util/includes? [:on-stack :bad] (first v)) (.remove new-hla-map k)))
+    (println "Number of grounded actions: " (count (keys new-hla-map)))
+    (make-grounded-strips-hla
+     new-hla-map 
+     (util/safe-get new-hla-map (list root-action-name))
+     envs/*true-condition*)))
+
+(defmethod hla-environment                ::GroundedStripsHLA [hla] (util/safe-get (util/safe-get hla :schema) :env))
+(defmethod hla-name                       ::GroundedStripsHLA [hla] (:name (:schema hla)))
+(defmethod hla-primitive?                 ::GroundedStripsHLA [hla] (when (:primitive (:schema hla)) true))
+(defmethod hla-primitive                  ::GroundedStripsHLA [hla] (:primitive (:schema hla)))
+(defmethod hla-hierarchical-preconditions ::GroundedStripsHLA [hla] (:hierarchical-precondition hla))
+(defmethod hla-optimistic-description     ::GroundedStripsHLA [hla] (:opt-desc (:schema hla)))
+(defmethod hla-pessimistic-description    ::GroundedStripsHLA [hla] (:pess-desc (:schema hla)))
+
+(defmethod hla-immediate-refinements     [::GroundedStripsHLA :edu.berkeley.ai.angelic/PropositionalValuation] 
+  [hla opt-val] ((:ref-fn (:schema hla)) hla opt-val)) 
+
+(comment 
+  (let [domain (make-nav-switch-strips-domain), env (make-nav-switch-strips-env 2 2 [[0 0]] [1 0] true [0 1]), node (make-initial-top-down-forward-node  :edu.berkeley.ai.angelic.dnf-simple-valuations/DNFSimpleValuation  (ground-and-constant-simplify-strips-hierarchy (instantiate-hierarchy (make-flat-strips-hierarchy-schema domain (constantly 0)) env) dont-constant-simplify-strips-planning-instance))] node) ;(time (second (a-star-search node))))
+  )
+
+
+
+(comment 
+
+
+; TODO: may leave bad actions in map... oh well? 
 (defn get-grounded-refinement-schema-instantiation [ref-schema var-map instance old-hla-map new-mutable-hla-map]
-;  (pr)
-;  (util/sref-up! *x* inc)
   (let [[name pos-pre neg-pre unk-types expansion] ref-schema
 	{:keys [always-true-atoms always-false-atoms]} instance
 	grounder #(props/simplify-atom var-map %)
@@ -702,6 +717,7 @@
 ; true for success or nil for "bad action" (or no refs.)
 ; Do braindead way for now, speed up later.
 ; TODO: should really check cycles better, to get rid of things with only infinite refinements.
+; Are we even handling refinement preconditions???
 ; TODO: special case, top-level should match only against initial state ????
 (defn put-grounded-hlas [root-name var-map instance old-hla-map #^HashMap new-mutable-hla-map]
 ;  (print ".")
@@ -774,18 +790,4 @@
      new-hla-map 
      (util/safe-get new-hla-map (list root-action-name))
      envs/*true-condition*)))
-
-(defmethod hla-environment                ::GroundedStripsHLA [hla] (util/safe-get (util/safe-get hla :schema) :env))
-(defmethod hla-name                       ::GroundedStripsHLA [hla] (:name (:schema hla)))
-(defmethod hla-primitive?                  ::GroundedStripsHLA [hla] (when (:primitive (:schema hla)) true))
-(defmethod hla-primitive                  ::GroundedStripsHLA [hla] (:primitive (:schema hla)))
-(defmethod hla-hierarchical-preconditions ::GroundedStripsHLA [hla] (:hierarchical-precondition hla))
-(defmethod hla-optimistic-description     ::GroundedStripsHLA [hla] (:opt-desc (:schema hla)))
-(defmethod hla-pessimistic-description    ::GroundedStripsHLA [hla] (:pess-desc (:schema hla)))
-
-(defmethod hla-immediate-refinements     [::GroundedStripsHLA :edu.berkeley.ai.angelic/PropositionalValuation] 
-  [hla opt-val] ((:ref-fn (:schema hla)) hla opt-val)) 
-
-(comment 
-  (let [domain (make-nav-switch-strips-domain), env (make-nav-switch-strips-env 2 2 [[0 0]] [1 0] true [0 1]), node (make-initial-top-down-forward-node  :edu.berkeley.ai.angelic.dnf-simple-valuations/DNFSimpleValuation  (ground-and-constant-simplify-strips-hierarchy (instantiate-hierarchy (make-flat-strips-hierarchy-schema domain (constantly 0)) env) dont-constant-simplify-strips-planning-instance))] node) ;(time (second (a-star-search node))))
-  )
+)

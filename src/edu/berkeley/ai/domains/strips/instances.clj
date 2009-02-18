@@ -162,7 +162,7 @@
 ;;; Constant predicate-simplified strips domain and modified methods.
  
 
-(defn- get-cps-strips-action-instantiations  [action-schemata all-objects fluent-atoms always-true-atoms always-false-atoms]
+(defn- get-cps-strips-action-instantiations  [action-schemata all-objects fluent-atoms always-true-atoms]
   (let [allowed-pred-inst-maps 
 	  [[(reduce (fn [m atom] (util/assoc-cons m (first atom) atom)) {} always-true-atoms)
 	    (reduce (fn [m atom] (util/assoc-cons m (first atom) atom)) {} fluent-atoms)]]]
@@ -185,11 +185,8 @@
 		 nil pos-pre neg-pre add-list delete-list cost)))))))))
 
 
-(defn dont-constant-simplify-strips-planning-instance [instance]
-  (assoc instance :always-true-atoms #{} :always-false-atoms #{}))
-
-(defn constant-predicate-simplify-strips-planning-instance [instance]
-;  (util/assert-is (= (:class instance) ::StripsPlanningInstance))
+(defn constant-predicate-simplify [instance]
+  (util/assert-is (= (:class instance) ::StripsPlanningInstance))
   (let [domain (constant-annotate-strips-planning-domain (util/safe-get instance :domain))
 	pred-map (util/safe-get domain :predicates)
 	{const-preds :const-predicates, pi-preds :pi-predicates, ni-preds :ni-predicates} domain
@@ -213,8 +210,8 @@
 		    (util/union always-true-atoms always-false-atoms))]
     (util/assert-is (empty? (util/intersection always-true-atoms always-false-atoms)))
     (util/assert-is (empty? (util/intersection always-false-atoms goal-atoms)))
-;    (util/assert-is (empty? pi-preds))  ; For now, since
-;    (util/assert-is (empty? ni-preds))  ; smart-csp doesn't support this.
+    (util/assert-is (empty? pi-preds))  ; For now, since
+    (util/assert-is (empty? ni-preds))  ; smart-csp doesn't support this.
     (assoc
       (make-strips-planning-instance- 
        (util/safe-get instance :name)
@@ -225,16 +222,14 @@
        (seq (util/difference goal-atoms always-true-atoms))
        fluent-atoms
        (get-cps-strips-action-instantiations (util/safe-get-in instance [:domain :action-schemata])
-					     trans-objects fluent-atoms always-true-atoms always-false-atoms)
+					     trans-objects fluent-atoms always-true-atoms)
        (util/safe-get instance :state-str-fn))
-      :always-true-atoms always-true-atoms :always-false-atoms always-false-atoms)))
+      :always-true-atoms always-true-atoms 
+      :always-false-atoms always-false-atoms
+      :const-pred-map (reduce (fn [m pred] (util/assoc-cons m (nth pred 0) pred)) {} always-true-atoms))))
+;:always-false-atoms always-false-atoms)))
 
-(defn get-strips-const-pred-map [instance]
-  (let [always-true        (get instance :always-true-atoms)
-	always-false       (get instance :always-false-atoms)
-	const-preds        (-> instance :domain :const-predicates)]
-    (doseq [pred (concat always-true always-false)] (util/assert-is (const-preds (first pred))))  ; Only const preds, no inertia
-    (reduce (fn [m pred] (util/assoc-cons m (nth pred 0) pred)) {} always-true)))
+
 
 
 
