@@ -118,81 +118,54 @@
 ; Single pass through actions, make single ordering?
 ; but, seems fast enough for now!  (not on moderate WW instances)
 ; user> (let [node (time (make-initial-state-space-node (constant-predicate-simplify (make-warehouse-strips-env 6 6 [1 2] true {0 '[b] 1 '[a] 2 '[c]} nil ['[a b c table5]])) (constantly 0)))] (time (map :name (first (a-star-graph-search node)))))
-(comment
-(import '(java.util HashMap HashSet))
+;(comment
+(import '(java.util HashMap HashSet Arrays ArrayList))
 (set! *warn-on-reflection* true)
-(defn- make-successor-generator 
-  ([actions] 
-     (make-successor-generator actions
-       (time (reverse
-	(map first
-	  (sort-by second
-	    (util/merge-reduce + {}
-	      (map #(vector % 1)
-		(apply concat
-		  (for [action actions]
-		    (util/union (:pos (:precondition action)) (:neg (:precondition action)))))))))))))
-  ([actions atom-order]
-  (util/timeout)
-  (if (empty? atom-order) (fn [state] actions)
-    (let [most-common-atom (first atom-order)
-	  action-map
-	  (util/group-by
-	   (fn [action]
-	     (let [in-pos? (contains? (:pos (:precondition action)) most-common-atom)
-		   in-neg? (contains? (:neg (:precondition action)) most-common-atom)]
-	       (cond (and in-pos? in-neg?) (do (prn "Warning: contradictory preconditions for action" action) 
-					       :trash)
-		     (and in-pos? (not in-neg?)) :positive
-		     (and in-neg? (not in-pos?)) :negative
-		     :else                       :dontcare)))
-	   actions)
-	  {pos-actions :positive neg-actions :negative dc-actions :dontcare} action-map	  
-	  pos-branch (if pos-actions (make-successor-generator pos-actions (rest atom-order)) (constantly nil))
-	  neg-branch (if neg-actions (make-successor-generator neg-actions (rest atom-order)) (constantly nil))
-	  dc-branch  (if dc-actions  (make-successor-generator dc-actions  (rest atom-order)) (constantly nil))]
-      (cond (and (not dc-actions) (not neg-actions) (not pos-actions)) (throw (IllegalArgumentException.))
-	    (and (not neg-actions) (not pos-actions)) dc-branch
-	    :else 
-	(fn [state] (concat (if (contains? state most-common-atom) (pos-branch state) (neg-branch state)) (dc-branch state)))))))))
 
-(set! *warn-on-reflection* false)
+; Idea: make table, for each atom, set of pos and neg actions?
+; Intersect set of current actions with each...
+(defn- get-next-atom [actions blacklist]
+  (let [#^HashMap atom-counts (HashMap.)]
+    (doseq [action actions]
+      (doseq [p (:pos (:precondition action))]
+	(.put atom-counts p (inc (or (.get atom-counts p) 0))))
+      (doseq [n (:neg (:precondition action))]
+	(.put atom-counts n (inc (or (.get atom-counts n) 0)))))
+    (doseq [atom blacklist]
+      (.remove atom-counts atom))
+    (when-not (.isEmpty atom-counts)
+      (key (util/first-maximal-element val atom-counts)))))
 
-;(comment ;Old version - better gens, slower
+
 (defn- make-successor-generator 
-  ([actions] (make-successor-generator actions #{}))
+  ([actions] (make-successor-generator actions nil))
   ([actions blacklist]
 ;  (prn (count actions) blacklist)
   (util/timeout)
-  (let [most-common-pair
-  	  (first 
-	    (util/maximal-elements second
-	      (util/merge-reduce + {}
-	        (map #(vector % 1)
-                  (apply concat
-                    (for [action actions]
-		      (remove #(contains? blacklist %) (concat (:pos (:precondition action)) (:neg (:precondition action))))))))))]
-    (if (nil? most-common-pair) 
+  (let [most-common-atom (get-next-atom actions blacklist)]
+    (if (nil? most-common-atom) 
         (fn [state] actions)
-      (let [most-common-atom (first most-common-pair)
-	    action-map
-	      (util/group-by
-	        (fn [action]
-	          (let [in-pos? (util/includes? (:pos (:precondition action)) most-common-atom)
-			in-neg? (util/includes? (:neg (:precondition action)) most-common-atom)]
-	  	    (cond (and in-pos? in-neg?) (do (prn "Warning: contradictory preconditions for action" action) 
-						  :trash)
-			  (and in-pos? (not in-neg?)) :positive
-			  (and in-neg? (not in-pos?)) :negative
-			  :else                       :dontcare)))
-		actions)
-	    {pos-actions :positive neg-actions :negative dc-actions :dontcare} action-map
-	    next-blacklist (conj blacklist most-common-atom)
+      (let [pos-list (ArrayList.)
+	    neg-list (ArrayList.)
+	    dc-list  (ArrayList.)]
+	(doseq [action actions]
+	  (let [in-pos? (contains? (:pos (:precondition action)) most-common-atom)
+		in-neg? (contains? (:neg (:precondition action)) most-common-atom)]
+	    (cond (and in-pos? in-neg?) (prn "Warning: contradictory preconditions for action" action) 
+		  (and in-pos? (not in-neg?)) (.add pos-list action)
+		  (and in-neg? (not in-pos?)) (.add neg-list action)
+		  :else                       (.add dc-list action))))
+	(let [pos-actions (seq pos-list)
+	      neg-actions (seq neg-list)
+	      dc-actions  (seq dc-list)
+	    next-blacklist (cons most-common-atom blacklist)
 	    pos-branch (if pos-actions (make-successor-generator pos-actions next-blacklist) (constantly nil))
 	    neg-branch (if neg-actions (make-successor-generator neg-actions next-blacklist) (constantly nil))
 	    dc-branch  (if dc-actions  (make-successor-generator dc-actions  next-blacklist) (constantly nil))]
-	(fn [state] (concat (if (contains? state most-common-atom) (pos-branch state) (neg-branch state)) (dc-branch state)))))))) 
- ; )
+	(fn [state] (concat (if (contains? state most-common-atom) (pos-branch state) (neg-branch state)) (dc-branch state))))))))) 
+
+(set! *warn-on-reflection* false)
+
          
 (defmethod envs/get-action-space  ::StripsPlanningInstance [instance]
   (let [instantiations (map #'strips-action->action (util/safe-get instance :all-actions))]
@@ -355,3 +328,43 @@
   )
 
 
+
+
+
+
+
+
+(comment  ;another try -- seems liek above is better.
+(defn- make-successor-generator 
+  ([actions] 
+     (doall actions)
+     (let [atom-order (time (get-successor-atom-order actions))
+	   pos-set-map (HashMap.)
+	   neg-set-map (HashMap.)
+	   bad-actions (HashSet.)]
+       (time (doseq [action actions]
+	 (let [pos (:pos (:precondition action))
+	       neg (:neg (:precondition action))]
+	   (if (seq (util/intersection pos neg))
+	       (.add bad-actions action)
+	     (do 
+	       (doseq [p pos] (.put pos-set-map p (conj (or (.get pos-set-map p) #{}) action)))
+	       (doseq [n neg] (.put neg-set-map n (conj (or (.get neg-set-map n) #{}) action))))))))
+       (time (make-successor-generator 
+	      (util/difference-coll (set actions) bad-actions)
+	      atom-order pos-set-map neg-set-map))))
+  ([actions atom-order #^HashMap pos-set-map #^HashMap neg-set-map]
+  (util/timeout)
+  (if (empty? atom-order) (fn [state] actions)
+    (let [most-common-atom (first atom-order)
+	  pos-actions (util/intersection actions (.get pos-set-map most-common-atom))
+	  neg-actions (util/intersection actions (.get neg-set-map most-common-atom))
+	  dc-actions  (util/difference actions pos-actions neg-actions)
+	  pos-branch (if (seq pos-actions) (make-successor-generator pos-actions (rest atom-order) pos-set-map neg-set-map) (constantly nil))
+	  neg-branch (if (seq neg-actions) (make-successor-generator neg-actions (rest atom-order) pos-set-map neg-set-map) (constantly nil))
+	  dc-branch  (if (seq dc-actions)  (make-successor-generator dc-actions  (rest atom-order) pos-set-map neg-set-map) (constantly nil))]
+      (cond (and (empty? dc-actions) (empty? neg-actions) (empty? pos-actions)) (throw (IllegalArgumentException.))
+	    (and (empty? neg-actions) (empty? pos-actions)) dc-branch
+	    :else 
+	(fn [state] (concat (if (contains? state most-common-atom) (pos-branch state) (neg-branch state)) (dc-branch state))))))))
+)

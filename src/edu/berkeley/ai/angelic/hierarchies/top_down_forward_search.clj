@@ -44,6 +44,9 @@
 	(recur (rest actions)
 	       (make-top-down-forward-node (envs/get-goal env) (first actions) previous)))))))
 
+(defn tdf-node 
+  ([initial-hla] (make-initial-top-down-forward-node initial-hla))
+  ([val-class initial-hla] (make-initial-top-down-forward-node val-class initial-hla)))
 
 ;; Internal methods, used only in this file
 
