@@ -111,14 +111,10 @@
    (envs/make-conjunctive-condition (:pos-pre schema) (:neg-pre schema))))
 
 ; Each pred has 3 options - yes, no, don't care.  Want to maximize # yes + no
-; MAYBE: Actually, would rather iterate through *true* literals in state than possible literals?
 ; MAYBE: compile sequence of tests?
-; MATBE: change to pass in mutable hashmap or some such?
-; MAYBE: optimize compilation speed
-; Single pass through actions, make single ordering?
-; but, seems fast enough for now!  (not on moderate WW instances)
-; user> (let [node (time (make-initial-state-space-node (constant-predicate-simplify (make-warehouse-strips-env 6 6 [1 2] true {0 '[b] 1 '[a] 2 '[c]} nil ['[a b c table5]])) (constantly 0)))] (time (map :name (first (a-star-graph-search node)))))
-;(comment
+; MAYBE: optimize compilation speed (actually hard to do, I tried)
+; Single pass through actions, make single ordering? (ditto)
+
 (import '(java.util HashMap HashSet Arrays ArrayList))
 (set! *warn-on-reflection* true)
 
