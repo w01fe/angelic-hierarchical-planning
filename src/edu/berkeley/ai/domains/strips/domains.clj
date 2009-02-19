@@ -54,6 +54,9 @@
 ; guaranteed-objs is a map from types to seqs of objects
 ; predicates is a map from predicate names to seqs of argument types
 ; action-schemata is a seq of action-schema objects
+
+(derive ::StripsPlanningDomain ::envs/PropositionalDomain)
+
 (defstruct strips-planning-domain :class :name :types :guaranteed-objs :predicates :action-schemata)
 
 (defn goal-ize [pred-name] (util/symbol-cat 'goal- pred-name))
@@ -106,7 +109,7 @@
 ; const-predicates is seq of predicate names from (keys :predicates) that are not changed by any action.  
 ; positive-predicates and negative-predicates are similar, but are ones that only appear positively or negatively (resp.) in any effect.
 (defstruct ca-strips-planning-domain :class :name :types :guaranteed-objs :predicates :action-schemata :const-predicates :pi-predicates :ni-predicates)
-(derive ::CAStripsPlannignDomain ::StripsPlanningDomain)
+(derive ::CAStripsPlanningDomain ::StripsPlanningDomain)
 
 (defn constant-annotate-strips-planning-domain [domain]
   (if (isa? (:class domain) ::CAStripsPlanningDomain) domain

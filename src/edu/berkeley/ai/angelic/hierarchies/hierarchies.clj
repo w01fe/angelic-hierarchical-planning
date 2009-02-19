@@ -25,6 +25,9 @@
 (defmulti #^{:doc "Get the env associated with this instantiated HLA."} 
   hla-environment :class)
 
+(defmulti #^{:doc "Get the default valuation type associated with this HLA"}
+  hla-default-valuation-type :class)
+
 (defmulti #^{:doc "Is the HLA primitive or noop?."} 
   hla-primitive? :class)
 
@@ -45,7 +48,10 @@
 
 (defmulti hla-pessimistic-description    :class)
 
-
+(defn get-hierarchy [file env]
+  (instantiate-hierarchy 
+   (parse-hierarchy file (envs/get-domain env))
+   env))
 
 
 

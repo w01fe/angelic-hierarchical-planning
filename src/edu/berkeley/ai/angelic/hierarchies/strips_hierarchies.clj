@@ -181,6 +181,12 @@
                  (:types domain) (:guaranteed-objs domain) (:predicates domain) %)
 	       (:action-schemata domain)))))})
 
+(defn get-flat-strips-hierarchy 
+  ([env] (get-flat-strips-hierarchy env (constantly 0)))
+  ([env upper-reward-fn]
+   (instantiate-hierarchy 
+    (make-flat-strips-hierarchy-schema (envs/get-domain env) upper-reward-fn) env)))
+
 
 
 (comment 
@@ -313,6 +319,9 @@
 
 ;; HLA methods
     
+(defmethod hla-default-valuation-type ::StripsHLA [hla] 
+  :edu.berkeley.ai.angelic.dnf-simple-valuations/DNFSimpleValuation)
+
 (defmethod hla-environment ::StripsHLA [hla] (util/safe-get (util/safe-get hla :hierarchy) :problem-instance))
 
 (defmethod hla-name                       ::StripsHLA [hla] 

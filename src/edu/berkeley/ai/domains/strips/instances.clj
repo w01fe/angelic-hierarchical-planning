@@ -37,7 +37,7 @@
 
 ;; Problem instance structures and parsing.   
 
-(derive ::StripsPlanningInstance ::envs/Environment)
+(derive ::StripsPlanningInstance ::envs/PropositionalEnvironment)
 
 (defstruct strips-planning-instance :class :name :domain :objects :trans-objects :init-atoms :goal-atoms :all-atoms :all-actions :state-str-fn)
 
@@ -89,6 +89,9 @@
 
 
 ;; Methods for Environment interface
+
+(defmethod envs/get-domain        ::StripsPlanningInstance [instance]
+  (util/safe-get instance :domain))
 
 (defmethod envs/get-initial-state ::StripsPlanningInstance [instance]
   (envs/metafy-initial-state    (util/to-set (:init-atoms instance))))
@@ -159,8 +162,8 @@
 
 
 
+
 ;;; Constant predicate-simplified strips domain and modified methods.
- 
 
 (defn- get-cps-strips-action-instantiations  [action-schemata all-objects fluent-atoms always-true-atoms]
   (let [allowed-pred-inst-maps 

@@ -57,7 +57,7 @@
 	     (for [x (range width)]
 	       (get square-map [x y] (if facingright? ">" "<"))))))))))
 
-
+(def *warehouse-hierarchy-unguided* "/Users/jawolfe/projects/angel/src/edu/berkeley/ai/domains/warehouse_icaps08_unguided.hierarchy")
 
 
 (defn- get-and-check-sol [env graph?]
@@ -80,10 +80,10 @@
 	(util/is (= '((get-l a table0 x0 x1 y1) (left x1 x0 y1) (turn-r x0 y1) (put-r a table1 x1 x0 y0 y1))
 		    (get-and-check-sol (simplifier env) graph?))))))
   (util/testing "bigger instance"
-    (let [env (make-warehouse-strips-env 3 4 [1 2] true {0 '[b a] 2 '[c]} nil ['[a b c]])]
+    (let [env (make-warehouse-strips-env 3 4 [1 2] false {0 '[b a] 2 '[c]} nil ['[a b c]])]
       (doseq [simplifier [strips/constant-predicate-simplify
 			  (comp strips/flatten-strips-instance strips/constant-predicate-simplify)]]
-	(util/is (= 17 
+	(util/is (= 14 
 		    (count (get-and-check-sol (simplifier env) true))))))))
 
 

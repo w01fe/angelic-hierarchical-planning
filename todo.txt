@@ -1,23 +1,15 @@
- 
- TODO: combine constant-simplify and instantiate; possibly get rid of instantiate alogether (after a bit of experimentation)
-   (this will break current ncstrips)
 
-make ground use instantiated hierarchy?  
-Just call CSPs on "all-unk" valuation?
-TODO: finish?  or just fuck it, change to JIT ?
- ; Seems pointless... if move vars to NCStrips, still need to call CSP.
- 
 TODO:  Way to combine benefits of ref-generator and CSP??
+; Something else clever I thought of late last night ..
   
 Check for dead-ends somewhere?.
 
-, don't fail nastily.  (Where do they come from?) 
+; WW timing
   
 ; Make WW hierarchy
 
 ; make WW heuristics ?
 
-; Threaded timing infrastructure.
 
 Graph search
  ; Doing lower bounds too will slow down

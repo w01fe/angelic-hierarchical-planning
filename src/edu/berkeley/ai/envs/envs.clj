@@ -52,3 +52,9 @@
 	  (util/assert-is (satisfies-condition? state goal))
 	  (util/assert-is (= reward (:reward ^state)))
 	  [act-seq reward state-seq])))))
+
+;::PropositionalEnvironment
+
+(defmulti #^{:doc "Get the ::PropositionalDomain associated with this ::PropositionalEnvironment"}
+  get-domain :class)
+

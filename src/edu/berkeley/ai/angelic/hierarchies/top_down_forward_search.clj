@@ -29,17 +29,20 @@
 (defn make-top-down-forward-root-node [goal initial-valuation]
   (struct top-down-forward-root-node ::TopDownForwardRootNode goal initial-valuation nil))
 
-(defn make-initial-top-down-forward-node [valuation-class & initial-plan]
-  (util/assert-is (not (empty? initial-plan)))
-  (let [env (hla-environment (first initial-plan))]
-    (loop [actions initial-plan
+(defn make-initial-top-down-forward-node 
+  ([initial-node] (make-initial-top-down-forward-node 
+		   (hla-default-valuation-type initial-node)
+		   initial-node))
+  ([valuation-class initial-node]
+  (let [env (hla-environment initial-node)]
+    (loop [actions (list initial-node)
 	   previous (make-top-down-forward-root-node 
 		     (envs/get-goal env) 
 		     (make-initial-valuation valuation-class env))]
       (if (empty? actions)
         previous
 	(recur (rest actions)
-	       (make-top-down-forward-node (envs/get-goal env) (first actions) previous))))))
+	       (make-top-down-forward-node (envs/get-goal env) (first actions) previous)))))))
 
 
 ;; Internal methods, used only in this file
@@ -187,17 +190,12 @@
 
 
 
-(defn- get-and-check-sol 
-  ([hierarchy-schema env val-type]
-     (let [initial-hla (instantiate-hierarchy hierarchy-schema env)]
-       (map :name
-	    (first
-	     (envs/check-solution (hla-environment initial-hla)
-				  (edu.berkeley.ai.search.algorithms.textbook/a-star-search
-				   (make-initial-top-down-forward-node 
-				    val-type
-				    initial-hla))))))))
-
+(defn- get-and-check-sol [initial-hla]
+  (map :name
+       (first
+	(envs/check-solution (hla-environment initial-hla)
+	  (edu.berkeley.ai.search.algorithms.textbook/a-star-search
+	   (make-initial-top-down-forward-node initial-hla)))))) 
 
 
 (require '[edu.berkeley.ai.domains.nav-switch :as nav-switch])
@@ -207,97 +205,53 @@
 (require '[edu.berkeley.ai.search.algorithms.textbook :as textbook])
 
 
+(def *flat-ns* (nav-switch/make-nav-switch-env 2 2 [[0 0]] [1 0] true [0 1]))
+(def *flat-ns-sol* ['left 'flip 'down])
 
+(def *strips-ns* (nav-switch/make-nav-switch-strips-env 2 2 [[0 0]] [1 0] true [0 1]))
+(def *strips-ns-sol* '[[good-left x1 x0] [flip-v x0 y0] [good-down y0 y1]])
+
+(def *flat-ns-heur* (fn [state] (* -2 (+ (Math/abs (- (first (:pos state)) 0)) (Math/abs (- (second (:pos state)) 1))))))
+(def *strips-ns-heur* (fn [state] (* -2 (+ (Math/abs (- (util/desymbolize (first (strips/get-strips-state-pred-val state 'atx)) 1) 0)) (Math/abs (- (util/desymbolize (first (strips/get-strips-state-pred-val state 'aty)) 1) 1))))))
+
+
+(def *simplifiers* [identity 
+		     strips/constant-predicate-simplify
+		     (comp strips/flatten-strips-instance strips/constant-predicate-simplify)])
 
 (util/deftest top-down-nav-switch
-    (util/testing "flat hierarchy, non-strips"
-     (util/is 
-      (= ['left 'flip 'down]
-	 (get-and-check-sol
-	  (make-flat-hierarchy-schema (constantly 0))
-	  (nav-switch/make-nav-switch-env 2 2 [[0 0]] [1 0] true [0 1])
-	  ::angelic/ExplicitValuation)))
-     (util/is 
-      (= ['left 'flip 'down]
-	 (get-and-check-sol
-	  (make-flat-hierarchy-schema 
-	   (fn [state] (* -2 (+ (Math/abs (- (first (:pos state)) 0)) (Math/abs (- (second (:pos state)) 1))))))
-	  (nav-switch/make-nav-switch-env 2 2 [[0 0]] [1 0] true [0 1])
-	  ::angelic/ExplicitValuation))))
-    (util/testing "flat hierarchy, strips"
-     (util/is 
-      (= '[[good-left x1 x0] [flip-v x0 y0] [good-down y0 y1]]
-	 (get-and-check-sol
-	  (make-flat-hierarchy-schema (constantly 0)) 
-	  (nav-switch/make-nav-switch-strips-env 2 2 [[0 0]] [1 0] true [0 1])
-	  ::angelic/ExplicitValuation)))
-     (util/is 
-      (= '[[good-left x1 x0] [flip-v x0 y0] [good-down y0 y1]]
-	 (get-and-check-sol
-	  (make-flat-hierarchy-schema
-	   (fn [state] (* -2 (+ (Math/abs (- (util/desymbolize (first (strips/get-strips-state-pred-val state 'atx)) 1) 0)) (Math/abs (- (util/desymbolize (first (strips/get-strips-state-pred-val state 'aty)) 1) 1)))))) 
-	  (nav-switch/make-nav-switch-strips-env 2 2 [[0 0]] [1 0] true [0 1])
-	  ::angelic/ExplicitValuation)))
-     (util/is 
-      (= '[[good-left x1 x0] [flip-v x0 y0] [good-down y0 y1]]
-	 (get-and-check-sol
-	  (make-flat-hierarchy-schema (constantly 0)) 
-	  (strips/constant-predicate-simplify 
-	   (nav-switch/make-nav-switch-strips-env 2 2 [[0 0]] [1 0] true [0 1]))
-	  ::angelic/ExplicitValuation)))
-     (util/is 
-      (= '[[good-left x1 x0] [flip-v x0 y0] [good-down y0 y1]]
-	 (get-and-check-sol
-	  (make-flat-hierarchy-schema (constantly 0)) 
-          (strips/flatten-strips-instance 
-	    (strips/constant-predicate-simplify
-	     (nav-switch/make-nav-switch-strips-env 2 2 [[0 0]] [1 0] true [0 1])))
-	  ::angelic/ExplicitValuation))))
-    (util/testing "flat-strips hierarchy"
-     (util/is
-      (= '[[good-left x1 x0] [flip-v x0 y0] [good-down y0 y1]]
-	 (get-and-check-sol
-	  (strips-hierarchies/make-flat-strips-hierarchy-schema 
-	   (nav-switch/make-nav-switch-strips-domain) (constantly 0))
-	  (nav-switch/make-nav-switch-strips-env 2 2 [[0 0]] [1 0] true [0 1])
-	  :edu.berkeley.ai.angelic.dnf-simple-valuations/DNFSimpleValuation)))
-     (util/is
-      (= '[[good-left x1 x0] [flip-v x0 y0] [good-down y0 y1]]
-	 (get-and-check-sol
-	  (strips-hierarchies/make-flat-strips-hierarchy-schema 
-	   (nav-switch/make-nav-switch-strips-domain)
-	   (fn [state] (* -2 (+ (Math/abs (- (util/desymbolize (first (strips/get-strips-state-pred-val state 'atx)) 1) 0)) (Math/abs (- (util/desymbolize (first (strips/get-strips-state-pred-val state 'aty)) 1) 1))))))
-	  (nav-switch/make-nav-switch-strips-env 2 2 [[0 0]] [1 0] true [0 1])
-	  :edu.berkeley.ai.angelic.dnf-simple-valuations/DNFSimpleValuation)))
-     (util/is
-      (= '[[good-left x1 x0] [flip-v x0 y0] [good-down y0 y1]]
-	 (get-and-check-sol
-	  (strips-hierarchies/make-flat-strips-hierarchy-schema 
-	   (nav-switch/make-nav-switch-strips-domain) (constantly 0))
-	  (strips/constant-predicate-simplify (nav-switch/make-nav-switch-strips-env 2 2 [[0 0]] [1 0] true [0 1]))
-	  :edu.berkeley.ai.angelic.dnf-simple-valuations/DNFSimpleValuation))))
+   (util/testing "flat hierarchy, non-strips"
+     (util/is (= *flat-ns-sol* (get-and-check-sol (get-flat-hierarchy *flat-ns*))))
+     (util/is (= *flat-ns-sol* (get-and-check-sol (get-flat-hierarchy *flat-ns* *flat-ns-heur*)))))
+   (util/testing "flat hierarchy, strips"
+     (util/is (= *strips-ns-sol*
+       (get-and-check-sol (get-flat-hierarchy *strips-ns* *strips-ns-heur*))))
+     (doseq [simplifier *simplifiers*]
+       (util/is (= *strips-ns-sol*
+	 (get-and-check-sol (get-flat-hierarchy (simplifier *strips-ns*)))))))
+   (util/testing "flat-strips hierarchy"
+     (util/is (= *strips-ns-sol*
+       (get-and-check-sol (strips-hierarchies/get-flat-strips-hierarchy *strips-ns* *strips-ns-heur*))))
+     (doseq [simplifier (butlast *simplifiers*)]
+       (util/is (= *strips-ns-sol*
+	 (get-and-check-sol (strips-hierarchies/get-flat-strips-hierarchy (simplifier *strips-ns*)))))))
    (util/testing "Ordinary strips hierarchy"
-     (let [domain (nav-switch/make-nav-switch-strips-domain)
-	   env (nav-switch/make-nav-switch-strips-env 2 2 [[0 0]] [1 0] true [0 1])
-	   schema (parse-hierarchy "/Users/jawolfe/Projects/angel/src/edu/berkeley/ai/domains/nav_switch.hierarchy" domain)]
-       (doseq [simplifier [identity
-			   strips/constant-predicate-simplify]]
-	 (println simplifier)
-	 (util/is
-	  (= '[[good-left x1 x0] [flip-v x0 y0] [good-down y0 y1]]
-	     (get-and-check-sol schema (simplifier env) :edu.berkeley.ai.angelic.dnf-simple-valuations/DNFSimpleValuation)))))))
-			      
+     (doseq [simplifier (butlast *simplifiers*)]
+       (util/is (= *strips-ns-sol*
+	 (get-and-check-sol (get-hierarchy nav-switch/*nav-switch-hierarchy* (simplifier *strips-ns*))))))))		 
+
+(def *strips-wh* (warehouse/make-warehouse-strips-env 2 2 [1 1] false {0 '[a]} nil ['[a table1]]))
+(def *strips-wh-sols* 
+  #{'((get-l a table0 x0 x1 y1) (left x1 x0 y1) (turn-r x0 y1) (put-r a table1 x1 x0 y0 y1))
+	 '((get-l a table0 x0 x1 y1) (turn-r x1 y1) (left x1 x0 y1) (put-r a table1 x1 x0 y0 y1))}) 			      
 
 (util/deftest top-down-warehouse
  (util/testing "flat-strips hierarchy"
-     (util/is
-      (= '((get-l a table0 x0 x1 y1) (left x1 x0 y1) (turn-r x0 y1) (put-r a table1 x1 x0 y0 y1))
-	 (get-and-check-sol
-	  (strips-hierarchies/make-flat-strips-hierarchy-schema 
-	   (warehouse/make-warehouse-strips-domain) (constantly 0))
-	  (strips/constant-predicate-simplify
-	   (warehouse/make-warehouse-strips-env 2 2 [1 1] false {0 '[a]} nil ['[a table1]]))
-	  :edu.berkeley.ai.angelic.dnf-simple-valuations/DNFSimpleValuation)))))
+   (doseq [simplifier (butlast *simplifiers*)
+	   maker [strips-hierarchies/get-flat-strips-hierarchy 
+		  #(get-hierarchy warehouse/*warehouse-hierarchy-unguided* %)]]
+     (util/is (*strips-wh-sols* (get-and-check-sol (maker (simplifier *strips-wh*))))))))
+
       
 
 (comment 
@@ -343,7 +297,7 @@
 
 (let [domain (make-warehouse-strips-domain), env (constant-predicate-simplify (make-warehouse-strips-env 3 3 [1 1] false {0 '[a] 2 '[b]} nil ['[b a]])),  node (make-initial-top-down-forward-node  :edu.berkeley.ai.angelic.dnf-simple-valuations/DNFSimpleValuation  (instantiate-hierarchy (make-flat-strips-hierarchy-schema domain (constantly 0)) env))] (time (second (a-star-search node))))
 
-(let [domain (make-warehouse-strips-domain), env (constant-predicate-simplify (make-warehouse-strips-env 2 2 [1 1] false {0 '[a]} nil ['[a table1]])),  node (make-initial-top-down-forward-node  :edu.berkeley.ai.angelic.dnf-simple-valuations/DNFSimpleValuation  (instantiate-hierarchy (parse-hierarchy "/Users/jawolfe/projects/angel/src/edu/berkeley/ai/domains/warehouse.hierarchy" (make-warehouse-strips-domain)) env))] (time (second (a-star-search node))))
+(let [domain (make-warehouse-strips-domain), env (constant-predicate-simplify (make-warehouse-strips-env 2 2 [1 1] false {0 '[a]} nil ['[a table1]])),  node (make-initial-top-down-forward-node  :edu.berkeley.ai.angelic.dnf-simple-valuations/DNFSimpleValuation  (instantiate-hierarchy (parse-hierarchy "/Users/jawolfe/projects/angel/src/edu/berkeley/ai/domains/warehouse_icaps08_unguided.hierarchy" (make-warehouse-strips-domain)) env))] (time (second (a-star-search node))))
 
   )
 

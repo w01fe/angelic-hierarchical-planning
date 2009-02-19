@@ -9,6 +9,11 @@
 (defn make-flat-hierarchy-schema [upper-reward-fn]
   (struct flat-hierarchy-schema ::FlatHierarchySchema upper-reward-fn))
 
+(defn get-flat-hierarchy 
+  ([env] (get-flat-hierarchy env (constantly 0)))
+  ([env upper-reward-fn]
+   (instantiate-hierarchy (make-flat-hierarchy-schema upper-reward-fn) env)))
+
 (defstruct flat-act-hla :class :env :opt-desc :action-space)
 (derive ::FlatActHLA ::HLA)
 (defn- make-flat-act-hla [env opt-desc action-space]
@@ -44,6 +49,7 @@
    (make-flat-act-optimistic-description (envs/get-goal instance) (:upper-reward-fn hierarchy))
    (envs/get-action-space instance)))
 
+(defmethod hla-default-valuation-type ::FlatActHLA [hla] :edu.berkeley.ai.angelic/ExplicitValuation)
 
 (defmethod hla-primitive? ::FlatPrimitiveHLA [hla] true)
 (defmethod hla-primitive ::FlatPrimitiveHLA [hla] (:action hla))

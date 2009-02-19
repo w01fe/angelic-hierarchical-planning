@@ -47,8 +47,9 @@
   [expr max-seconds]
   `(let [#^ExecutorService pool# (java.util.concurrent.Executors/newCachedThreadPool)
 	 #^Callable f#    #(get-time-pair ~expr)
-	 #^Future future# (.submit thread-pool# f#)]
-    (try (.get future# (long (* 1000 ~max-seconds)) java.util.concurrent.TimeUnit/MILLISECONDS)
+	 #^Future future# (.submit pool# f#)]
+    (try (let [v# (.get future# (long (* 1000 ~max-seconds)) java.util.concurrent.TimeUnit/MILLISECONDS)]
+	   (if (< (second v#) (* 1000 ~max-seconds)) v# :timeout))	   
 	 (catch java.util.concurrent.TimeoutException e# 
 	   (kill-future pool# future#)
 	   :timeout))))
