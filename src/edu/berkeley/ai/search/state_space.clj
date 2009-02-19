@@ -8,10 +8,10 @@
 
 ;;; An auxillary data structure to hold cached features of env, heuristics.
 
-(defstruct state-space-search-space-struct :class :state-space :action-space :goal :lower-reward-fn :upper-reward-fn)
+(defstruct state-space-search-space-struct :class :state-space :action-space :goal :lower-reward-fn :upper-reward-fn :env)
 
-(defn make-state-space-search-space- [state-space action-space goal lower-reward-fn upper-reward-fn]
-  (struct state-space-search-space-struct ::StateSpaceSearchSpace state-space action-space goal lower-reward-fn upper-reward-fn))
+(defn make-state-space-search-space- [state-space action-space goal lower-reward-fn upper-reward-fn env]
+  (struct state-space-search-space-struct ::StateSpaceSearchSpace state-space action-space goal lower-reward-fn upper-reward-fn env))
 
 
 ;;; Main node data structure
@@ -32,7 +32,7 @@
   ([env upper-reward-fn] 
      (state-space-search-space env (constantly Double/NEGATIVE_INFINITY) upper-reward-fn))
   ([env lower-reward-fn upper-reward-fn]
-     (make-state-space-search-space- (envs/get-state-space env) (envs/get-action-space env) (envs/get-goal env) lower-reward-fn upper-reward-fn)))
+     (make-state-space-search-space- (envs/get-state-space env) (envs/get-action-space env) (envs/get-goal env) lower-reward-fn upper-reward-fn env)))
 
 (defn make-initial-state-space-node 
   ([env] 
@@ -41,10 +41,15 @@
      (make-initial-state-space-node env (constantly Double/NEGATIVE_INFINITY) upper-reward-fn))
   ([env lower-reward-fn upper-reward-fn]
      (make-state-space-node 
-      (make-state-space-search-space- (envs/get-state-space env) (envs/get-action-space env) (envs/get-goal env) lower-reward-fn upper-reward-fn)
+      (make-state-space-search-space- (envs/get-state-space env) (envs/get-action-space env) (envs/get-goal env) lower-reward-fn upper-reward-fn env)
       (envs/get-initial-state env))))  
 
+(defn ss-node [& args] (apply make-initial-state-space-node args))
+
 ;;; Node methods 
+
+(defmethod node-environment   ::StateSpaceNode [node] (:env (:search-space node)))
+(defmethod node-state         ::StateSpaceNode [node] (:state node))
 
 (defmethod lower-reward-bound ::StateSpaceNode [node] 
   (+ (:reward ^(:state node)) ((:lower-reward-fn (:search-space node)) (:state node))))

@@ -1,14 +1,58 @@
+Meeting with Craig Boutilier:
+
+Decision-theoretic planning
+Planning with concurrent actions
+Marrying HRL and planning
+Representations for abstract planning under uncertainty.
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
 
 TODO:  Way to combine benefits of ref-generator and CSP??
 ; Something else clever I thought of late last night ..
+
+Change webpage picture...
+  
   
 Check for dead-ends somewhere?.
-
-Look into cost of thread blocking
-Require that long-running timable processes are interruptable.
-see what gives with timing 
-
- (time (time-limit (time (map :name (first (a-star-search (make-initial-state-space-node (constant-predicate-simplify (make-warehouse-strips-env 3 3 [1 2] true {0 '[b a] 2 '[c]} nil ['[a b c]])) (constantly 0)))))) 10))
 
 ; WW timing
   
@@ -35,6 +79,8 @@ Merging nodes - do it iff rest of plan is the same ??
 ; Add AHA* and AHSS ...
 
 ; Add weighted A* or that version I saw at ICAPS?
+
+speed up make-successor-generator?
 
   
 ------------------------------------

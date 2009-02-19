@@ -98,6 +98,13 @@
 ;(defmethod search/dead-end?  ::TopDownForwardNode [node]
 ;  (empty-valuation? (get-optimistic-valuation node)))
 
+(defmethod search/node-environment   ::TopDownForwardRootNode [node] (throw (IllegalArgumentException.)))
+(defmethod search/node-environment   ::TopDownForwardRootNode [node] (hla-environment (:hla node)))
+
+(defmethod search/node-state   ::TopDownForwardNode [node]
+  (if (= (:class (:previous node)) ::TopDownForwardRootNode)
+      (envs/get-initial-state (hla-environment (:hla node)))
+    (throw (IllegalArgumentException.))))
 
 
 (defmethod search/lower-reward-bound ::TopDownForwardRootNode [node] 
@@ -185,6 +192,19 @@
 
 ;(defmethod search/node-first-action ::TopDownForwardNode [node]
 ;  (nth (:act-seq ^(:state node)) 0))
+
+
+
+
+
+
+
+
+
+
+
+
+
 
 
 

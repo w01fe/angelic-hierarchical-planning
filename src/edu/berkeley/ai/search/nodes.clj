@@ -6,6 +6,9 @@
 
 ;;;;;;;;;;;;;;;;;; Interface for search nodes
 
+
+(defmulti #^{:doc "Get the environment associated with this node"} node-environment :class)
+
 (defmulti #^{:doc "A lower bound on the reward of the best refinement"} lower-reward-bound :class)
 
 (defmulti #^{:doc "An upper bound on the reward of the best refinement"} upper-reward-bound :class)
@@ -48,6 +51,11 @@
 
 (defmulti #^{:doc "First primitive action at node"} node-first-action :class)
 (defmethod node-first-action :Node [node] (throw (UnsupportedOperationException.)))
+
+(defmulti #^{:doc "Env state associated with this node"} node-state :class)
+(defmethod node-state :Node [node] (throw (UnsupportedOperationException.)))
+
+
 
 ;;; Some useful utility functions based on these definitions.
 
@@ -178,6 +186,11 @@
 	(all-refinements node pq priority-fn)))
 
 
+(defn checked-algorithm [alg & args]
+  (fn [node]
+    (envs/check-solution (node-environment node)
+      (apply alg node args))))
+
 ;;; A wrapper for nodes to change their cost bounds
 
 (defstruct reward-adjusted-node :class :node :lower-reward :upper-reward)
@@ -189,6 +202,7 @@
   ([node upper] (adjust-reward node (lower-reward-bound node) upper))
   ([node lower upper] (struct reward-adjusted-node ::RewardAdjustedNode node lower upper)))
 
+(defmethod node-environment         ::RewardAdjustedNode [node] (node-environment         (:node node)))
 (defmethod lower-reward-bound       ::RewardAdjustedNode [node] (:lower-reward node))
 (defmethod upper-reward-bound       ::RewardAdjustedNode [node] (:upper-reward node))
 (defmethod reward-so-far            ::RewardAdjustedNode [node] (reward-so-far            (:node node)))
@@ -200,7 +214,7 @@
 (defmethod node-parent              ::RewardAdjustedNode [node] (node-parent              (:node node)))
 (defmethod node-depth               ::RewardAdjustedNode [node] (node-depth               (:node node)))
 (defmethod node-first-action        ::RewardAdjustedNode [node] (node-first-action        (:node node)))
-
+(defmethod node-state               ::RewardAdjustedNode [node] (node-state               (:node node)))
 
 
 

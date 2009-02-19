@@ -118,6 +118,10 @@
 		   (do (kill-future pool# future#) :memout))))))))))
 
 
+(defn interrupt-all-threads []
+  (doseq [#^Thread thread (.keySet (Thread/getAllStackTraces))]
+    (.interrupt thread)))
+
 	 
 ; Idea for profiling: once a second,
  ; If memory is above previous maximum,
