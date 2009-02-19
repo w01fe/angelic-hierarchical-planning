@@ -36,10 +36,18 @@
 	     (zero? max-gc)      cur-mem
 	     :else               (do (force-gc) (recur old-max (dec max-gc)))))))
 
+(defn timeout "Call this periodically to make sure thread can be interrupted." []
+  (when (Thread/interrupted) (throw (InterruptedException.))))
+
+; Thread/sleep 0 1 (slows down a LOT, 10x).  0,0 does not do the job.
+
+
 (defn kill-future [#^ExecutorService pool #^Future f]
+  (println "killing")
   (.cancel f true)
   (.shutdownNow pool)
-  (.awaitTermination pool 10 java.util.concurrent.TimeUnit/SECONDS))
+  (when-not (.awaitTermination pool 10 java.util.concurrent.TimeUnit/SECONDS)
+    (println "shutdown failed")))
 
 (defmacro time-limit
   "Runs expr for at most max-seconds, killing and returning :timeout if out of time,
@@ -49,7 +57,7 @@
 	 #^Callable f#    #(get-time-pair ~expr)
 	 #^Future future# (.submit pool# f#)]
     (try (let [v# (.get future# (long (* 1000 ~max-seconds)) java.util.concurrent.TimeUnit/MILLISECONDS)]
-	   (if (< (second v#) (* 1000 ~max-seconds)) v# :timeout))	   
+	   (if (< (second v#) (* 1000 ~max-seconds)) v# :timeout2))	   
 	 (catch java.util.concurrent.TimeoutException e# 
 	   (kill-future pool# future#)
 	   :timeout))))

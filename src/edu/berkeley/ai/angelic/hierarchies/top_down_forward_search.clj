@@ -136,6 +136,7 @@
 
 ; TODO: add way to specify which HLA to refine.
 (defmethod search/immediate-refinements ::TopDownForwardNode [node] 
+  (util/timeout)
   (util/sref-set! *ref-counter* (inc (util/sref-get *ref-counter*)))
   (when-let [fnp (first-nonprimitive node)]
     (local-immediate-refinements fnp (reverse (map :hla (take-while #(not= % fnp) (iterate :previous node))))))) 

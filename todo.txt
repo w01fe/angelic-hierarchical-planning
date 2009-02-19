@@ -4,6 +4,12 @@ TODO:  Way to combine benefits of ref-generator and CSP??
   
 Check for dead-ends somewhere?.
 
+Look into cost of thread blocking
+Require that long-running timable processes are interruptable.
+see what gives with timing 
+
+ (time (time-limit (time (map :name (first (a-star-search (make-initial-state-space-node (constant-predicate-simplify (make-warehouse-strips-env 3 3 [1 2] true {0 '[b a] 2 '[c]} nil ['[a b c]])) (constantly 0)))))) 10))
+
 ; WW timing
   
 ; Make WW hierarchy

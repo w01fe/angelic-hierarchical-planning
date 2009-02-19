@@ -56,6 +56,7 @@
   (:reward ^(:state node)))
 
 (defmethod immediate-refinements ::StateSpaceNode [node] 
+  (util/timeout)
   (let [search-space (:search-space node)
 	state (:state node)]
     (map #(make-state-space-node search-space %) 

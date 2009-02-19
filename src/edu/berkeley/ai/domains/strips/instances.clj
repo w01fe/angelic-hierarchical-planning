@@ -115,11 +115,13 @@
 ; MAYBE: compile sequence of tests?
 ; MATBE: change to pass in mutable hashmap or some such?
 ; MAYBE: optimize compilation speed
+; Single pass through actions, make single ordering?
 ; but, seems fast enough for now!
 (defn- make-successor-generator 
   ([actions] (make-successor-generator actions #{}))
   ([actions blacklist]
 ;  (prn (count actions) blacklist)
+  (util/timeout)
   (let [most-common-pair
   	  (first 
 	    (util/maximal-elements second
