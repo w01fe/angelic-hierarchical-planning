@@ -116,7 +116,7 @@
 
 (defn parse-pddl-conjunction-forall [conj]
   (let [{:keys [pos neg forall]}
-	(group-by #(cond (= (first %) 'not) :not (= (first %) 'forall) :forall :else :pos)
+	(group-by #(cond (= (first %) 'not) :neg (= (first %) 'forall) :forall :else :pos)
 		  (pddl-conjunction->seq conj))]
     [pos 
      (map (fn [term] (assert-is (= 2 (count term))) (second term)) neg)
