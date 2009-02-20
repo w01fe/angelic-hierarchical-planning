@@ -48,7 +48,8 @@
   ([name domain objects init-atoms goal-atoms]
      (make-strips-planning-instance name domain objects init-atoms goal-atoms str))
   ([name domain objects init-atoms goal-atoms state-str-fn]
-  (let [types           (:types domain)
+  (let [equality?       (includes-equality? domain)
+	types           (:types domain)
 	guaranteed-objs (:guaranteed-objs domain)
 	predicates      (:predicates domain)
 	all-objects     (props/check-objects types (concat objects guaranteed-objs))]
@@ -58,7 +59,9 @@
 	    domain
 	    all-objects    
 	    (util/map-map (fn [t] [t (mapcat (partial get all-objects) (props/get-subtypes types t))]) (keys types))
-	    (concat (map (partial props/check-atom types all-objects predicates) init-atoms)
+	    (concat (map (partial props/check-atom types all-objects predicates) 
+			 (concat init-atoms 
+				 (when equality? (for [[t os] all-objects, o os] [(util/symbol-cat t '=) o o]))))
 		    (map #(props/check-atom types all-objects predicates (cons (goal-ize (first %)) (rest %))) goal-atoms))
 	    (map (partial props/check-atom types all-objects predicates) goal-atoms)
 	    (get-predicate-instantiations (:predicates domain) all-objects)

@@ -57,7 +57,7 @@
 
 (derive ::StripsPlanningDomain ::envs/PropositionalDomain)
 
-(defstruct strips-planning-domain :class :name :types :guaranteed-objs :predicates :action-schemata)
+(defstruct strips-planning-domain :class :name :types :guaranteed-objs :predicates :action-schemata :equality?)
 
 (defn goal-ize [pred-name] (util/symbol-cat 'goal- pred-name))
 
@@ -66,6 +66,7 @@
 ;    (if (.startsWith name "goal-")
 ;      (assoc pred 0 (symbol (.substring name 5))))))
 
+(defn- includes-equality? [domain] (:equality? domain))
 
 (defn add-goal-predicates [predicates]
   (let [all-preds (merge predicates (util/map-map (fn [[pred args]] [(goal-ize pred) args]) predicates))]
@@ -78,45 +79,57 @@
    guaranteed-objs is a seq of [type & objects]
    predicates are [predicate-keyword & argument-types] (or symbols?).
    action-schemata are instances of strips-action-schema."
-  [name types guaranteed-objs predicates action-schemata]
+  [name types guaranteed-objs predicates action-schemata include-equality?]
 ;  (prn name types guaranteed-objs predicates action-schemata)
-  (let [types (props/check-types types)
+;  (println types)
+  (let [;all-type (gensym "all-type")
+	;prim-types (map #(if (coll? %) (first %) %) 
+	;		(filter #(or (not (coll? %)) (empty? (rest %))) types))
+	types (props/check-types types) ;(if include-equality? (cons [all-type prim-types] types) types))
 	guaranteed-objs (props/check-objects types guaranteed-objs)
-        predicates (props/check-predicates types predicates)
+        predicates (props/check-predicates types 
+		    (concat predicates
+		     (when include-equality? (map #(vector (util/symbol-cat (first %) '=) (first %) (first %)) types))))
         action-schemata (check-action-schemata types guaranteed-objs predicates action-schemata)]
     (struct strips-planning-domain ::StripsPlanningDomain
 	    name types guaranteed-objs 
-	    (add-goal-predicates predicates) action-schemata
+	    (add-goal-predicates predicates) action-schemata include-equality?
 	    )))
 
 (defn read-strips-planning-domain [file]
   (util/match [[define [domain ~name]
-	   [:requirements :strips :typing]
-	   [:types ~@types]
-	   [:predicates ~@predicates]
-	   ~@actions]
-	  (read-string (.toLowerCase (slurp file)))]
-    (make-strips-planning-domain 
-     name
-     types
-     nil
-     (map props/parse-pddl-predicate predicates)
-     (map parse-pddl-action-schema actions))))
+		[:requirements ~@requirements]
+		[:types ~@types]
+		[:predicates ~@predicates]
+		~@actions]
+	       (read-string (.toLowerCase (slurp file)))]
+    (let [requirements (set requirements)]
+      (util/assert-is (util/subset? requirements #{:strips :typing :equality}))
+      (util/assert-is (util/subset? #{:strips :typing} requirements))
+      (make-strips-planning-domain 
+       name
+       types
+       nil
+       (map props/parse-pddl-predicate predicates)
+       (map parse-pddl-action-schema actions)
+       (contains? requirements :equality)))))
 
 
 ;; Identify constant/inertia preds
 
 ; const-predicates is seq of predicate names from (keys :predicates) that are not changed by any action.  
 ; positive-predicates and negative-predicates are similar, but are ones that only appear positively or negatively (resp.) in any effect.
-(defstruct ca-strips-planning-domain :class :name :types :guaranteed-objs :predicates :action-schemata :const-predicates :pi-predicates :ni-predicates)
+(defstruct ca-strips-planning-domain :class :name :types :guaranteed-objs :predicates :action-schemata :const-predicates :pi-predicates :ni-predicates :equality?)
 (derive ::CAStripsPlanningDomain ::StripsPlanningDomain)
 
 (defn constant-annotate-strips-planning-domain [domain]
   (if (isa? (:class domain) ::CAStripsPlanningDomain) domain
-    (let [action-schemata (util/safe-get domain :action-schemata)
+    (let [;equality?       (:equality? domain)
+	  action-schemata (util/safe-get domain :action-schemata)
 	  all-preds (util/keyset (util/safe-get domain :predicates))
 	  add-preds (set (for [as action-schemata, add (util/safe-get as :add-list)] (first add)))
 	  del-preds (set (for [as action-schemata, del (util/safe-get as :delete-list)] (first del)))]
+;      (when equality? (util/assert-is (and (not add-preds '=) (not del-preds '=))))
       (struct ca-strips-planning-domain ::CAStripsPlanningDomain
 	(util/safe-get domain :name)
 	(util/safe-get domain :types)

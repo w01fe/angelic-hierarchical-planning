@@ -20,7 +20,7 @@
 
 (def *med-ww* ["med 3x4" -14 (strips/constant-predicate-simplify (warehouse/make-warehouse-strips-env 3 4 [1 2] false {0 '[b a] 2 '[c]} nil ['[a b c]]))])
 
-(def *long-ww* ["long 4x4" -50 (strips/constant-predicate-simplify (make-warehouse-strips-env 4 4 [1 2] false {0 '[a] 2 '[c b]} nil ['[a c table1]]))])
+(def *long-ww* ["long 4x4" -50 (strips/constant-predicate-simplify (warehouse/make-warehouse-strips-env 4 4 [1 2] false {0 '[a] 2 '[c b]} nil ['[a c table1]]))])
 
 (def *big-ww* ["big 7x6" -50 (strips/constant-predicate-simplify (warehouse/make-warehouse-strips-env 7 6 [0 2] true {0 '[b] 1 '[a] 2 '[c]  } nil ['[a b c table5]]))])
 
@@ -29,7 +29,7 @@
 (def *search-fns* [["a-star" textbook/a-star-search] ["a-star graph" textbook/a-star-graph-search]])
 
 (def *node-fns* [;["strips" search/ss-node] 
-		 ["flat-strips" #(hierarchies/tdf-node (strips-hierarchies/get-flat-strips-hierarchy %))]
+		 ;["flat-strips" #(hierarchies/tdf-node (strips-hierarchies/get-flat-strips-hierarchy %))]
 		 ["unguided-hierarchy" #(hierarchies/tdf-node (hierarchies/get-hierarchy warehouse/*warehouse-hierarchy-unguided* %))]])
 
 (def *time-limit* 10)
@@ -69,3 +69,7 @@
 	  search-v (butlast *search-fns*)]
     (time-ww env-v search-v node-v))
   )
+
+
+
+; (interactive-search (tdf-node (get-hierarchy *warehouse-hierarchy-unguided* (constant-predicate-simplify (make-warehouse-strips-env 7 6 [0 2] true {0 '[b] 1 '[a] 2 '[c]  } nil ['[a b c table5]])))) (make-tree-search-pq) #(- (upper-reward-bound %)))

@@ -4,7 +4,7 @@
 ; y0 at top, x0 at left
 
 (define (domain WAREHOUSE)
-  (:requirements :strips :typing)
+  (:requirements :strips :typing :equality)
   (:types block xc yc)
   (:predicates (leftof ?x1 - xc ?x2 - xc)
   	       (above ?y1 - yc ?y2 - yc)

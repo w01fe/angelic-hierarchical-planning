@@ -19,7 +19,7 @@
   (:hla move-block
        :parameters (?b - block ?from - block ?to - block 
 		    ?bx - xc ?by - yc ?tox - xc ?toy - yc ?abovetoy - yc)
-       :precondition (and (gripperempty)
+       :precondition (and (not (block= ?b ?to)) (gripperempty)
 			  (clear ?b) (clear ?to) (on ?b ?from)
 			  (blockat ?b ?bx ?by) (blockat ?to ?tox ?toy)
 			  (above ?abovetoy ?toy))
@@ -49,8 +49,13 @@
 						      (forall (?pdx - xc) (leftof ?tox ?pdx) (gripperat ?pdx ?abovetoy)))
 				:cost-parameters (?cx - xc ?cy - yc)
 				:cost-precondition (gripperat ?cx ?cy)
-				:cost-expr 2
-				))
+				:cost-expr (+ (util/symbol-abs-diff ?cy ?by 1)
+					      (util/symbol-abs-diff ?cx ?bx 1)
+					      (if (= ?bx ?cx) 1 -1)
+					      (max 3
+						   (+ (util/symbol-abs-diff ?bx ?tox 1)
+						      (util/symbol-abs-diff ?by ?abovetoy 1))))
+				))  ; Missing any turn cost, also some inconsisent possibilities (gripper on block)
        :pessimistic (:pess))
 
   (:hla navigate       

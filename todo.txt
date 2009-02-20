@@ -1,61 +1,16 @@
-Meeting with Craig Boutilier:
-
-Decision-theoretic planning
-Planning with concurrent actions
-Marrying HRL and planning
-Representations for abstract planning under uncertainty.
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
 TODO:  Way to combine benefits of ref-generator and CSP??
 ; Something else clever I thought of late last night ..
 
 Change webpage picture...
-  
+
+TODO: combine ...
+
+Move heuristic
+
+water plants  
   
 Check for dead-ends somewhere?.
 
-; WW timing
-  
 ; Make WW hierarchy
 
 ; make WW heuristics ?
@@ -73,12 +28,13 @@ Merging nodes - do it iff rest of plan is the same ??
    ; After progressing through *just next HLA*, may collapse, and can prune!!
      ; But this is just graph ? ? 
      ; Except: can save on plan suffix comparisions (push out list?) .....
+     ; Graph is still good for comparing within.  i.e. L R Nav ns Nav ?
+     ; Difference is graph only compares opt with pess.  This can give sub-exp just from opt?  But have to join after each action.  Unless add take-step action.
 
 ; Add abstract lookahead trees. 
 
 ; Add AHA* and AHSS ...
 
-; Add weighted A* or that version I saw at ICAPS?
 
 speed up make-successor-generator?
 
@@ -159,6 +115,8 @@ longer term
   ( and only include things in clauses where needed?)
 
  - Tiebreaking?
+
+ ; Add weighted A* or that version I saw at ICAPS?
 
 
 Efficiency
