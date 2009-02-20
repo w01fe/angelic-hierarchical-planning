@@ -267,7 +267,7 @@
 	       (every? #(not (= :true (clause %))) neg-pre))
       (let [pred-maps (valuation->pred-maps (dsv/make-dnf-simple-valuation #{clause} 0))
 	    [more-pos-pre more-neg-pre] (apply map concat [nil nil] (map #(% pred-maps) (util/safe-get effect :precondition-fns)))]
-	(println more-pos-pre more-neg-pre)
+;	(println more-pos-pre more-neg-pre)
 	(when (and (every? clause more-pos-pre)
 		   (every? #(not (= :true (clause %))) more-neg-pre))
 ;	  (println "go")
