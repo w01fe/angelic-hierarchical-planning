@@ -43,7 +43,7 @@
 
 
 (defn kill-future [#^ExecutorService pool #^Future f]
-  (println "killing")
+;  (println "killing")
   (.cancel f true)
   (.shutdownNow pool)
   (when-not (.awaitTermination pool 10 java.util.concurrent.TimeUnit/SECONDS)

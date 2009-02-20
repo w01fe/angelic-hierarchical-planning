@@ -36,7 +36,7 @@
 
 (defn make-initial-state-space-node 
   ([env] 
-     (make-initial-state-space-node env (constantly Double/POSITIVE_INFINITY)))
+     (make-initial-state-space-node env (constantly 0)));(constantly Double/POSITIVE_INFINITY)))
   ([env upper-reward-fn] 
      (make-initial-state-space-node env (constantly Double/NEGATIVE_INFINITY) upper-reward-fn))
   ([env lower-reward-fn upper-reward-fn]

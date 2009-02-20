@@ -334,7 +334,7 @@
 (defn- make-successor-generator 
   ([actions] 
      (doall actions)
-     (let [atom-order (time (get-successor-atom-order actions))
+     (let [atom-order (get-successor-atom-order actions)
 	   pos-set-map (HashMap.)
 	   neg-set-map (HashMap.)
 	   bad-actions (HashSet.)]
