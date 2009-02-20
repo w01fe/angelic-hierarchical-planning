@@ -24,7 +24,7 @@
 			  (blockat ?b ?bx ?by) (blockat ?to ?tox ?toy)
 			  (above ?abovetoy ?toy))
        :refinement (:parameters (:?cx - xc :?cy - yc :?pux - xc :?pdx - xc :?topy - yc)
-		    :precondition (and (gripperat :?cx :?cy) (topy :?topy))
+		    :precondition (and (gripperat :?cx :?cy) (topy :?topy)) 
 		    :expansion ((navigate :?cx :?cy :?pux ?by :?topy) (get-r ?b ?from ?bx :?pux ?by)
 				(navigate :?pux ?by :?pdx ?abovetoy :?topy) (put-r ?b ?to ?tox :?pdx ?toy ?abovetoy)))
        :refinement (:parameters (:?cx - xc :?cy - yc :?pux - xc :?pdx - xc :?topy - yc) 
@@ -60,6 +60,7 @@
 
   (:hla navigate       
        :parameters (?cx - xc ?cy - yc ?dx - xc ?dy - yc ?topy - yc)
+       :precondition (not (someblockat ?dx ?dy))
        :refinement (:expansion ((nav ?cx ?cy ?dx ?dy ?topy)))
        :refinement (:precondition (facingright)
 		    :expansion ((nav ?cx ?cy ?cx ?topy ?topy) (turn-l ?cx ?topy) (nav ?cx ?topy ?dx ?dy ?topy)))
@@ -69,8 +70,7 @@
 				:possible-effect (and (not (facingright)) (facingright))
 			        :cost-expr (+ (util/symbol-abs-diff ?dx ?cx 1)
 					      (util/symbol-abs-diff ?dy ?cy 1))))
-       :pessimistic (:ncstrips (:precondition (and (not (someblockat ?dx ?dy))
-					      (forall (?x - xc) (and) (not (someblockat ?x ?topy))))
+       :pessimistic (:ncstrips (:precondition (forall (?x - xc) (and) (not (someblockat ?x ?topy)))
 				:effect (and (gripperat ?dx ?dy) (not (gripperat ?cx ?cy)))
 				:possible-effect (and (not (facingright)) (facingright))
 			        :cost-expr (+ 1
@@ -92,8 +92,7 @@
        :optimistic  (:ncstrips (:effect (and (gripperat ?dx ?dy) (not (gripperat ?cx ?cy)))
 			        :cost-expr (+ (util/symbol-abs-diff ?dx ?cx 1)
 					      (util/symbol-abs-diff ?dy ?cy 1))))
-       :pessimistic (:ncstrips (:precondition (and (not (someblockat ?dx ?dy))
-					      (forall (?x - xc) (and) (not (someblockat ?x ?topy))))
+       :pessimistic (:ncstrips (:precondition (forall (?x - xc) (and) (not (someblockat ?x ?topy)))
                                 :effect (and (gripperat ?dx ?dy) (not (gripperat ?cx ?cy)))
 			        :cost-expr (+ (util/symbol-abs-diff ?dx ?cx 1)
 					      (util/symbol-abs-diff ?cy ?topy 1)

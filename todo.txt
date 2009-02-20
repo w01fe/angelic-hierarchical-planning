@@ -1,17 +1,15 @@
 TODO:  Way to combine benefits of ref-generator and CSP??
 ; Something else clever I thought of late last night ..
 
-Change webpage picture...
+; Pessimistic vlauation for nav
+; Negative inf cost when making dsv?
 
-TODO: combine ...
+; Check max in ncstrips-cost
+Change webpage picture...
 
 Move heuristic
 
-water plants  
-  
 Check for dead-ends somewhere?.
-
-; Make WW hierarchy
 
 ; make WW heuristics ?
 

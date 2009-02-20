@@ -97,6 +97,7 @@
 	     [add     del     forall-eff] (props/parse-pddl-conjunction-forall eff),
 	     [p-add   p-del   forall-p-eff] (props/parse-pddl-conjunction-forall poss),
 	     cost-parameters (props/parse-typed-pddl-list cost-parameters)]
+;	 (println pos-pre neg-pre forall-pre add del forall-eff p-add p-del forall-p-eff "\n\n")
 	 (when cost-precondition (util/assert-is (not (empty? cost-parameters))))
 ;	 (println cost-expr)
 ;	 (println (eval '*ns*))
@@ -189,11 +190,16 @@
 
 (defstruct ncstrips-description :class :effects)
 
+(import '(java.util ArrayList))
 (defn- get-csp-results [csp pos neg var-map pred-maps]
-  (for [combo (smart-csps/get-smart-csp-solutions csp var-map pred-maps)]
-    (let [final-map (merge var-map combo)
-	  grounder #(props/simplify-atom final-map %)]
-      [(map grounder pos) (map grounder neg)])))
+  (let [pl (ArrayList.), nl (ArrayList.)]
+    (doseq [combo (smart-csps/get-smart-csp-solutions csp var-map pred-maps)]
+      (let [final-map (merge var-map combo)  
+  	    grounder #(props/simplify-atom final-map %)]
+	(doseq [p pos] (.add pl (grounder p)))
+	(doseq [n neg] (.add nl (grounder n)))))
+    [(seq pl) (seq nl)]))
+;      [(map grounder pos) (map grounder neg)])))
 
 ; Make a function that takes pred-maps as arguments and returns grounded [pos neg]
 (defn- ground-ncstrips-csp [[args csp [pos neg]] var-map]
@@ -211,7 +217,7 @@
 ;      (println csp var-map hla-vars)
       (fn [pred-maps]
 ;	(println pred-maps)
-        (apply max
+        (apply max  ;; TODO???
 	  (for [combo (smart-csps/get-smart-csp-solutions csp var-map pred-maps)]
 	    (let [final-map (merge combo var-map)]
 	      (apply cost-fn (concat early-args (map #(util/safe-get final-map (second %)) args))))))))))
@@ -261,7 +267,7 @@
 	       (every? #(not (= :true (clause %))) neg-pre))
       (let [pred-maps (valuation->pred-maps (dsv/make-dnf-simple-valuation #{clause} 0))
 	    [more-pos-pre more-neg-pre] (apply map concat [nil nil] (map #(% pred-maps) (util/safe-get effect :precondition-fns)))]
-;	(println more-pos-pre more-neg-pre)
+	(println more-pos-pre more-neg-pre)
 	(when (and (every? clause more-pos-pre)
 		   (every? #(not (= :true (clause %))) more-neg-pre))
 ;	  (println "go")
