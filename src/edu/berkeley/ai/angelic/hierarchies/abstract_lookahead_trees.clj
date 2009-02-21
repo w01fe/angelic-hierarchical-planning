@@ -9,15 +9,13 @@
 ;; Abstract lookahead trees, with (optional) forward caching and graph stuff.
 ; Should subsume top_down_forward at some point
 
-; WARNING
-
-; Note: According to node contract, equality should be only on plan-tail and valuations if possible.  This is tree though, so forget that?
+; WARNING: plan-Graph search will not work here!  Cannot eliminate duplicate plans due to
+; iteraction with state-graph..
 
 ;; Nodes
 ; note that valuations are metadata so they aren't used in comparisons.
 
 ; Graph map is metadata on ALT, maps from [state-set rest-plan] --> max-pess-reward.
-; MUST contain only active plans, or you can screw yourself?;
 ; Solution: do it all in node-immediate-refinements??
 ; OK to prune if strictly dominated by ancestor (assuming consistency)
   ; Or even weakly dominated by non-ancestor refined ?????
@@ -40,7 +38,7 @@
 ; Strengths: as much pruning and skipping as possible
 ; Weaknesses: must keep track of both direct and indirect ancestors. Replacement policy?
 
-; Skip duplicate plans  (= this version, when used with graph search)
+; Skip duplicate plans  (= old version 2f3753c, when used with graph search)
  ; Prune if weakly dominated by any unrefined plan.
 ; Strengths: simple, just remove refined plans
 ; Weaknesses: misses out on things like [left right act]
