@@ -102,7 +102,7 @@
 ;  (empty-valuation? (get-optimistic-valuation node)))
 
 (defmethod search/node-environment   ::TopDownForwardRootNode [node] (throw (IllegalArgumentException.)))
-(defmethod search/node-environment   ::TopDownForwardRootNode [node] (hla-environment (:hla node)))
+(defmethod search/node-environment   ::TopDownForwardNode [node] (hla-environment (:hla node)))
 
 (defmethod search/node-state   ::TopDownForwardNode [node]
   (if (= (:class (:previous node)) ::TopDownForwardRootNode)
@@ -117,7 +117,7 @@
   (get-valuation-upper-bound (do-restrict-valuation (get-optimistic-valuation node) (:goal node))))
 
 (defmethod search/lower-reward-bound ::TopDownForwardNode [node] 
-  (prn "lb")
+;  (prn "lb")
   (let [s (:lower-reward-bound ^node)]
     (or (util/sref-get s)
 	(util/sref-set! s 
@@ -137,10 +137,6 @@
   0) ;TODO? 
 
 
-(def *ref-counter* (util/sref 0))
-
-(defn reset-ref-counter [] 
-  (util/sref-set! *ref-counter* 0))
 
 ; Note: what follows assumes that descriptions for primitives are exact.
 
@@ -149,7 +145,7 @@
   (util/timeout)
   (util/sref-set! *ref-counter* (inc (util/sref-get *ref-counter*)))
   (when-let [fnp (first-nonprimitive node)]
-    (local-immediate-refinements fnp (reverse (map :hla (take-while #(not= % fnp) (iterate :previous node))))))) 
+    (local-immediate-refinements fnp (reverse (map :hla (take-while #(not (identical? % fnp)) (iterate :previous node))))))) 
 ;  (let [nodes (rest (reverse (util/iterate-while :previous node)))]
 ;    (when-let [rest-nodes (drop-while #(hla-primitive (:hla %)) nodes)]
 ;      (local-immediate-refinements (first rest-nodes) (map :hla (rest rest-nodes))))))
@@ -322,6 +318,8 @@
 (let [domain (make-warehouse-strips-domain), env (constant-predicate-simplify (make-warehouse-strips-env 3 3 [1 1] false {0 '[a] 2 '[b]} nil ['[b a]])),  node (make-initial-top-down-forward-node  :edu.berkeley.ai.angelic.dnf-simple-valuations/DNFSimpleValuation  (instantiate-hierarchy (make-flat-strips-hierarchy-schema domain (constantly 0)) env))] (time (second (a-star-search node))))
 
 (let [domain (make-warehouse-strips-domain), env (constant-predicate-simplify (make-warehouse-strips-env 2 2 [1 1] false {0 '[a]} nil ['[a table1]])),  node (make-initial-top-down-forward-node  :edu.berkeley.ai.angelic.dnf-simple-valuations/DNFSimpleValuation  (instantiate-hierarchy (parse-hierarchy "/Users/jawolfe/projects/angel/src/edu/berkeley/ai/domains/warehouse_icaps08_unguided.hierarchy" (make-warehouse-strips-domain)) env))] (time (second (a-star-search node))))
+
+(let [domain (make-warehouse-strips-domain), env (constant-predicate-simplify (make-warehouse-strips-env 2 2 [1 1] false {0 '[a]} nil ['[a table1]])),  node (tdf-node (get-hierarchy  "/Users/jawolfe/projects/angel/src/edu/berkeley/ai/domains/warehouse_icaps08_unguided.hierarchy" env))] (time (second (a-star-search node))))
 
   )
 

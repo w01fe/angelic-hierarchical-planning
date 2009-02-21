@@ -6,7 +6,7 @@
 	   [edu.berkeley.ai.search.algorithms.textbook :as textbook]
 	   [edu.berkeley.ai.angelic [dnf-simple-valuations :as dnf-simple-valuations]
 	                            [hierarchies :as hierarchies]]
-	   [edu.berkeley.ai.angelic.hierarchies.strips-hierarchies :as strips-hierarchies]
+	   [edu.berkeley.ai.angelic.hierarchies [strips-hierarchies :as strips-hierarchies] [abstract-lookahead-trees :as alts]]
 	   )
  )
 
@@ -24,15 +24,17 @@
 
 (def *big-ww* ["big 7x6" -50 (strips/constant-predicate-simplify (warehouse/make-warehouse-strips-env 7 6 [0 2] true {0 '[b] 1 '[a] 2 '[c]  } nil ['[a b c table5]]))])
 
-(def *all-ww* [*tiny-ww* *small-ww* *med-ww* *long-ww* *big-ww*])
+(def *all-ww* [*tiny-ww* *small-ww* *med-ww* ]);*long-ww* *big-ww*])
 
 (def *search-fns* [["a-star" textbook/a-star-search] ["a-star graph" textbook/a-star-graph-search]])
 
 (def *node-fns* [;["strips" search/ss-node] 
 		 ;["flat-strips" #(hierarchies/tdf-node (strips-hierarchies/get-flat-strips-hierarchy %))]
-		 ["unguided-hierarchy" #(hierarchies/tdf-node (hierarchies/get-hierarchy warehouse/*warehouse-hierarchy-unguided* %))]])
+		 ;["unguided-tdf" #(hierarchies/tdf-node (hierarchies/get-hierarchy warehouse/*warehouse-hierarchy-unguided* %))]
+		 ["unguided-alt" #(alts/alt-node (hierarchies/get-hierarchy warehouse/*warehouse-hierarchy-unguided* %))]])
 
-(def *time-limit* 40)
+
+(def *time-limit* 10)
 
 (defn- pad [thing len]
   (.substring (apply str thing (replicate len " ")) 0 len))

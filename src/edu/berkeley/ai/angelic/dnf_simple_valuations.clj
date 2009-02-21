@@ -69,6 +69,8 @@
      (filter identity (for [clause (:dnf val)] (restrict-clause clause pos neg)))
      (:bound val))))
 
+(defmethod get-valuation-states     ::DNFSimpleValuation [val]
+  (:dnf val))
 
 ; TODO: special case non-constraint case ?
 

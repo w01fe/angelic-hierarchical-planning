@@ -298,7 +298,8 @@
         (dsv/make-dnf-simple-valuation 
           (map first results)
 	  (+ (:bound val) (reduce combiner (map second results))))
-      (do (println "Warning: empty valuation being produced in progress-ncstrips") *pessimal-valuation*))
+      (do ;(println "Warning: empty valuation being produced in progress-ncstrips") 
+	  *pessimal-valuation*))
 ))
       
 (defmethod progress-optimistic [:edu.berkeley.ai.angelic.dnf-simple-valuations/DNFSimpleValuation ::NCStripsDescription] [val desc]

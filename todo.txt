@@ -1,12 +1,13 @@
 
-; Act heuristic
-; make WW heuristics ?
+; Act heuristic / general heuristic
 
 
-Graph search
- ; Doing lower bounds too will slow down
-  ; Would like to know when descriptions are exact ...? Meh
- ;  Must care about hierarchical preconds of rest of plan too :(
+;; TODO: unit tests for ncstrips, 
+;; TODO: unit tests for abstract lookahead trees, make sure caching and graph are working.
+
+;; TODO: think about interaction between graph and other things; deleted plans can leave cruft.
+
+;; TODO: skip over repeated plans
  
 Merging nodes - do it iff rest of plan is the same ??
  ; Generalizes right-recursive thing.
@@ -17,10 +18,15 @@ Merging nodes - do it iff rest of plan is the same ??
      ; Except: can save on plan suffix comparisions (push out list?) .....
      ; Graph is still good for comparing within.  i.e. L R Nav ns Nav ?
      ; Difference is graph only compares opt with pess.  This can give sub-exp just from opt?  But have to join after each action.  Unless add take-step action.
+    ; Further advantage: get graph on *fragments*, not just prefixes!
 
 ; Add abstract lookahead trees. 
 
 ; Add AHA* and AHSS ...
+
+; make WW heuristics ?
+
+; Search strategies:
 
 TODO:  Way to combine benefits of ref-generator and CSP??
 ; Something else clever I thought of late last night ..

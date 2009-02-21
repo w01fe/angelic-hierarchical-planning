@@ -13,6 +13,11 @@
 
 (defmulti explicit-valuation-map :class)
 
+(defmulti #^{:doc "Get a (hopefully canonical) possibly implicit representation of the state set"}
+          get-valuation-states :class)
+
+(defmethod get-valuation-states ::Valuation [val]
+  (.keySet (explicit-valuation-map val)))
 
 
 
@@ -63,6 +68,8 @@
 (defmethod empty-valuation? ::ConditionalValuation [val] false)
 
 ;(defmethod explicit-valuation-map ::ConditionalValuation [val] {})
+
+(defmethod get-valuation-states ::ConditionalValuation [val] (gensym))
 
 
 
