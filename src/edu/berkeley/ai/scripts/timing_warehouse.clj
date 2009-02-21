@@ -32,7 +32,7 @@
 		 ;["flat-strips" #(hierarchies/tdf-node (strips-hierarchies/get-flat-strips-hierarchy %))]
 		 ["unguided-hierarchy" #(hierarchies/tdf-node (hierarchies/get-hierarchy warehouse/*warehouse-hierarchy-unguided* %))]])
 
-(def *time-limit* 10)
+(def *time-limit* 40)
 
 (defn- pad [thing len]
   (.substring (apply str thing (replicate len " ")) 0 len))

@@ -1,16 +1,5 @@
-TODO:  Way to combine benefits of ref-generator and CSP??
-; Something else clever I thought of late last night ..
 
-; Pessimistic vlauation for nav
-; Negative inf cost when making dsv?
-
-; Check max in ncstrips-cost
-Change webpage picture...
-
-Move heuristic
-
-Check for dead-ends somewhere?.
-
+; Act heuristic
 ; make WW heuristics ?
 
 
@@ -33,8 +22,8 @@ Merging nodes - do it iff rest of plan is the same ??
 
 ; Add AHA* and AHSS ...
 
-
-speed up make-successor-generator?
+TODO:  Way to combine benefits of ref-generator and CSP??
+; Something else clever I thought of late last night ..
 
   
 ------------------------------------

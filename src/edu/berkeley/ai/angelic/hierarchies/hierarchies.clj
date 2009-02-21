@@ -2,7 +2,7 @@
 
 ;;; Hierarchies
 ; Neat handling of high-level preconditions (be careful, can mess up equality -- use sets?)
-
+;; HLAs may be hashed, etc, so should be sure to be canonical.
 
 ;; Parsing
 
