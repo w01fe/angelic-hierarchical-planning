@@ -1,0 +1,55 @@
+;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
+;;; 4 Op-blocks world
+;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
+
+(define (hierarchy nav-switch)
+  (:type :strips-hierarchy)
+  (:hla act
+       :parameters (?cx - xc ?cy - yc ?gx - xc ?gy - yc)
+       :precondition (and (goal-atx ?gx) (goal-aty ?gy) (atx ?cx) (aty ?cy))
+       :refinement   (:expansion    ((go ?cx ?cy ?gx ?gy)))    
+       :optimistic   (:opt 0)
+       :pessimistic  (:pess))
+       
+  (:hla go
+       :parameters (?cx - xc ?cy - yc ?dx - xc ?dy - yc)
+       :refinement (:expansion ((nav ?cx ?cy ?dx ?dy)))
+       :refinement (:parameters (:?1 - xc :?2 - yc)
+                    :precondition (and (switch-at :?1 :?2) (horiz))
+                    :expansion ((nav ?cx ?cy :?1 :?2) (flip-v :?1 :?2) (go :?1 :?2 ?dx ?dy)))
+       :refinement (:parameters (:?1 - xc :?2 - yc)
+                    :precondition (and (switch-at :?1 :?2) (not (horiz))) 
+                    :expansion ((nav ?cx ?cy :?1 :?2) (flip-h :?1 :?2) (go :?1 :?2 ?dx ?dy)))
+       :optimistic   (:ncstrips (:effect (and (atx ?dx) (aty ?dy) (not (atx ?cx)) (not (aty ?cy))) 
+                                 :possible-effect (and (horiz) (not (horiz))) 
+                                 :cost-expr (* 2 (+ (util/symbol-abs-diff ?dx ?cx 1)
+				                    (util/symbol-abs-diff ?dy ?cy 1)))))
+       :pessimistic   (:ncstrips (:precondition (horiz)  ; Better than in paper version
+                                 :effect (and (atx ?dx) (aty ?dy) (not (atx ?cx)) (not (aty ?cy))) 
+                                 :cost-expr (+ (* 2 (util/symbol-abs-diff ?dx ?cx 1))
+                                               (* 4 (util/symbol-abs-diff ?dy ?cy 1))))
+			        (:precondition (not (horiz))
+                                 :effect (and (atx ?dx) (aty ?dy) (not (atx ?cx)) (not (aty ?cy))) 
+                                 :cost-expr (+ (* 4 (util/symbol-abs-diff ?dx ?cx 1))
+                                               (* 2 (util/symbol-abs-diff ?dy ?cy 1))))))
+       
+  (:hla nav       
+       :parameters (?cx - xc ?cy - yc ?dx - xc ?dy - yc)
+       :refinement (:precondition (and (atx ?dx) (aty ?dy)) :expansion ())
+       :refinement (:parameters (:? - xc) :expansion ((bad-left   ?cx :?) (nav :? ?cy ?dx ?dy)))
+       :refinement (:parameters (:? - yc) :expansion ((bad-up     ?cy :?) (nav ?cx :? ?dx ?dy)))
+       :refinement (:parameters (:? - yc) :expansion ((bad-down   ?cy :?) (nav ?cx :? ?dx ?dy)))
+       :refinement (:parameters (:? - xc) :expansion ((bad-right  ?cx :?) (nav :? ?cy ?dx ?dy)))
+       :refinement (:parameters (:? - xc) :expansion ((good-left  ?cx :?) (nav :? ?cy ?dx ?dy)))
+       :refinement (:parameters (:? - yc) :expansion ((good-up    ?cy :?) (nav ?cx :? ?dx ?dy)))
+       :refinement (:parameters (:? - yc) :expansion ((good-down  ?cy :?) (nav ?cx :? ?dx ?dy)))
+       :refinement (:parameters (:? - xc) :expansion ((good-right ?cx :?) (nav :? ?cy ?dx ?dy)))
+       :exact        (:ncstrips (:precondition (horiz)
+                                 :effect (and (atx ?dx) (aty ?dy) (not (atx ?cx)) (not (aty ?cy))) 
+                                 :cost-expr (+ (* 2 (util/symbol-abs-diff ?dx ?cx 1))
+                                               (* 4 (util/symbol-abs-diff ?dy ?cy 1))))
+			        (:precondition (not (horiz))
+                                 :effect (and (atx ?dx) (aty ?dy) (not (atx ?cx)) (not (aty ?cy))) 
+                                 :cost-expr (+ (* 4 (util/symbol-abs-diff ?dx ?cx 1))
+                                               (* 2 (util/symbol-abs-diff ?dy ?cy 1)))))))
+

@@ -1,22 +1,4 @@
-
-
-
-; Add AHA* and AHSS ...
- ; Tiebreaking by pessimistic cost ?
- 
- Mysterious timing on 
- 
- (dotimes [_ 3] (let [node (alt-node (get-hierarchy *nav-switch-hierarchy* (constant-predicate-simplify (make-nav-switch-strips-env 505 505 (prln (take 10 (repeatedly #(vector (rand-int 505) (rand-int 505))))) [504 0] true [0 504]))))] (dotimes [_ 2] (time (filter #(= "flip" (.substring (name (first %)) 0 4)) (map :name (first (aha-star-search node))))) (time (filter #(= "flip" (.substring (name (first %)) 0 4)) (map :name (first (ahss-search node))))) )))
-
-
-Some weird caching going on ...
-
-(let [node (alt-node (get-hierarchy *nav-switch-hierarchy* (constant-predicate-simplify (make-nav-switch-strips-env 505 505 (prln (take 10 (repeatedly #(vector (rand-int 505) (rand-int 505))))) [504 0] true [0 504]))))] (dotimes [_ 2] (println (time (second (ahss-search node -4000)))) (println (time (filter #(= "flip" (.substring (name (first %)) 0 4)) (map :name (first (aha-star-search node)))))) (println (time (second (ahss-search node -3000)))))) 
-
-always -3024.
-
-can't reuse node! (graph).  May introduce suboptimalities? (Prune best plan)
-Still, something weird ... ?
+; can't reuse node! (graph).  May introduce suboptimalities? (Prune best plan)
 
 ; Go LB for NS should be same as Nav, never worse!
 
@@ -25,7 +7,9 @@ Still, something weird ... ?
 
 ; Search strategies: (choosing what to refine)
 
+; Better AHSS priority fn
 
+; Real-time algorithms (and warehouse hierarchy...)
 
 
 ;; TODO: unit tests for ncstrips, 
