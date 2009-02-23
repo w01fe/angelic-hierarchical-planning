@@ -270,6 +270,7 @@
    (doseq [simplifier (butlast *simplifiers*)
 	   maker [strips-hierarchies/get-flat-strips-hierarchy 
 		  #(get-hierarchy warehouse/*warehouse-hierarchy-unguided* %)]]
+;     (println simplifier maker (map :name (first (textbook/a-star-search (tdf-node (maker (simplifier *strips-wh*)))))))
      (util/is (*strips-wh-sols* (get-and-check-sol (maker (simplifier *strips-wh*))))))))
 
       
