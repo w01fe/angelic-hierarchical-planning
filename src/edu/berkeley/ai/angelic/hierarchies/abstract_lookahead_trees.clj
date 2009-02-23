@@ -66,6 +66,8 @@
 
 (def *dummy-pair-alt* [Double/NEGATIVE_INFINITY (gensym)])
 
+(declare optimistic-valuation pessimistic-valuation)
+
 ;; TODO: do fun stuff with ancestor set
 (defn make-alt-node [alt hla rest-plan previous-node first-np name ancestor-set opt-val pess-val] 
   (let [node   (with-meta  
@@ -169,7 +171,7 @@
 	   (hla-pessimistic-description (:hla node)))))))
 
 
-(defn optimistic-valuation [node]
+(defn- optimistic-valuation [node]
   (let [s (:optimistic-valuation ^node)]
     (or (util/sref-get s)
 	(util/sref-set! s 
@@ -178,7 +180,7 @@
 			       (hla-hierarchical-preconditions (:hla node)))
 	   (hla-optimistic-description (:hla node)))))))
 
-(defn node-immediate-refinements [node rest-actions name ancestors]
+(defn- node-immediate-refinements [node rest-actions name ancestors]
   (util/assert-is (not (hla-primitive? (:hla node))))
   (filter identity
     (for [refinement (hla-immediate-refinements (:hla node) (optimistic-valuation (:previous node)))]

@@ -1,36 +1,21 @@
 
-; Act heuristic / general heuristic
-
 
 ;; TODO: unit tests for ncstrips, 
 ;; TODO: unit tests for abstract lookahead trees, make sure caching and graph are working.
-
-;; TODO: think about interaction between graph and other things; deleted plans can leave cruft.
-
-;; TODO: skip over repeated plans
- 
-Merging nodes - do it iff rest of plan is the same ??
- ; Generalizes right-recursive thing.
- ; Can't actually prune easily, since states will be same
- ; Without pruning, this will end up with being everywhere at once -- slow!
-   ; After progressing through *just next HLA*, may collapse, and can prune!!
-     ; But this is just graph ? ? 
-     ; Except: can save on plan suffix comparisions (push out list?) .....
-     ; Graph is still good for comparing within.  i.e. L R Nav ns Nav ?
-     ; Difference is graph only compares opt with pess.  This can give sub-exp just from opt?  But have to join after each action.  Unless add take-step action.
-    ; Further advantage: get graph on *fragments*, not just prefixes!
-
-; Add abstract lookahead trees. 
+;; TODO: update nav switch timing.
+; Speed up constant-predicate-simplify for huge domains. (don't want to construct all fluents?)
 
 ; Add AHA* and AHSS ...
 
 ; make WW heuristics ?
+; Act heuristic / general heuristic
 
 ; Search strategies:
 
 TODO:  Way to combine benefits of ref-generator and CSP??
 ; Something else clever I thought of late last night ..
 
+ 
   
 ------------------------------------
 From earlier meeting
@@ -93,16 +78,20 @@ randomize refinement ordering ??
 longer term 
  - planning graph (+ relaxed)
 
- - warehouse world
-  - forall in ncstrips precondition
- 
- - quantified effects, etc.  
-
  - AADDs.
 
- - variables in ncstrips, effects and costs
 
- - add propositional-domain, propositional-instance interfaces?
+
+ Merging nodes - do it iff rest of plan is the same ??
+  ; Generalizes right-recursive thing.
+  ; Can't actually prune easily, since states will be same
+  ; Without pruning, this will end up with being everywhere at once -- slow!
+    ; After progressing through *just next HLA*, may collapse, and can prune!!
+      ; But this is just graph ? ? 
+      ; Except: can save on plan suffix comparisions (push out list?) .....
+      ; Graph is still good for comparing within.  i.e. L R Nav ns Nav ?
+      ; Difference is graph only compares opt with pess.  This can give sub-exp just from opt?  But have to join after each action.  Unless add take-step action.
+     ; Further advantage: get graph on *fragments*, not just prefixes!
 
  - Extend DNF valuations to keep track of unaries?
   ( and only include things in clauses where needed?)
@@ -110,6 +99,7 @@ longer term
  - Tiebreaking?
 
  ; Add weighted A* or that version I saw at ICAPS?
+
 
 
 Efficiency

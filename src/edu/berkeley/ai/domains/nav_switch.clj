@@ -90,7 +90,8 @@
    ))
     
 
-(def *nav-switch-hierarchy* "/Users/jawolfe/Projects/angel/src/edu/berkeley/ai/domains/nav_switch.hierarchy")
+(def *nav-switch-hierarchy*  "/Users/jawolfe/Projects/angel/src/edu/berkeley/ai/domains/nav_switch.hierarchy")
+(def *nav-switch-hierarchy2* "/Users/jawolfe/Projects/angel/src/edu/berkeley/ai/domains/nav_switch2.hierarchy")
 
 (defn- get-and-check-sol [env]
   (map :name

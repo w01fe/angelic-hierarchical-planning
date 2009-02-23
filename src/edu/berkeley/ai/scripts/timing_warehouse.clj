@@ -31,10 +31,11 @@
 (def *node-fns* [;["strips" search/ss-node] 
 		 ;["flat-strips" #(hierarchies/tdf-node (strips-hierarchies/get-flat-strips-hierarchy %))]
 		 ;["unguided-tdf" #(hierarchies/tdf-node (hierarchies/get-hierarchy warehouse/*warehouse-hierarchy-unguided* %))]
+		 ["flat-str-alt" #(alts/alt-node (strips-hierarchies/get-flat-strips-hierarchy %))]
 		 ["unguided-alt" #(alts/alt-node (hierarchies/get-hierarchy warehouse/*warehouse-hierarchy-unguided* %))]])
 
 
-(def *time-limit* 10)
+(def *time-limit* 20)
 
 (defn- pad [thing len]
   (.substring (apply str thing (replicate len " ")) 0 len))
