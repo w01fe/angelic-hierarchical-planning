@@ -24,15 +24,19 @@
 
 (def *big-ww* ["big 7x6" -50 (strips/constant-predicate-simplify (warehouse/make-warehouse-strips-env 7 6 [0 2] true {0 '[b] 1 '[a] 2 '[c]  } nil ['[a b c table5]]))])
 
-(def *all-ww* [*tiny-ww* *small-ww* *med-ww* *long-ww* *big-ww*])
+(def *all-ww* [*tiny-ww* *small-ww* ]);*med-ww*]) ;*long-ww* *big-ww*])
 
 (def *search-fns* [["a-star" textbook/a-star-search] ["a-star graph" textbook/a-star-graph-search]])
 
 (def *node-fns* [;["strips" search/ss-node] 
 		 ;["flat-strips" #(hierarchies/tdf-node (strips-hierarchies/get-flat-strips-hierarchy %))]
-		 ;["unguided-tdf" #(hierarchies/tdf-node (hierarchies/get-hierarchy warehouse/*warehouse-hierarchy-unguided* %))]
-		 ["flat-str-alt" #(alts/alt-node (strips-hierarchies/get-flat-strips-hierarchy %))]
-		 ["unguided-alt" #(alts/alt-node (hierarchies/get-hierarchy warehouse/*warehouse-hierarchy-unguided* %))]])
+		 ["unguided-tdf" #(hierarchies/tdf-node (hierarchies/get-hierarchy warehouse/*warehouse-hierarchy-unguided* %))]
+;		 ["flat-str-alt" #(alts/alt-node (strips-hierarchies/get-flat-strips-hierarchy %))]
+		 ["unguided-alt-ff" #(alts/alt-node (hierarchies/get-hierarchy warehouse/*warehouse-hierarchy-unguided* %) false false)]
+;		 ["unguided-alt-tf" #(alts/alt-node (hierarchies/get-hierarchy warehouse/*warehouse-hierarchy-unguided* %) true false)]
+;		 ["unguided-alt-ft" #(alts/alt-node (hierarchies/get-hierarchy warehouse/*warehouse-hierarchy-unguided* %) false true)]
+;		 ["unguided-alt-tt" #(alts/alt-node (hierarchies/get-hierarchy warehouse/*warehouse-hierarchy-unguided* %) true true)]
+		 ])
 
 
 (def *time-limit* 20)

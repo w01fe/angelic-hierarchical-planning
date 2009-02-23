@@ -43,7 +43,7 @@
 (defn- time-and-check-hierarchical [str reward hierarchy-schema env val-type]
   (println str)
   (let [initial-hla (hierarchies/instantiate-hierarchy hierarchy-schema env)
-	node (hierarchies/make-initial-top-down-forward-node val-type initial-hla)]
+	node (edu.berkeley.ai.angelic.hierarchies.abstract-lookahead-trees/make-initial-alt-node val-type initial-hla false false)]
   (util/assert-is 
    (= reward (second (envs/check-solution (hierarchies/hla-environment initial-hla)
      (time 
@@ -134,3 +134,5 @@
     (simplifier (apply nav-switch/make-nav-switch-strips-env *huge-ns-args*))
     ::dnf-simple-valuations/DNFSimpleValuation))
  )
+
+; (let [node (alt-node (get-hierarchy *nav-switch-hierarchy* (constant-predicate-simplify (make-nav-switch-strips-env 505 505 (prln (take 100 (repeatedly #(vector (rand-int 505) (rand-int 505))))) [504 0] true [0 504]))))] (time (filter #(= "flip" (.substring (name (first %)) 0 4)) (map :name (first (a-star-search node))))))

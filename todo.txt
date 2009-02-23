@@ -1,20 +1,21 @@
 
 
-;; TODO: unit tests for ncstrips, 
-;; TODO: unit tests for abstract lookahead trees, make sure caching and graph are working.
-;; TODO: update nav switch timing.
-; Speed up constant-predicate-simplify for huge domains. (don't want to construct all fluents?)
 
 ; Add AHA* and AHSS ...
+ ; Tiebreaking by pessimistic cost ?
+ 
 
 ; make WW heuristics ?
 ; Act heuristic / general heuristic
 
-; Search strategies:
+; Search strategies: (choosing what to refine)
 
-TODO:  Way to combine benefits of ref-generator and CSP??
-; Something else clever I thought of late last night ..
 
+
+
+;; TODO: unit tests for ncstrips, 
+;; TODO: unit tests for abstract lookahead trees, make sure caching and graph are working.
+;; TODO: update nav switch timing.
  
   
 ------------------------------------
@@ -45,15 +46,6 @@ Planning graph with HLAs (big state spaces)
 
 ------------------------------------
 
-Almost done with warehouse hierarchy
- - Blind (graph) search solves "hard" example instance in 2 seconds ...
- - Almost hard to compete -- move-block = max w * h * 4 states.
-
-How much to follow existing implementation ? 
-  (hierarchy, etc.)
-Some design choices may not make sense in my optimized implementation
-  (number of params, etc.)
-
 What should we shoot for for journal paper?
  - Continuous
  - AADD
@@ -68,11 +60,6 @@ Email about domains.
 
 ------------------------------------
  
-; TODO: too many instantiations?!
-     ; Allow vars in NCSTRIPS (reduce #), and/or 
-     ; !!! IF REFS don't depend on it, shouldn't be a var.
-        or something.
-
 randomize refinement ordering ??
 
 longer term 
@@ -124,6 +111,7 @@ Efficiency
     Would need predicate-indexed form...
     ; Right now, we do directly test against atoms when progressing...
  
+ ; TODO:  Way to combine benefits of ref-generator and CSP??
  
 
 ; Observation - constant simplifier doesn't help too much when
