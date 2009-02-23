@@ -12,6 +12,9 @@
 ; WARNING: plan-Graph search will not work here!  Cannot eliminate duplicate plans due to
 ; iteraction with state-graph..
 
+; WARNING: can't reuse this (when graph true) or will end up with bad results... possible
+ ; failure, or suboptimal plans...
+
 ;; Nodes
 ; note that valuations are metadata so they aren't used in comparisons.
 
@@ -264,6 +267,10 @@
 
 
 
+
+
+
+;; Tests and other miscellanea
 
 
 

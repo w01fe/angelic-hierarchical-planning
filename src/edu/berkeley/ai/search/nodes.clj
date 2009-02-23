@@ -21,7 +21,7 @@
 
 (defmulti #^{:doc "Return [optimal-solution-element reward] in constant time, or return nil"} extract-optimal-solution :class)
 
-(defmulti #^{:doc "Return any [solution-element reward] in constant time, or return nil"} extract-a-solution :class)
+(defmulti #^{:doc "Return any [solution-element reward] in constant time, or return nil.  Solution must have reward >= lower bound."} extract-a-solution :class)
 (defmethod extract-a-solution ::Node [node] (extract-optimal-solution node))
 
 (defmulti #^{:doc "Is this nodea provable dead-end?  Default implementation calls upper-reward-bound"} 
