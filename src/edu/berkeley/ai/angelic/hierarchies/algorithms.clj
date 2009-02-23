@@ -16,8 +16,8 @@
 
 ; TODO: this priority fn won't work well on hard domains -- need to take portion with
  ; non-inf pessimistic value into account ...
-(defn ahss-search 
-  ([node] (ahss-search node Double/NEGATIVE_INFINITY))
+(defn ahss-search "Pass a *finite* threshold"
+  ([node] (ahss-search node (- Double/MAX_VALUE)))
   ([node threshold] (ahss-search node threshold
 		      (fn ahss-priority-fn [node]
 			(- 0 
@@ -36,11 +36,13 @@
 		     good-refs (filter #(>= (search/upper-reward-bound %) threshold) refs)
 		     sols      (filter identity (map search/extract-a-solution good-refs))
 		     good-sols (filter #(>= (second %) threshold) sols)]
+;		 (println (search/node-str next))
 		 (if good-sols  ; Found a good enough primitive refinement
 		     (util/first-maximal-element second good-sols)
 		   (do
                      (if-let [great-refs (filter #(>= (search/lower-reward-bound %) threshold) good-refs)]
 		         (let [best-ref (util/first-maximal-element search/lower-reward-bound great-refs)]
+			   (println "committing to " (search/node-str best-ref))
 			   (queues/pq-remove-all! pq)
 			   (queues/pq-add! pq best-ref (priority-fn best-ref)))
 		       (doseq [ref good-refs]
@@ -49,7 +51,9 @@
 
      
 
-
+(comment 
+ (dotimes [_ 2] (let [env (constant-predicate-simplify (make-nav-switch-strips-env 505 505 (prln (take 20 (repeatedly #(vector (rand-int 505) (rand-int 505))))) [504 0] true [0 504]))] (doseq [h [*nav-switch-hierarchy* *nav-switch-hierarchy-improved*]] (let [node (get-hierarchy h env )] (println h) (dotimes [_ 1] (time (println (second (aha-star-search (alt-node node))))) (time (println (second (ahss-search (alt-node node))))) )))))
+ )
 
 
   
