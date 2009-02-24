@@ -66,6 +66,26 @@
 
 (declare optimistic-valuation pessimistic-valuation)
 
+; Return true if keep, false if prune.
+(defn handle-graph [alt node rest-plan name ancestor-set]
+  (util/assert-is (:graph? alt))
+  (let [#^HashMap graph-map (util/safe-get ^alt :graph-map)
+	opt-val    (optimistic-valuation node)
+	opt-states (get-valuation-states opt-val)
+	opt-rew    (get-valuation-upper-bound opt-val)
+	[graph-rew graph-node]  (or (.get graph-map [opt-states rest-plan]) *dummy-pair-alt*)]
+;	(when (not (or (> opt-rew graph-rew) (and (= opt-rew graph-rew) (contains? ancestor-set graph-node))))
+;	  (println "pruning!" name ancestor-set graph-node graph-rew opt-rew (contains? ancestor-set graph-node)))
+    (when (or (> opt-rew graph-rew) (and (= opt-rew graph-rew) (contains? ancestor-set graph-node)))
+      (let [pess-val    (pessimistic-valuation node)
+	    pess-states (get-valuation-states pess-val)
+	    pess-rew    (get-valuation-lower-bound pess-val)
+	    pair        [pess-states rest-plan]
+	    [graph-rew graph-node] (or (.get graph-map pair) *dummy-pair-alt*)]
+	(when (>= pess-rew graph-rew)
+	  (.put graph-map pair [pess-rew name])))
+      true)))
+
 (defn make-alt-node [alt hla rest-plan previous-node name ancestor-set opt-val pess-val] 
   ;(println "Making node " (map (comp hla-name :hla) (butlast (util/iterate-while :previous previous-node))) ";" (if (keyword? hla) hla (hla-name hla) ) ";" (map hla-name rest-plan) ":" name ancestor-set)
   (let [node   (with-meta  
@@ -73,23 +93,10 @@
 		{:pessimistic-valuation (util/sref pess-val), :optimistic-valuation (util/sref opt-val)
 		 :lower-reward-bound (util/sref nil) :upper-reward-bound (util/sref nil) :cache (HashMap.)
 		 })]
-    (if (not (:graph? alt)) node
-      (let [#^HashMap graph-map (util/safe-get ^alt :graph-map)
-	    opt-val    (optimistic-valuation node)
-	    opt-states (get-valuation-states opt-val)
-	    opt-rew    (get-valuation-upper-bound opt-val)
-	    [graph-rew graph-node]  (or (.get graph-map [opt-states rest-plan]) *dummy-pair-alt*)]
-;	(when (not (or (> opt-rew graph-rew) (and (= opt-rew graph-rew) (contains? ancestor-set graph-node))))
-;	  (println "pruning!" name ancestor-set graph-node graph-rew opt-rew (contains? ancestor-set graph-node)))
-	(when (or (> opt-rew graph-rew) (and (= opt-rew graph-rew) (contains? ancestor-set graph-node)))
-	  (let [pess-val    (pessimistic-valuation node)
-		pess-states (get-valuation-states pess-val)
-		pess-rew    (get-valuation-lower-bound pess-val)
-		pair        [pess-states rest-plan]
-		[graph-rew graph-node] (or (.get graph-map pair) *dummy-pair-alt*)]
-	    (when (>= pess-rew graph-rew)
-	      (.put graph-map pair [pess-rew name])))
-	  node)))))
+    (when (or (not (:graph? alt))
+	      (handle-graph alt node rest-plan name ancestor-set))
+      node)))
+
 	       
 (set! *warn-on-reflection* true)
 ;; TODO: make a method.
