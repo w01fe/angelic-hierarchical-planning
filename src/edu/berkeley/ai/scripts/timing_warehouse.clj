@@ -34,7 +34,7 @@
 ;		 ["unguided-alt-ff" #(alts/alt-node (hierarchies/get-hierarchy warehouse/*warehouse-hierarchy-unguided* %) false false)]
 ;		 ["unguided-alt-tf" #(alts/alt-node (hierarchies/get-hierarchy warehouse/*warehouse-hierarchy-unguided* %) true false)]
 ;		 ["unguided-alt-ft" #(alts/alt-node (hierarchies/get-hierarchy warehouse/*warehouse-hierarchy-unguided* %) false true)]
-	;	 ["unguided-alt-tt" #(alts/alt-node (hierarchies/get-hierarchy warehouse/*warehouse-hierarchy-unguided* %) true true)]
+		 ["unguided-alt-tt" #(alts/alt-node (hierarchies/get-hierarchy warehouse/*warehouse-hierarchy-unguided* %) true true)]
 		 ["guided-alt-tt" #(alts/alt-node (hierarchies/get-hierarchy warehouse/*warehouse-hierarchy* %) true true)]
 		 ])
 
@@ -67,7 +67,7 @@
 		  st (/ (int st) 1000.0)]
 ;	      (println sv)
 	      (if strict? (util/assert-is (= env-rew (second ret)))      
-		  (util/assert-is (>= env-rew (second ret))))
+		  (util/assert-is (and (second ret) (>= env-rew (second ret)))))
 	      (print-pad 10 nt)
 	      (print " + ")
 	      (print-pad 10 st)

@@ -42,8 +42,16 @@
 		     (util/first-maximal-element second good-sols)
 		   (do
                      (if-let [great-refs (filter #(>= (search/lower-reward-bound %) threshold) good-refs)]
-		         (let [best-ref (util/first-maximal-element search/lower-reward-bound great-refs)]
-			   (println "committing to " (search/node-str best-ref))
+		         (let [best-ref 
+			       (alts/clear-alt-graph-cache
+				(util/first-maximal-element ; tie break
+;					 search/lower-reward-bound 
+					 #(+ (search/lower-reward-bound %) (/ (search/upper-reward-bound %) 100000.0))
+					 great-refs))]
+;			   (println "committing to " (search/node-str best-ref))
+;			   (println "options were: " (map #(vector (search/node-str %) (search/reward-bounds %)) great-refs))
+;			   (println)
+;			   (alts/clear-alt-graph-cache best-ref)
 			   (queues/pq-remove-all! pq)
 			   (queues/pq-add! pq best-ref (priority-fn best-ref)))
 		       (doseq [ref good-refs]

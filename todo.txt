@@ -1,6 +1,25 @@
  
 ; Search strategies: (choosing what to refine)
+  ; Almost ICAPS version, but not quite
+  ; Seems that first- works better than ICAPS- for aha* ???
+    ; Buggy ... inconsistency ??? (long, ahss)
+      ; When you commit, you must clear cache!
+        ; But then you lose ancestor pruning .....!
+         ; TODO: don't clear ancestors
+         ; TODO: break ties by opt.
+         
+         ; TODO: check new ancestor scheme...
+        ; TODO: check gensym overhead
+        ; TODO: check overhead of repeated iteration through cache.
+          ; Instead, just do it on the fly... (store allowed-ancestor-set in alt.)
 
+       ; Force commits to come in >= seq?  See how bhaskara did it...
+
+       ; Cache --> not full graph!  (add option)
+
+       
+; Allow flat-strips to take custom heuristic type?
+       
 
 ; Real-time algorithms (and warehouse hierarchy... )
 

@@ -1,6 +1,6 @@
 (ns edu.berkeley.ai.angelic.hierarchies.abstract-lookahead-trees
   (:use edu.berkeley.ai.angelic edu.berkeley.ai.angelic.hierarchies)
-  (:import [java.util HashMap])
+  (:import [java.util HashMap Map$Entry])
   (:require [edu.berkeley.ai.angelic.dnf-simple-valuations :as dsv]
             [edu.berkeley.ai [util :as util] [envs :as envs] [search :as search]]))
 
@@ -51,30 +51,25 @@
 ; TODO: add consistency check?
 
 
-(defstruct abstract-lookahead-tree :cache? :graph? :goal)
+(defstruct abstract-lookahead-tree :cache? :graph? :goal :ref-choice-fn)
 
-(defn first-nonprimitive-alt [node]
-  (let [np (:first-np node)]
-    (cond (true? np) node
-	  np np)))
 
 (derive ::ALTPlanNode :edu.berkeley.ai.search/Node)
 (defstruct alt-plan-node :class :name :plan :ancestor-set)
 (defn make-alt-plan-node [name plan ancestor-set]
   (struct alt-plan-node ::ALTPlanNode name plan ancestor-set))
 
-;(derive ::ALTNode :edu.berkeley.ai.search/Node)
 
-(defstruct alt-action-node :alt :hla :previous :first-np)
+(defstruct alt-action-node :alt :hla :previous)
 
 (def *dummy-pair-alt* [Double/NEGATIVE_INFINITY (gensym)])
 
 (declare optimistic-valuation pessimistic-valuation)
 
-;; TODO: do fun stuff with ancestor set
-(defn make-alt-node [alt hla rest-plan previous-node first-np name ancestor-set opt-val pess-val] 
+(defn make-alt-node [alt hla rest-plan previous-node name ancestor-set opt-val pess-val] 
+  ;(println "Making node " (map (comp hla-name :hla) (butlast (util/iterate-while :previous previous-node))) ";" (if (keyword? hla) hla (hla-name hla) ) ";" (map hla-name rest-plan) ":" name ancestor-set)
   (let [node   (with-meta  
-		(struct alt-action-node alt hla previous-node first-np) 
+		(struct alt-action-node alt hla previous-node) 
 		{:pessimistic-valuation (util/sref pess-val), :optimistic-valuation (util/sref opt-val)
 		 :lower-reward-bound (util/sref nil) :upper-reward-bound (util/sref nil) :cache (HashMap.)
 		 })]
@@ -86,7 +81,6 @@
 	    [graph-rew graph-node]  (or (.get graph-map [opt-states rest-plan]) *dummy-pair-alt*)]
 ;	(when (not (or (> opt-rew graph-rew) (and (= opt-rew graph-rew) (contains? ancestor-set graph-node))))
 ;	  (println "pruning!" name ancestor-set graph-node graph-rew opt-rew (contains? ancestor-set graph-node)))
-;	  (println "pruning!" graph-node ancestor-set (when previous-node (search/node-str previous-node)) ";" (hla-name hla) ";" (map hla-name rest-plan)))
 	(when (or (> opt-rew graph-rew) (and (= opt-rew graph-rew) (contains? ancestor-set graph-node)))
 	  (let [pess-val    (pessimistic-valuation node)
 		pess-states (get-valuation-states pess-val)
@@ -95,11 +89,31 @@
 		[graph-rew graph-node] (or (.get graph-map pair) *dummy-pair-alt*)]
 	    (when (>= pess-rew graph-rew)
 	      (.put graph-map pair [pess-rew name])))
-;	    (.put graph-map pair (max (get-valuation-lower-bound pess-val)
-;				      (or (.get graph-map pair) Double/NEGATIVE_INFINITY))))
 	  node)))))
 	       
-
+(set! *warn-on-reflection* true)
+;; TODO: make a method.
+(defn clear-alt-graph-cache "Clear the cache of all but ancestors of node, and return a new node."
+  [node]
+;  (println "CLEAR")
+  (let [#^HashMap cache (:graph-map ^(:alt (:plan node)))
+	it (.iterator (.entrySet cache))
+	name   (util/safe-get node :name)
+	oldset (conj (util/safe-get node :ancestor-set) name)
+	newset #{name}]
+ ;   (println (.size cache))
+    (while (.hasNext it)
+      (let [#^Map$Entry next (.next it)
+	    k    (.getKey next)
+	    v    (.getValue next)
+	    v-name (second v)]
+	(if (contains? oldset v-name)
+	    nil;(.setValue next (assoc v 1 name))
+	  (.remove it))))
+ ;   (println (.size cache))
+    node));(make-alt-plan-node name (:plan node) newset)))
+;  (.clear 
+(set! *warn-on-reflection* false)
 
 (defn get-alt-node [hla rest-plan previous-node name ancestor-set]
   (let [alt (util/safe-get previous-node :alt)]
@@ -116,7 +130,6 @@
 	       hla 
 	       rest-plan
 	       previous-node 
-	       (or (first-nonprimitive-alt previous-node) (when-not (hla-primitive? hla) true))
 	       name ancestor-set
 	       nil nil)]
 	  (when (:cache? alt)
@@ -125,14 +138,60 @@
 	      (.put cache hla ret)))
 	  ret))))
 
-(defn make-alt-root-node [cache? graph? goal initial-valuation initial-plan name]
+
+(defn- first-choice-fn [node]
+  (loop [node (:plan node) cur nil]
+    (if (:previous node)
+        (recur (:previous node) (if (hla-primitive? (:hla node)) cur node))
+      cur)))
+
+(defn- last-choice-fn [node]
+  (loop [node (:plan node)]
+    (when (:previous node)
+      (if (hla-primitive? (:hla node)) (recur (:previous node)) node))))
+
+(defn- icaps-choice-fn [node]
+  (loop [node (:plan node), cur nil, maxgap Double/NEGATIVE_INFINITY]
+    (if-let [prev (:previous node)]
+        (if (hla-primitive? (:hla node)) (recur prev cur maxgap)
+        (let [opt      (- (get-valuation-upper-bound (optimistic-valuation node))
+			  (get-valuation-upper-bound (optimistic-valuation prev)))
+	      mypess   (get-valuation-lower-bound (pessimistic-valuation node))
+	      prevpess (get-valuation-lower-bound (pessimistic-valuation prev))
+	      pess     (if (> prevpess Double/NEGATIVE_INFINITY)
+			   (- mypess prevpess)
+			 Double/NEGATIVE_INFINITY)
+	      gap      (- opt pess)]
+;	  (println (hla-name (:hla node)) gap opt pess mypess prevpess)
+	  (if (>= gap maxgap)
+	      (recur prev node (double gap))
+	    (recur prev cur maxgap))))
+      cur)))
+
+
+(defn icaps-priority-fn [node]  ;; Almost, except for tiebreaking...
+  (- 0
+     (util/reduce-key + 
+	(fn [node] 
+	  (let [prev (:previous node)
+		opt  (- (get-valuation-upper-bound (optimistic-valuation node))
+			(get-valuation-upper-bound (optimistic-valuation prev)))
+		pess (- (get-valuation-lower-bound (pessimistic-valuation node))
+			(get-valuation-lower-bound (pessimistic-valuation prev)))
+		act? (= '[act] (hla-name (:hla node)))]
+	    (max (/ (+ opt pess) 2)
+		 (if act?
+		     (min -1 (* 3 opt))
+		   (* 1.5 opt)))))
+	(butlast (util/iterate-while :previous (:plan node))))))
+
+(defn make-alt-root-node [cache? graph? ref-choice-fn goal initial-valuation initial-plan name]
   (make-alt-node 
    (with-meta 
-    (struct abstract-lookahead-tree cache? graph? goal)
-    (if graph? {:graph-map (HashMap.)} {}))
+    (struct abstract-lookahead-tree cache? graph? goal ref-choice-fn)
+    {:graph-map (HashMap.)})
    :root
    initial-plan
-   nil
    nil
    name
    #{}
@@ -140,14 +199,17 @@
    initial-valuation))
 
 (defn make-initial-alt-node 
-  ([initial-node] (make-initial-alt-node (hla-default-valuation-type initial-node) initial-node))
-  ([initial-node cache? graph?] (make-initial-alt-node (hla-default-valuation-type initial-node) initial-node cache? graph?))
-  ([valuation-class initial-node] (make-initial-alt-node valuation-class initial-node true true))
-  ([valuation-class initial-node cache? graph?]
+  ([initial-node] (make-initial-alt-node initial-node true true))
+  ([initial-node ref-choice-fn] (make-initial-alt-node initial-node ref-choice-fn true true))
+  ([initial-node cache? graph?] (make-initial-alt-node initial-node icaps-choice-fn cache? graph?))
+  ([initial-node ref-choice-fn cache? graph?] (make-initial-alt-node (hla-default-valuation-type initial-node) 
+								     initial-node ref-choice-fn cache? graph?))
+;  ([valuation-class initial-node] (make-initial-alt-node valuation-class initial-node true true))
+  ([valuation-class initial-node ref-choice-fn cache? graph?]
   (let [env (hla-environment initial-node), name (gensym)]
     (loop [actions (list initial-node)
 	   previous (make-alt-root-node 
-		     cache? graph?
+		     cache? graph? ref-choice-fn
 		     (envs/get-goal env) 
 		     (make-initial-valuation valuation-class env)
 		     actions
@@ -185,20 +247,24 @@
 			       (hla-hierarchical-preconditions (:hla node)))
 	   (hla-optimistic-description (:hla node)))))))
 
-(defn- node-immediate-refinements [node rest-actions name ancestors]
+(defn- node-immediate-refinements [node rest-actions ancestors]
   (util/assert-is (not (hla-primitive? (:hla node))))
 ;  (println "refining " (map (comp hla-name :hla) (butlast (util/iterate-while :previous node))) ";" (map hla-name rest-actions))
   (filter identity
     (for [refinement (hla-immediate-refinements (:hla node) (optimistic-valuation (:previous node)))]
+      (let [name (gensym)]
+;	(println "Refinement: "(map hla-name refinement))
  ;     (do (println "ref " (map hla-name refinement)) 
-      (loop [previous (:previous node),
-	     actions (concat refinement rest-actions)]
-	(cond (empty? actions)  previous
-	      (nil?   previous) nil ; (do (println "pruning!") nil) ;
-	      :else
-	      (recur 
-	       (get-alt-node (first actions) (rest actions) previous name ancestors)
-	       (rest actions)))))))
+        (loop [previous (:previous node),
+	       actions (concat refinement rest-actions)]
+;	  (println "Actions " (map hla-name actions))
+;	  (def *prev* previous)
+	  (cond (nil?   previous)  nil ;(do (println "pruning!") nil) ;
+	        (empty? actions)  [name previous]
+	        :else
+	          (recur 
+		   (get-alt-node (first actions) (rest actions) previous name ancestors)
+		   (rest actions))))))))
   ;    )
 
 ;; Node methods 
@@ -234,17 +300,20 @@
   (util/timeout)
   (util/sref-set! *ref-counter* (inc (util/sref-get *ref-counter*)))
   (let [plan (:plan node)]
-    (when-let [fnp (first-nonprimitive-alt plan)]
+    (when-let [fnp ((util/safe-get (util/safe-get plan :alt) :ref-choice-fn) node)]
+   ;   (println "About to refine " (search/node-str node) " at " (hla-name (:hla fnp)))
       (let [rest-nodes (reverse (take-while #(not (identical? % fnp)) (iterate :previous plan)))
 	    rest-actions (map :hla rest-nodes)
-	    name (gensym)
+	    ;name (gensym)
 	    ancestors (conj (util/safe-get node :ancestor-set) (util/safe-get node :name))]
-	(map #(make-alt-plan-node name % ancestors)
-	     (node-immediate-refinements fnp rest-actions name ancestors)))))) 
+;	(println "Rest actions: " (map hla-name rest-actions))
+	(for [[name ref] (node-immediate-refinements fnp rest-actions ancestors)]
+	  (make-alt-plan-node name ref ancestors))))))
+
 
 (defmethod search/primitive-refinement ::ALTPlanNode [node]
   (let [node (:plan node)]
-    (when-not (:first-np node)
+    (when (every? (comp hla-primitive? :hla) (butlast (util/iterate-while :previous node)))
 ;    (println (search/node-str node))
     (let [act-seq (remove #(= % :noop)
 		   (map (comp hla-primitive :hla) (rest (reverse (util/iterate-while :previous node))))) 
@@ -252,8 +321,7 @@
       [act-seq upper]))))
 
 (defmethod search/extract-optimal-solution ::ALTPlanNode [node] 
-  (when (and (not (:first-np (:plan node)))
-	     (> (search/upper-reward-bound node) Double/NEGATIVE_INFINITY))
+  (when (> (search/upper-reward-bound node) Double/NEGATIVE_INFINITY)
     (search/primitive-refinement node)))
 
 (defmethod search/node-str ::ALTPlanNode [node] 
@@ -274,23 +342,6 @@
 
 ;; Tests and other miscellanea
 
-(defn icaps-priority-fn [node] 
-  (- 0
-     (util/reduce-key + 
-	(fn [node] 
-	  (let [prev (:previous node)
-		opt  (- (get-valuation-upper-bound (optimistic-valuation node))
-			(get-valuation-upper-bound (optimistic-valuation prev)))
-		pess (- (get-valuation-lower-bound (pessimistic-valuation node))
-			(get-valuation-lower-bound (pessimistic-valuation prev)))
-		act? (= '[act] (hla-name (:hla node)))]
-;	    (println (:name (:hla node)))
-;	    (when act? (println "peep"))
-	    (max (/ (+ opt pess) 2)
-		 (if act?
-		     (min -1 (* 3 opt))
-		   (* 1.5 opt)))))
-	(butlast (util/iterate-while :previous (:plan node))))))
 
 	    
 

@@ -84,6 +84,8 @@
 
 (derive ::IdentityDescription ::Description)
 (def *identity-description* {:class ::IdentityDescription})
+(prefer-method progress-optimistic [::Valuation ::IdentityDescription] [::PessimalValuation ::Description])
+(prefer-method progress-pessimistic [::Valuation ::IdentityDescription] [::PessimalValuation ::Description])
 (defmethod progress-optimistic [::Valuation ::IdentityDescription] [val desc] val)
 (defmethod progress-pessimistic [::Valuation ::IdentityDescription] [val desc] val)
 
