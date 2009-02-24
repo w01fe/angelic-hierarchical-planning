@@ -15,8 +15,7 @@
 	 (/ (max (search/lower-reward-bound x) -999999.0) 1000000.0)))))
 
 
-; TODO: this priority fn won't work well on hard domains -- need to take portion with
- ; non-inf pessimistic value into account ...
+;; TODO: check up on threshold updating  (right now, commits to monotonic seq)
 (defn ahss-search "Pass a *finite* threshold"
   ([node] (ahss-search node (- Double/MAX_VALUE)))
   ([node threshold] (ahss-search node threshold alts/icaps-priority-fn))
@@ -26,28 +25,31 @@
 ;			   (max (search/lower-reward-bound node) -1000000.0)))))
   ([node threshold priority-fn]
      (let [pq        (queues/make-tree-search-pq)
-	   [sol rew] (search/extract-a-solution node)]
+	   [sol rew] (search/extract-a-solution node)
+	   threshold (util/sref threshold)]
+          
        (queues/pq-add! pq node (priority-fn node))
-       (when (>= (search/upper-reward-bound node) threshold)  ; Handle degenerate
-	 (if (and rew (>= rew threshold)) [sol rew]           ; cases
+       (when (>= (search/upper-reward-bound node) (util/sref-get threshold))  ; Handle degenerate
+	 (if (and rew (>= rew (util/sref-get threshold))) [sol rew]           ; cases
   	   (loop []
 	     (when-not (queues/pq-empty? pq)
 	       (let [next (queues/pq-remove-min! pq)  ; Has no imm. sol, upper >= thresh
 		     refs (search/immediate-refinements next)
-		     good-refs (filter #(>= (search/upper-reward-bound %) threshold) refs)
+		     good-refs (filter #(>= (search/upper-reward-bound %) (util/sref-get threshold)) refs)
 		     sols      (filter identity (map search/extract-a-solution good-refs))
-		     good-sols (filter #(>= (second %) threshold) sols)]
-;		 (println (search/node-str next))
+		     good-sols (filter #(>= (second %) (util/sref-get threshold)) sols)]
+;		 (println (search/node-str next) (search/reward-bounds next))
 		 (if good-sols  ; Found a good enough primitive refinement
 		     (util/first-maximal-element second good-sols)
 		   (do
-                     (if-let [great-refs (filter #(>= (search/lower-reward-bound %) threshold) good-refs)]
+                     (if-let [great-refs (filter #(>= (search/lower-reward-bound %) (util/sref-get threshold)) good-refs)]
 		         (let [best-ref 
 			       (alts/clear-alt-graph-cache
 				(util/first-maximal-element ; tie break
 ;					 search/lower-reward-bound 
 					 #(+ (search/lower-reward-bound %) (/ (search/upper-reward-bound %) 100000.0))
 					 great-refs))]
+			   (util/sref-set! threshold (search/lower-reward-bound best-ref)) ;; TODO??
 ;			   (println "committing to " (search/node-str best-ref))
 ;			   (println "options were: " (map #(vector (search/node-str %) (search/reward-bounds %)) great-refs))
 ;			   (println)

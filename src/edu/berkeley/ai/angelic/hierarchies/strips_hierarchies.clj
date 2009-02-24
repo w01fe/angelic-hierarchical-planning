@@ -153,6 +153,10 @@
 (defn make-flat-act-optimistic-description-schema [upper-reward-fn]
   {:class ::FlatActOptimisticDescriptionSchema :upper-reward-fn upper-reward-fn})
 
+(defmethod parse-description :flat-act [desc domain params]
+  (util/assert-is (= (count desc) 2))
+  (make-flat-act-optimistic-description-schema (second desc)))
+
 (defmethod instantiate-description-schema ::FlatActOptimisticDescriptionSchema [desc instance]
   (make-flat-act-optimistic-description (envs/get-goal instance) (:upper-reward-fn desc)))
 
@@ -175,7 +179,8 @@
 		 (for [action (:action-schemata domain)]
 		   (let [dummy-vars (for [[t v] (:vars action)] [(keyword (str "?" v)) t])]
 		     [(:name action) nil nil (into {} dummy-vars) [(into [(:name action)] (map first dummy-vars)) ['act]]])))
-	   (make-flat-act-optimistic-description-schema upper-reward-fn)
+	   (parse-description (if (fn? upper-reward-fn) [:flat-act upper-reward-fn] upper-reward-fn) domain nil)
+	      ;make-flat-act-optimistic-description-schema upper-reward-fn)
 	   *pessimal-description* nil)
 	  (map #(make-strips-primitive-hla-schema 
                  (:types domain) (:guaranteed-objs domain) (:predicates domain) %)
@@ -183,9 +188,9 @@
 
 (defn get-flat-strips-hierarchy 
   ([env] (get-flat-strips-hierarchy env (constantly 0)))
-  ([env upper-reward-fn]
+  ([env act-desc-or-upper-reward-fn]
    (instantiate-hierarchy 
-    (make-flat-strips-hierarchy-schema (envs/get-domain env) upper-reward-fn) env)))
+    (make-flat-strips-hierarchy-schema (envs/get-domain env) act-desc-or-upper-reward-fn) env)))
 
 
 

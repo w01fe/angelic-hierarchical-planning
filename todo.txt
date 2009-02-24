@@ -1,25 +1,7 @@
- 
-; Search strategies: (choosing what to refine)
-  ; Almost ICAPS version, but not quite
-  ; Seems that first- works better than ICAPS- for aha* ???
-    ; Buggy ... inconsistency ??? (long, ahss)
-      ; When you commit, you must clear cache!
-        ; But then you lose ancestor pruning .....!
-         ; TODO: don't clear ancestors
-         ; TODO: break ties by opt.
-         
-         ; TODO: check new ancestor scheme...
-        ; TODO: check gensym overhead
-        ; TODO: check overhead of repeated iteration through cache.
-          ; Instead, just do it on the fly... (store allowed-ancestor-set in alt.)
+; Cache --> not full graph!  (add option) (even without cache)
+; Cache should not supersede graph!
 
-       ; Force commits to come in >= seq?  See how bhaskara did it...
 
-       ; Cache --> not full graph!  (add option)
-
-       
-; Allow flat-strips to take custom heuristic type?
-       
 
 ; Real-time algorithms (and warehouse hierarchy... )
 
@@ -125,6 +107,10 @@ Efficiency
     ; Right now, we do directly test against atoms when progressing...
  
  ; TODO:  Way to combine benefits of ref-generator and CSP??
+ 
+ ; TODO: check overhead of repeated iteration through cache.
+   ; Instead, just do it on the fly... (store allowed-ancestor-set in alt.)        
+     Or, use transient set (once ancestor, always ancestor)
  
 
 ; Observation - constant simplifier doesn't help too much when
