@@ -274,6 +274,26 @@
 
 ;; Tests and other miscellanea
 
+(defn icaps-priority-fn [node] 
+  (- 0
+     (util/reduce-key + 
+	(fn [node] 
+	  (let [prev (:previous node)
+		opt  (- (get-valuation-upper-bound (optimistic-valuation node))
+			(get-valuation-upper-bound (optimistic-valuation prev)))
+		pess (- (get-valuation-lower-bound (pessimistic-valuation node))
+			(get-valuation-lower-bound (pessimistic-valuation prev)))
+		act? (= '[act] (hla-name (:hla node)))]
+;	    (println (:name (:hla node)))
+;	    (when act? (println "peep"))
+	    (max (/ (+ opt pess) 2)
+		 (if act?
+		     (min -1 (* 3 opt))
+		   (* 1.5 opt)))))
+	(butlast (util/iterate-while :previous (:plan node))))))
+
+	    
+
 
 
 (defn- get-and-check-sol [sol initial-hla]

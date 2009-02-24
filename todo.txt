@@ -1,21 +1,15 @@
-
-; Check that heuristics actually work!!
- ; Definite inconsistency in non-matching one...
  
-; make WW heuristics ?
-; Act heuristic / general heuristic
-
 ; Search strategies: (choosing what to refine)
 
-; Better AHSS priority fn
 
 ; Real-time algorithms (and warehouse hierarchy... )
+
+; TODO: check for consistency? Ramifications of inconsistency?
 
 
 ;; TODO: unit tests for ncstrips, 
 ;; TODO: unit tests for abstract lookahead trees, make sure caching and graph are working.
 ;; TODO: unit tests for AHSS etc.
-;; TODO: update nav switch timing.
  
   
 ------------------------------------

@@ -1,7 +1,8 @@
 (ns edu.berkeley.ai.angelic.hierarchies.algorithms
   (:use edu.berkeley.ai.angelic.hierarchies)
   (:require [edu.berkeley.ai [util :as util] [search :as search]]
-	    [edu.berkeley.ai.util.queues :as queues] )
+	    [edu.berkeley.ai.util.queues :as queues]
+	    [edu.berkeley.ai.angelic.hierarchies.abstract-lookahead-trees :as alts])
   )
   
 
@@ -18,11 +19,11 @@
  ; non-inf pessimistic value into account ...
 (defn ahss-search "Pass a *finite* threshold"
   ([node] (ahss-search node (- Double/MAX_VALUE)))
-  ([node threshold] (ahss-search node threshold
-		      (fn ahss-priority-fn [node]
-			(- 0 
-			   (search/upper-reward-bound node)
-			   (max (search/lower-reward-bound node) -1000000.0)))))
+  ([node threshold] (ahss-search node threshold alts/icaps-priority-fn))
+;		      (fn ahss-priority-fn [node]
+;			(- 0 
+;			   (search/upper-reward-bound node)
+;			   (max (search/lower-reward-bound node) -1000000.0)))))
   ([node threshold priority-fn]
      (let [pq        (queues/make-tree-search-pq)
 	   [sol rew] (search/extract-a-solution node)]

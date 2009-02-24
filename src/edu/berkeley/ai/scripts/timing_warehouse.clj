@@ -34,7 +34,7 @@
 ;		 ["unguided-alt-ff" #(alts/alt-node (hierarchies/get-hierarchy warehouse/*warehouse-hierarchy-unguided* %) false false)]
 ;		 ["unguided-alt-tf" #(alts/alt-node (hierarchies/get-hierarchy warehouse/*warehouse-hierarchy-unguided* %) true false)]
 ;		 ["unguided-alt-ft" #(alts/alt-node (hierarchies/get-hierarchy warehouse/*warehouse-hierarchy-unguided* %) false true)]
-		 ["unguided-alt-tt" #(alts/alt-node (hierarchies/get-hierarchy warehouse/*warehouse-hierarchy-unguided* %) true true)]
+	;	 ["unguided-alt-tt" #(alts/alt-node (hierarchies/get-hierarchy warehouse/*warehouse-hierarchy-unguided* %) true true)]
 		 ["guided-alt-tt" #(alts/alt-node (hierarchies/get-hierarchy warehouse/*warehouse-hierarchy* %) true true)]
 		 ])
 
@@ -47,7 +47,9 @@
   (print (pad (apply str (rest (interleave (repeat " ") args))) len)))
 
 
-(defn- time-ww [env-v search-fn-v nf-v]
+(defn- time-ww 
+  ([env-v search-fn-v nf-v] (time-ww env-v search-fn-v nf-v true))
+  ([env-v search-fn-v nf-v strict?]
 ;;  (println)
   (let [[env-name env-rew env] env-v
 	[sf-name sf] search-fn-v
@@ -64,11 +66,12 @@
 	    (let [[ret st] sv
 		  st (/ (int st) 1000.0)]
 ;	      (println sv)
-	      (util/assert-is (= env-rew (second ret)))      
+	      (if strict? (util/assert-is (= env-rew (second ret)))      
+		  (util/assert-is (>= env-rew (second ret))))
 	      (print-pad 10 nt)
 	      (print " + ")
 	      (print-pad 10 st)
-	      (println " = " (+ nt st)))))))))
+	      (println " = " (+ nt st))))))))))
   
 (comment
   (doseq [node-v   *node-fns*
@@ -79,6 +82,10 @@
   (doseq [node-v *node-fns*   ; Check for heuristic inconsistencies... looks OK.
 	  env-v  *all-ww*]
     (time-ww env-v ["ahss" #(algs/ahss-search % (second env-v))] node-v))
+
+  (doseq [node-v *node-fns*   
+	  env-v  *all-ww*]
+    (time-ww env-v ["ahss" #(algs/ahss-search %)] node-v false))
   )
 
 
