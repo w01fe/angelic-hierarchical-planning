@@ -9,3 +9,13 @@
 (defn mean [coll]
   (/ (reduce + coll) (count coll)))
 
+(defn median [coll]
+  (let [coll (sort coll)
+	n    (count coll)]
+    (if (odd? n)
+        (nth coll (/ (dec n) 2))
+      (/ (+ (nth coll (/ n 2)) (nth coll (dec (/ n 2)))) 2))))
+
+(defn abs [x] (if (neg? x) (- x) x))
+
+(defn indicator [x] (if x 1 0))

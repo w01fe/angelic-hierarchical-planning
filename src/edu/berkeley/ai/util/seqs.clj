@@ -195,6 +195,15 @@
 (defn to-vec [x] 
   (if (vector? x) x (vec x)))
 
+(defn count-when [f c]
+  (reduce (fn [v i] (if (f i) (inc v) v)) 0 c))
+
+(defn reduce-key 
+  ([f k c] (apply f (map k c)))
+  ([f k init c] (reduce (fn [v i] (f v (k i))) init c)))
+
+(defn sum-over [f c]
+  (reduce (fn [v i] (+ v (f i))) 0 c))
 
 
 

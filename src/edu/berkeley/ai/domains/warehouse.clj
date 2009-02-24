@@ -1,7 +1,9 @@
 (ns edu.berkeley.ai.domains.warehouse
  (:require [edu.berkeley.ai [util :as util] [envs :as envs]] 
            [edu.berkeley.ai.envs.states :as states]
-           [edu.berkeley.ai.domains.strips :as strips])
+           [edu.berkeley.ai.domains.strips :as strips]
+	   [edu.berkeley.ai.angelic :as angelic]
+	   [edu.berkeley.ai.angelic.dnf-simple-valuations :as dsv])
  )
 
 
@@ -58,6 +60,176 @@
 	       (get square-map [x y] (if facingright? ">" "<"))))))))))
 
 (def *warehouse-hierarchy-unguided* "/Users/jawolfe/projects/angel/src/edu/berkeley/ai/domains/warehouse_icaps08_unguided.hierarchy")
+(def *warehouse-hierarchy* "/Users/jawolfe/projects/angel/src/edu/berkeley/ai/domains/warehouse_icaps08.hierarchy")
+
+
+; Act description used in hierarchy
+
+
+(derive ::WarehouseActDescriptionSchema ::angelic/PropositionalDescription)
+
+(defmethod angelic/parse-description :warehouse-act [desc domain params]
+  {:class ::WarehouseActDescriptionSchema})
+
+
+(derive ::WarehouseActDescription ::angelic/PropositionalDescription)
+(defstruct warehouse-act-description :class :fn)
+(defn make-warehouse-act-description [fn] (struct warehouse-act-description ::WarehouseActDescription fn))
+
+
+(defn- extract-chain [m]
+  (util/assert-is (not (empty? m)))
+  (loop [chain [(ffirst m)] m m cur (ffirst m)]
+    (if-let [n (get m cur)]
+        (recur (conj chain n) (dissoc m cur) n)
+      [chain m])))
+
+
+(import '[java.util HashSet HashMap])
+
+(defn- manhattan [p1 p2]
+  (+ (util/abs (- (first p1) (first p2)))
+     (util/abs (- (second p1) (second p2)))))
+;  (+ (util/symbol-abs-diff (first p1) (first p2) 1)
+;     (util/symbol-abs-diff (second p1) (second p2) 1)))
+
+(defn- parse-pos [[x y]]
+  [(util/desymbolize x 1) (util/desymbolize y 1)])
+
+(defn- extract-positions [dnf]
+  (let [gripper-pos (HashSet.)
+	block-pos   (HashMap.)
+	holding     (util/sref nil)]
+    (doseq [clause dnf
+	    [atom] clause]
+      (let [pred (first atom)]
+       (cond (= pred 'gripperat) (.add gripper-pos (parse-pos (rest atom)))
+ 	     (= pred 'blockat)   
+	      (let [block (second atom)
+		    pos   (parse-pos (rest (rest atom)))
+		    prev-pos (.get block-pos block)]
+		(if prev-pos
+		    (util/assert-is (= prev-pos pos))
+		  (.put block-pos block pos)))
+	     (= pred 'holding)
+	      (let [block (second atom)
+		    old-holding (util/sref-get holding)]
+		(if old-holding
+		    (util/assert-is (= old-holding block))
+		  (util/sref-set! holding block))))))
+    (when-let [b (util/sref-get holding)]
+      (let [positions (seq gripper-pos)]
+	(util/assert-is (= (count positions) 1))
+        (.put block-pos b (first positions))))
+;    (println dnf)
+    (util/assert-is (not (.isEmpty gripper-pos)))
+ ;   (println gripper-pos)
+    [gripper-pos block-pos]))
+
+(defn- make-simpler-heuristic [table-pos-map floating-chains]
+  (fn [dnf]
+    (let [[#^HashSet gripper-pos, #^HashMap block-pos] (extract-positions dnf)]
+;      (if (.isEmpty gripper-pos) Double/NEGATIVE_INFINITY
+   ;   (println "Going: ")
+      (- 0 
+	 (apply + (for [[b p] table-pos-map] (manhattan p (.get block-pos b))))
+	 (apply + (for [chain floating-chains]
+		    (let [positions (map #(.get block-pos %) chain)
+			  medx      (util/median (map first positions))]
+		      (+ (loop [positions positions vert (int 0)]
+			   (if (rest positions)
+			       (recur (rest positions) (+ vert (Math/abs (int (- (second (first positions))
+										 (inc (second (frest positions))))))))
+			     vert))
+			 (apply + 
+			   (for [pos positions]
+			     (util/abs (- (first pos) medx))))))))))))
+
+
+(defn- make-matching-based-heuristic [table-pos-map chains]
+  (let [term (gensym "term")
+	block-set (set (apply concat chains))]
+    (fn [dnf]
+      (let [[#^HashSet gripper-pos, #^HashMap block-pos] (extract-positions dnf)]
+;	(if (.isEmpty gripper-pos) Double/NEGATIVE_INFINITY
+        (- 
+	 ; Matching
+	 (let [positions (remove (fn [[b c g]] (= c g)) 
+			    (map #(vector % (.get block-pos %) (get table-pos-map %)) block-set))
+	       blocks    (cons term (map first positions))]
+	   (if positions
+ 	    (util/maximum-matching blocks blocks
+;	    (util/prln	     
+             (concat
+	      (for [[b c g] positions] 
+		[term b (- (util/reduce-key min #(max 1 (manhattan % c)) gripper-pos))])   ;TODO: if holding??
+	      (for [[b c g] positions] 
+		[b term (- (manhattan c g))])
+	      (for [[b1 c1 g1] positions,
+		    [b2 c2 g2] positions]  ; TODO: disallow [b b ...? ]
+		[b1 b2 (- (max 1 (+ (manhattan c1 g1) (manhattan g1 c2))))])))
+	    0))
+
+  	 ; Count switches
+	  (* 4 (util/sum-over 
+	       (fn [chain]
+		 (let [positions (map #(vector (.get block-pos %) (get table-pos-map %)) chain)]
+		   (util/count-when
+		    (fn [rest-pos]
+;		      (println rest-pos)
+		      (let [[cur-pos goal-pos] (first rest-pos)]
+			(some 
+			  (fn [[cur-pos2 goal-pos2]]
+			    (util/assert-is (> (second goal-pos) (second goal-pos2)))
+			    (and (not (= cur-pos2 goal-pos2))
+				 (> (second cur-pos) (second cur-pos2))))
+			  (rest rest-pos))))
+		    (util/iterate-while rest positions))))
+	       chains)))))))
+
+
+
+
+(defmethod angelic/instantiate-description-schema ::WarehouseActDescriptionSchema [desc instance]
+  (let [goal-atoms (util/safe-get instance :goal-atoms)]
+    (doseq [atom goal-atoms] (util/assert-is (= (first atom) 'on)))
+    (let [on-map (into {} (map #(subvec % 1) goal-atoms))
+	  chains (loop [m on-map chains []]
+		   (if (empty? m) chains
+		     (let [[chain next-m] (extract-chain m)]
+		       (recur next-m (conj chains chain)))))
+	  [table-chains floating-chains] (util/separate #(.startsWith #^String (name (last %)) "table") chains)
+	  table-pos-map (into {} 
+			  (apply concat
+			    (for [chain table-chains]
+			      (let [x (Integer/parseInt (.substring #^String (name (last chain)) 5))]
+				(for [[block y] (rest (map vector (reverse chain) (iterate inc 0)))]
+				  [block [x y]])))))]
+      (make-warehouse-act-description
+       (if (empty? floating-chains)
+	   (make-matching-based-heuristic table-pos-map (map butlast chains))
+	 (make-simpler-heuristic table-pos-map floating-chains))))))
+;      (println table-pos-map floating-chains))))
+	  
+
+(defmethod angelic/ground-description ::WarehouseActDescription [desc var-map] desc)
+  
+
+(defmethod angelic/progress-optimistic [::angelic/PessimalValuation ::WarehouseActDescription] [val desc]  val)
+
+(defmethod angelic/progress-optimistic [::dsv/DNFSimpleValuation ::WarehouseActDescription] [val desc]
+  (angelic/make-conditional-valuation 
+   envs/*true-condition*
+   (+ (angelic/get-valuation-upper-bound val) ((:fn desc) (util/safe-get val :dnf)))))
+
+(defmethod angelic/progress-pessimistic [::angelic/Valuation ::WarehouseActDescription] [val desc]
+  (throw (UnsupportedOperationException.)))
+
+
+
+
+
+
 
 
 (defn- get-and-check-sol [env graph?]
@@ -111,6 +283,8 @@
 	  (a-star-graph-search (make-initial-state-space-node env (constantly 0)))) 2)))))
 
   (parse-hierarchy "/Users/jawolfe/projects/angel/src/edu/berkeley/ai/domains/warehouse.hierarchy" (make-warehouse-strips-domain))
+
+  (time (map :name (first (a-star-search (alt-node (get-hierarchy *warehouse-hierarchy* (constant-predicate-simplify (make-warehouse-strips-env 2 2 [1 1] false {0 '[a]} nil ['[a table1]]))))))))
 
   )
 

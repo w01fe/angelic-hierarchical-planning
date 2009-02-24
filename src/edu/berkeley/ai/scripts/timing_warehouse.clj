@@ -6,7 +6,7 @@
 	   [edu.berkeley.ai.search.algorithms.textbook :as textbook]
 	   [edu.berkeley.ai.angelic [dnf-simple-valuations :as dnf-simple-valuations]
 	                            [hierarchies :as hierarchies]]
-	   [edu.berkeley.ai.angelic.hierarchies [strips-hierarchies :as strips-hierarchies] [abstract-lookahead-trees :as alts]]
+	   [edu.berkeley.ai.angelic.hierarchies [strips-hierarchies :as strips-hierarchies] [abstract-lookahead-trees :as alts] [algorithms :as algs]]
 	   )
  )
 
@@ -24,17 +24,18 @@
 
 (def *big-ww* ["big 7x6" -50 (strips/constant-predicate-simplify (warehouse/make-warehouse-strips-env 7 6 [0 2] true {0 '[b] 1 '[a] 2 '[c]  } nil ['[a b c table5]]))])
 
-(def *all-ww* [*tiny-ww* *small-ww* ]);*med-ww*]) ;*long-ww* *big-ww*])
+(def *all-ww* [*tiny-ww* *small-ww* *med-ww* *long-ww* *big-ww*])
 
 (def *search-fns* [["a-star" textbook/a-star-search] ["a-star graph" textbook/a-star-graph-search]])
 
 (def *node-fns* [;["strips" search/ss-node] 
 		 ;["flat-strips" #(hierarchies/alt-node (strips-hierarchies/get-flat-strips-hierarchy %))]
 		 ;["unguided" #(hierarchies/alt-node (hierarchies/get-hierarchy warehouse/*warehouse-hierarchy-unguided* %))]
-		 ["unguided-alt-ff" #(alts/alt-node (hierarchies/get-hierarchy warehouse/*warehouse-hierarchy-unguided* %) false false)]
+;		 ["unguided-alt-ff" #(alts/alt-node (hierarchies/get-hierarchy warehouse/*warehouse-hierarchy-unguided* %) false false)]
 ;		 ["unguided-alt-tf" #(alts/alt-node (hierarchies/get-hierarchy warehouse/*warehouse-hierarchy-unguided* %) true false)]
 ;		 ["unguided-alt-ft" #(alts/alt-node (hierarchies/get-hierarchy warehouse/*warehouse-hierarchy-unguided* %) false true)]
-;		 ["unguided-alt-tt" #(alts/alt-node (hierarchies/get-hierarchy warehouse/*warehouse-hierarchy-unguided* %) true true)]
+		 ["unguided-alt-tt" #(alts/alt-node (hierarchies/get-hierarchy warehouse/*warehouse-hierarchy-unguided* %) true true)]
+		 ["guided-alt-tt" #(alts/alt-node (hierarchies/get-hierarchy warehouse/*warehouse-hierarchy* %) true true)]
 		 ])
 
 
@@ -74,6 +75,10 @@
 	  env-v    *all-ww*
 	  search-v (butlast *search-fns*)]
     (time-ww env-v search-v node-v))
+
+  (doseq [node-v *node-fns*   ; Check for heuristic inconsistencies... looks OK.
+	  env-v  *all-ww*]
+    (time-ww env-v ["ahss" #(algs/ahss-search % (second env-v))] node-v))
   )
 
 

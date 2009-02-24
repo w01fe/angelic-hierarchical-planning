@@ -258,7 +258,10 @@
      (map #(ground-ncstrips-effect % var-map (:vars schema)) (:effects schema))))
 
   
-; TODO: make more efficient
+; TODO: make more efficient  
+;Note that right now, pos-del + add --> add, del + pos-add --> pos-add, del + pos-del --> del.
+; Right now, undefined if certain + uncertain effects combined (except delete + pos-add).
+; TODO: enforce constraints?  
 (defn- progress-effect-clause [effect clause]
 ;  (println "Progress " effect clause)
   (let [pos-pre (util/safe-get effect :pos-preconditions)
@@ -278,9 +281,10 @@
 				     (map #(% pred-maps) (util/safe-get effect :effect-fns)))
 		[padds pdels] (apply map concat [(util/safe-get effect :possible-adds) (util/safe-get effect :possible-deletes)]
 				      (map #(% pred-maps) (util/safe-get effect :possible-effect-fns)))
-		unks          (concat (filter #(not= :true (clause %)) padds)
-				      (filter #(= :true (clause %))    pdels))]
-	   [(into (reduce dissoc clause dels)
+		after-dels    (reduce dissoc clause dels)
+ 		unks          (concat (filter #(not= :true (after-dels %)) padds)
+				      (filter #(= :true (after-dels %))    pdels))]
+	   [(into after-dels
 	      (concat (map #(vector % :true) adds)
 		      (map #(vector % :unknown) unks)))
 	     (- ((util/safe-get effect :cost-fn) pred-maps))]))))))

@@ -1,7 +1,7 @@
-; can't reuse node! (graph).  May introduce suboptimalities? (Prune best plan)
 
-; Go LB for NS should be same as Nav, never worse!
-
+; Check that heuristics actually work!!
+ ; Definite inconsistency in non-matching one...
+ 
 ; make WW heuristics ?
 ; Act heuristic / general heuristic
 
@@ -9,11 +9,12 @@
 
 ; Better AHSS priority fn
 
-; Real-time algorithms (and warehouse hierarchy...)
+; Real-time algorithms (and warehouse hierarchy... )
 
 
 ;; TODO: unit tests for ncstrips, 
 ;; TODO: unit tests for abstract lookahead trees, make sure caching and graph are working.
+;; TODO: unit tests for AHSS etc.
 ;; TODO: update nav switch timing.
  
   

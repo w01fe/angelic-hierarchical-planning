@@ -177,6 +177,22 @@
     (.size heap)))
 
 
+(derive ::SafeTreePriorityQueue ::TreePriorityQueue)
+
+(defn make-safe-tree-search-pq []
+  (assoc (make-tree-search-pq) 
+    :last-min (sref Double/NEGATIVE_INFINITY)
+    :class ::SafeTreePriorityQueue))
+
+(defmethod pq-remove-min! ::SafeTreePriorityQueue [pq] (first (pq-remove-min-with-cost! pq) ))
+
+(defmethod pq-remove-min-with-cost! ::SafeTreePriorityQueue [pq]
+  (let [#^FibonacciHeap heap (:heap pq)
+	#^com.bluemarsh.graphmaker.core.util.FibonacciHeap$Node n (.min heap) 
+	c (.getKey n)]
+    (assert-is (>= c (sref-get (:last-min pq))))
+    (sref-set! (:last-min pq) c)
+    (vector (.removeMin heap) c)))
 
 
 (derive ::GraphPriorityQueue ::PriorityQueue)

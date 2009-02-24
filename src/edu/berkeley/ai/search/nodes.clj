@@ -81,7 +81,9 @@
   (all-refinements- pq priority-fn))
 
 ;; TODO: check goal
-(defn interactive-search [node pq priority-fn]
+(defn interactive-search 
+  ([node] (interactive-search node (queues/make-tree-search-pq) #(- (upper-reward-bound %))))
+  ([node pq priority-fn]
   (queues/pq-add! pq node (priority-fn node))
   (loop []
     (when-not (queues/pq-empty? pq)
@@ -113,7 +115,7 @@
 						    (queues/pq-add-all! pq (map (fn [i] [i (priority-fn i)]) (immediate-refinements next))))))
 					      true)
 			:else          (do (print (binding [*n next] (eval result)) "\n") (recur)))))
-	  (recur)))))))
+	  (recur))))))))
 
 
 (defn primitive-refinements 

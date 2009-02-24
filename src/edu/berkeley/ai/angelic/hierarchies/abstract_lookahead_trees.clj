@@ -187,8 +187,10 @@
 
 (defn- node-immediate-refinements [node rest-actions name ancestors]
   (util/assert-is (not (hla-primitive? (:hla node))))
+;  (println "refining " (map (comp hla-name :hla) (butlast (util/iterate-while :previous node))) ";" (map hla-name rest-actions))
   (filter identity
     (for [refinement (hla-immediate-refinements (:hla node) (optimistic-valuation (:previous node)))]
+ ;     (do (println "ref " (map hla-name refinement)) 
       (loop [previous (:previous node),
 	     actions (concat refinement rest-actions)]
 	(cond (empty? actions)  previous
@@ -197,7 +199,7 @@
 	      (recur 
 	       (get-alt-node (first actions) (rest actions) previous name ancestors)
 	       (rest actions)))))))
-      
+  ;    )
 
 ;; Node methods 
 

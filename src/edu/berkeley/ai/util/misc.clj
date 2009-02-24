@@ -21,7 +21,9 @@
 (defn aget-double2 [#^"[[D" a i j] (Double2Arrays/get a i j))
 
 (import '[edu.berkeley.ai.util HungarianAlgorithm])
-(defn maximum-matching "Edges are [n1 n2 weight].  Returns weight." [left-nodes right-nodes edges]
+(defn maximum-matching "Edges are [n1 n2 weight].  Returns weight." 
+  ([#^"[[D" arr] (HungarianAlgorithm/hgAlgorithm arr "max"))
+  ([left-nodes right-nodes edges]
   (let [left-nodes    (seq left-nodes)
 	right-nodes   (seq right-nodes)
 	left-node-ids (into {} (map vector left-nodes (iterate inc 0)))
@@ -37,7 +39,8 @@
 ;	(assert-is (= (Double/NEGATIVE_INFINITY) (aget arr i1 i2)))
 	(aset-double2 arr i1 i2 v)))
  ;  (println (map seq (seq arr)))
-    (HungarianAlgorithm/hgAlgorithm arr "max")))
+    (maximum-matching arr)
+    )))
       
 
 (set! *warn-on-reflection* false)	
