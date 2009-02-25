@@ -1,7 +1,12 @@
 ; Cache --> not full graph!  (add option) (even without cache)
 ; Cache should not supersede graph!
 
+; Root doesn't need to be cached -- will never see top-level-action again...
 
+; So, node-immediate-refinements can handle graph stuff instead.
+; It easily has the power to go back...
+
+; TODO: clean up ALT code.
 
 ; Real-time algorithms (and warehouse hierarchy... )
 
