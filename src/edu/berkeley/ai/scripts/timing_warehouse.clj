@@ -34,7 +34,8 @@
 ;		 ["unguided-alt-ff" #(alts/alt-node (hierarchies/get-hierarchy warehouse/*warehouse-hierarchy-unguided* %) false false)]
 ;		 ["unguided-alt-tf" #(alts/alt-node (hierarchies/get-hierarchy warehouse/*warehouse-hierarchy-unguided* %) true false)]
 ;		 ["unguided-alt-ft" #(alts/alt-node (hierarchies/get-hierarchy warehouse/*warehouse-hierarchy-unguided* %) false true)]
-		 ["unguided-alt-tt" #(alts/alt-node (hierarchies/get-hierarchy warehouse/*warehouse-hierarchy-unguided* %) true true)]
+;		 ["unguided-alt-tt" #(alts/alt-node (hierarchies/get-hierarchy warehouse/*warehouse-hierarchy-unguided* %) true true)]
+		 ["guided-alt-tp" #(alts/alt-node (hierarchies/get-hierarchy warehouse/*warehouse-hierarchy* %) true :partial)]
 		 ["guided-alt-tt" #(alts/alt-node (hierarchies/get-hierarchy warehouse/*warehouse-hierarchy* %) true true)]
 		 ])
 
@@ -85,7 +86,7 @@
 
   (doseq [node-v *node-fns*   
 	  env-v  *all-ww*]
-    (time-ww env-v ["ahss" #(algs/ahss-search %)] node-v false))
+    (time-ww env-v ["ahss" #(let [r (algs/ahss-search %)] (println (second r)) r)] node-v false))
   )
 
 

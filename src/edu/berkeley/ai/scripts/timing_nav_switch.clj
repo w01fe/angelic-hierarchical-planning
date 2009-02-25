@@ -6,9 +6,101 @@
 	   [edu.berkeley.ai.search.algorithms.textbook :as textbook]
 	   [edu.berkeley.ai.angelic [dnf-simple-valuations :as dnf-simple-valuations]
 	                            [hierarchies :as hierarchies]]
-	   [edu.berkeley.ai.angelic.hierarchies.strips-hierarchies :as strips-hierarchies]
+	   [edu.berkeley.ai.angelic.hierarchies [strips-hierarchies :as strips-hierarchies]
+	                                        [abstract-lookahead-trees :as alts]
+	                                        [algorithms :as algs]]
 	   )
  )
+
+
+
+
+
+(def *small-ns* ["small 5x5x1" -21 (strips/constant-predicate-simplify (nav-switch/make-nav-switch-strips-env 5 5 [[1 1]] [0 4] false [4 0]))])
+
+(def *med-ns*   ["med 20x20x3" -92 (strips/constant-predicate-simplify (nav-switch/make-nav-switch-strips-env 20 20 [[3 7] [12 18] [16 2]] [19 0] true [0 19]))])
+
+(def *big-ns*   ["big 100x100x10" -433 (strips/constant-predicate-simplify (nav-switch/make-nav-switch-strips-env 100 100 [[26 91] [50 24] [54 97] [2 35] [25 9] [34 53] [2 16] [49 47] [67 10] [23 82]] [99 0] true [0 99]))])
+
+; (vec (take 10 (repeatedly (fn [] [(rand-int 100) (rand-int 100)]))))
+
+
+(def *all-ns* [*small-ns* *med-ns* *big-ns*])
+
+(def *search-fns* [["aha-star" algs/aha-star-search true] ["ahss-search" algs/ahss-search false]])
+
+(def *node-fns* [;["strips" search/ss-node] 
+		 ;["flat-strips" #(hierarchies/alt-node (strips-hierarchies/get-flat-strips-hierarchy %))]
+		 ;["unguided" #(hierarchies/alt-node (hierarchies/get-hierarchy warehouse/*warehouse-hierarchy-unguided* %))]
+;		 ["unguided-alt-ff" #(alts/alt-node (hierarchies/get-hierarchy warehouse/*warehouse-hierarchy-unguided* %) false false)]
+;		 ["unguided-alt-tf" #(alts/alt-node (hierarchies/get-hierarchy warehouse/*warehouse-hierarchy-unguided* %) true false)]
+;		 ["unguided-alt-ft" #(alts/alt-node (hierarchies/get-hierarchy warehouse/*warehouse-hierarchy-unguided* %) false true)]
+;		 ["unguided-alt-tt" #(alts/alt-node (hierarchies/get-hierarchy warehouse/*warehouse-hierarchy-unguided* %) true true)]
+		 ["guided-alt-tp" #(alts/alt-node (hierarchies/get-hierarchy nav-switch/*nav-switch-hierarchy* %) true :partial)]
+		 ["guided-alt-tt" #(alts/alt-node (hierarchies/get-hierarchy nav-switch/*nav-switch-hierarchy* %) true true)]
+		 ])
+
+(def *time-limit* 20)
+
+(defn- pad [thing len]
+  (.substring (apply str thing (replicate len " ")) 0 len))
+(defn- print-pad [len & args]
+  (print (pad (apply str (rest (interleave (repeat " ") args))) len)))
+
+(defn- time-ns 
+  ([env-v search-fn-v nf-v] (time-ns env-v search-fn-v nf-v true))
+  ([env-v search-fn-v nf-v strict?]
+;;  (println)
+  (let [[env-name env-rew env] env-v
+	[sf-name sf] search-fn-v
+	[nf-name nf] nf-v]
+    (print-pad 50 "Timing" nf-name env-name sf-name ": ")
+    (flush)
+    (let [nv (util/time-limit (nf env) *time-limit*)]
+      (if (= nv :timeout) (println "timeout1")
+	(let [[node nt] nv
+	      nt (/ (int nt) 1000.0)
+	      sv   (util/time-limit (sf node) (- *time-limit* nt))]
+;;	  (println node)
+	  (if (= sv :timeout) (println nt "+ timeout2")
+	    (let [[ret st] sv
+		  st (/ (int st) 1000.0)]
+;	      (println sv)
+	      (if strict? (util/assert-is (= env-rew (second ret)))      
+		  (util/assert-is (and (second ret) (>= env-rew (second ret)))))
+	      (print-pad 10 nt)
+	      (print " + ")
+	      (print-pad 10 st)
+	      (println " = " (+ nt st))))))))))
+  
+(comment
+  (doseq [node-v   *node-fns*
+	  env-v    *all-ns*
+	  search-v *search-fns*]
+    (time-ns env-v search-v node-v (nth search-v 2)))
+
+  (doseq [node-v *node-fns*   ; Check for heuristic inconsistencies... looks OK.
+	  env-v  *all-ww*]
+    (time-ww env-v ["ahss" #(algs/ahss-search % (second env-v))] node-v))
+
+  (doseq [node-v *node-fns*   
+	  env-v  *all-ww*]
+    (time-ww env-v ["ahss" #(let [r (algs/ahss-search %)] (println (second r)) r)] node-v false))
+  )
+
+
+
+
+
+
+
+
+
+
+
+
+
+(comment ; Old versions...
 
 (def *huge-ns-size* 25)
 (def *huge-ns-args* [25 25 [[1 1]] [24 0] true [0 24]])
@@ -53,7 +145,7 @@
 (def *strips-hierarchy-simplifiers*
      (dissoc *strips-simplifiers* "constant simplified, flat"))
 
-
+)
 (comment
      
 (time-and-check-flat 

@@ -147,7 +147,7 @@
 (defn make-initial-alt-node 
   ([initial-node] (make-initial-alt-node initial-node true true))
   ([initial-node ref-choice-fn] (make-initial-alt-node initial-node ref-choice-fn true true))
-  ([initial-node cache? graph?] (make-initial-alt-node initial-node icaps-choice-fn cache? graph?))
+  ([initial-node cache? graph?] (make-initial-alt-node initial-node first-choice-fn cache? graph?))
   ([initial-node ref-choice-fn cache? graph?] (make-initial-alt-node (hla-default-valuation-type initial-node) 
 								     initial-node ref-choice-fn cache? graph?))
 ;  ([valuation-class initial-node] (make-initial-alt-node valuation-class initial-node true true))
@@ -265,7 +265,7 @@
 	   (let [name         (gensym)
 		 tail-actions (concat ref after-actions)
 		 all-actions  (concat before-actions tail-actions)]
-	     (when (every? (fn [[node rest-plan]]    ; full graph prefix check
+	     (if (every? (fn [[node rest-plan]]    ; full graph prefix check
 			     (graph-add-and-check! alt node rest-plan name ancestors))
 			   (map vector before-nodes (iterate rest all-actions)))
 	       (loop [previous (:previous ref-node)
@@ -275,7 +275,9 @@
 		   (let [next (get-alt-node alt (first actions) previous)]
 		     (when (or (not graph?) 
 			       (graph-add-and-check! alt next (rest actions) name ancestors))
-		       (recur next (rest actions))))))))))))))
+		       (recur next (rest actions))))))
+	       (println "early prune")
+	       ))))))))
 
 
 (defmethod search/primitive-refinement ::ALTPlanNode [node]
