@@ -206,7 +206,6 @@
 
 
 
-
 ;; Grounded STRIPS HLAs and hierarchies (here, actual grounding done JIT, not cached)
 ; Immediate refinements are [name pos-prec neg-prec CSP (not unk-types) expansion !!!]
 
@@ -214,8 +213,8 @@
 (derive ::StripsPrimitiveHLA ::StripsHLA)
 (derive ::StripsNoopHLA ::StripsPrimitiveHLA)
 
-
-(defstruct strips-hierarchy :class :hla-map :problem-instance)
+; keep around old map for ahlrta*
+(defstruct strips-hierarchy :class :hla-map :problem-instance :hla-schema-map)
 
 (defstruct strips-hla :class :hierarchy :schema :var-map :precondition)
 
@@ -253,7 +252,7 @@
 
 ; CSP takes on sole responsibility for handling *all* constant predicates.  Really (?)
 ; TODO: drop all constants here!  BUT must do it in right order?
-(defn- instantiate-strips-hla-schema [schema instance hla-map trans-objects const-pred-map]
+(defn instantiate-strips-hla-schema [schema instance hla-map trans-objects const-pred-map]
   (let [{:keys [name vars pos-pre neg-pre refinement-schemata optimistic-schema pessimistic-schema primitive]} schema
 	const-preds  (util/keyset const-pred-map)
 	deconst      (fn [atoms] (remove #(const-preds (first %)) atoms))]
@@ -304,7 +303,7 @@
 			#(instantiate-strips-hla-schema % instance old-hla-map trans-objects const-pred-map)
 			old-hla-map)]
     (make-strips-hla 
-     (struct strips-hierarchy ::StripsHierarchy new-hla-map instance)
+     (struct strips-hierarchy ::StripsHierarchy new-hla-map instance old-hla-map)
      (util/safe-get new-hla-map root-hla-name)
      {}
      envs/*true-condition*
@@ -386,6 +385,41 @@
 		   expansion
 		   (cons (envs/conjoin-conditions precondition ground-impl-pre)
 			 (repeat envs/*true-condition*)))))))))
+
+
+
+;; Used by AHLRTA
+
+(defn convert-to-prim-act-strips-hla [initial-node]
+  (let [{:keys [hierarchy schema var-map precondition]} initial-node,
+	{:keys [hla-schema-map problem-instance]}              hierarchy,
+	{:keys [trans-objects const-pred-map domain]}          problem-instance,
+	act-vars      (map (fn [[t v]] [v t]) (util/safe-get-in hla-schema-map ['act :vars]))
+	prim-action-schemata (util/safe-get domain :action-schemata)]
+    (make-strips-hla
+     hierarchy
+     (instantiate-strips-hla-schema
+      (make-strips-hla-schema 
+       (gensym "pa-strips-top-level-action")
+       [] nil nil
+       (for [action prim-action-schemata]
+	 (let [prim-vars (for [[t v] (:vars action)] [(gensym (str "?" v)) t])]
+	   [(:name action) nil nil (into {} (concat prim-vars act-vars)) 
+	    [(into [(:name action)] (map first prim-vars)) 
+	     (into ['act] (map first act-vars))]]))
+       (parse-description [:opt] :dummy :dummy)
+       (parse-description [:pess] :dummy :dummy)
+       nil)
+      problem-instance hla-schema-map trans-objects const-pred-map)
+     {}
+     envs/*true-condition*
+     false)))
+
+
+
+
+
+
 
 (comment 
   (let [domain (make-nav-switch-strips-domain), env (constant-predicate-simplify (make-nav-switch-strips-env 2 2 [[0 0]] [1 0] true [0 1])), node (make-initial-top-down-forward-node :edu.berkeley.ai.angelic.dnf-simple-valuations/DNFSimpleValuation  (instantiate-hierarchy (make-flat-strips-hierarchy-schema domain (constantly 0)) env))] (count node))

@@ -42,13 +42,16 @@
 
 (derive ::ALTPlanNode ::search/Node)
 (defstruct alt-plan-node :class :alt :name :plan :ancestor-set)
-(defn make-alt-plan-node [alt name plan ancestor-set]
-  (struct alt-plan-node ::ALTPlanNode alt name plan ancestor-set))
+(defn make-alt-plan-node [class alt name plan ancestor-set]
+  (struct alt-plan-node class alt name plan ancestor-set))
 
-(defstruct alt-action-node :hla :previous)
+(defstruct alt-action-node :hla :previous :primitive?)
 (defn make-alt-node [hla previous-node opt-val pess-val] 
   (with-meta  
-   (struct alt-action-node hla previous-node) 
+   (struct alt-action-node hla previous-node 
+	   (or (not previous-node) 
+	       (and (util/safe-get previous-node :primitive?)
+		    (hla-primitive? hla)))) 
    {:pessimistic-valuation (util/sref pess-val), :optimistic-valuation (util/sref opt-val)
     :lower-reward-bound (util/sref nil) :upper-reward-bound (util/sref nil) :cache (HashMap.)}))
 
@@ -66,7 +69,7 @@
 (defn do-restrict-valuation-alt [x y]
   (restrict-valuation x y))
 
-(defn- pessimistic-valuation [node]
+(defn pessimistic-valuation [node]
 ;  (println "lb")
   (let [s (:pessimistic-valuation ^node)]
     (or (util/sref-get s)
@@ -77,7 +80,7 @@
 	   (hla-pessimistic-description (:hla node)))))))
 
 
-(defn- optimistic-valuation [node]
+(defn optimistic-valuation [node]
   (let [s (:optimistic-valuation ^node)]
     (or (util/sref-get s)
 	(util/sref-set! s 
@@ -89,19 +92,23 @@
 
 ;; Choice functions, used by search algorithms
 
-(defn- first-choice-fn [node]
-  (loop [node (:plan node) cur nil]
-    (if (:previous node)
-        (recur (:previous node) (if (hla-primitive? (:hla node)) cur node))
-      cur)))
+(defn first-choice-fn [node]
+  (let [plan (:plan node)]
+    (when-not (util/safe-get plan :primitive?)
+      (first (drop-while #(not (:primitive? (:previous %)))
+			 (iterate :previous plan))))))
+;  (loop [node (:plan node) cur nil]
+;    (if (:previous node)
+;        (recur (:previous node) (if (hla-primitive? (:hla node)) cur node))
+;      cur)))
 
-(defn- last-choice-fn [node]
+(defn last-choice-fn [node]
   (loop [node (:plan node)]
     (when (:previous node)
       (if (hla-primitive? (:hla node)) (recur (:previous node)) node))))
 
 ; Almost icaps, except tiebreaks towards earlier, not higher-level...
-(defn- icaps-choice-fn [node]
+(defn icaps-choice-fn [node]
   (loop [node (:plan node), cur nil, maxgap Double/NEGATIVE_INFINITY]
     (if-let [prev (:previous node)]
         (if (hla-primitive? (:hla node)) (recur prev cur maxgap)
@@ -153,13 +160,17 @@
 								     initial-node ref-choice-fn cache? graph?))
 ;  ([valuation-class initial-node] (make-initial-alt-node valuation-class initial-node true true))
   ([valuation-class initial-node ref-choice-fn cache? graph?]
+     (make-initial-alt-node ::ALTPlanNode valuation-class initial-node ref-choice-fn cache? graph?))
+ ([node-type valuation-class initial-node ref-choice-fn cache? graph?]
   (util/assert-is (contains? #{true false :full} graph?))
-  (let [env (hla-environment initial-node), name (gensym)
+  (let [initial-plan (list initial-node) ;(if (seq? initial-node) initial-node (list initial-node))
+	env (hla-environment (first initial-plan)), 
+	name (gensym)
 	alt (make-alt cache? graph? (envs/get-goal env) ref-choice-fn)]
-    (loop [actions (list initial-node)
+    (loop [actions initial-plan
 	   previous (make-alt-root-node alt (make-initial-valuation valuation-class env))]
       (if (empty? actions)
-          (make-alt-plan-node alt name previous #{})
+          (make-alt-plan-node node-type alt name previous #{})
 	(recur (next actions)
 	       (get-alt-node alt (first actions) previous)))))))
 
@@ -213,7 +224,7 @@
 	  (.remove it))))
  ;   (println (.size cache))
 ;    node));
-    (make-alt-plan-node alt name (:plan node) newset)))
+    (make-alt-plan-node (:class node) alt name (:plan node) newset)))
 ;  (.clear 
 (set! *warn-on-reflection* false)
 
@@ -246,6 +257,15 @@
 
 (defmethod search/reward-so-far ::ALTPlanNode [node] 0)
 
+(defmulti construct-immediate-refinement (fn [node previous actions alt name ancestors] (:class node)))
+(defmethod construct-immediate-refinement ::ALTPlanNode [node previous actions alt name ancestors]
+  (if (empty? actions) 
+    (make-alt-plan-node (:class node) alt name previous ancestors)
+    (let [nxt (get-alt-node alt (first actions) previous)]
+      (when (or (not (:graph? alt)) 
+		(graph-add-and-check! alt nxt (next actions) name ancestors))
+	(recur node nxt (next actions) alt name ancestors)))))
+
 (defmethod search/immediate-refinements ::ALTPlanNode [node] 
   (util/timeout)
   (util/sref-set! *ref-counter* (inc (util/sref-get *ref-counter*)))
@@ -270,16 +290,8 @@
 	     (if (every? (fn [[node rest-plan]]    ; full graph prefix check
 			     (graph-add-and-check! alt node rest-plan name ancestors))
 			   (map vector before-nodes (iterate next all-actions)))
-	       (loop [previous (:previous ref-node)
-		      actions  tail-actions]
-;		 (println (count actions))
-		 (if (empty? actions) 
-		     (make-alt-plan-node alt name previous ancestors)
-		   (let [nxt (get-alt-node alt (first actions) previous)]
-		     (when (or (not graph?) 
-			       (graph-add-and-check! alt nxt (next actions) name ancestors))
-		       (recur nxt (next actions))))))
-	       (println "early prune")
+	       (construct-immediate-refinement node (:previous ref-node) tail-actions alt name ancestors) 
+;	       (println "early prune")
 	       ))))))))
 
 
@@ -299,7 +311,11 @@
 (defmethod search/node-str ::ALTPlanNode [node] 
   (util/str-join " " (map (comp hla-name :hla) (next (reverse (util/iterate-while :previous (:plan node)))))))
 
-
+(defmethod search/node-first-action ::ALTPlanNode [node]
+  (let [first-node (last (butlast (util/iterate-while :previous (:plan node))))
+	first-hla  (:hla first-node)]
+    (hla-primitive first-hla)))
+    
 
 (comment
 
@@ -331,6 +347,7 @@
 
 
 (require '[edu.berkeley.ai.domains.nav-switch :as nav-switch])
+
 (require '[edu.berkeley.ai.domains.strips :as strips])
 (require '[edu.berkeley.ai.domains.warehouse :as warehouse])
 (require '[edu.berkeley.ai.angelic.hierarchies.strips-hierarchies :as strips-hierarchies])

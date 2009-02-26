@@ -31,10 +31,11 @@
         :reward (+ reward (:reward ^state))})
      reward]))
 
-(defn next-initial-state [[state [act-seq reward-so-far]] action]
-  (aset *next-counter* 0 (inc (aget *next-counter* 0)))
-  (let [[next reward] ((:fn action) state)]
-    [(with-meta next ^state)
+
+(defn next-environment [[env [act-seq reward-so-far]] action]
+  (let [state (get-initial-state env)
+	[next reward] ((:fn action) state)]
+    [(make-environment next (get-state-space env) (get-action-space env) (get-goal env))
      [(conj act-seq action)
       (+ reward-so-far reward)]]))
 

@@ -6,30 +6,33 @@
 ;;; Textbook algorithms for fully observable, deterministic problems
 ;;; with countable state spaces and finite action spaces.
 
+; TODO: fix these up ...
 
 (def *debug-level* 0)
 
 (defn real-time-search "Generic real-time search.  Action-fn maps node->primitive"
-  [state state->search-node max-steps action-fn]
-  (loop [[state cur-seq] [state [[] 0]], max-steps max-steps]
-;  (when (> *debug-level* 0) (prn (util/intersection state #{'(on d c) '(on c b) '(on b a)})))
-    (let [node (state->search-node state)]
-      (when (> *debug-level* 0) (prn) (util/prln (search/node-str node)))
-      (or (and (extract-optimal-solution node) cur-seq)
-	  (and (> max-steps 0) 
-	       (recur 
-		(envs/next-initial-state
-		 [state cur-seq]
-		 (action-fn node state))
-		(dec max-steps)))))))
+  [env max-steps action-fn]
+  (let [goal (envs/get-goal env)]
+    (loop [[env cur-seq] [env [[] 0]], max-steps max-steps]
+      (if (envs/satisfies-condition? (envs/get-initial-state env) goal)
+	  cur-seq
+        (let [state (envs/get-initial-state env)]
+	  (when (> *debug-level* 0) (prn) (util/prln (envs/state-str env state)))
+	  (when (> max-steps 0) 
+	    (recur 
+	     (envs/next-environment
+	      [env cur-seq]
+	      (action-fn env))
+	     (dec max-steps))))))))
 
 ; TODO: Various versions for search strategies, alpha pruning, etc.
 (defn lookahead-search "Standard depth-limited greed loookahead search"
-  [state state->search-node max-steps search-depth]
-  (real-time-search state state->search-node max-steps
-    (fn [node state] 
+  [env env->search-node max-steps search-depth]
+  (real-time-search env max-steps
+    (fn [env] 
       (node-first-action 
-       (util/random-maximal-element upper-reward-bound (refinements-depth node search-depth))))))
+       (util/random-maximal-element upper-reward-bound 
+	 (refinements-depth (env->search-node env) search-depth))))))
 
 
 (import '(java.util HashMap))
@@ -37,21 +40,20 @@
 ; TODO: Various versions for search strategies, alpha pruning, etc.
 (defn lrta-star "Korf's classic LRTA* with a fixed depth limit. Only for state-space search."
   [env upper-reward-fn max-steps search-depth]
-  (let [space (state-space-search-space env upper-reward-fn)
-	#^HashMap m (HashMap.)]
+  (let [#^HashMap m (HashMap.)]
     (real-time-search 
-     (envs/get-initial-state env)
-     #(make-state-space-node space %)
+     env 
      max-steps
-     (fn [node state]
-       (let [nodes (map-leaf-refinements-depth 
+     (fn [env]
+       (let [node (ss-node env)
+	     nodes (map-leaf-refinements-depth 
 		     node
 		     #(when-let [r (and (not= node %) (.get m (:state %)))]
 ;			(prn ". " (:state %) r (reward-so-far %) (upper-reward-bound (adjust-reward % (+ r (reward-so-far %)))))
 			(adjust-reward % (+ r (reward-so-far %))))
 		     search-depth)
 	     best (util/random-maximal-element upper-reward-bound nodes)]
-	 (.put m state (upper-reward-bound best))
+	 (.put m (envs/get-initial-state (node-environment env)) (upper-reward-bound best))
 ;	 (prn (or (:state best) (cons "O" (:state (:node best)))) (upper-reward-bound best))
 	 (node-first-action best))))))
 
