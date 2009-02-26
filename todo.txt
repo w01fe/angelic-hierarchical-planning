@@ -1,14 +1,8 @@
-; Note about full graph -- switch true and partial ?
+
 
 ; Real-time algorithms (and warehouse hierarchy... )
 
 ; TODO: check for consistency? Ramifications of inconsistency?
-
-
-;; TODO: unit tests for ncstrips, 
-
-;; TODO: unit tests for abstract lookahead trees, make sure caching
-;; and graph are working.
 
 ;; TODO: unit tests for AHSS etc.
  
@@ -62,6 +56,8 @@ longer term
 
  - AADDs.
 
+ - Unit tests for NCStrips
+ - Unit tests that make sure cache/graph are working in ALTs?
 
 
  Merging nodes - do it iff rest of plan is the same ??
