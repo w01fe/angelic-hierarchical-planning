@@ -7,14 +7,53 @@
 
   (:hla act
        :parameters   ()
-       :refinement   (;:precondition (forall (?b - block ?c - block) (goal-on ?b ?c) (on ?b ?c)) TODO?
-		      :expansion ())
+       :refinement   (:parameters (:?b - block :?to - block 
+				   :?gx - xc :?gy - yc :?tox - xc :?toy - yc :?abovetoy - yc) 
+		      :expansion ((move-to :?b :?to :?gx :?gy :?tox :?toy :?abovetoy)))
+       :refinement   (:precondition (gripperempty)
+		      :expansion    ((move-blocks)))
+       :optimistic   (:opt 0)
+       :pessimistic  (:pess))
+
+
+  (:hla move-to
+       :parameters (?b - block ?to - block 
+		    ?gx - xc ?gy - yc ?tox - xc ?toy - yc ?abovetoy - yc)
+       :precondition (and (holding ?b) (gripperat ?gx ?gy)
+			  (clear ?to) (blockat ?to ?tox ?toy)
+			  (above ?abovetoy ?toy))
+       :refinement (:parameters (:?pdx - xc :?topy - yc)
+		    :precondition (and (topy :?topy)) 
+		    :expansion ((navigate ?gx ?gy :?pdx ?abovetoy :?topy) (put-r ?b ?to ?tox :?pdx ?toy ?abovetoy)))
+       :refinement (:parameters (:?pdx - xc :?topy - yc) 
+		    :precondition (and (topy :?topy))
+		    :expansion ((navigate ?gx ?gy :?pdx ?abovetoy :?topy) (put-l ?b ?to ?tox :?pdx ?toy ?abovetoy)))
+       :optimistic  (:ncstrips (:effect (and (not (holding ?b)) (gripperempty) 
+					     (on ?b ?to) (not (clear ?to)) 
+					     (blockat ?b ?tox ?abovetoy) (someblockat ?tox ?abovetoy)
+					     (forall (?cx - xc ?cy - yc) (gripperat ?cx ?cy) (not (gripperat ?cx ?cy)))
+					     )
+				:possible-effect (and (not (facingright)) (facingright)
+						      (forall (?pdx - xc) (leftof ?pdx ?tox) (gripperat ?pdx ?abovetoy))
+						      (forall (?pdx - xc) (leftof ?tox ?pdx) (gripperat ?pdx ?abovetoy)))
+				:cost-expr (max 1
+					    (+ (util/symbol-abs-diff ?gx ?tox 1)
+					       (util/symbol-abs-diff ?gy ?abovetoy 1)))
+				))  ; Missing any turn cost
+       :pessimistic (:pess))
+
+
+
+  (:hla move-blocks
+       :parameters   ()
+       :refinement   (:expansion ())
        :refinement   (:parameters (:?b - block :?from - block :?to - block
 				   :?bx - xc :?by - yc :?tox - xc :?toy - yc :?abovetoy - yc)
 		      :expansion ((move-block :?b :?from :?to :?bx :?by :?tox :?toy :?abovetoy)
-				  (act)))    
+				  (move-blocks)))    
        :optimistic   (:warehouse-act)
        :pessimistic  (:pess))
+
 
   (:hla move-block
        :parameters (?b - block ?from - block ?to - block 

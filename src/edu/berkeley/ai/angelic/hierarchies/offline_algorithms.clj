@@ -1,4 +1,4 @@
-(ns edu.berkeley.ai.angelic.hierarchies.algorithms
+(ns edu.berkeley.ai.angelic.hierarchies.offline-algorithms
   (:use edu.berkeley.ai.angelic.hierarchies)
   (:require [edu.berkeley.ai [util :as util] [search :as search]]
 	    [edu.berkeley.ai.util.queues :as queues]

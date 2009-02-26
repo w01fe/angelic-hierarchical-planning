@@ -2,10 +2,7 @@
 
 ; Real-time algorithms (and warehouse hierarchy... )
 
-; TODO: check for consistency? Ramifications of inconsistency?
-
-;; TODO: unit tests for AHSS etc.
- 
+; warehouse hierarchy - successive move restriction
   
 ------------------------------------
 From earlier meeting
@@ -56,6 +53,7 @@ longer term
 
  - AADDs.
 
+ - ; TODO: check for consistency? Ramifications of inconsistency?
  - Unit tests for NCStrips
  - Unit tests that make sure cache/graph are working in ALTs?
 

@@ -8,7 +8,7 @@
 	                            [hierarchies :as hierarchies]]
 	   [edu.berkeley.ai.angelic.hierarchies [strips-hierarchies :as strips-hierarchies]
 	                                        [abstract-lookahead-trees :as alts]
-	                                        [algorithms :as algs]]
+	                                        [offline-algorithms :as algs]]
 	   )
  )
 

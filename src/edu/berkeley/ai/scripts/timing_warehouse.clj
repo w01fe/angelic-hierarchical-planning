@@ -6,7 +6,7 @@
 	   [edu.berkeley.ai.search.algorithms.textbook :as textbook]
 	   [edu.berkeley.ai.angelic [dnf-simple-valuations :as dnf-simple-valuations]
 	                            [hierarchies :as hierarchies]]
-	   [edu.berkeley.ai.angelic.hierarchies [strips-hierarchies :as strips-hierarchies] [abstract-lookahead-trees :as alts] [algorithms :as algs]]
+	   [edu.berkeley.ai.angelic.hierarchies [strips-hierarchies :as strips-hierarchies] [abstract-lookahead-trees :as alts] [offline-algorithms :as algs]]
 	   )
  )
 
