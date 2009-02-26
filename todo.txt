@@ -1,8 +1,9 @@
 
-
 ; Real-time algorithms (and warehouse hierarchy... )
 
 ; warehouse hierarchy - successive move restriction
+
+; At least make optimistic desc. consistent?
   
 ------------------------------------
 From earlier meeting

@@ -57,6 +57,8 @@
 
 ;::PropositionalEnvironment
 
+(derive ::PropositionalEnvironment ::Environment)
+
 (defmulti #^{:doc "Get the ::PropositionalDomain associated with this ::PropositionalEnvironment"}
   get-domain :class)
 

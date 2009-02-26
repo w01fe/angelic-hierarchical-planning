@@ -218,7 +218,12 @@
 (defmethod node-first-action        ::RewardAdjustedNode [node] (node-first-action        (:node node)))
 (defmethod node-state               ::RewardAdjustedNode [node] (node-state               (:node node)))
 
+(defn reward-adjusted-node? [node] 
+  (= (:class node) ::RewardAdjustedNode))
 
+(defn ra-node-base [node]
+  (util/assert-is (reward-adjusted-node? node))
+  (:node node))
 
   
 

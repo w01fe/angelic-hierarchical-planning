@@ -8,8 +8,6 @@
 
 ; TODO: fix these up ...
 
-(def *debug-level* 0)
-
 (defn real-time-search "Generic real-time search.  Action-fn maps node->primitive"
   [env max-steps action-fn]
   (let [goal (envs/get-goal env)]
@@ -17,13 +15,13 @@
       (if (envs/satisfies-condition? (envs/get-initial-state env) goal)
 	  cur-seq
         (let [state (envs/get-initial-state env)]
-	  (when (> *debug-level* 0) (prn) (util/prln (envs/state-str env state)))
+	  (util/print-debug 1 (str "\nIn state\n" (envs/state-str env state)))
 	  (when (> max-steps 0) 
-	    (recur 
-	     (envs/next-environment
-	      [env cur-seq]
-	      (action-fn env))
-	     (dec max-steps))))))))
+	    (let [action (action-fn env)]
+	      (util/print-debug 1 "Taking action" (:name action)) 
+	      (recur 
+	       (envs/next-environment [env cur-seq] action)
+	       (dec max-steps)))))))))
 
 ; TODO: Various versions for search strategies, alpha pruning, etc.
 (defn lookahead-search "Standard depth-limited greed loookahead search"

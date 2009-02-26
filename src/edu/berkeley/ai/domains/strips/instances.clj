@@ -176,6 +176,7 @@
 (defmethod envs/get-goal          ::StripsPlanningInstance [instance]
   (envs/make-conjunctive-condition (:goal-atoms instance) nil))
 
+;(defmethod envs/state-str  ::StripsPlanningInstance [env state] (envs/state-str (envs/(str state))  
 
 
 

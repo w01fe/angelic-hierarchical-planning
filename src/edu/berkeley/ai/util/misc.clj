@@ -1,5 +1,11 @@
 (in-ns 'edu.berkeley.ai.util)
 
+(def *debug-level* 0)
+
+(defmacro print-debug [level & args]
+  `(when (>= @~#'*debug-level* ~level)
+    (println ~@args)))
+
 (defn prln "Print all arguments and return the first argument"
   [& args] (do (println (apply print-str args)) (first args)))
 

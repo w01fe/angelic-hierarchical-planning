@@ -297,7 +297,7 @@
 
 (defmethod search/primitive-refinement ::ALTPlanNode [node]
   (let [node (:plan node)]
-    (when (every? (comp hla-primitive? :hla) (butlast (util/iterate-while :previous node)))
+    (when (util/safe-get node :primitive?)
 ;    (println (search/node-str node))
     (let [act-seq (remove #(= % :noop)
 		   (map (comp hla-primitive :hla) (next (reverse (util/iterate-while :previous node))))) 
@@ -305,7 +305,8 @@
       [act-seq upper]))))
 
 (defmethod search/extract-optimal-solution ::ALTPlanNode [node] 
-  (when (> (search/upper-reward-bound node) Double/NEGATIVE_INFINITY)
+  (when (and (util/safe-get-in node [:plan :primitive?]) 
+	     (> (search/upper-reward-bound node) Double/NEGATIVE_INFINITY))
     (search/primitive-refinement node)))
 
 (defmethod search/node-str ::ALTPlanNode [node] 
