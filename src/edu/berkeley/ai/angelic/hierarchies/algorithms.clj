@@ -62,6 +62,48 @@
 
      
 
+
+
+
+;; Testing
+
+
+
+
+(require '[edu.berkeley.ai.envs :as envs])
+(require '[edu.berkeley.ai.domains.nav-switch :as nav-switch])
+(require '[edu.berkeley.ai.domains.strips :as strips])
+(require '[edu.berkeley.ai.domains.warehouse :as warehouse])
+(require '[edu.berkeley.ai.angelic.hierarchies.abstract-lookahead-trees :as alts])
+(require '[edu.berkeley.ai.search.algorithms.textbook :as textbook])
+
+(def *ns-inst* ["ns" -27 nav-switch/*nav-switch-hierarchy* 
+		(strips/constant-predicate-simplify
+		 (nav-switch/make-nav-switch-strips-env 6 6 [[4 0] [3 3] [0 4]] [5 0] true [0 5]))])
+
+(def *wh-inst* ["wh" -6 warehouse/*warehouse-hierarchy*
+		 (strips/constant-predicate-simplify 
+		  (warehouse/make-warehouse-strips-env 4 4 [1 2] false {0 '[b a] 2 '[c] 3 '[d]} nil ['[b d]]))])
+;		  (warehouse/make-warehouse-strips-env 3 4 [1 2] false {0 '[b a] 2 '[c]} nil ['[a b c]]))])
+;		  (warehouse/make-warehouse-strips-env 4 4 [1 2] false {0 '[b a] 2 '[d] 3 '[c]} nil ['[a b c]]))])
+
+
+(util/deftest hierarchical-algorithms
+   (doseq [[inst-n rew h env] [*ns-inst* *wh-inst*]
+	   cache?      [false true]
+	   graph?      [false true :full]
+	   [sf-n alg strict?] [["aha" aha-star-search true] ["ahss-inf" ahss-search false] ["ahss-=" #(ahss-search % rew) true]]]
+     (util/testing (str inst-n " " cache? " " graph? " " sf-n)
+;       (println inst-n cache? graph? sf-n)
+       (util/is ((if strict? = >=) rew  
+	 (second (envs/check-solution env (alg (alts/alt-node (get-hierarchy h env) cache? graph?)))))))))
+
+
+      
+
+
+
+
 (comment 
  (dotimes [_ 2] (let [env (constant-predicate-simplify (make-nav-switch-strips-env 505 505 (prln (take 20 (repeatedly #(vector (rand-int 505) (rand-int 505))))) [504 0] true [0 504]))] (doseq [h [*nav-switch-hierarchy* *nav-switch-hierarchy-improved*]] (let [node (get-hierarchy h env )] (println h) (dotimes [_ 1] (time (println (second (aha-star-search (alt-node node))))) (time (println (second (ahss-search (alt-node node))))) )))))
  )
