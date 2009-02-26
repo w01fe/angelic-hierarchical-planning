@@ -71,7 +71,7 @@
 	  (recur pq priority-fn)
 	(do
 	  (queues/pq-add-all! pq (map (fn [i] [i (priority-fn i)]) (immediate-refinements next)))
-	  (lazy-cons next (all-refinements- pq priority-fn)))))))
+	  (lazy-seq (cons next (all-refinements- pq priority-fn))))))))
 
 (defn all-refinements 
   "Returns a lazy seq of all refinements, refined using 
@@ -132,7 +132,7 @@
       (if (dead-end? next) 
 	  (recur f pq priority-fn)
 	(if-let [fnext (f next)]
-	    (lazy-cons fnext (map-leaf-refinements- f pq priority-fn))
+	    (lazy-seq (cons fnext (map-leaf-refinements- f pq priority-fn)))
 	  (do (queues/pq-add-all! pq (map (fn [i] [i (priority-fn i)]) (immediate-refinements next)))
 	      (recur f pq priority-fn)))))))
 
@@ -249,7 +249,7 @@
     (let [next (queues/pq-remove-min! pq)]
       (if (pred next)
 	(do (queues/pq-add-all! pq (map (fn [i] [i (priority-fn i)]) (immediate-refinements next)))
-	    (lazy-cons next (some-refinements- pred pq priority-fn)))
+    (lazy-seq (cons next (some-refinements- pred pq priority-fn))))
 	(recur pred pq priority-fn)))))
 
 (defn some-refinements 
@@ -263,10 +263,10 @@
 (defn iterate-refinements- [f pq priority-fn]
   (when-not (queues/pq-empty? pq)
     (let [next (f (queues/pq-remove-min! pq))]
-      (lazy-cons next
+      (lazy-seq (cons next
 		 (do (when (node? next)
 		       (queues/pq-add-all! pq (map (fn [i] [i (priority-fn i)]) (immediate-refinements next))))
-		     (iterate-refinements f pq priority-fn))))))
+		     (iterate-refinements f pq priority-fn)))))))
 
 (defn iterate-refinements 
   "Returns a lazy seq of (f refinement), refined using the provided (presumed fresh)

@@ -47,7 +47,7 @@
 	    [:optional [:optimistic   ~optimistic]]
 	    [:optional [:pessimistic  ~pessimistic]]
 	    [:optional [:exact        ~exact]]}
-	  (util/partition-all 2 (rest hla))]
+	  (util/partition-all 2 (next hla))]
     (when exact (util/assert-is (empty? optimistic)) (util/assert-is (empty? pessimistic)))
     (let [name (first hla)
 	  [pos-pre neg-pre] (props/parse-pddl-conjunction precondition)
@@ -77,7 +77,7 @@
   (doall
   (for [action expansion]
     (do 
-      (let [params (rest action)
+      (let [params (next action)
 	    declared-types (util/safe-get all-actions (first action))]
 	(util/assert-is (= (count params) (count declared-types)))
 	(doseq [[type par] (map vector declared-types params)]
@@ -94,7 +94,7 @@
          type-map))
      (util/map-map (fn [[t v]] [v [t]]) declared-types)
      (util/forcat [action expansion]
-       (map vector (rest action) (util/safe-get all-actions (first action)))))))
+       (map vector (next action) (util/safe-get all-actions (first action)))))))
    )
 
 (defn- check-hla-schema [types guaranteed-objs predicates all-actions hla-schema] 
@@ -231,7 +231,7 @@
       (util/assert-is (not (util/xor args vars)))
       (if (not args) ret
 	(recur (assoc ret (second (first vars)) (util/safe-get var-map (first args)))
-	       (rest args) (rest vars))))))
+	       (next args) (next vars))))))
 
 ;; pulls all ***constant*** constraints from refinement, not just first action? 
 (defn extract-preconditions [var-map action-inst hla-map] "Returns [pos neg]"
@@ -273,7 +273,7 @@
 		    (map (fn [precs] (filter #(const-preds (first %)) precs))
 		       (apply map concat [nil nil]
 			 (map #(extract-preconditions var-map % hla-map)
-			      (rest expansion)))))]
+			      (next expansion)))))]
 	   (util/assert-is (not (empty? expansion)))
 ;	   (print "Constructing CSP for " name " " r-name ": " );(set all-pos-pre) (set all-neg-pre)) 
 	   [r-name (deconst pos-prec) (deconst neg-prec) 
@@ -374,7 +374,7 @@
 				   (map simplifier neg-pre))]
 	      (map (fn [call extra-preconditions]
 		     (let [hla (util/safe-get hla-map (first call))
-			   trans-var-map (translate-var-map hla (rest call) final-var-map)
+			   trans-var-map (translate-var-map hla (next call) final-var-map)
  	   		   simplifier #(props/simplify-atom trans-var-map %)
 			   precond 
 			   (envs/conjoin-conditions 

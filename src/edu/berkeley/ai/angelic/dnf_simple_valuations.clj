@@ -38,9 +38,9 @@
     (if (empty? pairs) insts
       (let [[var val] (first pairs)]
 	(cond (= val :true)
-  	        (recur (map #(conj % var) insts) (rest pairs))
+  	        (recur (map #(conj % var) insts) (next pairs))
 	      (= val :unknown)
-	        (recur (concat (map #(conj % var) insts) insts) (rest pairs))
+	        (recur (concat (map #(conj % var) insts) insts) (next pairs))
 	      :else (throw (IllegalArgumentException.)))))))
 	  
 
@@ -55,12 +55,12 @@
   (when-let [after-pos
 	     (loop [pos pos clause clause]
 	       (cond (empty? pos)                   clause
-		     (contains? clause (first pos)) (recur (rest pos) (assoc clause (first pos) :true))
+		     (contains? clause (first pos)) (recur (next pos) (assoc clause (first pos) :true))
 		     :else nil))]
     (loop [neg neg clause after-pos]
       (cond (empty? neg)                       clause
 	    (= :true (get clause (first neg))) nil
-	    :else  (recur (rest neg) (dissoc clause (first neg)))))))
+	    :else  (recur (next neg) (dissoc clause (first neg)))))))
 
 (defmethod restrict-valuation       [::DNFSimpleValuation :edu.berkeley.ai.envs/ConjunctiveCondition] [val con]
   (let [pos (envs/get-positive-conjuncts con)
@@ -81,7 +81,7 @@
       (doseq [[#^clojure.lang.APersistentVector pred stat] clause]
 	(let [#^HashMap m (if (= stat :true) true-map poss-map)
 	      pred-name (.get pred 0)]
-;	      pred-args (rest pred)] 
+;	      pred-args (next pred)] 
 	  (.put m pred-name (cons pred (.get m pred-name)))))
       [true-map poss-map])));)
 

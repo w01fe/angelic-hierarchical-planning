@@ -85,7 +85,7 @@
    (util/safe-get domain :types) 
    (props/check-objects (util/safe-get domain :types) (concat (util/safe-get domain :guaranteed-objs) vars)) 
    (util/safe-get domain :predicates)
-   (for [clause (rest desc)]
+   (for [clause (next desc)]
      (util/match [#{[:optional [:precondition    ~pre]]
 		    [:optional [:effect          ~eff]]
 		    [:optional [:possible-effect ~poss]]
@@ -217,7 +217,7 @@
 ;      (println csp var-map hla-vars)
       (fn [pred-maps]
 ;	(println pred-maps)
-        (apply max  ;; TODO???
+        (reduce max  ;; TODO???
 	  (for [combo (smart-csps/get-smart-csp-solutions csp var-map pred-maps)]
 	    (let [final-map (merge combo var-map)]
 	      (apply cost-fn (concat early-args (map #(util/safe-get final-map (second %)) args))))))))))
@@ -225,25 +225,20 @@
 
 ; TODO: this is still slow -- set accounts 10% of time! 
 ; TODO: is this definition of cost-expr sufficiently general?
-; TODO: lazy eval cost somehow?
+; TODO: lazy eval cost somehow? (no set)?
 (defn- ground-ncstrips-effect-atoms [var-map effect hla-vars]
   (let [instantiator #(props/simplify-atom var-map %)]
-    (apply make-ncstrips-effect 
-      (concat (for [[f forall?] 
-		         [[:pos-preconditions false]
-			  [:neg-preconditions false]
-			  [:forall-preconditions true]
-			  [:adds false]
-			  [:deletes false]
-			  [:forall-effects true]
-			  [:possible-adds false]
-			  [:possible-deletes false]
-			  [:possible-forall-effects true]]]
-		(let [thing (util/safe-get effect f)]
-		  (if forall? 
-		      (map #(ground-ncstrips-csp % var-map) thing)
-		    (set (map instantiator thing)))))
-	      [(ground-ncstrips-cost (util/safe-get effect :forall-cost) (util/safe-get effect :cost-fn) var-map hla-vars)]))))
+    (make-ncstrips-effect 
+     (map instantiator (util/safe-get effect :pos-preconditions))
+     (map instantiator (util/safe-get effect :neg-preconditions))
+     (map #(ground-ncstrips-csp % var-map) (util/safe-get effect :forall-preconditions))
+     (map instantiator (util/safe-get effect :adds))
+     (map instantiator (util/safe-get effect :deletes))
+     (map #(ground-ncstrips-csp % var-map) (util/safe-get effect :forall-effects))
+     (map instantiator (util/safe-get effect :possible-adds))
+     (map instantiator (util/safe-get effect :possible-deletes))
+     (map #(ground-ncstrips-csp % var-map) (util/safe-get effect :possible-forall-effects))
+     (ground-ncstrips-cost (util/safe-get effect :forall-cost) (util/safe-get effect :cost-fn) var-map hla-vars))))
 
 
 ; TODO: put back simplification?  Or provide ground-and-constant-simplify method?
@@ -292,10 +287,11 @@
 (defn- progress-ncstrips [val desc combiner]
 ;  (println "proggy " val combiner)
   (let [results 
-	(filter identity
+	(seq 
+	 (filter identity
 	  (for [clause (:dnf val)
 		effect (:effects desc)]
-	    (progress-effect-clause effect clause)))]
+	    (progress-effect-clause effect clause))))]
 ;    (prn results)
 ;    (println val desc combiner)
     (if results  

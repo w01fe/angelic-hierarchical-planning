@@ -31,7 +31,7 @@
 (defn safe-get-in 
   [m ks]
   (if (seq ks) 
-      (recur (safe-get m (first ks)) (rest ks))
+      (recur (safe-get m (first ks)) (next ks))
     m))
 
 (defn merge-agree "Like merge but returns nil if there are inconsistencies."
@@ -50,7 +50,7 @@
   ([f ] {})
   ([f m1 & maps]
      (reduce (fn [m [k v]] 
-	       (if-let [v2 (get m k)]
+	       (if-let [[_ v2] (find m k)]
 		   (assoc m k (f v2 v))
 		 (assoc m k v)))
 	     m1

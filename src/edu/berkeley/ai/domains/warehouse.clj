@@ -103,10 +103,10 @@
     (doseq [clause dnf
 	    [atom] clause]
       (let [pred (first atom)]
-       (cond (= pred 'gripperat) (.add gripper-pos (parse-pos (rest atom)))
+       (cond (= pred 'gripperat) (.add gripper-pos (parse-pos (next atom)))
  	     (= pred 'blockat)   
 	      (let [block (second atom)
-		    pos   (parse-pos (rest (rest atom)))
+		    pos   (parse-pos (next (next atom)))
 		    prev-pos (.get block-pos block)]
 		(if prev-pos
 		    (util/assert-is (= prev-pos pos))
@@ -132,16 +132,16 @@
 ;      (if (.isEmpty gripper-pos) Double/NEGATIVE_INFINITY
    ;   (println "Going: ")
       (- 0 
-	 (apply + (for [[b p] table-pos-map] (manhattan p (.get block-pos b))))
-	 (apply + (for [chain floating-chains]
+	 (reduce + (for [[b p] table-pos-map] (manhattan p (.get block-pos b))))
+	 (reduce + (for [chain floating-chains]
 		    (let [positions (map #(.get block-pos %) chain)
 			  medx      (util/median (map first positions))]
 		      (+ (loop [positions positions vert (int 0)]
-			   (if (rest positions)
-			       (recur (rest positions) (+ vert (Math/abs (int (- (second (first positions))
-										 (inc (second (frest positions))))))))
+			   (if (next positions)
+			       (recur (next positions) (+ vert (Math/abs (int (- (second (first positions))
+										 (inc (second (fnext positions))))))))
 			     vert))
-			 (apply + 
+			 (reduce + 
 			   (for [pos positions]
 			     (util/abs (- (first pos) medx))))))))))))
 
@@ -154,8 +154,8 @@
 ;	(if (.isEmpty gripper-pos) Double/NEGATIVE_INFINITY
         (- 
 	 ; Matching
-	 (let [positions (remove (fn [[b c g]] (= c g)) 
-			    (map #(vector % (.get block-pos %) (get table-pos-map %)) block-set))
+	 (let [positions (seq (remove (fn [[b c g]] (= c g)) 
+			    (map #(vector % (.get block-pos %) (get table-pos-map %)) block-set)))
 	       blocks    (cons term (map first positions))]
 	   (if positions
  	    (util/maximum-matching blocks blocks
@@ -174,6 +174,7 @@
 	  (* 4 (util/sum-over 
 	       (fn [chain]
 		 (let [positions (map #(vector (.get block-pos %) (get table-pos-map %)) chain)]
+		   (util/assert-is (not (empty? positions)))
 		   (util/count-when
 		    (fn [rest-pos]
 ;		      (println rest-pos)
@@ -183,8 +184,8 @@
 			    (util/assert-is (> (second goal-pos) (second goal-pos2)))
 			    (and (not (= cur-pos2 goal-pos2))
 				 (> (second cur-pos) (second cur-pos2))))
-			  (rest rest-pos))))
-		    (util/iterate-while rest positions))))
+			  (next rest-pos))))
+		    (util/iterate-while next (seq positions)))))
 	       chains)))))))
 
 
@@ -203,7 +204,7 @@
 			  (apply concat
 			    (for [chain table-chains]
 			      (let [x (Integer/parseInt (.substring #^String (name (last chain)) 5))]
-				(for [[block y] (rest (map vector (reverse chain) (iterate inc 0)))]
+				(for [[block y] (next (map vector (reverse chain) (iterate inc 0)))]
 				  [block [x y]])))))]
       (make-warehouse-act-description
        (if (empty? floating-chains)

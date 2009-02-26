@@ -5,7 +5,7 @@
   [s]
   (loop [s (seq s), sets [[]]]
     (if s 
-        (recur (rest s) (lazy-cat sets (map #(conj % (first s)) sets)))
+        (recur (next s) (lazy-cat sets (map #(conj % (first s)) sets)))
       sets)))
   
 (defn subset? [s1 s2]
@@ -48,8 +48,8 @@
 	 (let [first-coll (first rest-colls)
 	       size (count first-coll)]
 	   (if (> size biggest-size)
-	       (recur first-coll size (cons biggest not-biggest) (rest rest-colls))
-	     (recur biggest biggest-size (cons first-coll not-biggest) (rest rest-colls))))
+	       (recur first-coll size (cons biggest not-biggest) (next rest-colls))
+	     (recur biggest biggest-size (cons first-coll not-biggest) (next rest-colls))))
 	 (reduce into biggest not-biggest)))))
 
 
@@ -78,8 +78,8 @@
 	 (let [first-coll (first rest-colls)
 	       size (count first-coll)]
 	   (if (< size smallest-size)
-	       (recur first-coll size (cons smallest not-smallest) (rest rest-colls))
-	     (recur smallest smallest-size (cons first-coll not-smallest) (rest rest-colls))))
+	       (recur first-coll size (cons smallest not-smallest) (next rest-colls))
+	     (recur smallest smallest-size (cons first-coll not-smallest) (next rest-colls))))
 	 (reduce two-arg-intersection smallest not-smallest)))))
 
 (defn- two-arg-difference 

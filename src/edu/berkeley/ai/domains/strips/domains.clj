@@ -84,7 +84,7 @@
 ;  (println types)
   (let [;all-type (gensym "all-type")
 	;prim-types (map #(if (coll? %) (first %) %) 
-	;		(filter #(or (not (coll? %)) (empty? (rest %))) types))
+	;		(filter #(or (not (coll? %)) (empty? (next %))) types))
 	types (props/check-types types) ;(if include-equality? (cons [all-type prim-types] types) types))
 	guaranteed-objs (props/check-objects types guaranteed-objs)
         predicates (props/check-predicates types 

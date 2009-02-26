@@ -67,6 +67,7 @@
   (restrict-valuation x y))
 
 (defn- pessimistic-valuation [node]
+;  (println "lb")
   (let [s (:pessimistic-valuation ^node)]
     (or (util/sref-get s)
 	(util/sref-set! s 
@@ -159,7 +160,7 @@
 	   previous (make-alt-root-node alt (make-initial-valuation valuation-class env))]
       (if (empty? actions)
           (make-alt-plan-node alt name previous #{})
-	(recur (rest actions)
+	(recur (next actions)
 	       (get-alt-node alt (first actions) previous)))))))
 
 (defn alt-node [& args] (apply make-initial-alt-node args))
@@ -258,24 +259,26 @@
       (let [after-actions  (map :hla (reverse (take-while #(not (identical? % ref-node)) 
 							  (iterate :previous plan))))
 	    before-nodes   (when full-graph? (reverse (util/iterate-while :previous plan)))
-	    before-actions (map :hla (rest before-nodes))
+	    before-actions (map :hla (next before-nodes))
 	    ancestors      (conj (util/safe-get node :ancestor-set) (util/safe-get node :name))]
 	(filter identity
 	 (for [ref (hla-immediate-refinements (:hla ref-node) (optimistic-valuation (:previous ref-node)))]
 	   (let [name         (gensym)
 		 tail-actions (concat ref after-actions)
 		 all-actions  (concat before-actions tail-actions)]
+;	     (println " GO " (count tail-actions))
 	     (if (every? (fn [[node rest-plan]]    ; full graph prefix check
 			     (graph-add-and-check! alt node rest-plan name ancestors))
-			   (map vector before-nodes (iterate rest all-actions)))
+			   (map vector before-nodes (iterate next all-actions)))
 	       (loop [previous (:previous ref-node)
 		      actions  tail-actions]
+;		 (println (count actions))
 		 (if (empty? actions) 
 		     (make-alt-plan-node alt name previous ancestors)
-		   (let [next (get-alt-node alt (first actions) previous)]
+		   (let [nxt (get-alt-node alt (first actions) previous)]
 		     (when (or (not graph?) 
-			       (graph-add-and-check! alt next (rest actions) name ancestors))
-		       (recur next (rest actions))))))
+			       (graph-add-and-check! alt nxt (next actions) name ancestors))
+		       (recur nxt (next actions))))))
 	       (println "early prune")
 	       ))))))))
 
@@ -285,7 +288,7 @@
     (when (every? (comp hla-primitive? :hla) (butlast (util/iterate-while :previous node)))
 ;    (println (search/node-str node))
     (let [act-seq (remove #(= % :noop)
-		   (map (comp hla-primitive :hla) (rest (reverse (util/iterate-while :previous node))))) 
+		   (map (comp hla-primitive :hla) (next (reverse (util/iterate-while :previous node))))) 
 	  upper (get-valuation-upper-bound (optimistic-valuation node))] 
       [act-seq upper]))))
 
@@ -294,7 +297,7 @@
     (search/primitive-refinement node)))
 
 (defmethod search/node-str ::ALTPlanNode [node] 
-  (util/str-join " " (map (comp hla-name :hla) (rest (reverse (util/iterate-while :previous (:plan node)))))))
+  (util/str-join " " (map (comp hla-name :hla) (next (reverse (util/iterate-while :previous (:plan node)))))))
 
 
 

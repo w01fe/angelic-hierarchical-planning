@@ -6,7 +6,7 @@
 (defmacro trace-expr "Trace a single expression, printing info about args and return. Will remove shortcuts"
   ([expr] 
      `(do
-        (let [args# (list ~@(rest expr))]
+        (let [args# (list ~@(next expr))]
 	  (print "Entering " (cons '~(first expr) args#) "...\n")
 	  (let [result# (apply ~(first expr) args#)]
 	    (print "Leaving " (cons '~(first expr) args#) ", got " result# ".\n")
@@ -76,7 +76,7 @@
   (symbol (apply str args)))
 
 (defn desymbolize [symbol n]
-  (read-string (apply str (nthrest (name symbol) n))))
+  (read-string (apply str (nthnext (name symbol) n))))
 
 (import '(java.io File))
 
@@ -96,7 +96,7 @@
     (Math/abs (unchecked-subtract (Integer/parseInt s1) (Integer/parseInt s2)))))
 
 (defn desymbolize-int [symbol n]
-  (read-string (apply str (nthrest (name symbol) n))))
+  (read-string (apply str (nthnext (name symbol) n))))
 
 (defn truthify [x]
   (if x true false))
@@ -137,17 +137,17 @@
   (cond (not (coll? var-tree)) nil
 	(= (first var-tree) 'clojure.core/unquote) [(second var-tree)]
 	(and (coll? (first var-tree)) (= (ffirst var-tree) 'clojure.core/unquote-splicing)) [(second (first var-tree))]
-	:else (concat (match-vars (first var-tree)) (match-vars (rest var-tree)))))
+	:else (concat (match-vars (first var-tree)) (match-vars (next var-tree)))))
 
 
 
 (defmacro merge-mappings [s1 s2]
-  `(when-let [s1# ~s1]
+  `(when-let [s1# (seq ~s1)]
      (filter identity 
 	     (for [m1# s1#, m2# ~s2] (merge-agree m1# m2#)))))
 
 (defmacro merge-multi-mappings [s1 s2]
-  `(when-let [s1# ~s1]
+  `(when-let [s1# (seq ~s1)]
      (for [m1# s1#, m2# ~s2] 
        (reduce (fn [m# [k# v#]] (assoc m# k# (cons v# (get m# k#)))) m2# m1#))))
 
@@ -160,22 +160,22 @@
 	(empty? match-tree)
 	  (when (every? #(contains? #{:optional :multiple} (first %)) var-tree) [{}])
 ;	(and (= (count var-tree) 1) (= (ffirst var-tree) :rest))
-;	  (match-mappings [:multiple (rfirst var-tree)] match-tree)
+;	  (match-mappings [:multiple (nfirst var-tree)] match-tree)
         :else
 	  (concat-elts
 	   (for [clause var-tree] ; :when (not (= (first clause) :rest))]
 	     (if (= (first clause) :multiple)
 	         (merge-multi-mappings
 		  (match-mappings (second clause) (first match-tree))
-		  (match-set      var-tree        (rest match-tree)))
+		  (match-set      var-tree        (next match-tree)))
 	       (merge-mappings
 		(match-mappings (if (= :optional (first clause)) (second clause) clause) (first match-tree))
-		(match-set      (disj var-tree clause)                                   (rest match-tree))))))))
+		(match-set      (disj var-tree clause)                                   (next match-tree))))))))
 
 ;  "leave match-set " var-tree match-tree))
 ;	     (match-mappings 
 ;	      [clause (if (= (first clause) :multiple) var-tree (disj var-tree clause))]
-;	      [(first match-tree) (rest match-tree)])))))
+;	      [(first match-tree) (next match-tree)])))))
 
 
 
@@ -197,23 +197,23 @@
   	  (and (coll? (first var-tree)) (= (ffirst var-tree) :optional))
 	    (do (assert-is (= (count (first var-tree)) 2))
 		(lazy-cat (merge-mappings (match-mappings (second (first var-tree)) (first match-tree))
-					  (match-mappings (rest var-tree) (rest match-tree)))
-			  (match-mappings (rest var-tree) match-tree)))
+					  (match-mappings (next var-tree) (next match-tree)))
+			  (match-mappings (next var-tree) match-tree)))
   	  (and (coll? (first var-tree)) (= (ffirst var-tree) :multiple))
 	    (do (assert-is (= (count (first var-tree)) 2))
 		(lazy-cat (merge-multi-mappings (match-mappings (second (first var-tree)) (first match-tree))
-					  (match-mappings var-tree (rest match-tree)))
-			  (match-mappings (rest var-tree) match-tree)))
+					  (match-mappings var-tree (next match-tree)))
+			  (match-mappings (next var-tree) match-tree)))
 	  (not (coll? match-tree))
             nil
        	  :else 
 	    (merge-mappings (match-mappings (first var-tree) (first match-tree))
-			    (match-mappings (rest var-tree) (rest match-tree))))))
+			    (match-mappings (next var-tree) (next match-tree))))))
 
 (defn match-mapping [var-tree match-tree]
   (let [matches (match-mappings var-tree match-tree)]
     (when (empty? matches) (throw (IllegalArgumentException. (str "No matches: " var-tree " " match-tree))))
-    (when (rest matches) (throw (IllegalArgumentException. (str "Multiple matches: " var-tree " " match-tree "\n" (take 2 matches)))))
+    (when (next matches) (throw (IllegalArgumentException. (str "Multiple matches: " var-tree " " match-tree "\n" (take 2 matches)))))
     (first matches)))
 
 (defmacro match "Take a var-tree with (clojure.core/unquote x) and (clojure.core/unquote-splicing y) expressions
@@ -231,7 +231,7 @@
     `(let [~g (match-mappings '~var-tree ~match-tree)]
        (if (first ~g)
 	 (do 
-	   (when (rest ~g) (throw (IllegalArgumentException. (str "Multiple matches: " '~var-tree " " ~match-tree "\n" (take 2 ~g)))))
+	   (when (next ~g) (throw (IllegalArgumentException. (str "Multiple matches: " '~var-tree " " ~match-tree "\n" (take 2 ~g)))))
 	   (let ~(apply vector (mapcat #(vector % `(get (first ~g) '~% :no-match))  vars))
 	     ~then))
 	 ~else))))  
@@ -277,7 +277,7 @@
 	  (throw (Exception. (str "Bad Match: " var-tree " " match-tree)))
 	:else 
 	  (merge (match-mapping (first var-tree) (first match-tree))
-		 (match-mapping (rest var-tree) (rest match-tree)))))
+		 (match-mapping (next var-tree) (next match-tree)))))
   )
  
 

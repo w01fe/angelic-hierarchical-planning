@@ -11,14 +11,14 @@
   ([form format-str & args]
      `(when-not ~form
 	(throw (Exception. (str (format ~format-str ~@args) 
-				": Got " '~form " as " (cons '~(first form) (list ~@(rest form)))))))))
+				": Got " '~form " as " (cons '~(first form) (list ~@(next form)))))))))
 
 (defmacro make-safe 
   ([x] `(make-safe ~x ""))
   ([x format-str & args]
      `(let [x# ~x]
 	(when-not x# (throw (Exception. (str (format ~format-str ~@args) 
-					     ": False/nil " x# " from " '~x " as " (cons '~(first x) (list ~@(rest x)))))))
+					     ": False/nil " x# " from " '~x " as " (cons '~(first x) (list ~@(next x)))))))
 	x#)))
 
 (defmacro assert-let
@@ -27,7 +27,7 @@
   (let [binding-form (get binding 0)
 	test         (get binding 1)
 	format-str   (or (get binding 2) "")
-	rest-args    (nthrest binding 3)]
+	rest-args    (nthnext binding 3)]
     `(when-let [~binding-form (make-safe ~test ~format-str ~@rest-args)] ~@body)))    
 ;  ([[binding-form test] & body] `(assert-let [~binding-form ~test ""] ~@body))
 ;  ([[binding-form test format-str & args] & body]

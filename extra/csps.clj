@@ -122,8 +122,8 @@
 	pred-map
 	 (loop [pred-map  ; create map from predicates to lists of (value-set [p-fn var-map var-set] pos?) entries
 		(util/merge-reduce concat {} 
-		  (map (fn [atom] [(first atom) [(list #{} (process-args domains (rest atom) true) true)]]) pos-atoms)
-		  (map (fn [atom] [(first atom) [(list #{} (process-args domains (rest atom) false) false)]]) neg-atoms))
+		  (map (fn [atom] [(first atom) [(list #{} (process-args domains (next atom) true) true)]]) pos-atoms)
+		  (map (fn [atom] [(first atom) [(list #{} (process-args domains (next atom) false) false)]]) neg-atoms))
 		grounds (seq ground-clause-map)]
 ;	   (prn pred-map)
 	   (if (empty? grounds) pred-map  ; process ground clauses into this map, checking against allowed domain values
@@ -135,10 +135,10 @@
 				     (if-let [val-vec  (parse-fn args pos?)] 
 					          ; (util/prln (parse-fn args truth-val) (cons pred args) elt)]
 				         (cons (conj value-set val-vec)
-					       (rest elt))
+					       (next elt))
 				       elt))))
 		        pred-map))
-		    (rest grounds))))
+		    (next grounds))))
 	set-map          ; create constraints and merge them, intersecting domains of pos constraints and unioning neg.
 	  (util/merge-reduce conjoin-constraints {}
 	    (mapcat (fn [[pred constraint-specs]]
@@ -161,7 +161,7 @@
 		 (if (empty? all-sets) new-constraints
 		   (when-let [new-constraint 
 			      (simplify-constraint (get new-constraints (first all-sets)) var val)]
-		     (recur (rest all-sets)
+		     (recur (next all-sets)
 			    (assoc new-constraints (first all-sets) new-constraint)))))]
       (make-cp-csp (assoc (:domains csp) var val) var-set-map new-constraints))))
 
@@ -170,7 +170,7 @@
   (if (empty? var-domains)
       [(:domains csp)]
     (util/lazy-mapcat #(when-let [next-csp (set-variable-value csp (ffirst var-domains) %)]
-		    (all-csp-solutions- next-csp (rest var-domains)))
+		    (all-csp-solutions- next-csp (next var-domains)))
 		 (second (first var-domains)))))
 
 ; TODO: improve?

@@ -41,7 +41,7 @@
 		     (make-initial-valuation valuation-class env))]
       (if (empty? actions)
         previous
-	(recur (rest actions)
+	(recur (next actions)
 	       (make-top-down-forward-node (envs/get-goal env) (first actions) previous)))))))
 
 (defn tdf-node 
@@ -92,7 +92,7 @@
 	    previous
 	  (recur 
 	   (make-top-down-forward-node (:goal node) (first actions) previous)
-	   (rest actions)))))))
+	   (next actions)))))))
       
 
 ;; Node methods 
@@ -146,9 +146,9 @@
   (util/sref-set! *ref-counter* (inc (util/sref-get *ref-counter*)))
   (when-let [fnp (first-nonprimitive node)]
     (local-immediate-refinements fnp (reverse (map :hla (take-while #(not (identical? % fnp)) (iterate :previous node))))))) 
-;  (let [nodes (rest (reverse (util/iterate-while :previous node)))]
+;  (let [nodes (next (reverse (util/iterate-while :previous node)))]
 ;    (when-let [rest-nodes (drop-while #(hla-primitive (:hla %)) nodes)]
-;      (local-immediate-refinements (first rest-nodes) (map :hla (rest rest-nodes))))))
+;      (local-immediate-refinements (first rest-nodes) (map :hla (next rest-nodes))))))
 
 
 (defmethod search/primitive-refinement ::TopDownForwardNode [node]
@@ -163,7 +163,7 @@
 ;		   false)))]
  ;   (clojure.inspector/inspect-tree node)
     (let [act-seq (remove #(= % :noop)
-		   (map (comp hla-primitive :hla) (rest (reverse (util/iterate-while :previous node))))) 
+		   (map (comp hla-primitive :hla) (next (reverse (util/iterate-while :previous node))))) 
 ;	  lower (get-valuation-lower-bound (get-pessimistic-valuation node))
 	  upper (get-valuation-upper-bound (get-optimistic-valuation node))] 
  ;     (util/assert-is (= lower upper))
@@ -178,7 +178,7 @@
 
 
 (defmethod search/node-str ::TopDownForwardNode [node] 
-  (util/str-join " " (map (comp hla-name :hla) (rest (reverse (util/iterate-while :previous node))))))
+  (util/str-join " " (map (comp hla-name :hla) (next (reverse (util/iterate-while :previous node))))))
 
 
 

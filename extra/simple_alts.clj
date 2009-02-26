@@ -131,8 +131,8 @@
 		     actions)]
       (if (empty? actions)
         previous
-	(recur (rest actions)
-	       (get-alt-node (first actions) (rest actions) previous)))))))
+	(recur (next actions)
+	       (get-alt-node (first actions) (next actions) previous)))))))
 
 (defn alt-node 
   ([initial-hla] (make-initial-alt-node initial-hla))
@@ -172,8 +172,8 @@
 	      (nil?   previous) nil ; (do (println "pruning!") nil) ;
 	      :else
 	      (recur 
-	       (get-alt-node (first actions) (rest actions) previous)
-	       (rest actions)))))))
+	       (get-alt-node (first actions) (next actions) previous)
+	       (next actions)))))))
       
 
 ;; Node methods 
@@ -215,14 +215,14 @@
 		 actions rest-actions]
 	    (when nodes
 	      (.remove graph-map [(get-valuation-states (pessimistic-valuation (first nodes))) actions])
-	      (recur (rest nodes) (rest actions))))))
+	      (recur (next nodes) (next actions))))))
       (node-immediate-refinements fnp rest-actions)))) 
 
 (defmethod search/primitive-refinement ::ALTNode [node]
   (when-not (:first-np node)
 ;    (println (search/node-str node))
     (let [act-seq (remove #(= % :noop)
-		   (map (comp hla-primitive :hla) (rest (reverse (util/iterate-while :previous node))))) 
+		   (map (comp hla-primitive :hla) (next (reverse (util/iterate-while :previous node))))) 
 	  upper (get-valuation-upper-bound (optimistic-valuation node))] 
       [act-seq upper])))
 
@@ -232,7 +232,7 @@
     (search/primitive-refinement node)))
 
 (defmethod search/node-str ::ALTNode [node] 
-  (util/str-join " " (map (comp hla-name :hla) (rest (reverse (util/iterate-while :previous node))))))
+  (util/str-join " " (map (comp hla-name :hla) (next (reverse (util/iterate-while :previous node))))))
 
 
 

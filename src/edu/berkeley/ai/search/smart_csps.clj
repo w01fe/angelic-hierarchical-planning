@@ -51,7 +51,7 @@
 
 (defn unsimplify-map [#^HashMap map preds val]
   (doseq [pred preds]
-    (.put map pred (rest (.get map pred)))))
+    (.put map pred (next (.get map pred)))))
 ;  (reduce (fn [map pred] (assoc map pred (get (get map pred) val)))
 ;	  map preds))
 
@@ -84,18 +84,18 @@
 ;      (doall (util/forcat [val (apply util/union (map second clause-domains))]
       (doseq [val (apply util/union (map second clause-domains))]
 	(let [rel-clause-maps (map first (filter #((second %) val) clause-domains))]
-	  (when (rest vars-left)
+	  (when (next vars-left)
 	    (simplify-map const-map all-const val)
 	    (doseq [c rel-clause-maps] (simplify-map c all-fluent val)))
 ;	  (let [ret 
 		(all-solutions 
-		 (rest vars-left)
+		 (next vars-left)
 		 initial-domains
 		 var-map
 		 const-map
 		 rel-clause-maps
 		 (if arg? inst-map (assoc inst-map var val)) results);]
-	    (when (rest vars-left)
+	    (when (next vars-left)
 	      (unsimplify-map const-map all-const val)
 	      (doseq [c rel-clause-maps] (unsimplify-map c all-fluent val)))
 	   ; ret
@@ -137,7 +137,7 @@
     (util/forcat [atom atoms]
       (let [pred-name (first atom)
 	    gen-name  (gensym (name pred-name))
-	    args      (rest atom)]
+	    args      (next atom)]
 	(util/assert-is (apply distinct? args))  ; For now.
 	(doseq [arg args] (util/assert-is (vars arg)))
 	(.put pred-names     pred-name (cons gen-name (.get pred-names pred-name)))
@@ -176,7 +176,7 @@
 
 ; TODO: hints about # pred instantiations (e.g., (atx b x) is functional) -- for now, do something stupid.
 (defn expected-fluent-prop [gen-pred pred-instances unk instantiated-set]
-  (Math/pow 0.6 (inc (count (util/intersection instantiated-set (set (rest (get pred-instances gen-pred))))))))
+  (Math/pow 0.6 (inc (count (util/intersection instantiated-set (set (next (get pred-instances gen-pred))))))))
 
 (defn expected-domain-size [unk all-domains var-pred-map pred-instances const-tuples instantiated-set]
   (let [[pos-const neg-const pos-fluent neg-fluent] (util/safe-get var-pred-map unk)
@@ -267,7 +267,7 @@
 	      (make-value-map-maker 
 	       pos?
 	       pred
-	       (rest (util/safe-get pred-instance-map pred-gen)) 
+	       (next (util/safe-get pred-instance-map pred-gen)) 
 	       var-ordering
 	       dummy-unary-var dummy-unary-val)])
 	sz (count map-makers)

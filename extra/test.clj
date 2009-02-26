@@ -16,7 +16,7 @@
 (defn enumerate-boolean-maps [vars]
   (if (nil? vars)
     [{}]
-    (let [recs (enumerate-boolean-maps (rest vars))]
+    (let [recs (enumerate-boolean-maps (next vars))]
       (for [item '(true false) state recs] 
         (assoc state (first vars) item)))))
 

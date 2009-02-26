@@ -11,8 +11,8 @@
 
 (defn get-subtypes "Return all subtypes of type, starting with itself." [types type]
   (when type
-    (lazy-cons type 
-	       (lazy-mapcat  #(get-subtypes types %) (safe-get types type)))))
+    (lazy-seq (cons type 
+	       (lazy-mapcat  #(get-subtypes types %) (safe-get types type))))))
 
 (defn check-types [types]
   (let [type-map (map-map seq->vector-pair types)]
@@ -44,7 +44,7 @@
     (cond (includes? s2 t1) [t1]
 	  (includes? s1 t2) [t2]
 	  :else             (concat-elts 
-			     (for [t1p (rest s1), t2p (rest s2)]
+			     (for [t1p (next s1), t2p (next s2)]
 			       (maximal-subtypes- types t1p t2p))))))
 
 (defn maximal-subtypes [types parents]
@@ -78,7 +78,7 @@
 	      (if-let [e (find m item)]
 		  (val e)
                 item)))
-	  [(.get atom 0)] (rest atom)))
+	  [(.get atom 0)] (next atom)))
 
 (defn single-simplify-atom [var obj atom]
   (simplify-atom (hash-map var obj) atom))    
@@ -101,12 +101,12 @@
 	    (parse-typed-pddl-list rst)))))
 
 (defn parse-pddl-predicate [pred]
-  (cons (first pred) (map first (parse-typed-pddl-list (rest pred)))))
+  (cons (first pred) (map first (parse-typed-pddl-list (next pred)))))
 
 (defn pddl-conjunction->seq [conj]
   (when (seq conj)
     (if (= (first conj) 'and)
-      (rest conj)
+      (next conj)
     (list conj))))
 
 (defn parse-pddl-conjunction [conj]

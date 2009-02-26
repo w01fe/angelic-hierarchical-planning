@@ -86,8 +86,7 @@
 
 (defmethod pq-add-all! ::StackPriorityQueue [pq items]
   (let [old (sref-get (:stack pq))]
-    (sref-set! (:stack pq) 
-	       (delay-seq (concat items old)))
+    (sref-set! (:stack pq) (concat items old))
     nil))
 
 (defmethod pq-remove-min! ::StackPriorityQueue [pq]
@@ -95,8 +94,7 @@
   (let [r (:stack pq)
 	val (sref-get r)
 	ret (first val)]
-    (sref-set! r (delay-seq (rest val)))
-;    (sref-up! r rest)
+    (sref-set! r (rest val))
     (first ret)))
 
 (defmethod pq-remove-min-with-cost! ::StackPriorityQueue [pq]
@@ -104,8 +102,8 @@
 	val (sref-get r)
 	ret (first val)]
 ;	ret (first (sref-get r))]
-    (sref-set! r (delay-seq (rest val)))
-;    (sref-up! r rest)
+    (sref-set! r (rest val))
+;    (sref-up! r next)
     ret))
 
 (defmethod pq-empty?  ::StackPriorityQueue [pq]
@@ -135,10 +133,10 @@
   (let [#^HashMap m (:map pq)
 	old (sref-get (:stack pq))]
     (sref-set! (:stack pq) 
-	       (delay-seq (concat (for [pair items :when (let [v (.get m (first pair))] 
+	       (concat (for [pair items :when (let [v (.get m (first pair))] 
 							   (or (nil? v) (< (second pair) v)))] 
 				    (do (.put m (first pair) (second pair)) pair))
-				  old)))
+				  old))
 ;    (print " ae ")
     nil))
 

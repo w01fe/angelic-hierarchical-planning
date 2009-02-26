@@ -45,7 +45,7 @@
 (defn- pad [thing len]
   (.substring (apply str thing (replicate len " ")) 0 len))
 (defn- print-pad [len & args]
-  (print (pad (apply str (rest (interleave (repeat " ") args))) len)))
+  (print (pad (apply str (next (interleave (repeat " ") args))) len)))
 
 
 (defn- time-ww 

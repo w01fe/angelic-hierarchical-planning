@@ -47,7 +47,7 @@
 		next2 (safe-next-state state (util/safe-get action-map (:name (first rest-act-seq))))]
 	    (util/assert-is (= next1 next2))
 	    (util/assert-is (= (:reward ^next1) (:reward ^next2)))
-	    (recur next1 (rest rest-act-seq) (conj state-seq next1)))
+	    (recur next1 (next rest-act-seq) (conj state-seq next1)))
 	(do 
 	  (util/assert-is (satisfies-condition? state goal))
 	  (util/assert-is (= reward (:reward ^state)))

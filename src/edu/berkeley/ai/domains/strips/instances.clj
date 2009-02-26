@@ -12,7 +12,7 @@
  
 (defn get-predicate-instantiations [predicates trans-objects]
   (for [[pred args] predicates
-	combo       (apply util/my-combinations (map #(util/safe-get trans-objects %) args))]
+	combo       (apply util/cartesian-product (map #(util/safe-get trans-objects %) args))]
     (into [pred] combo)))
 ;    (cons pred combo)))
 
@@ -30,7 +30,7 @@
 
 (defn- get-strips-action-instantiations  [action-schemata all-objects]
   (for [schema action-schemata,
-	combo (apply util/my-combinations (map #(util/safe-get all-objects (first %)) (:vars schema)))]
+	combo (apply util/cartesian-product (map #(util/safe-get all-objects (first %)) (:vars schema)))]
     (get-strips-action-schema-instance schema 
       (util/map-map (fn [[t v] val] [v val]) (:vars schema) combo))))
 
@@ -62,7 +62,7 @@
 	    (concat (map (partial props/check-atom types all-objects predicates) 
 			 (concat init-atoms 
 				 (when equality? (for [[t os] all-objects, o os] [(util/symbol-cat t '=) o o]))))
-		    (map #(props/check-atom types all-objects predicates (cons (goal-ize (first %)) (rest %))) goal-atoms))
+		    (map #(props/check-atom types all-objects predicates (cons (goal-ize (first %)) (next %))) goal-atoms))
 	    (map (partial props/check-atom types all-objects predicates) goal-atoms)
 	    (get-predicate-instantiations (:predicates domain) all-objects)
 	    (get-strips-action-instantiations (util/safe-get domain :action-schemata) all-objects)
@@ -73,7 +73,7 @@
     (let [[objs rst] (split-with (partial not= '-) s)]
       (util/assert-is (>= (count rst) 2))
       (cons [(second rst) objs]
-	    (parse-pddl-objects (nthrest rst 2))))))
+	    (parse-pddl-objects (nthnext rst 2))))))
 
 (defn read-strips-planning-instance [domain file]
   (util/match [[define [problem ~name]
@@ -306,7 +306,7 @@
 (defn get-strips-state-pred-val "Get the only true args of pred in state, or error" [state pred]
   (let [pred-apps (filter #(= (first %) pred) state)]
     (util/assert-is (= (count pred-apps) 1))
-    (rfirst pred-apps)))
+    (nfirst pred-apps)))
   
 
 
@@ -362,9 +362,9 @@
 	  pos-actions (util/intersection actions (.get pos-set-map most-common-atom))
 	  neg-actions (util/intersection actions (.get neg-set-map most-common-atom))
 	  dc-actions  (util/difference actions pos-actions neg-actions)
-	  pos-branch (if (seq pos-actions) (make-successor-generator pos-actions (rest atom-order) pos-set-map neg-set-map) (constantly nil))
-	  neg-branch (if (seq neg-actions) (make-successor-generator neg-actions (rest atom-order) pos-set-map neg-set-map) (constantly nil))
-	  dc-branch  (if (seq dc-actions)  (make-successor-generator dc-actions  (rest atom-order) pos-set-map neg-set-map) (constantly nil))]
+	  pos-branch (if (seq pos-actions) (make-successor-generator pos-actions (next atom-order) pos-set-map neg-set-map) (constantly nil))
+	  neg-branch (if (seq neg-actions) (make-successor-generator neg-actions (next atom-order) pos-set-map neg-set-map) (constantly nil))
+	  dc-branch  (if (seq dc-actions)  (make-successor-generator dc-actions  (next atom-order) pos-set-map neg-set-map) (constantly nil))]
       (cond (and (empty? dc-actions) (empty? neg-actions) (empty? pos-actions)) (throw (IllegalArgumentException.))
 	    (and (empty? neg-actions) (empty? pos-actions)) dc-branch
 	    :else 
