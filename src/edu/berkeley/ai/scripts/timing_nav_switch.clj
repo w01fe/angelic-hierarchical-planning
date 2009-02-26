@@ -36,8 +36,8 @@
 ;		 ["unguided-alt-tf" #(alts/alt-node (hierarchies/get-hierarchy warehouse/*warehouse-hierarchy-unguided* %) true false)]
 ;		 ["unguided-alt-ft" #(alts/alt-node (hierarchies/get-hierarchy warehouse/*warehouse-hierarchy-unguided* %) false true)]
 ;		 ["unguided-alt-tt" #(alts/alt-node (hierarchies/get-hierarchy warehouse/*warehouse-hierarchy-unguided* %) true true)]
-		 ["guided-alt-tp" #(alts/alt-node (hierarchies/get-hierarchy nav-switch/*nav-switch-hierarchy* %) true :partial)]
-		 ["guided-alt-tt" #(alts/alt-node (hierarchies/get-hierarchy nav-switch/*nav-switch-hierarchy* %) true true)]
+		 ["guided-alt-tp" #(alts/alt-node (hierarchies/get-hierarchy nav-switch/*nav-switch-hierarchy* %) true true)]
+		 ["guided-alt-tt" #(alts/alt-node (hierarchies/get-hierarchy nav-switch/*nav-switch-hierarchy* %) true :full)]
 		 ])
 
 (def *time-limit* 20)

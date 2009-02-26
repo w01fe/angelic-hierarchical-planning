@@ -37,12 +37,12 @@
 		     refs (search/immediate-refinements next)
 		     good-refs (filter #(>= (search/upper-reward-bound %) (util/sref-get threshold)) refs)
 		     sols      (filter identity (map search/extract-a-solution good-refs))
-		     good-sols (filter #(>= (second %) (util/sref-get threshold)) sols)]
+		     good-sols (seq (filter #(>= (second %) (util/sref-get threshold)) sols))]
 ;		 (println (search/node-str next) (search/reward-bounds next))
 		 (if good-sols  ; Found a good enough primitive refinement
 		     (util/first-maximal-element second good-sols)
 		   (do
-                     (if-let [great-refs (filter #(>= (search/lower-reward-bound %) (util/sref-get threshold)) good-refs)]
+                     (if-let [great-refs (seq (filter #(>= (search/lower-reward-bound %) (util/sref-get threshold)) good-refs))]
 		         (let [best-ref 
 			       (alts/clear-alt-graph-cache
 				(util/first-maximal-element ; tie break

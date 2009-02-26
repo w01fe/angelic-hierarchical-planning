@@ -109,10 +109,10 @@
 	(coll? x)   [(first x) (next x)]
 	:else       [x nil]))
 
-(defn enforce-seq [x]
-  (cond (seq? x)  x
-	(coll? x) (seq x)
-	:else     (list x)))
+;(defn enforce-seq [x]
+;  (cond (seq? x)  x
+;	(coll? x) (seq x)
+;	:else     (list x)))
 
 ;(defn any? [pred coll]
 ;  (when-let [s (seq coll)]

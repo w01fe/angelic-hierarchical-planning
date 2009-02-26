@@ -153,7 +153,7 @@
 								     initial-node ref-choice-fn cache? graph?))
 ;  ([valuation-class initial-node] (make-initial-alt-node valuation-class initial-node true true))
   ([valuation-class initial-node ref-choice-fn cache? graph?]
-  (util/assert-is (contains? #{true false :partial} graph?))
+  (util/assert-is (contains? #{true false :full} graph?))
   (let [env (hla-environment initial-node), name (gensym)
 	alt (make-alt cache? graph? (envs/get-goal env) ref-choice-fn)]
     (loop [actions (list initial-node)
@@ -251,7 +251,7 @@
   (util/sref-set! *ref-counter* (inc (util/sref-get *ref-counter*)))
   (let [alt         (util/safe-get node :alt)
 	graph?      (util/safe-get alt :graph?)
-	full-graph? (and graph? (not (= graph? :partial)))
+	full-graph? (= graph? :full)
 	plan        (:plan node)
 	ref-node    ((util/safe-get alt :ref-choice-fn) node)]
     (when ref-node ;; If ref-fn is correct, == when not fully primitive
