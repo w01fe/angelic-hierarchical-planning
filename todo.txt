@@ -4,6 +4,8 @@
 ; warehouse hierarchy - successive move restriction
 
 ; At least make optimistic desc. consistent?
+
+; Fix methods of reward-adjusted-node
   
 ------------------------------------
 From earlier meeting

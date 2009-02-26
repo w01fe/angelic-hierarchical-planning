@@ -209,9 +209,15 @@
 (defmethod upper-reward-bound       ::RewardAdjustedNode [node] (:upper-reward node))
 (defmethod reward-so-far            ::RewardAdjustedNode [node] (reward-so-far            (:node node)))
 (defmethod immediate-refinements    ::RewardAdjustedNode [node] (immediate-refinements    (:node node)))
-(defmethod primitive-refinement     ::RewardAdjustedNode [node] (primitive-refinements    (:node node)))
-(defmethod extract-optimal-solution ::RewardAdjustedNode [node] (extract-optimal-solution (:node node)))
-(defmethod extract-a-solution       ::RewardAdjustedNode [node] (extract-a-solution       (:node node)))
+
+;; Change these!
+(defmethod primitive-refinement     ::RewardAdjustedNode [node] (throw (UnsupportedOperationException.))) 
+       ; (primitive-refinement     (:node node)))
+(defmethod extract-optimal-solution ::RewardAdjustedNode [node] (throw (UnsupportedOperationException.)))
+       ; (extract-optimal-solution (:node node)))
+(defmethod extract-a-solution       ::RewardAdjustedNode [node] (throw (UnsupportedOperationException.)))
+       ; (extract-a-solution       (:node node)))
+
 (defmethod dead-end?                ::RewardAdjustedNode [node] (dead-end?                (:node node)))
 (defmethod node-parent              ::RewardAdjustedNode [node] (node-parent              (:node node)))
 (defmethod node-depth               ::RewardAdjustedNode [node] (node-depth               (:node node)))
