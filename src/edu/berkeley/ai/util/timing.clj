@@ -2,6 +2,27 @@
 
 (set! *warn-on-reflection* true)
 
+(defn make-stopwatch [] 
+  {:class ::Stopwatch :started nil :elapsed-ns 0})
+
+(defn start-stopwatch 
+  ([] (start-stopwatch (make-stopwatch)))
+  ([sw] 
+     (assert-is (nil? (:started sw)))
+     (assoc sw :started (System/nanoTime))))
+
+(defn stop-stopwatch [sw]
+  (assert-is (not (nil? (:started sw))))
+  (assoc sw :started nil :elapsed-ns (+ (:elapsed-ns sw) (- (System/nanoTime) (:started sw)))))
+
+(defn get-elapsed-seconds [sw]
+  (/ (+ (:elapsed-ns sw)
+	(if (:started sw) (- (System/nanoTime) (:started sw)) 0))
+     1000000000.0))
+
+(defn within-time-limit? [sw tl]
+  (<= (get-elapsed-seconds sw) tl))
+
 
 (defmacro with-time
   "Evaluates expr, binding its value to v and the time taken (in ms) to tv"
