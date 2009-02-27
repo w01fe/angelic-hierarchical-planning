@@ -149,13 +149,11 @@
 		      :min-f-to-go min-f-to-go)]
 ;	  (println (hla-name (:hla node)))
 	  (when (and prim? (< min-f-to-go s-rew-to-go))
-;	    (when (< min-f-to-go (get *real-dists* state))
-;		      (def *env* env)
-;		      (def *memory* memory)
-;		      (def *state-rews* state-rew-pairs)
-;		      (def *node* node)
-;		      (throw (Exception. "two"))
-;		      )
+	    (when (< min-f-to-go (get *real-dists* state))
+		      (def *memory* memory)
+		      (def *state-rews* state-rew-pairs)
+		      (def *node* node)
+		      (util/assert-is (>= min-f-to-go (get *real-dists* state)) "TWO"))
 	    (.put memory state min-f-to-go))
 	  (recur node (rest nodes) (if prim? (cons [state s-rew-so-far] state-rew-pairs) state-rew-pairs)))))))
 		    
@@ -172,6 +170,7 @@
   ([initial-hla max-steps max-refs high-level-hla-set ref-choice-fn cache? graph?]
      (let [initial-hla (sh/convert-to-prim-act-strips-hla initial-hla)
 	   memory (HashMap.)]
+       (def *init* initial-hla)
        (real-time/real-time-search
 	(hla-environment initial-hla)
 	max-steps
@@ -210,12 +209,12 @@
 		  (let [mem-val (get memory s Double/POSITIVE_INFINITY)
 			new-val (- f r)]
 		    (when (< new-val mem-val)
-;		      (when (< new-val (get *real-dists* s))
-;		      (def *env* env)
-;			(def *memory* memory)
-;			(def *state-rews* state-rews)
-;			(def *node* n)
-;			(throw (Exception. "one")))
+		      (when (< new-val (get *real-dists* s))
+			(def *env* env)
+			(def *memory* memory)
+			(def *state-rews* state-rews)
+			(def *node* n)
+			(util/assert-is (>= new-val (get *real-dists* s)) "one %s" (envs/state-str env s)))
 		      (util/print-debug 4 "Reducing reward of state from" mem-val "to" new-val (str "\n" (envs/state-str env s)))
 		      (.put memory s new-val))))
 		(search/node-first-action n))))))))
@@ -246,8 +245,8 @@
 
   )
 
-(let [env *env* memory *memory* initial-hla *init* ref-choice-fn alts/first-choice-fn cache? true graph? true max-refs 500 high-level-hla-set '#{act move-blocks move-block move-to}]
-  (binding [util/*debug-level* 1]
+(let [env *env* memory *memory* initial-hla *init* ref-choice-fn alts/first-choice-fn cache? true graph? true max-refs 100 high-level-hla-set '#{act move-blocks move-block move-to}]
+  (binding [util/*debug-level* 3]
     (let [state-rews (HashMap.)
 		pq   (queues/make-tree-search-pq)]
 	    (queues/pq-add! pq (make-initial-ahlrta2-alt-node env initial-hla ref-choice-fn cache? graph?) Double/NEGATIVE_INFINITY) 
@@ -305,6 +304,7 @@
      
 ; (second (binding [*debug-level* 2] (improved-ahlrta-star-search (get-hierarchy *warehouse-hierarchy* (constant-predicate-simplify (make-warehouse-strips-env 3 4 [1 2] false {0 '[b a] 2 '[c]} nil ['[a b c]]))) 10 10 #{'act 'move-blocks 'move-block 'move-to})))
 
+; (let [ds (parse-description [:warehouse-act] (make-warehouse-strips-domain) nil) inst (constant-predicate-simplify (make-warehouse-strips-env 4 4 [0 1] true { 3 '[a b]} 'c ['[a c table1]])) val (make-initial-valuation :edu.berkeley.ai.angelic.dnf-simple-valuations/DNFSimpleValuation inst) d (ground-description (instantiate-description-schema ds inst) nil)] (println (state-str inst (get-initial-state inst))) (progress-optimistic val d))
 
 
 

@@ -21,9 +21,10 @@
    {'xc (map #(util/symbol-cat "x" %) (range width))
     'yc (map #(util/symbol-cat "y" %) (range height))
     'block (apply concat 
+		  (if initial-holding [initial-holding])
 		  (map #(util/symbol-cat "table" %) (range width))
 		  (vals initial-stacks))}
-   (concat (if initial-holding '[[holding initial-holding]] '[[gripperempty]])
+   (concat (if initial-holding [['holding initial-holding]] '[[gripperempty]])
 	   (when initial-faceright? '[[facingright]])
 	   [['gripperat (util/symbol-cat "x" (first initial-pos)) (util/symbol-cat "y" (second initial-pos))]]
 	   (map (fn [x] ['leftof (util/symbol-cat "x" (dec x)) (util/symbol-cat "x" x)]) (range 1 width))
@@ -31,7 +32,8 @@
 	   [['topy (util/symbol-cat "y" (dec height))]]
 	   (util/forcat [x (range width)]
 	     (let [stack (concat (get initial-stacks x) [(util/symbol-cat "table" x)])]
-	       (concat [['clear (first stack)]]
+	       (concat (if initial-holding [['clear initial-holding]])
+		       [['clear (first stack)]]
 		       (for [[b c] (partition 2 1 stack)]
 			 ['on b c])
 		       (util/forcat [[y b] (util/indexed (reverse stack))]
@@ -110,14 +112,14 @@
 		    (util/assert-is (= old-holding block))
 		  (util/sref-set! holding block))))))
     (when-let [b (util/sref-get holding)]
-      (throw (IllegalArgumentException.)) 
+;      (throw (IllegalArgumentException.))   Can only happen in flat hierarchy ...
       (let [positions (seq gripper-pos)]
 	(util/assert-is (= (count positions) 1))
         (.put block-pos b (first positions))))
 ;    (println dnf)
     (util/assert-is (not (.isEmpty gripper-pos)))
  ;   (println gripper-pos)
-    [gripper-pos block-pos]))
+    [gripper-pos block-pos (util/sref-get holding)]))
 
 (defn- make-simpler-heuristic [table-pos-map floating-chains]
   (fn [dnf]
@@ -145,24 +147,26 @@
 	block-set (set (apply concat chains))]
     (fn [dnf]
 ;      (println "matching")
-      (let [[#^HashSet gripper-pos, #^HashMap block-pos] (extract-positions dnf)]
+      (let [[#^HashSet gripper-pos, #^HashMap block-pos, holding] (extract-positions dnf)]
 ;	(if (.isEmpty gripper-pos) Double/NEGATIVE_INFINITY
         (- 
 	 ; Matching
-	 (let [positions (seq (remove (fn [[b c g]] (= c g)) 
+	 (let [positions (seq (remove (fn [[b c g]] (and (not (= b holding)) (= c g))) 
 			    (map #(vector % (.get block-pos %) (get table-pos-map %)) block-set)))
 	       blocks    (cons term (map first positions))]
 	   (if positions
  	    (util/maximum-matching blocks blocks
-;	    (util/prln	     
+	   
              (concat
-	      (for [[b c g] positions] ; Get to first block and pick it up
-		[term b (- (util/reduce-key min #(max 1 (manhattan % c)) gripper-pos))])   ;TODO: if holding??
+	      (if (and holding (contains? block-set holding))
+		  [[term holding 0]] ;TODO: ??
+	        (for [[b c g] positions] ; Get to first block and pick it up
+		  [term b (- (util/reduce-key min #(max 1 (manhattan % c)) gripper-pos))]))   ;TODO: if holding??
 	      (for [[b c g] positions] ; Put final block in final position (could have max 2?)
 		[b term (- (manhattan c g))])
 	      (for [[b1 c1 g1] positions, ; Holding b1; put it in g1, go to b1, pick it up
-		    [b2 c2 g2] positions]  ; TODO: disallow [b b ...? ]
-		[b1 b2 (- (max 1 (+ (manhattan c1 g1) (manhattan g1 c2))))])));)
+		    [b2 c2 g2] positions]  ; TODO: disallow [b b ...? ] YES
+		[b1 b2 (- (max 1 (+ (manhattan c1 g1) (manhattan g1 c2))))])))
 	    0))
 
   	 ; Count switches
@@ -178,6 +182,7 @@
 			  (fn [[cur-pos2 goal-pos2]]
 			    (util/assert-is (> (second goal-pos) (second goal-pos2)))
 			    (and (not (= cur-pos2 goal-pos2))
+				 (= (first cur-pos)  (first cur-pos2))
 				 (> (second cur-pos) (second cur-pos2))))
 			  (next rest-pos))))
 		    (util/iterate-while next (seq positions)))))

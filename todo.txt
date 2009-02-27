@@ -2,7 +2,7 @@
 
 ; warehouse hierarchy - successive move restriction
 
-
+; Improve warehouse heuristic / fix for offline case?
  
 ------------------------------------
 From earlier meeting
