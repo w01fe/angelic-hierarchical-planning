@@ -32,6 +32,14 @@
 (defmethod state-str  ::Environment [env state] (state-str (get-state-space env) state))  
 
 
+; For real-time algorithms.
+(defn next-environment [[env [act-seq reward-so-far]] action]
+  (let [state (get-initial-state env)
+	[next reward] ((:fn action) state)]
+    [(make-environment next (get-state-space env) (get-action-space env) (get-goal env))
+     [(conj act-seq action)
+      (+ reward-so-far reward)]]))
+
 ;; Useful sanity check
 
 

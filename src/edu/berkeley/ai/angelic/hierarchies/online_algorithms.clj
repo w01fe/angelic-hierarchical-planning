@@ -51,6 +51,10 @@
 ; TODO:  tiebreak by lower-bound/priority-fn?
 ;; TODO: two modifications (max-ref discounting, locking in conditions)
 
+; With high number of refs, why isn't this faster??? should be lightning once many states visited
+
+; consistency, etc. improvements; better than ICAPS?
+; TODO: consistency for RA?
 
 (defn ahlrta-star-search 
   ([initial-hla max-steps max-refs] 
@@ -68,28 +72,27 @@
 		pq   (queues/make-tree-search-pq)]
 	    (doseq [nn (search/immediate-refinements node)] ; Start by populating with prim-then-act plans
 	      (queues/pq-add! pq nn (- (search/upper-reward-bound nn))))
-	    (let [[g a f]  
+	    (let [[g n f]  
 		(loop [max-refs max-refs
-			 g-a-f [1 nil 0]]
-		  (if (or (zero? max-refs)
-			  (queues/pq-empty? pq))
-		      g-a-f
-		    (let [[n nnf] (queues/pq-remove-min-with-cost! pq)
-			  nf (- nnf)]
-		      (if (or (search/reward-adjusted-node? n)
-			      (search/extract-optimal-solution n))
-			  (do
-			    (util/print-debug 2 "Returning" (search/node-str n) (if (search/reward-adjusted-node? n) "Known" "Optimal") ", f =" nf) 
-			    [:term (search/node-first-action n) nf])
+			 g-n-f [Double/POSITIVE_INFINITY :dummy Double/POSITIVE_INFINITY]]
+		  (util/assert-is (not (queues/pq-empty? pq)) "dead end!")
+		  (let [[n nnf] (queues/pq-remove-min-with-cost! pq)
+			ra? (search/reward-adjusted-node? n)
+			nf (- nnf)]
+		    (if (zero? max-refs) (assoc g-n-f 2 nf) ;g-n-f
+		      (if (or ra? (search/extract-optimal-solution n))
+			  [(if ra? :ra :opt) (if ra? (search/ra-node-base n) n) nf]
 			(let [ng     (util/safe-get-in n [:plan :g-rew])
-			      next-g-a-f  (if (< ng (nth g-a-f 0)) [ng (search/node-first-action n) nf] g-a-f)]
+			      next-g-n-f  (if (< ng (nth g-n-f 0)) [ng n nf] g-n-f)]
 			  (util/print-debug 2 "Refining" (search/node-str n) "with g =" ng ", f =" nf 
-					    (if (not (identical? g-a-f next-g-a-f)) (str "; locking in " (:name (nth next-g-a-f 1))) ""))
+					    (if (not (identical? g-n-f next-g-n-f)) (str "; locking in " )))
 			  (doseq [nn (search/immediate-refinements n)] 
 			    (queues/pq-add! pq nn (- (min nf (search/upper-reward-bound nn))))) ; enforce consistency
-			  (recur (dec max-refs) next-g-a-f))))))]
+			  (recur (dec max-refs) next-g-n-f))))))]
+	      (util/assert-is (<= f (or (.get memory (envs/get-initial-state env)) Double/POSITIVE_INFINITY)))
 	      (.put memory (envs/get-initial-state env) f)
-	      a)))))))
+	      (util/print-debug 1 "Intending plan" (alts/fancy-node-str n) ", g =" g ", f =" f) 
+	      (search/node-first-action n))))))))
 	      
 
 
@@ -114,6 +117,7 @@
   "Push out values for known states, and return [new-node f [state rew-to-state]-seq], only for new parts of plan.
    Annotate plan with :g-rew and :min-f-to-go as we go along."
   [node #^HashMap memory high-level-hla-set]
+  (util/print-debug 3 "Processing refinement" (search/node-str node) "with f =" (search/upper-reward-bound node))
 ;  (println (search/node-str node))
   (let [new-nodes (reverse (take-while #(not (contains? % :g-so-far)) (util/iterate-while :previous (:plan node))))]
 ;    (println (map (comp hla-name :hla) new-nodes))
@@ -145,9 +149,17 @@
 		      :min-f-to-go min-f-to-go)]
 ;	  (println (hla-name (:hla node)))
 	  (when (and prim? (< min-f-to-go s-rew-to-go))
+;	    (when (< min-f-to-go (get *real-dists* state))
+;		      (def *env* env)
+;		      (def *memory* memory)
+;		      (def *state-rews* state-rew-pairs)
+;		      (def *node* node)
+;		      (throw (Exception. "two"))
+;		      )
 	    (.put memory state min-f-to-go))
 	  (recur node (rest nodes) (if prim? (cons [state s-rew-so-far] state-rew-pairs) state-rew-pairs)))))))
 		    
+
       
 
 ; TODO: still must handle goal plan (add assertion to make sure knowns don't mess it up!)
@@ -180,8 +192,9 @@
 			  nf (- nnf)]
 		      (if (search/extract-optimal-solution n)
 			  (do
-			    (util/print-debug 2 "Returning optimal" (search/node-str n) ", f =" nf) 
-			    [:term n nf])
+;			    (util/print-debug 1 "Returning optimal" (search/node-str n) ", f =" nf) 
+			    (util/assert-is (= nf (search/upper-reward-bound n)))
+			    [:OPTIMAL n nf])
 			(let [ng          (util/safe-get-in n [:plan :g-so-far])
 			      next-g-n-f  (if (< ng (nth g-n-f 0)) [ng n nf] g-n-f)]
 			  (util/print-debug 2 "Refining" (search/node-str n) "with g =" ng ", f =" nf 
@@ -192,18 +205,105 @@
 				(.put state-rews s (max r (get state-rews s Double/NEGATIVE_INFINITY))))
 			      (queues/pq-add! pq nxt (- (min nf nxt-f))))) ; enforce consistency
 			  (recur (dec max-refs) next-g-n-f))))))]
-	        (util/print-debug 2 "Final bound: " f)
+	        (util/print-debug 1 "Intending plan" (alts/fancy-node-str n) " with g =" g, "f =" f, "Final bound =" f)
 		(doseq [[s r] state-rews]
 		  (let [mem-val (get memory s Double/POSITIVE_INFINITY)
 			new-val (- f r)]
 		    (when (< new-val mem-val)
-		      (util/print-debug 3 "Reducing reward of state from" mem-val "to" new-val (str "\n" (envs/state-str env s)))
+;		      (when (< new-val (get *real-dists* s))
+;		      (def *env* env)
+;			(def *memory* memory)
+;			(def *state-rews* state-rews)
+;			(def *node* n)
+;			(throw (Exception. "one")))
+		      (util/print-debug 4 "Reducing reward of state from" mem-val "to" new-val (str "\n" (envs/state-str env s)))
 		      (.put memory s new-val))))
-		(search/node-first-action n)))))))))
+		(search/node-first-action n))))))))
 
+
+(comment ;Some heavy debugging stuff
+
+
+(def #^HashMap *real-dists* (HashMap.))
+
+(comment 
+  (let [#^HashMap rd *real-dists*, inits
+	(for [bpos [0 2 3]
+		[gpos fr] [[[0 2] true] [[2 2] false]]]
+	  (constant-predicate-simplify (make-warehouse-strips-env 4 4 gpos fr {bpos '[b] 1 '[a c]} nil ['[table1 table0]])))
+	as (get-action-space (first inits))]
+    (loop [gen (map get-initial-state inits)
+	   rew 0] (println rew)
+      (doseq [s gen] (.put rd s rew))
+      (let [next
+	    (for [s gen
+		  ss (successor-states s as)
+		  :when (not (.containsKey rd ss))]
+	      ss)]
+	(if (empty? next) rew (recur next (dec rew))))))
+
+;    (doseq [init inits] (println (state-str init (get-initial-state init)) "\n")))
+
+  )
+
+(let [env *env* memory *memory* initial-hla *init* ref-choice-fn alts/first-choice-fn cache? true graph? true max-refs 500 high-level-hla-set '#{act move-blocks move-block move-to}]
+  (binding [util/*debug-level* 1]
+    (let [state-rews (HashMap.)
+		pq   (queues/make-tree-search-pq)]
+	    (queues/pq-add! pq (make-initial-ahlrta2-alt-node env initial-hla ref-choice-fn cache? graph?) Double/NEGATIVE_INFINITY) 
+	    (.put state-rews (envs/get-initial-state env) 0)
+	    (let [[g n f]  
+		(loop [max-refs max-refs
+			 g-n-f [Double/POSITIVE_INFINITY :dummy Double/POSITIVE_INFINITY]]
+		  (util/assert-is (not (queues/pq-empty? pq)) "dead end!")
+		  (if (zero? max-refs) 
+		      (let [best-f (- (second (queues/pq-remove-min-with-cost! pq)))]
+			(util/assert-is (<= best-f (nth g-n-f 2)))
+			(assoc g-n-f 2 best-f)) ; Best possible bound.
+		    (let [[n nnf] (queues/pq-remove-min-with-cost! pq)
+			  nf (- nnf)]
+		      (if (search/extract-optimal-solution n)
+			  (do
+			    (util/print-debug 2 "Returning optimal" (search/node-str n) ", f =" nf) 
+			    (when-not (= nf (search/upper-reward-bound n))
+			      (def *env* env)
+			      (def *memory* memory)
+			      (def *state-rews* state-rews)
+			      (def *node* n)
+			      (util/assert-is (= nf (search/upper-reward-bound n))))
+			    [:term n nf])
+			(let [ng          (util/safe-get-in n [:plan :g-so-far])
+			      next-g-n-f  (if (< ng (nth g-n-f 0)) [ng n nf] g-n-f)]
+			  (util/print-debug 2 "Refining" (search/node-str n) "with g =" ng ", f =" nf 
+					    (if (not (identical? g-n-f next-g-n-f)) "; locking in" ""))
+			  (doseq [nn (search/immediate-refinements n)]
+			    (util/print-debug 3 "Got ref " (alts/fancy-node-str nn))
+			    (let [[nxt nxt-f sr-seq] (postprocess-plan-known-states nn memory high-level-hla-set)]
+			      (doseq [[s r] sr-seq]
+				(.put state-rews s (max r (get state-rews s Double/NEGATIVE_INFINITY))))
+			      (queues/pq-add! pq nxt (- (min nf nxt-f))))) ; enforce consistency
+			  (recur (dec max-refs) next-g-n-f))))))]
+	        (util/print-debug 2 "Final bound: " f)
+		(doseq [[s r] state-rews]
+		  (let [mem-val (get memory s Double/POSITIVE_INFINITY)
+			new-val (- f r)]
+		    (when (< new-val (get *real-dists* s))
+		      (def *env* env)
+		      (def *memory* memory)
+		      (def *state-rews* state-rews)
+		      (def *node* n)
+		      (throw (Exception.))
+		      )
+		    (when (< new-val mem-val)
+		      (util/print-debug 4 "Reducing reward of state from" mem-val "to" new-val (str "\n" (envs/state-str env s)))
+		      (.put memory s new-val))))
+		(search/node-first-action n)))))
+
+)
 ; (binding [*debug-level* 1] (ahlrta-star-search (get-hierarchy *nav-switch-hierarchy* (constant-predicate-simplify (make-nav-switch-strips-env 5 5 [[1 1 ]] [0 4] false [4 0]))) 10 10 #{'act 'go}))
 
      
+; (second (binding [*debug-level* 2] (improved-ahlrta-star-search (get-hierarchy *warehouse-hierarchy* (constant-predicate-simplify (make-warehouse-strips-env 3 4 [1 2] false {0 '[b a] 2 '[c]} nil ['[a b c]]))) 10 10 #{'act 'move-blocks 'move-block 'move-to})))
 
 
 

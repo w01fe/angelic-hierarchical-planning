@@ -77,14 +77,6 @@
 (defn make-warehouse-act-description [fn] (struct warehouse-act-description ::WarehouseActDescription fn))
 
 
-(defn- extract-chain [m]
-  (util/assert-is (not (empty? m)))
-  (loop [chain [(ffirst m)] m m cur (ffirst m)]
-    (if-let [n (get m cur)]
-        (recur (conj chain n) (dissoc m cur) n)
-      [chain m])))
-
-
 (import '[java.util HashSet HashMap])
 
 (defn- manhattan [p1 p2]
@@ -118,6 +110,7 @@
 		    (util/assert-is (= old-holding block))
 		  (util/sref-set! holding block))))))
     (when-let [b (util/sref-get holding)]
+      (throw (IllegalArgumentException.)) 
       (let [positions (seq gripper-pos)]
 	(util/assert-is (= (count positions) 1))
         (.put block-pos b (first positions))))
@@ -128,6 +121,7 @@
 
 (defn- make-simpler-heuristic [table-pos-map floating-chains]
   (fn [dnf]
+;    (println "simple")
     (let [[#^HashSet gripper-pos, #^HashMap block-pos] (extract-positions dnf)]
 ;      (if (.isEmpty gripper-pos) Double/NEGATIVE_INFINITY
    ;   (println "Going: ")
@@ -150,6 +144,7 @@
   (let [term (gensym "term")
 	block-set (set (apply concat chains))]
     (fn [dnf]
+;      (println "matching")
       (let [[#^HashSet gripper-pos, #^HashMap block-pos] (extract-positions dnf)]
 ;	(if (.isEmpty gripper-pos) Double/NEGATIVE_INFINITY
         (- 
@@ -161,13 +156,13 @@
  	    (util/maximum-matching blocks blocks
 ;	    (util/prln	     
              (concat
-	      (for [[b c g] positions] 
+	      (for [[b c g] positions] ; Get to first block and pick it up
 		[term b (- (util/reduce-key min #(max 1 (manhattan % c)) gripper-pos))])   ;TODO: if holding??
-	      (for [[b c g] positions] 
+	      (for [[b c g] positions] ; Put final block in final position (could have max 2?)
 		[b term (- (manhattan c g))])
-	      (for [[b1 c1 g1] positions,
+	      (for [[b1 c1 g1] positions, ; Holding b1; put it in g1, go to b1, pick it up
 		    [b2 c2 g2] positions]  ; TODO: disallow [b b ...? ]
-		[b1 b2 (- (max 1 (+ (manhattan c1 g1) (manhattan g1 c2))))])))
+		[b1 b2 (- (max 1 (+ (manhattan c1 g1) (manhattan g1 c2))))])));)
 	    0))
 
   	 ; Count switches
@@ -194,11 +189,9 @@
 (defmethod angelic/instantiate-description-schema ::WarehouseActDescriptionSchema [desc instance]
   (let [goal-atoms (util/safe-get instance :goal-atoms)]
     (doseq [atom goal-atoms] (util/assert-is (= (first atom) 'on)))
-    (let [on-map (into {} (map #(subvec % 1) goal-atoms))
-	  chains (loop [m on-map chains []]
-		   (if (empty? m) chains
-		     (let [[chain next-m] (extract-chain m)]
-		       (recur next-m (conj chains chain)))))
+    (let [on-map     (into {} (map #(subvec % 1) goal-atoms))
+	  top-blocks (util/difference (set (keys on-map)) (set (vals on-map)))
+	  chains     (map (fn [t] (util/iterate-while #(get on-map %) t)) top-blocks)
 	  [table-chains floating-chains] (util/separate #(.startsWith #^String (name (last %)) "table") chains)
 	  table-pos-map (into {} 
 			  (apply concat
@@ -206,6 +199,7 @@
 			      (let [x (Integer/parseInt (.substring #^String (name (last chain)) 5))]
 				(for [[block y] (next (map vector (reverse chain) (iterate inc 0)))]
 				  [block [x y]])))))]
+      (println "CREATE ACT" chains floating-chains table-pos-map)
       (make-warehouse-act-description
        (if (empty? floating-chains)
 	   (make-matching-based-heuristic table-pos-map (map butlast chains))

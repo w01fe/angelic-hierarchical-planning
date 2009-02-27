@@ -15,7 +15,7 @@
       (if (envs/satisfies-condition? (envs/get-initial-state env) goal)
 	  cur-seq
         (let [state (envs/get-initial-state env)]
-	  (util/print-debug 1 (str "\nIn state\n" (envs/state-str env state)))
+	  (util/print-debug 1 (str "\n" max-steps ". In state\n" (envs/state-str env state)))
 	  (when (> max-steps 0) 
 	    (let [action (action-fn env)]
 	      (util/print-debug 1 "Taking action" (:name action)) 

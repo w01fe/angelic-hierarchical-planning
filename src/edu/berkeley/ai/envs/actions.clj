@@ -32,13 +32,6 @@
      reward]))
 
 
-(defn next-environment [[env [act-seq reward-so-far]] action]
-  (let [state (get-initial-state env)
-	[next reward] ((:fn action) state)]
-    [(make-environment next (get-state-space env) (get-action-space env) (get-goal env))
-     [(conj act-seq action)
-      (+ reward-so-far reward)]]))
-
 
 (defn legal-action? [state action]
 ;  (prn state action)

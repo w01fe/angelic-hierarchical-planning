@@ -223,6 +223,8 @@
 (defmethod node-depth               ::RewardAdjustedNode [node] (node-depth               (:node node)))
 (defmethod node-first-action        ::RewardAdjustedNode [node] (node-first-action        (:node node)))
 (defmethod node-state               ::RewardAdjustedNode [node] (node-state               (:node node)))
+(defmethod node-str                 ::RewardAdjustedNode [node] 
+  (str "<" (node-str (:node node)) " adjusted rew [" (:lower node) " " (:upper node) "]>"))
 
 (defn reward-adjusted-node? [node] 
   (= (:class node) ::RewardAdjustedNode))

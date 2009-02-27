@@ -1,6 +1,6 @@
 (ns edu.berkeley.ai.angelic.hierarchies.abstract-lookahead-trees
   (:use edu.berkeley.ai.angelic edu.berkeley.ai.angelic.hierarchies)
-  (:import [java.util HashMap Map$Entry])
+  (:import [java.util HashMap Map$Entry HashSet])
   (:require [edu.berkeley.ai.angelic.dnf-simple-valuations :as dsv]
             [edu.berkeley.ai [util :as util] [envs :as envs] [search :as search]]))
 
@@ -31,6 +31,16 @@
 
 ; TODO: add consistency check?
 
+; OK, this is subtly wrong:
+; L ... Navigate Put-R guarantees costs for last 2
+; L ... Nav      Put-R guarantees costs for last 2
+; U ... Navigate Put-R guarantees costs for last 2
+; U ... Nav      Put-R, now tight, pruned at nav from 2 steps above
+; L ... Nav      Put-R, now tight, pruned at Put-R from 2 steps above
+
+; The soluton is to prune strictly on live nodes, and non-strictly on non-ancestors, but not on arbitrary nodes.
+; This means we must maintain a live list.
+; If you throw away a node without telling the ALT, all hell can break loose.
 
 ;; ALTs, nodes, and plans
 
@@ -38,7 +48,8 @@
 (defn- make-alt [cache? graph? goal ref-choice-fn]
   (with-meta 
     (struct abstract-lookahead-tree cache? graph? goal ref-choice-fn)
-    {:graph-map (HashMap.)}))
+    {:graph-map (HashMap.)
+     :live-set  (HashSet.)}))
 
 (derive ::ALTPlanNode ::search/Node)
 (defstruct alt-plan-node :class :alt :name :plan :ancestor-set)
@@ -167,6 +178,7 @@
 	env (hla-environment (first initial-plan)), 
 	name (gensym)
 	alt (make-alt cache? graph? (envs/get-goal env) ref-choice-fn)]
+    (.add #^HashSet (:live-set ^alt) name)
     (loop [actions initial-plan
 	   previous (make-alt-root-node alt (make-initial-valuation valuation-class env))]
       (if (empty? actions)
@@ -186,13 +198,18 @@
 (defn graph-add-and-check! [alt node rest-plan name ancestor-set]
   (util/assert-is (:graph? alt))
   (let [#^HashMap graph-map (util/safe-get ^alt :graph-map)
+	#^HashSet live-set  (util/safe-get ^alt :live-set)
 	opt-val    (optimistic-valuation node)
 	opt-states (get-valuation-states opt-val)
 	opt-rew    (get-valuation-upper-bound opt-val)
 	[graph-rew graph-node]  (or (.get graph-map [opt-states rest-plan]) *dummy-pair-alt*)]
 ;	(when (not (or (> opt-rew graph-rew) (and (= opt-rew graph-rew) (contains? ancestor-set graph-node))))
 ;	  (println "pruning!" name ancestor-set graph-node graph-rew opt-rew (contains? ancestor-set graph-node)))
-    (when (or (> opt-rew graph-rew) (and (= opt-rew graph-rew) (contains? ancestor-set graph-node)))
+    (when (or (> opt-rew graph-rew)
+	      (and (not (contains? live-set graph-node))
+		   (or (not (contains? ancestor-set graph-node))
+		       (= opt-rew graph-rew))))
+;      (println "prune")
       (let [pess-val    (pessimistic-valuation node)
 	    pess-states (get-valuation-states pess-val)
 	    pess-rew    (get-valuation-lower-bound pess-val)
@@ -209,6 +226,7 @@
   [node]
   (let [alt (:alt node)
 	#^HashMap cache (:graph-map ^alt)
+	#^HashSet live-set (:live-set ^alt)
 	it (.iterator (.entrySet cache))
 	name   (util/safe-get node :name)
 	oldset (conj (util/safe-get node :ancestor-set) name)
@@ -224,6 +242,8 @@
 	  (.remove it))))
  ;   (println (.size cache))
 ;    node));
+    (.clear live-set)
+    (.add live-set name)
     (make-alt-plan-node (:class node) alt name (:plan node) newset)))
 ;  (.clear 
 (set! *warn-on-reflection* false)
@@ -262,9 +282,10 @@
   (if (empty? actions) 
     (make-alt-plan-node (:class node) alt name previous ancestors)
     (let [nxt (get-alt-node alt (first actions) previous)]
-      (when (or (not (:graph? alt)) 
+      (if (or (not (:graph? alt)) 
 		(graph-add-and-check! alt nxt (next actions) name ancestors))
-	(recur node nxt (next actions) alt name ancestors)))))
+	  (recur node nxt (next actions) alt name ancestors)
+	(util/print-debug 3 "Late prune at" (fancy-node-str {:plan nxt}))))))
 
 (defmethod search/immediate-refinements ::ALTPlanNode [node] 
   (util/timeout)
@@ -280,18 +301,23 @@
 							  (iterate :previous plan))))
 	    before-nodes   (when full-graph? (reverse (util/iterate-while :previous plan)))
 	    before-actions (map :hla (next before-nodes))
-	    ancestors      (conj (util/safe-get node :ancestor-set) (util/safe-get node :name))]
+	    parent-name    (util/safe-get node :name)
+	    ancestors      (conj (util/safe-get node :ancestor-set) parent-name)]
+	(when graph? (.remove #^HashSet (:live-set ^alt) parent-name))
 	(filter identity
 	 (for [ref (hla-immediate-refinements (:hla ref-node) (optimistic-valuation (:previous ref-node)))]
 	   (let [name         (gensym)
 		 tail-actions (concat ref after-actions)
 		 all-actions  (concat before-actions tail-actions)]
+  	     (util/print-debug 3 "Considering refinement " (map hla-name ref) " at " (hla-name (:hla ref-node)))
 ;	     (println " GO " (count tail-actions))
 	     (if (every? (fn [[node rest-plan]]    ; full graph prefix check
 			     (graph-add-and-check! alt node rest-plan name ancestors))
 			   (map vector before-nodes (iterate next all-actions)))
-	       (construct-immediate-refinement node (:previous ref-node) tail-actions alt name ancestors) 
-;	       (println "early prune")
+	       (when-let [nxt (construct-immediate-refinement node (:previous ref-node) tail-actions alt name ancestors)]
+		 (when graph? (.add #^HashSet (:live-set ^alt) name))
+		 nxt)
+	       (util/print-debug 3 "early prune")
 	       ))))))))
 
 
@@ -317,6 +343,13 @@
 	first-hla  (:hla first-node)]
     (hla-primitive first-hla)))
     
+
+(defn fancy-node-str [node] 
+  (util/str-join " " 
+    (map (fn [n] [(hla-name (:hla n)) [(get-valuation-lower-bound (pessimistic-valuation n))
+				       (get-valuation-upper-bound (optimistic-valuation n))]])
+	 (next (reverse (util/iterate-while :previous (:plan node)))))))
+
 
 (comment
 
