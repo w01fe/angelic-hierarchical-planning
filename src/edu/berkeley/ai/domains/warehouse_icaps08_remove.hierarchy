@@ -9,11 +9,10 @@
        :parameters   ()
        :refinement   (:parameters (:?b - block :?to - block 
 				   :?gx - xc :?gy - yc :?tox - xc :?toy - yc :?abovetoy - yc) 
-		      :expansion ((move-to :?b :?to :?gx :?gy :?tox :?toy :?abovetoy) (move-blocks :?b)))
-       :refinement   (:parameters (:?b - block :?from - block :?to - block
-				   :?bx - xc :?by - yc :?tox - xc :?toy - yc :?abovetoy - yc)
-		      :precondition (gripperempty)
-		      :expansion ((move-block :?b :?from :?to :?bx :?by :?tox :?toy :?abovetoy) (move-blocks :?b)))	             :optimistic   (:opt 0)
+		      :expansion ((move-to :?b :?to :?gx :?gy :?tox :?toy :?abovetoy) (move-blocks)))
+       :refinement   (:precondition (gripperempty)
+		      :expansion    ((move-blocks)))
+       :optimistic   (:opt 0)
        :pessimistic  (:pess))
 
 
@@ -46,13 +45,12 @@
 
 
   (:hla move-blocks
-       :parameters   (?last - block)
+       :parameters   ()
        :refinement   (:expansion ())
        :refinement   (:parameters (:?b - block :?from - block :?to - block
 				   :?bx - xc :?by - yc :?tox - xc :?toy - yc :?abovetoy - yc)
-		      :precondition (not (block= :?b ?last))
 		      :expansion ((move-block :?b :?from :?to :?bx :?by :?tox :?toy :?abovetoy)
-				  (move-blocks :?b)))    
+				  (move-blocks)))    
        :optimistic   (:warehouse-act)
        :pessimistic  (:pess))
 

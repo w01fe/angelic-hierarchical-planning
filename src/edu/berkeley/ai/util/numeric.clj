@@ -19,3 +19,7 @@
 (defn abs [x] (if (neg? x) (- x) x))
 
 (defn indicator [x] (if x 1 0))
+
+(defn counter-from [x]
+  (let [c (sref (dec x))]
+     #(sref-up! c inc)))

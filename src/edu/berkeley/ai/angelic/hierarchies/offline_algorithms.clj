@@ -44,7 +44,7 @@
 		   (do
                      (if-let [great-refs (seq (filter #(>= (search/lower-reward-bound %) (util/sref-get threshold)) good-refs))]
 		         (let [best-ref 
-			       (alts/clear-alt-graph-cache
+			       (search/reroot-at-node
 				(util/first-maximal-element ; tie break
 ;					 search/lower-reward-bound 
 					 #(+ (search/lower-reward-bound %) (/ (search/upper-reward-bound %) 100000.0))

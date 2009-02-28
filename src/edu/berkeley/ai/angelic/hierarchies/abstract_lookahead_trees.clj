@@ -38,8 +38,8 @@
 ; U ... Nav      Put-R, now tight, pruned at nav from 2 steps above
 ; L ... Nav      Put-R, now tight, pruned at Put-R from 2 steps above
 
-; The soluton is to prune strictly on live nodes, and non-strictly on non-ancestors, but not on arbitrary nodes.
-; This means we must maintain a live list.
+; The soluton is to prune strictly on live nodes, and non-strictly on everything else.
+; This means we must maintain a live list, but no ancestor sets are needed.
 ; If you throw away a node without telling the ALT, all hell can break loose.
 
 ;; ALTs, nodes, and plans
@@ -49,12 +49,13 @@
   (with-meta 
     (struct abstract-lookahead-tree cache? graph? goal ref-choice-fn)
     {:graph-map (HashMap.)
-     :live-set  (HashSet.)}))
+     :live-set  (HashSet.)
+     :node-counter (util/counter-from 0)}))
 
 (derive ::ALTPlanNode ::search/Node)
-(defstruct alt-plan-node :class :alt :name :plan :ancestor-set)
-(defn make-alt-plan-node [class alt name plan ancestor-set]
-  (struct alt-plan-node class alt name plan ancestor-set))
+(defstruct alt-plan-node :class :alt :name :plan)
+(defn make-alt-plan-node [class alt name plan]
+  (struct alt-plan-node class alt name plan))
 
 (defstruct alt-action-node :hla :previous :primitive?)
 (defn make-alt-node [hla previous-node opt-val pess-val] 
@@ -176,13 +177,13 @@
   (util/assert-is (contains? #{true false :full} graph?))
   (let [initial-plan (list initial-node) ;(if (seq? initial-node) initial-node (list initial-node))
 	env (hla-environment (first initial-plan)), 
-	name (gensym)
-	alt (make-alt cache? graph? (envs/get-goal env) ref-choice-fn)]
+	alt (make-alt cache? graph? (envs/get-goal env) ref-choice-fn)
+	name ((:node-counter ^alt))]
     (.add #^HashSet (:live-set ^alt) name)
     (loop [actions initial-plan
 	   previous (make-alt-root-node alt (make-initial-valuation valuation-class env))]
       (if (empty? actions)
-          (make-alt-plan-node node-type alt name previous #{})
+          (make-alt-plan-node node-type alt name previous)
 	(recur (next actions)
 	       (get-alt-node alt (first actions) previous)))))))
 
@@ -195,7 +196,7 @@
 (def *dummy-pair-alt* [Double/NEGATIVE_INFINITY (gensym)])
 
 ; Return true if keep, false if prune.
-(defn graph-add-and-check! [alt node rest-plan name ancestor-set]
+(defn graph-add-and-check! [alt node rest-plan name]
   (util/assert-is (:graph? alt))
   (let [#^HashMap graph-map (util/safe-get ^alt :graph-map)
 	#^HashSet live-set  (util/safe-get ^alt :live-set)
@@ -206,10 +207,8 @@
 ;	(when (not (or (> opt-rew graph-rew) (and (= opt-rew graph-rew) (contains? ancestor-set graph-node))))
 ;	  (println "pruning!" name ancestor-set graph-node graph-rew opt-rew (contains? ancestor-set graph-node)))
     (when (or (> opt-rew graph-rew)
-	      (and (not (contains? live-set graph-node))
-		   (or (not (contains? ancestor-set graph-node))
-		       (= opt-rew graph-rew))))
-;      (println "prune")
+	      (and (not (.contains live-set graph-node))
+		   (= opt-rew graph-rew)))
       (let [pess-val    (pessimistic-valuation node)
 	    pess-states (get-valuation-states pess-val)
 	    pess-rew    (get-valuation-lower-bound pess-val)
@@ -219,38 +218,26 @@
 	  (.put graph-map pair [pess-rew name])))
       true)))
 	       
-(set! *warn-on-reflection* true)
-;; TODO: make a method
-;; TODO: make more efficient
-(defn clear-alt-graph-cache "Clear the cache of all but ancestors of node, and return a new node."
-  [node]
+
+;; Node methods 
+
+(defmethod search/reroot-at-node ::ALTPlanNode [node]
   (let [alt (:alt node)
 	#^HashMap cache (:graph-map ^alt)
 	#^HashSet live-set (:live-set ^alt)
-	it (.iterator (.entrySet cache))
-	name   (util/safe-get node :name)
-	oldset (conj (util/safe-get node :ancestor-set) name)
-	newset #{name}]
-;    (println (.size cache))
-    (while (.hasNext it)
-      (let [#^Map$Entry next (.next it)
-	    k    (.getKey next)
-	    v    (.getValue next)
-	    v-name (second v)]
-	(if (contains? oldset v-name)
-	    (.setValue next (assoc v 1 name))
-	  (.remove it))))
- ;   (println (.size cache))
-;    node));
+	name   (util/safe-get node :name)]
     (.clear live-set)
+    (.clear cache)
+    (when (:graph? alt)
+      (loop [node (:plan node), plan nil]
+	(when node
+	  (graph-add-and-check! alt node plan name)
+	  (recur (:previous node) (cons (:hla node) plan)))))
     (.add live-set name)
-    (make-alt-plan-node (:class node) alt name (:plan node) newset)))
+    node))
 ;  (.clear 
-(set! *warn-on-reflection* false)
 
 
-
-;; Node methods 
 
 (defmethod search/node-environment   ::ALTPlanNode [node] (hla-environment (:hla (:plan node))))
 
@@ -277,15 +264,16 @@
 
 (defmethod search/reward-so-far ::ALTPlanNode [node] 0)
 
-(defmulti construct-immediate-refinement (fn [node previous actions alt name ancestors] (:class node)))
-(defmethod construct-immediate-refinement ::ALTPlanNode [node previous actions alt name ancestors]
+(defmulti construct-immediate-refinement (fn [node previous actions alt name] (:class node)))
+(defmethod construct-immediate-refinement ::ALTPlanNode [node previous actions alt name]
   (if (empty? actions) 
-    (make-alt-plan-node (:class node) alt name previous ancestors)
+    (make-alt-plan-node (:class node) alt name previous )
     (let [nxt (get-alt-node alt (first actions) previous)]
-      (if (or (not (:graph? alt)) 
-		(graph-add-and-check! alt nxt (next actions) name ancestors))
-	  (recur node nxt (next actions) alt name ancestors)
-	(util/print-debug 3 "Late prune at" (fancy-node-str {:plan nxt}))))))
+      (if (and (> (get-valuation-upper-bound (optimistic-valuation nxt)) Double/NEGATIVE_INFINITY)
+	       (or (not (:graph? alt)) 
+		   (graph-add-and-check! alt nxt (next actions) name)))
+	  (recur node nxt (next actions) alt name)
+	(util/print-debug 3 "Late prune at" (search/node-str {:plan nxt}))))))
 
 (defmethod search/immediate-refinements ::ALTPlanNode [node] 
   (util/timeout)
@@ -301,20 +289,18 @@
 							  (iterate :previous plan))))
 	    before-nodes   (when full-graph? (reverse (util/iterate-while :previous plan)))
 	    before-actions (map :hla (next before-nodes))
-	    parent-name    (util/safe-get node :name)
-	    ancestors      (conj (util/safe-get node :ancestor-set) parent-name)]
+	    parent-name    (util/safe-get node :name)]
 	(when graph? (.remove #^HashSet (:live-set ^alt) parent-name))
 	(filter identity
 	 (for [ref (hla-immediate-refinements (:hla ref-node) (optimistic-valuation (:previous ref-node)))]
-	   (let [name         (gensym)
+	   (let [name         ((:node-counter ^alt))
 		 tail-actions (concat ref after-actions)
 		 all-actions  (concat before-actions tail-actions)]
   	     (util/print-debug 3 "Considering refinement " (map hla-name ref) " at " (hla-name (:hla ref-node)))
-;	     (println " GO " (count tail-actions))
 	     (if (every? (fn [[node rest-plan]]    ; full graph prefix check
-			     (graph-add-and-check! alt node rest-plan name ancestors))
+			     (graph-add-and-check! alt node rest-plan name))
 			   (map vector before-nodes (iterate next all-actions)))
-	       (when-let [nxt (construct-immediate-refinement node (:previous ref-node) tail-actions alt name ancestors)]
+	       (when-let [nxt (construct-immediate-refinement node (:previous ref-node) tail-actions alt name )]
 		 (when graph? (.add #^HashSet (:live-set ^alt) name))
 		 nxt)
 	       (util/print-debug 3 "early prune")
@@ -324,19 +310,24 @@
 (defmethod search/primitive-refinement ::ALTPlanNode [node]
   (let [node (:plan node)]
     (when (util/safe-get node :primitive?)
-;    (println (search/node-str node))
-    (let [act-seq (remove #(= % :noop)
-		   (map (comp hla-primitive :hla) (next (reverse (util/iterate-while :previous node))))) 
-	  upper (get-valuation-upper-bound (optimistic-valuation node))] 
-      [act-seq upper]))))
+      (let [act-seq (remove #(= % :noop)
+		      (map (comp hla-primitive :hla) (next (reverse (util/iterate-while :previous node))))) 
+	    upper (get-valuation-upper-bound (optimistic-valuation node))] 
+	[act-seq upper]))))
 
 (defmethod search/extract-optimal-solution ::ALTPlanNode [node] 
   (when (and (util/safe-get-in node [:plan :primitive?]) 
 	     (> (search/upper-reward-bound node) Double/NEGATIVE_INFINITY))
     (search/primitive-refinement node)))
 
-(defmethod search/node-str ::ALTPlanNode [node] 
-  (util/str-join " " (map (comp hla-name :hla) (next (reverse (util/iterate-while :previous (:plan node)))))))
+(defn fancy-node-str [node] 
+  (util/str-join " " 
+    (map (fn [n] [(hla-name (:hla n)) [(get-valuation-lower-bound (pessimistic-valuation n))
+				       (get-valuation-upper-bound (optimistic-valuation n))]])
+	 (next (reverse (util/iterate-while :previous (:plan node)))))))
+
+(defmethod search/node-str ::ALTPlanNode [node] (fancy-node-str node))
+;  (util/str-join " " (map (comp hla-name :hla) (next (reverse (util/iterate-while :previous (:plan node)))))))
 
 (defmethod search/node-first-action ::ALTPlanNode [node]
   (let [first-node (last (butlast (util/iterate-while :previous (:plan node))))
@@ -344,11 +335,7 @@
     (hla-primitive first-hla)))
     
 
-(defn fancy-node-str [node] 
-  (util/str-join " " 
-    (map (fn [n] [(hla-name (:hla n)) [(get-valuation-lower-bound (pessimistic-valuation n))
-				       (get-valuation-upper-bound (optimistic-valuation n))]])
-	 (next (reverse (util/iterate-while :previous (:plan node)))))))
+
 
 
 (comment
@@ -491,3 +478,28 @@
 
 
 
+
+(comment ;old version
+  (defn clear-alt-graph-cache "Clear the cache of all but node, and return a new node."
+  [node]
+  (let [alt (:alt node)
+	#^HashMap cache (:graph-map ^alt)
+	#^HashSet live-set (:live-set ^alt)
+	it (.iterator (.entrySet cache))
+	name   (util/safe-get node :name)
+	oldset (conj (util/safe-get node :ancestor-set) name)
+	newset #{name}]
+;    (println (.size cache))
+    (while (.hasNext it)
+      (let [#^Map$Entry next (.next it)
+	    k    (.getKey next)
+	    v    (.getValue next)
+	    v-name (second v)]
+	(if (contains? oldset v-name)
+	    (.setValue next (assoc v 1 name))
+	  (.remove it))))
+ ;   (println (.size cache))
+;    node));
+    (.clear live-set)
+    (.add live-set name)
+    (make-alt-plan-node (:class node) alt name (:plan node) newset))))

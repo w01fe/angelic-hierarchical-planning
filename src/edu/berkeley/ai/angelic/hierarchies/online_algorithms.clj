@@ -91,7 +91,7 @@
 			  (recur (dec max-refs) next-g-n-f))))))]
 	      (util/assert-is (<= f (or (.get memory (envs/get-initial-state env)) Double/POSITIVE_INFINITY)))
 	      (.put memory (envs/get-initial-state env) f)
-	      (util/print-debug 1 "Intending plan" (alts/fancy-node-str n) ", g =" g ", f =" f) 
+	      (util/print-debug 1 "Intending plan" (search/node-str n) ", g =" g ", f =" f) 
 	      (search/node-first-action n))))))))
 	      
 
@@ -149,11 +149,11 @@
 		      :min-f-to-go min-f-to-go)]
 ;	  (println (hla-name (:hla node)))
 	  (when (and prim? (< min-f-to-go s-rew-to-go))
-	    (when (< min-f-to-go (get *real-dists* state))
-		      (def *memory* memory)
-		      (def *state-rews* state-rew-pairs)
-		      (def *node* node)
-		      (util/assert-is (>= min-f-to-go (get *real-dists* state)) "TWO"))
+;	    (when (< min-f-to-go (get *real-dists* state))
+;		      (def *memory* memory)
+;		      (def *state-rews* state-rew-pairs)
+;		      (def *node* node)
+;		      (util/assert-is (>= min-f-to-go (get *real-dists* state)) "TWO"))
 	    (.put memory state min-f-to-go))
 	  (recur node (rest nodes) (if prim? (cons [state s-rew-so-far] state-rew-pairs) state-rew-pairs)))))))
 		    
@@ -204,17 +204,17 @@
 				(.put state-rews s (max r (get state-rews s Double/NEGATIVE_INFINITY))))
 			      (queues/pq-add! pq nxt (- (min nf nxt-f))))) ; enforce consistency
 			  (recur (dec max-refs) next-g-n-f))))))]
-	        (util/print-debug 1 "Intending plan" (alts/fancy-node-str n) " with g =" g, "f =" f, "Final bound =" f)
+	        (util/print-debug 1 "Intending plan" (search/node-str n) " with g =" g, "f =" f, "Final bound =" f)
 		(doseq [[s r] state-rews]
 		  (let [mem-val (get memory s Double/POSITIVE_INFINITY)
 			new-val (- f r)]
 		    (when (< new-val mem-val)
-		      (when (< new-val (get *real-dists* s))
-			(def *env* env)
-			(def *memory* memory)
-			(def *state-rews* state-rews)
-			(def *node* n)
-			(util/assert-is (>= new-val (get *real-dists* s)) "one %s" (envs/state-str env s)))
+;		      (when (< new-val (get *real-dists* s))
+;			(def *env* env)
+;			(def *memory* memory)
+;			(def *state-rews* state-rews)
+;			(def *node* n)
+;			(util/assert-is (>= new-val (get *real-dists* s)) "one %s" (envs/state-str env s)))
 		      (util/print-debug 4 "Reducing reward of state from" mem-val "to" new-val (str "\n" (envs/state-str env s)))
 		      (.put memory s new-val))))
 		(search/node-first-action n))))))))
@@ -276,7 +276,7 @@
 			  (util/print-debug 2 "Refining" (search/node-str n) "with g =" ng ", f =" nf 
 					    (if (not (identical? g-n-f next-g-n-f)) "; locking in" ""))
 			  (doseq [nn (search/immediate-refinements n)]
-			    (util/print-debug 3 "Got ref " (alts/fancy-node-str nn))
+			    (util/print-debug 3 "Got ref " (search/node-str nn))
 			    (let [[nxt nxt-f sr-seq] (postprocess-plan-known-states nn memory high-level-hla-set)]
 			      (doseq [[s r] sr-seq]
 				(.put state-rews s (max r (get state-rews s Double/NEGATIVE_INFINITY))))

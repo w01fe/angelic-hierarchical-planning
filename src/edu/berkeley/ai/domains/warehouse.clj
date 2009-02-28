@@ -182,7 +182,7 @@
 			  (fn [[cur-pos2 goal-pos2]]
 			    (util/assert-is (> (second goal-pos) (second goal-pos2)))
 			    (and (not (= cur-pos2 goal-pos2))
-				 (= (first cur-pos)  (first cur-pos2))
+				 (= (first cur-pos)  (first cur-pos2))  ; TODO TODO TODO: put back
 				 (> (second cur-pos) (second cur-pos2))))
 			  (next rest-pos))))
 		    (util/iterate-while next (seq positions)))))
@@ -204,7 +204,7 @@
 			      (let [x (Integer/parseInt (.substring #^String (name (last chain)) 5))]
 				(for [[block y] (next (map vector (reverse chain) (iterate inc 0)))]
 				  [block [x y]])))))]
-      (println "CREATE ACT" chains floating-chains table-pos-map)
+;      (println "CREATE ACT" chains floating-chains table-pos-map)
       (make-warehouse-act-description
        (if (empty? floating-chains)
 	   (make-matching-based-heuristic table-pos-map (map butlast chains))

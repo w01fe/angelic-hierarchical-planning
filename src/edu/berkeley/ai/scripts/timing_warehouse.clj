@@ -36,11 +36,11 @@
 ;		 ["unguided-alt-ft" #(alts/alt-node (hierarchies/get-hierarchy warehouse/*warehouse-hierarchy-unguided* %) false true)]
 ;		 ["unguided-alt-tt" #(alts/alt-node (hierarchies/get-hierarchy warehouse/*warehouse-hierarchy-unguided* %) true true)]
 		 ["guided-alt-tp" #(alts/alt-node (hierarchies/get-hierarchy warehouse/*warehouse-hierarchy* %) true true)]
-		 ["guided-alt-tt" #(alts/alt-node (hierarchies/get-hierarchy warehouse/*warehouse-hierarchy* %) true :full)]
+;		 ["guided-alt-tt" #(alts/alt-node (hierarchies/get-hierarchy warehouse/*warehouse-hierarchy* %) true :full)]
 		 ])
 
 
-(def *time-limit* 20)
+(def *time-limit* 30)
 
 (defn- pad [thing len]
   (.substring (apply str thing (replicate len " ")) 0 len))
