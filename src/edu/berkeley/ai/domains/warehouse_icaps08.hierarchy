@@ -7,6 +7,7 @@
 
   (:hla act
        :parameters   ()
+       :refinement   (:expansion ())
        :refinement   (:parameters (:?b - block :?to - block 
 				   :?gx - xc :?gy - yc :?tox - xc :?toy - yc :?abovetoy - yc) 
 		      :expansion ((move-to :?b :?to :?gx :?gy :?tox :?toy :?abovetoy) (move-blocks :?b)))
