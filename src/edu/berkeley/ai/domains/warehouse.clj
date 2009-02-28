@@ -159,14 +159,28 @@
 	   
              (concat
 	      (if (and holding (contains? block-set holding))
-		  [[term holding 0]] ;TODO: ??
+		  [[term holding 1]] ; Account for distance gap 
 	        (for [[b c g] positions] ; Get to first block and pick it up
-		  [term b (- (util/reduce-key min #(max 1 (manhattan % c)) gripper-pos))]))   ;TODO: if holding??
-	      (for [[b c g] positions] ; Put final block in final position (could have max 2?)
-		[b term (- (manhattan c g))])
+		  [term b (- (util/reduce-key min #(max 1 (manhattan % c)) gripper-pos))]))   
+	      (for [[b c g] positions] ; Put final block in final position 
+		[b term (- (max 2 (manhattan c g)))])
 	      (for [[b1 c1 g1] positions, ; Holding b1; put it in g1, go to b1, pick it up
-		    [b2 c2 g2] positions]  ; TODO: disallow [b b ...? ] YES
-		[b1 b2 (- (max 1 (+ (manhattan c1 g1) (manhattan g1 c2))))])))
+		    [b2 c2 g2] positions 
+		    :when (not (= b1 b2))]  
+		[b1 b2 (- (max 3 (+ (manhattan c1 g1) (manhattan g1 c2))))]))
+
+ ;            (concat
+;	      (if (and holding (contains? block-set holding))
+;		  [[term holding 0]] ;TODO: ??
+;	        (for [[b c g] positions] ; Get to first block and pick it up
+;		  [term b (- (util/reduce-key min #(max 1 (manhattan % c)) gripper-pos))]))   ;TODO: if holding??
+;	      (for [[b c g] positions] ; Put final block in final position (could have max 2?)
+;		[b term (- (manhattan c g))])
+;	      (for [[b1 c1 g1] positions, ; Holding b1; put it in g1, go to b1, pick it up
+;		    [b2 c2 g2] positions 
+;		    :when (not (= b1 b2))]  
+;		[b1 b2 (- (max 1 (+ (manhattan c1 g1) (manhattan g1 c2))))]))
+	     )
 	    0))
 
   	 ; Count switches
@@ -182,7 +196,7 @@
 			  (fn [[cur-pos2 goal-pos2]]
 			    (util/assert-is (> (second goal-pos) (second goal-pos2)))
 			    (and (not (= cur-pos2 goal-pos2))
-				 (= (first cur-pos)  (first cur-pos2))  ; TODO TODO TODO: put back
+				 (= (first cur-pos)  (first cur-pos2))
 				 (> (second cur-pos) (second cur-pos2))))
 			  (next rest-pos))))
 		    (util/iterate-while next (seq positions)))))
@@ -259,7 +273,33 @@
 		    (count (get-and-check-sol (simplifier env) true))))))))
 
 
+(import '[java.util HashSet])
 
+(defn test-descriptions [env goal-states max-tests]
+  (let [desc (angelic/ground-description
+	      (angelic/instantiate-description-schema
+	       (angelic/parse-description [:warehouse-act] (make-warehouse-strips-domain) nil)
+	       env)
+	      nil)
+	as (envs/get-action-space env)
+	done (HashSet.)]
+    (doseq [s goal-states] (.add done s))
+    (loop [gen (distinct goal-states), rew 0, max-tests max-tests]
+      (println "Generation" rew "has" (count gen) "states...")
+      (doseq [s (take max-tests gen)]
+	(let [val (edu.berkeley.ai.angelic.dnf-simple-valuations/make-dnf-simple-valuation 
+		   (list (util/map-map #(vector % :true) s)) 0)]
+	  (util/assert-is (>= (angelic/get-valuation-upper-bound (angelic/progress-optimistic val desc)) rew))))
+      (when (and (not (empty? gen)) (> max-tests (count gen)))
+	(recur 
+	 (for [s gen, ss (envs/successor-states s as) :when (not (.contains done ss))] 
+	   (do (.add done ss) ss))
+	 (dec rew)
+	 (- max-tests (count gen)))))))
+
+; (test-descriptions (constant-predicate-simplify (make-warehouse-strips-env 4 4 [1 2] false {0 '[a] 2 '[c b]} nil ['[a c table1]])) (for [bpos [0 2 3], [gpos fr] [[[0 2] true] [[2 2] false]]] (get-initial-state (constant-predicate-simplify (make-warehouse-strips-env 4 4 gpos fr {bpos '[b] 1 '[a c]} nil ['[table1 table0]])))) 10)
+
+; (test-descriptions (constant-predicate-simplify (make-warehouse-strips-env 7 6 [0 2] true {0 '[b] 1 '[a] 2 '[c]  } nil ['[a b c table5]])) (for [[gpos fr] [[[4 4] true] [[6 4] false]]] (get-initial-state (constant-predicate-simplify (make-warehouse-strips-env 7 6 gpos fr {5 '[a b c]} nil ['[a b c table5]])))) 100000)
 
 (comment 
   (u util domains.strips domains.warehouse envs search search.algorithms.textbook)

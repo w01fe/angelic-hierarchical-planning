@@ -304,6 +304,8 @@
      
 ; (second (binding [*debug-level* 2] (improved-ahlrta-star-search (get-hierarchy *warehouse-hierarchy* (constant-predicate-simplify (make-warehouse-strips-env 3 4 [1 2] false {0 '[b a] 2 '[c]} nil ['[a b c]]))) 10 10 #{'act 'move-blocks 'move-block 'move-to})))
 
+; (second (binding [*debug-level* 1] (improved-ahlrta-star-search (get-flat-strips-hierarchy (constant-predicate-simplify (make-warehouse-strips-env 4 4 [1 2] false {0 '[a] 2 '[c b]} nil ['[a c table1]])) [:warehouse-act]) 100 100 #{'act 'move-blocks 'move-block 'move-to})))
+
 ; (let [ds (parse-description [:warehouse-act] (make-warehouse-strips-domain) nil) inst (constant-predicate-simplify (make-warehouse-strips-env 4 4 [0 1] true { 3 '[a b]} 'c ['[a c table1]])) val (make-initial-valuation :edu.berkeley.ai.angelic.dnf-simple-valuations/DNFSimpleValuation inst) d (ground-description (instantiate-description-schema ds inst) nil)] (println (state-str inst (get-initial-state inst))) (progress-optimistic val d))
 
 

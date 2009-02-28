@@ -1,9 +1,3 @@
-; improved-ahlrta without prim-then-act ?!
-
-; Improve warehouse heuristic / fix for offline case?
-
-; Description checker 
-
 ------------------------------------
 From earlier meeting
 
@@ -73,6 +67,8 @@ longer term
   ( and only include things in clauses where needed?)
 
  - Tiebreaking?
+
+ ; improved-ahlrta without prim-then-act ?!
 
  ; Add weighted A* or that version I saw at ICAPS?
 
