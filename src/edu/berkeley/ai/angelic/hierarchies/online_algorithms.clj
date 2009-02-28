@@ -26,9 +26,9 @@
 			:previous (assoc (:previous (:plan node)) :g-rew 0)))))
 
 
-(defmethod alts/construct-immediate-refinement ::AHLRTAALTPlanNode [node previous actions alt name ancestors]
+(defmethod alts/construct-immediate-refinement ::AHLRTAALTPlanNode [node previous actions alt name]
   (if (empty? actions) 
-      (alts/make-alt-plan-node (:class node) alt name previous ancestors)
+      (alts/make-alt-plan-node (:class node) alt name previous)
     (let [nxt    (alts/get-alt-node alt (first actions) previous)
 	  nxt    (assoc nxt
 		   :g-rew (+ (util/safe-get previous :g-rew)
@@ -41,10 +41,11 @@
 	  [state rew-so-far]  (when prim? (util/assert-is (= 1 (count states))) (first states))
 	  rew-to-go           (when prim? (get (util/safe-get alt :memory) state))]
       (if rew-to-go
-	  (search/adjust-reward (alts/make-alt-plan-node (:class node) alt name nxt ancestors) (+ rew-so-far rew-to-go))  
-	(when (or (not (util/safe-get alt :graph?)) 
-		  (alts/graph-add-and-check! alt nxt (next actions) name ancestors))
-	  (recur node nxt (next actions) alt name ancestors))))))
+	  (search/adjust-reward (alts/make-alt-plan-node (:class node) alt name nxt) (+ rew-so-far rew-to-go))  
+	(when (and (> (get-valuation-upper-bound (alts/optimistic-valuation nxt)) Double/NEGATIVE_INFINITY)
+		   (or (not (util/safe-get alt :graph?)) 
+		       (alts/graph-add-and-check! alt nxt (next actions) name)))
+	  (recur node nxt (next actions) alt name))))))
 
 
 
