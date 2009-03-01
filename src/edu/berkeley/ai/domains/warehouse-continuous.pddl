@@ -1,55 +1,79 @@
 ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
 ;;; Warehouse world
 ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
-; y0 at bottom, x0 at left
+; everything has height 1 
+; (0,0) is at bottom left.
+; gripper has width 0 unless holding a block.
+; Positions are [left, right) and [bottom, top) intervals.?
+; Edge must be flush with blocks to pick up / put down.
 
-(define (domain WAREHOUSE)
-  (:requirements :strips :typing :equality)
-  (:types block xc yc)
-  (:predicates (leftof ?x1 - xc ?x2 - xc)
-  	       (above ?y1 - yc ?y2 - yc)
-	       (topy ?y - yc)
-               (on ?x - block ?y - block)
-	       (clear ?x - block)
-	       (blockat ?b - block ?x - xc ?y - yc)
-	       (someblockat ?x - xc ?y - yc)
-	       (holding ?x - block)
-	       (facingright)
-	       (gripperempty)
-	       (gripperat ?x - xc ?y - yc)
-	      )
+(define (domain WAREHOUSE-HYBRID)
+  (:requirements :strips :typing :equality :numbers)
+  (:types block)
+  (:numeric-types x y)
+  (:predicates 
+   (on ?b - block ?c - block)
+   (clear ?b - block)
+   (holding ?b - block)
+   (gripperempty)
+   (facingright))
+  (:numeric-functions
+   (width)                    - x
+   (height)                   - y
+   (blockwidth ?b - block)    - x
+   (gripperx)                 - x
+   (gripperbottomy)           - y
+   (blockleftx ?b - block)    - x
+   (blockbottomy ?b - block)) - y
 
   (:action get-l
-             :parameters (?b - block ?c - block ?bx - xc ?gx - xc ?y - yc)
-	     :precondition (and (leftof ?bx ?gx)
-				(gripperat ?gx ?y)
-				(blockat ?b ?bx ?y)
-	                        (on ?b ?c)
-				(clear ?b)
-				(gripperempty)
-				(not (facingright)))
-	     :effect       (and (not (blockat ?b ?bx ?y))
-				(not (someblockat ?bx ?y))
-				(not (gripperempty))
-				(not (on ?b ?c))
-				(holding ?b)
-				(clear ?c)))
+	   :parameters   (?b - block ?c - block ?bx - x ?bw - x ?gx - x ?y - y)
+	   :precondition (and (= (+ ?bx ?bw) ?gx)
+			      (gripperx ?gx)
+			      (gripperbottomy ?y)
+			      (blockleftx ?bx)
+			      (blockbottomy ?y)
+			      (= (blockwidth ?b) ?bw)
+			      (on ?b ?c)
+			      (clear ?b)
+			      (gripperempty)
+			      (not (facingright)))
+	   :effect       (and (not (gripperempty))
+			      (not (on ?b ?c))
+			      (holding ?b)
+			      (clear ?c)))
 
   (:action get-r
-             :parameters (?b - block ?c - block ?bx - xc ?gx - xc ?y - yc)
-	     :precondition (and (leftof ?gx ?bx)
-				(gripperat ?gx ?y)
-				(blockat ?b ?bx ?y)
-	                        (on ?b ?c)
-				(clear ?b)
-				(gripperempty)
-				(facingright))
-	     :effect       (and (not (blockat ?b ?bx ?y))
-				(not (someblockat ?bx ?y))
-				(not (gripperempty))
-				(not (on ?b ?c))
-				(holding ?b)
-				(clear ?c)))
+	   :parameters   (?b - block ?c - block ?bx - x ?y - y)
+	   :precondition (and (gripperx ?bx)
+			      (gripperbottomy ?y)
+			      (blockleftx ?bx)
+			      (blockbottomy ?y)
+			      (on ?b ?c)
+			      (clear ?b)
+			      (gripperempty)
+			      (facingright))
+	   :effect       (and (not (gripperempty))
+			      (not (on ?b ?c))
+			      (holding ?b)
+			      (clear ?c)))
+
+  (:action put-l
+	   :parameters   (?b - block ?c - block ?bx - x ?bw - x ?gx - x ?by - y ?cx - x ?cw - x ?cy - y)
+	   :precondition (and (= (+ ?bx ?bw) ?gx)
+			      (gripperx ?gx)
+			      (gripperbottomy ?y)
+			      (blockleftx ?bx)
+			      (blockbottomy ?y)
+			      (= (blockwidth ?b) ?bw)
+			      (on ?b ?c)
+			      (clear ?b)
+			      (gripperempty)
+			      (not (facingright)))
+	   :effect       (and (not (gripperempty))
+			      (not (on ?b ?c))
+			      (holding ?b)
+			      (clear ?c)))
 
   (:action put-l
              :parameters (?b - block ?c - block ?bx - xc ?gx - xc ?cy - yc ?gy - yc)
