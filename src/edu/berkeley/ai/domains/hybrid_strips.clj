@@ -168,6 +168,7 @@
   (struct hybrid-strips-conjuntive-constraint ::ConjunctiveConstraint constraints))
 
 (defmethod evaluate-constraint ::ConjunctiveConstraint [constraint var-map objects [discrete-atoms numeric-vals]]
+;  (doseq [x (:constraints constraint)] (println x (evaluate-constraint x var-map objects [discrete-atoms numeric-vals])))
   (every? #(evaluate-constraint % var-map objects [discrete-atoms numeric-vals]) (:constraints constraint)))
 
 
@@ -266,8 +267,8 @@
 
 (defn- execute-effect [effect var-map [discrete-atoms numeric-vals]]
   (let [simplifier (fn [atoms] (map #(props/simplify-atom var-map %) atoms))]
-    [(apply conj 
-      (apply disj discrete-atoms (simplifier (:deletes effect)))
+    [(reduce conj 
+      (reduce disj discrete-atoms (simplifier (:deletes effect)))
       (simplifier (:adds effect)))
      (reduce (fn [nv ae] (execute-assignment ae var-map nv numeric-vals)) numeric-vals (:assignments effect))]))
  
@@ -411,13 +412,13 @@
 (defn make-hybrid-state-space [fluent-atoms numeric-atoms str-fn]
   (struct hybrid-state-space ::HybridStateSpace (util/to-set fluent-atoms) (util/to-set numeric-atoms) str-fn))
 
-(defmethod list-states ::HybridStateSpace [state-set]
-  (throw UnsupportedOperationException.))
+(defmethod edu.berkeley.ai.envs.states/list-states ::HybridStateSpace [state-set]
+  (throw (UnsupportedOperationException.)))
 
-(defmethod canonicalize ::HybridStateSpace [state-set]
+(defmethod edu.berkeley.ai.envs.states/canonicalize ::HybridStateSpace [state-set]
   state-set)  
 
-(defmethod set-contains? ::HybridStateSpace [state-set elt]
+(defmethod edu.berkeley.ai.envs.states/set-contains? ::HybridStateSpace [state-set elt]
   (and (every? (:fluent-atoms state-set) (first elt))
        (= (set (keys (second elt))) (:numeric-atoms state-set))))
 
@@ -433,11 +434,12 @@
 (defn make-constraint-condition [constraint objects var-map] 
   (struct constraint-condition ::ConstraintCondition constraint objects var-map))
 
-(defmethod satisfies-condition? ::ConstraintCondition [s c]
+(defmethod envs/satisfies-condition? ::ConstraintCondition [s c]
+ ; (println (:constraint c) (:var-map c) (:objects c))
   (evaluate-constraint (:constraint c) (:var-map c) (:objects c) s))
 
-(defmethod consistent-condition? ::ConjunctiveCondition [condition]
-  (throw UnsupportedOperationException.))
+(defmethod envs/consistent-condition? ::ConstraintCondition [condition]
+  (throw (UnsupportedOperationException.)))
 
 
 ; Instantiated actions
@@ -458,17 +460,22 @@
 	(- (evaluate-numeric-expr cost-expr var-map (second state)))])
      (make-constraint-condition (util/safe-get schema :precondition) (util/safe-get instance :objects) var-map))))
 
-; Action spaces
+(defn get-hs-action [instance name var-map]
+  (hybrid-strips-action->action
+   (make-hybrid-strips-action (util/safe-get-in instance [:domain :action-schemata name]) var-map)
+   instance))
+
+; Action space (TODO)
        
 (defstruct hybrid-action-space :class)
 
 (defn make-hybrid-action-space [] (struct hybrid-action-space ::HybridActionSpace))
 
-(defmethod applicable-actions ::HybridActionSpace [state action-space]
-  (throw UnsupportedOperationException.))
+(defmethod envs/applicable-actions ::HybridActionSpace [state action-space]
+  (throw (UnsupportedOperationException.)))
 
-(defmethod all-actions ::HybridActionSpace [action-space]
-  (throw UnsupportedOperationException.))
+(defmethod envs/all-actions ::HybridActionSpace [action-space]
+  (throw (UnsupportedOperationException.)))
 
 ; Tricky
 
@@ -481,22 +488,23 @@
   :class :name :domain :objects :init-atoms :init-fns :goal-atoms :fluent-atoms :state-space :action-space)
 
 (defn- get-instantiations [thing-map objects]
-  (for [[n types] thing-map]
-    (for [args (apply util/cartesian-product (map #(util/safe-get objects %) types))]
-      (vec (cons n args)))))  
+  (for [[n types] thing-map,
+	args (apply util/cartesian-product (map #(util/safe-get objects %) types))]
+    (vec (cons n args))))  
 
 (defn make-hybrid-strips-planning-instance
   ([name domain objects init-atoms init-fns goal-atoms]
      (make-hybrid-strips-planning-instance name domain objects init-atoms init-fns goal-atoms str))
   ([name domain objects init-atoms init-fns goal-atoms state-str-fn]
+ ;    (println objects init-atoms init-fns goal-atoms)
      (let [{:keys [discrete-types numeric-types predicates numeric-functions action-schemata equality?]} domain
 	   discrete-type-map (into {} (map #(vector % nil) discrete-types))
 	   objects (props/check-objects discrete-type-map objects)
 	   object-type-map (into {} (for [[t os] objects, o os] [o t]))
-	   (set (get-instantiations predicates objects))]
+	   all-atoms (set (get-instantiations predicates objects))]
        (doseq [nf-inst (get-instantiations numeric-functions objects)]
 	 (util/assert-is (number? (get init-fns nf-inst))))
-       (struct hybrid-strips-planning-instance ::HybridStripsPlanningInstancee
+       (struct hybrid-strips-planning-instance ::HybridStripsPlanningInstance
 	 name
 	 domain
 	 objects
@@ -508,7 +516,7 @@
 	 (set (map #(check-atom % predicates object-type-map) goal-atoms))
 	 all-atoms
 	 (make-hybrid-state-space all-atoms (util/keyset init-fns) state-str-fn)
-	 (make-hybrid-action-space ...)))))
+	 (make-hybrid-action-space)))))
 
 
 
@@ -516,7 +524,7 @@
   (util/safe-get instance :domain))
 
 (defmethod envs/get-initial-state ::HybridStripsPlanningInstance [instance]
-  (envs/metafy-initial-state [(:init-atoms instance) (:initial-fns instance)]))
+  (envs/metafy-initial-state [(:init-atoms instance) (:init-fns instance)]))
 
 (defmethod envs/get-state-space   ::HybridStripsPlanningInstance [instance]
   (:state-space instance))
@@ -525,7 +533,13 @@
   (:action-space instance))
 
 (defmethod envs/get-goal          ::HybridStripsPlanningInstance [instance]
-  (envs/make-conjunctive-condition (:goal-atoms instance) nil))
+;  (println (:goal-atoms instance))
+  (make-constraint-condition
+   (make-conjunctive-constraint
+    (map #(make-discrete-pos-constraint %) (:goal-atoms instance)))
+   nil 
+   nil))
+;  (envs/make-conjunctive-condition (:goal-atoms instance) nil))
 
 	   
 

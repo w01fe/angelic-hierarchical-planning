@@ -3,7 +3,6 @@
 ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
 ; (0,0) is at bottom left.
 ; gripper is basically a point unless holding a block.
-; Positions are [left, right) and [bottom, top) intervals.?
 ; Edge must be flush with blocks to pick up / put down.
 ; TODO: make carrying cost a fn of block size or something ?
 
@@ -59,7 +58,7 @@
 	    (< ?ngx (gripperx))
 	    (>= ?ngx 0)
 	    (forall (?b - block)
-		    (>= (blockty ?b) (grippery))
+		    (> (blockty ?b) (grippery))
 		    (<= (+ (blockcx ?b) (blockrw ?b)) ?ngx)))
      :effect (= (gripperx) ?ngx)
      :cost   (* 0.1 (- (gripperx) ?ngx)))
@@ -71,7 +70,7 @@
 	    (> ?ngx (gripperx))
 	    (<= ?ngx (width))
 	    (forall (?b - block)
-		    (>= (blockty ?b) (grippery))
+		    (> (blockty ?b) (grippery))
 		    (>= (- (blockcx ?b) (blocklw ?b)) ?ngx)))
      :effect (= (gripperx) ?ngx)
      :cost   (* 0.1 (- ?ngx (gripperx))))
@@ -117,13 +116,13 @@
 	    (< ?ngy (grippery))
 	    (forall (?c - block)
 		    (and (not (block= ?b ?c)) 
-			 (>= (+ (blockcx ?c) (blockrw ?c)) (- (blockcx ?b) (blocklw ?b)))
-			 (>= (blockty ?c) (- ?ngy (blockh ?b))))
+			 (> (+ (blockcx ?c) (blockrw ?c)) (- (blockcx ?b) (blocklw ?b)))
+			 (> (blockty ?c) (- ?ngy (blockh ?b))))
 		    (>= (- (blockcx ?c) (blocklw ?c)) (+ (blockcx ?b) (blockrw ?b))))
 	    (forall (?c - block)
 		    (and (not (block= ?b ?c)) 
-			 (<= (- (blockcx ?c) (blocklw ?c)) (+ (blockcx ?b) (blockrw ?b)))
-			 (>= (blockty ?c) (- ?ngy (blockh ?b))))
+			 (< (- (blockcx ?c) (blocklw ?c)) (+ (blockcx ?b) (blockrw ?b)))
+			 (> (blockty ?c) (- ?ngy (blockh ?b))))
 		    (<= (+ (blockcx ?c) (blockrw ?c)) (- (blockcx ?b) (blocklw ?b)))))
      :effect       
        (and (= (grippery)   ?ngy)
@@ -139,7 +138,7 @@
 	    (>= ?ngx (blocklw ?b))
 	    (forall (?c - block)
 		    (and (not (block= ?b ?c)) 
-			 (>= (blockty ?c) (- (blockty ?b) (blockh ?b))))
+			 (> (blockty ?c) (- (blockty ?b) (blockh ?b))))
 		    (<= (+ (blockcx ?c) (blockrw ?c)) (- ?ngx (blocklw ?b)))))
      :effect       
        (and (= (gripperx)   ?ngx)
@@ -151,10 +150,10 @@
      :precondition 
        (and (holding ?b)
 	    (< (gripperx) ?ngx)
-	    (<= ?ngx (blockrw ?b))
+	    (<= ?ngx (- (width) (blockrw ?b)))
 	    (forall (?c - block)
 		    (and (not (block= ?b ?c)) 
-			 (>= (blockty ?c) (- (blockty ?b) (blockh ?b))))
+			 (> (blockty ?c) (- (blockty ?b) (blockh ?b))))
 		    (>= (- (blockcx ?c) (blocklw ?c)) (+ ?ngx (blockrw ?b)))))
      :effect       
        (and (= (gripperx)   ?ngx)
