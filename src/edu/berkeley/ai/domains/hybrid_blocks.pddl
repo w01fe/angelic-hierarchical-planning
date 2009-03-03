@@ -55,7 +55,7 @@
      :parameters   (?ngx - x)
      :precondition 
        (and (gripperempty)
-	    (< ?ngx (gripperx))
+	    (<= ?ngx (gripperx))
 	    (>= ?ngx 0)
 	    (forall (?b - block)
 		    (> (blockty ?b) (grippery))
@@ -67,7 +67,7 @@
      :parameters   (?ngx - x)
      :precondition 
        (and (gripperempty)
-	    (> ?ngx (gripperx))
+	    (>= ?ngx (gripperx))
 	    (<= ?ngx (width))
 	    (forall (?b - block)
 		    (> (blockty ?b) (grippery))
@@ -79,7 +79,7 @@
      :parameters   (?ngy - y)
      :precondition 
        (and (gripperempty)
-	    (> ?ngy (grippery))
+	    (>= ?ngy (grippery))
 	    (<= ?ngy (height)))
      :effect (= (grippery) ?ngy)
      :cost   (* 0.1 (- ?ngy (grippery))))
@@ -88,7 +88,7 @@
      :parameters   (?ngy - y)
      :precondition 
        (and (gripperempty)
-	    (< ?ngy (grippery))
+	    (<= ?ngy (grippery))
 	    (forall (?b - block)
 		    (and (<= (- (blockcx ?b) (blocklw ?b)) (gripperx))
 			 (>= (+ (blockcx ?b) (blockrw ?b)) (gripperx)))
@@ -101,7 +101,7 @@
      :parameters   (?b - block ?ngy - y)
      :precondition 
        (and (holding ?b)
-	    (> ?ngy (grippery))
+	    (>= ?ngy (grippery))
 	    (<= ?ngy (height)))
      :effect       
        (and (= (grippery) ?ngy)
@@ -113,17 +113,12 @@
      :parameters   (?b - block ?ngy - y)
      :precondition 
        (and (holding ?b)
-	    (< ?ngy (grippery))
+	    (<= ?ngy (grippery))
 	    (forall (?c - block)
 		    (and (not (block= ?b ?c)) 
 			 (> (+ (blockcx ?c) (blockrw ?c)) (- (blockcx ?b) (blocklw ?b)))
-			 (> (blockty ?c) (- ?ngy (blockh ?b))))
-		    (>= (- (blockcx ?c) (blocklw ?c)) (+ (blockcx ?b) (blockrw ?b))))
-	    (forall (?c - block)
-		    (and (not (block= ?b ?c)) 
-			 (< (- (blockcx ?c) (blocklw ?c)) (+ (blockcx ?b) (blockrw ?b)))
-			 (> (blockty ?c) (- ?ngy (blockh ?b))))
-		    (<= (+ (blockcx ?c) (blockrw ?c)) (- (blockcx ?b) (blocklw ?b)))))
+			 (< (- (blockcx ?c) (blocklw ?c)) (+ (blockcx ?b) (blockrw ?b))))
+		    (<= (blockty ?c) (- ?ngy (blockh ?b)))))
      :effect       
        (and (= (grippery)   ?ngy)
 	    (= (blockty ?b) ?ngy))
@@ -134,7 +129,7 @@
      :parameters   (?b - block ?ngx - x)
      :precondition 
        (and (holding ?b)
-	    (< ?ngx (gripperx))
+	    (<= ?ngx (gripperx))
 	    (>= ?ngx (blocklw ?b))
 	    (forall (?c - block)
 		    (and (not (block= ?b ?c)) 
@@ -149,7 +144,7 @@
      :parameters   (?b - block ?ngx - x)
      :precondition 
        (and (holding ?b)
-	    (< (gripperx) ?ngx)
+	    (<= (gripperx) ?ngx)
 	    (<= ?ngx (- (width) (blockrw ?b)))
 	    (forall (?c - block)
 		    (and (not (block= ?b ?c)) 

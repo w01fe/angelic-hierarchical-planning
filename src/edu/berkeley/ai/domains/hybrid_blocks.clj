@@ -173,8 +173,20 @@
   (visualize-hb-state (get-initial-state (make-hybrid-blocks-strips-env 2 2 [1 1] '[[a 0 0.1 0.2 0.1] [b 0.3 0.2 0.3 0.2]] '[[a [[b]]]])))
 
 
-  (visualize-hb-state (get-initial-state (make-hybrid-blocks-strips-env 20 20 [14 10] '[[a 1 5 10 3 [[c 0 1 4 2] [d 4 2 6 5 [[e 1 1 2 9]]]]] [b 12 4 6 6 [[f 0 3 6 2 [[g 1 1 2 2] [h 4 1 2 2]]]]]] '[[a [[b]]]])))
+  (visualize-hb-state (get-initial-state ))
 
+  (let [env (make-hybrid-blocks-strips-env 20 20 [14 10] '[[a 1 5 10 3 [[c 0 1 4 2] [d 4 2 6 5 [[e 1 1 2 9]]]]] [b 12 4 6 6 [[f 0 3 6 2 [[g 1 1 2 2] [h 4 1 2 2]]]]]] '[[a [[b]]]])]
+	(visualize-hb-state 
+	 (safe-apply-actions (get-initial-state env)
+	  [(get-hs-action env 'get '{?b g ?c f})
+	   (get-hs-action env 'up-holding '{?b g ?ngy 16})])))
+
+  (let [env (make-hybrid-blocks-strips-env 20 20 [7 16] '[[a 1 5 10 3 [[c 0 1 4 2] [d 4 2 6 5 [[e 1 1 2 8]]]]] [b 12 4 6 6 [[f 0 3 6 2 [[g 1 1 2 2] [h 4 1 2 2]]]]]] '[[a [[b]]]])]
+	(visualize-hb-state 
+	 (safe-apply-actions (get-initial-state env)
+	  [(get-hs-action env 'get '{?b e ?c d})
+	   (get-hs-action env 'up-holding '{?b e ?ngy 18})
+	   (get-hs-action env 'right-holding '{?b e ?ngx 11})])))
 )
 
 
