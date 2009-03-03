@@ -72,12 +72,6 @@
 (derive ::NumExpr ::Num)
 (defstruct hybrid-strips-numeric-expression :class :op :left :right)
 (defn- make-numeric-expression [op left right]
-;  (util/assert-is (contains? '#{+ - *} op))
-;  (util/assert-is (isa? (:class left) ::Num))
-;  (util/assert-is (isa? (:class right) ::Num))
-;  (when (= op '*) 
-;    (util/assert-is (or (isa? (:class left) ::NumConst) 
-;			(isa? (:class right) ::NumConst))))
   (struct hybrid-strips-numeric-expression ::NumExpr op left right))
 
 (defmethod evaluate-numeric-expr ::NumExpr [expr var-map numeric-vals]
@@ -86,8 +80,11 @@
    (evaluate-numeric-expr (:right expr) var-map numeric-vals)))
 
 
-(defn parse-and-check-numeric-expression [expr discrete-vars numeric-vars numeric-functions]
+(defn parse-and-check-numeric-expression 
+  ([expr discrete-vars numeric-vars numeric-functions]
+     (parse-and-check-numeric-expression expr discrete-vars numeric-vars numeric-functions false))
 ;  (println expr)
+  ([expr discrete-vars numeric-vars numeric-functions only-atomic-var?]
   (cond (number? expr) 
           (make-numeric-constant expr)
 	(contains? numeric-vars expr)
@@ -98,13 +95,13 @@
           (do (util/assert-is (= (count expr) 3))
 	      (let [op   (util/safe-get {'* * '+ + '- -} (first expr))
 		    left (parse-and-check-numeric-expression (nth expr 1)
-			  discrete-vars numeric-vars numeric-functions )
+			  discrete-vars (when-not only-atomic-var?  numeric-vars) numeric-functions )
 		    right (parse-and-check-numeric-expression  (nth expr 2)
-			   discrete-vars numeric-vars numeric-functions)]
+			  discrete-vars (when-not only-atomic-var? numeric-vars) numeric-functions)]
 		  (when (= op *) 
 		    (util/assert-is (or (isa? (:class left) ::NumConst) 
 					(isa? (:class right) ::NumConst))))
-		  (make-numeric-expression op left right)))))
+		  (make-numeric-expression op left right))))))
 	  
 (util/deftest numeric-exprs 
   (util/is (= 25
@@ -174,7 +171,7 @@
 
 
 (declare parse-and-check-constraint)
-(defn parse-and-check-nonconjunctive-constraint [constraint discrete-vars predicates numeric-vars numeric-functions]
+(defn parse-and-check-nonconjunctive-constraint [constraint discrete-vars predicates numeric-vars numeric-functions only-atomic-var?]
   (let [[f & r] constraint]
     (cond (and (= f 'not) (contains? predicates (ffirst r)))
 	    (make-discrete-neg-constraint (check-atom (second constraint) predicates discrete-vars))
@@ -186,25 +183,33 @@
 		  (util/assert-is (= (count all-discrete) (+ (count vars) (count discrete-vars))))
 		  (make-forall-constraint
 		   vars
-		   (parse-and-check-constraint (nth constraint 2) all-discrete predicates numeric-vars numeric-functions)
-		   (parse-and-check-constraint (nth constraint 3) all-discrete predicates numeric-vars numeric-functions))))
+		   (parse-and-check-constraint (nth constraint 2) all-discrete predicates 
+					       (when-not only-atomic-var? numeric-vars)
+					       numeric-functions only-atomic-var?)
+		   (parse-and-check-constraint (nth constraint 3) all-discrete predicates 
+					       numeric-vars 
+					       numeric-functions only-atomic-var?))))
 	  :else
 	    (do (util/assert-is (= (count constraint) 3) "%s" constraint)
 		(make-numeric-constraint 
 		 (util/safe-get {'= = '< < '> > '<= <= '>= >=} f)
 		 (parse-and-check-numeric-expression (nth constraint 1)
-		   discrete-vars numeric-vars numeric-functions)
+		   discrete-vars numeric-vars numeric-functions true)
 		 (parse-and-check-numeric-expression (nth constraint 2)
-		   discrete-vars numeric-vars numeric-functions))))))
+		   discrete-vars  (when-not only-atomic-var? numeric-vars)
+		   numeric-functions))))))
 		      
-(defn parse-and-check-constraint [constraint discrete-vars predicates numeric-vars numeric-functions]
+(defn parse-and-check-constraint 
+  ([constraint discrete-vars predicates numeric-vars numeric-functions]
+     (parse-and-check-constraint constraint discrete-vars predicates numeric-vars numeric-functions false))
+  ([constraint discrete-vars predicates numeric-vars numeric-functions only-atomic-var?]
 ;  (println constraint)
   (if (or (empty? constraint) (= (first constraint) 'and))
       (make-conjunctive-constraint 
        (doall
 	(for [sub (next constraint)] 
-	 (parse-and-check-nonconjunctive-constraint sub discrete-vars predicates numeric-vars numeric-functions))))
-    (parse-and-check-nonconjunctive-constraint constraint discrete-vars predicates numeric-vars numeric-functions)))
+	 (parse-and-check-nonconjunctive-constraint sub discrete-vars predicates numeric-vars numeric-functions only-atomic-var?))))
+    (parse-and-check-nonconjunctive-constraint constraint discrete-vars predicates numeric-vars numeric-functions only-atomic-var?))))
 
 
 (util/deftest constraints
@@ -327,10 +332,11 @@
 		      :else (throw (IllegalArgumentException.))))
 	      vars))]
  ;     (println vars discrete-vars numeric-vars)
+      (util/assert-is (<= (count numeric-vars) 1))
       (make-hybrid-action-schema
        name
        vars 
-       (parse-and-check-constraint precondition discrete-vars predicates numeric-vars numeric-functions)
+       (parse-and-check-constraint precondition discrete-vars predicates numeric-vars numeric-functions true)
        (parse-and-check-effect     effect       discrete-vars predicates numeric-vars numeric-functions)
        (parse-and-check-numeric-expression (or cost 1) discrete-vars numeric-vars numeric-functions)))))
 
@@ -477,9 +483,17 @@
 (defmethod envs/all-actions ::HybridActionSpace [action-space]
   (throw (UnsupportedOperationException.)))
 
-; Tricky
+; Tricky - for now, punt and require single numeric variable, not appearing in forall conditions.
+; Build a little successor generator for finding consistent instantiations of discrete vars?
+; Ignore yield of forall, just look at discrete 
 
+; First stage: already ground out discrete vars, run through successor generator 
+ 
+; Second stage: for each action, collect conjunction of numeric constraints
+; Separate into constraints involving numeric vars and others
+; Filter on evaluation of others, and return set of quasi-ground actions
 
+; Third stage: Instantiate ground action with numeric value
 
 ;;; Instances
 

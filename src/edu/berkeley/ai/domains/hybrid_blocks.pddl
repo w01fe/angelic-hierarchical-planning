@@ -59,7 +59,7 @@
 	    (>= ?ngx 0)
 	    (forall (?b - block)
 		    (> (blockty ?b) (grippery))
-		    (<= (+ (blockcx ?b) (blockrw ?b)) ?ngx)))
+		    (>= ?ngx (+ (blockcx ?b) (blockrw ?b)))))
      :effect (= (gripperx) ?ngx)
      :cost   (* 0.1 (- (gripperx) ?ngx)))
 
@@ -71,7 +71,7 @@
 	    (<= ?ngx (width))
 	    (forall (?b - block)
 		    (> (blockty ?b) (grippery))
-		    (>= (- (blockcx ?b) (blocklw ?b)) ?ngx)))
+		    (<= ?ngx (- (blockcx ?b) (blocklw ?b)))))
      :effect (= (gripperx) ?ngx)
      :cost   (* 0.1 (- ?ngx (gripperx))))
 
@@ -92,7 +92,7 @@
 	    (forall (?b - block)
 		    (and (<= (- (blockcx ?b) (blocklw ?b)) (gripperx))
 			 (>= (+ (blockcx ?b) (blockrw ?b)) (gripperx)))
-		    (<= (blockty ?b) ?ngy)))
+		    (>= ?ngy (blockty ?b))))
      :effect (= (grippery) ?ngy)
      :cost   (* 0.1 (- (grippery) ?ngy)))
 
@@ -118,7 +118,7 @@
 		    (and (not (block= ?b ?c)) 
 			 (> (+ (blockcx ?c) (blockrw ?c)) (- (blockcx ?b) (blocklw ?b)))
 			 (< (- (blockcx ?c) (blocklw ?c)) (+ (blockcx ?b) (blockrw ?b))))
-		    (<= (blockty ?c) (- ?ngy (blockh ?b)))))
+		    (>= ?ngy (+ (blockty ?c) (blockh ?b)))))
      :effect       
        (and (= (grippery)   ?ngy)
 	    (= (blockty ?b) ?ngy))
@@ -134,7 +134,7 @@
 	    (forall (?c - block)
 		    (and (not (block= ?b ?c)) 
 			 (> (blockty ?c) (- (blockty ?b) (blockh ?b))))
-		    (<= (+ (blockcx ?c) (blockrw ?c)) (- ?ngx (blocklw ?b)))))
+		    (>= ?ngx (+ (+ (blockcx ?c) (blockrw ?c)) (blocklw ?b)))))
      :effect       
        (and (= (gripperx)   ?ngx)
 	    (= (blockcx ?b) ?ngx))
@@ -144,12 +144,12 @@
      :parameters   (?b - block ?ngx - x)
      :precondition 
        (and (holding ?b)
-	    (<= (gripperx) ?ngx)
+	    (>= ?ngx (gripperx))
 	    (<= ?ngx (- (width) (blockrw ?b)))
 	    (forall (?c - block)
 		    (and (not (block= ?b ?c)) 
 			 (> (blockty ?c) (- (blockty ?b) (blockh ?b))))
-		    (>= (- (blockcx ?c) (blocklw ?c)) (+ ?ngx (blockrw ?b)))))
+		    (<= ?ngx (- (- (blockcx ?c) (blocklw ?c)) (blockrw ?b)))))
      :effect       
        (and (= (gripperx)   ?ngx)
 	    (= (blockcx ?b) ?ngx))
