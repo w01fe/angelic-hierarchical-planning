@@ -58,7 +58,9 @@
 (defn make-hybrid-blocks-strips-env 
   "Stacks is a forest of block info items (Table goes from -1 to 0 h, implicit).
    Each item is [block l-offset c-dist width height on-items].  Goal-stacks is same without numeric info."
-  [width height initial-pos stacks goal-stacks]
+  ([width height initial-pos stacks goal-stacks]
+     (make-hybrid-blocks-strips-env width height initial-pos stacks goal-stacks nil))
+  ([width height initial-pos stacks goal-stacks discrete-grid-size]
   (let [block-set (HashSet.)
 	on-set    (HashSet.)
 	num-map   (HashMap.)]
@@ -79,7 +81,10 @@
        '[height] height
        '[gripperx] (first initial-pos)
        '[grippery] (second initial-pos))
-     (process-goal-stacks goal-stacks))))
+     (process-goal-stacks goal-stacks)
+     str
+     discrete-grid-size
+     ))))
 
 
 (comment 
@@ -96,6 +101,9 @@
 	  [(get-hs-action env 'get '{?b a ?c table})
 	   (get-hs-action env 'up-holding '{?b a ?ngy 5.2})])))
 
+(let [env (make-hybrid-blocks-strips-env 7 7 [2 2] '[[a 1 1 2 2] [b 4 1 2 2]] '[[a [[b]]]])
+      as (get-action-space env)]
+  (count (applicable-quasi-actions (get-initial-state env) as)))
 
   )
 
@@ -169,6 +177,28 @@
        
 (set! *warn-on-reflection* false)
 
+(defn animate-hb-seq [env action-names]
+  (reduce (fn [s a] 
+	    (visualize-hb-state s)
+	    (Thread/sleep 1000)
+	    (envs/safe-next-state s (hs/get-hs-action env a)))
+	  (envs/get-initial-state env) action-names))
+
+(defn animate-random-hb-seq [env n-steps delay-ms]
+  (let [as (envs/get-action-space env)]
+    (loop [s (envs/get-initial-state env) n-steps n-steps]
+   ;   (println s (map #(vector (:name (:schema %)) (:var-map %) (:num %)) (hs/applicable-quasi-actions s as)))
+      (when (pos? n-steps)
+	(visualize-hb-state s)
+	(Thread/sleep delay-ms)
+	(recur (envs/safe-next-state s (util/rand-elt (envs/applicable-actions s as)))
+;		 (first (hs/all-quasi-action-instantiations 
+;			 (util/rand-elt
+;			  (hs/applicable-quasi-actions s as))
+;			 as)))
+	       (dec n-steps))))))
+      
+
 (comment 
   (visualize-hb-state (get-initial-state (make-hybrid-blocks-strips-env 2 2 [1 1] '[[a 0 0.1 0.2 0.1] [b 0.3 0.2 0.3 0.2]] '[[a [[b]]]])))
 
@@ -187,6 +217,10 @@
 	  [(get-hs-action env 'get '{?b e ?c d})
 	   (get-hs-action env 'up-holding '{?b e ?ngy 18})
 	   (get-hs-action env 'right-holding '{?b e ?ngx 11})])))
+
+  (animate-hb-seq (make-hybrid-blocks-strips-env 20 20 [7 16] '[[a 1 5 10 3 [[c 0 1 4 2] [d 4 2 6 5 [[e 1 1 2 8]]]]] [b 12 4 6 6 [[f 0 3 6 2 [[g 1 1 2 2] [h 4 1 2 2]]]]]] '[[a [[b]]]])
+		  '[[get e d] [up-holding e 18] [right-holding e 11]])
+
 )
 
 

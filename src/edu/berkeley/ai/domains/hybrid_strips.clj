@@ -16,8 +16,13 @@
 ; Effect literals for numbers take form (= (num-fn ...) new-value).
 ; Preconditions may include (forall (binding-params) (when) (precond)) forms.
 
+; Right now, specific syntactic restrictions on constraints:
+ ; Numeric vars can only appear in the left side of a comparison, not in expressions
+   ; (except cost), and not in conditions of foralls
+ ; The set of applicable discrete conditions must be computable statically,
+   ; i.e., when in a forall, must have no condition.
+
 ;; STRIPS action schemata
-;; TODO: check types of numeric expressions
 
 
 ;;; States are [discrete-atoms numeric-vals]
@@ -66,6 +71,7 @@
   (struct hybrid-strips-numeric-form ::NumForm form))
 
 (defmethod evaluate-numeric-expr ::NumForm [expr var-map numeric-vals]
+  ;(println var-map)
   (util/safe-get numeric-vals (props/simplify-atom var-map (:form expr))))
 
 
@@ -114,6 +120,11 @@
 ;; Constraints
 
 (defmulti evaluate-constraint (fn [constraint var-map objects [discrete-atoms numeric-vals]] (:class constraint))) 
+(defmulti split-constraint (fn [constraint var-map objects] (:class constraint)))
+  ; Get [pos-atoms neg-atoms only-numeric-constraint]
+(defmulti get-numeric-yield (fn [constraint var-map objects [discrete-atoms numeric-vals]] (:class constraint)))
+  ; Get nil (false) or a possibly-empty list of numeric constraints, where the :left is a single ::NumVar expression.
+
 
 (derive ::NumConstraint ::Constraint)
 (defstruct hybrid-strips-numeric-constraint :class :pred :left :right)
@@ -125,6 +136,16 @@
    (evaluate-numeric-expr (:left constraint) var-map numeric-vals)
    (evaluate-numeric-expr (:right constraint) var-map numeric-vals)))
 
+(defmethod split-constraint ::NumConstraint [constraint var-map objects]
+  [nil nil constraint])
+
+(defmethod get-numeric-yield ::NumConstraint [constraint var-map objects [discrete-atoms numeric-vals]]
+  (if (isa? (:class (:left constraint)) ::NumVar) 
+      [(make-numeric-constraint (:pred constraint) (:left constraint) 
+	 (make-numeric-constant (evaluate-numeric-expr (:right constraint) var-map numeric-vals)))]
+    (when (evaluate-constraint constraint var-map objects [discrete-atoms numeric-vals]) [])))
+
+
 
 (derive ::DiscPosConstraint ::Constraint)
 (defstruct hybrid-strips-discrete-pos-constraint :class :atom)
@@ -134,6 +155,9 @@
 (defmethod evaluate-constraint ::DiscPosConstraint [constraint var-map objects [discrete-atoms numeric-vals]]
   (contains? discrete-atoms (props/simplify-atom var-map (:atom constraint))))
 
+(defmethod split-constraint ::DiscPosConstraint [constraint var-map objects]
+  [[(props/simplify-atom var-map (:atom constraint))] nil nil])
+
 
 (derive ::DiscNegConstraint ::Constraint)
 (defstruct hybrid-strips-discrete-neg-constraint :class :atom)
@@ -142,6 +166,33 @@
 
 (defmethod evaluate-constraint ::DiscNegConstraint [constraint var-map objects [discrete-atoms numeric-vals]]
   (not (contains? discrete-atoms (props/simplify-atom var-map (:atom constraint)))))
+
+(defmethod split-constraint ::DiscNegConstraint [constraint var-map objects]
+  [nil [(props/simplify-atom var-map (:atom constraint))] nil])
+
+
+
+(derive ::ConjunctiveConstraint ::Constraint)
+(defstruct hybrid-strips-conjuntive-constraint :class :constraints)
+(defn- make-conjunctive-constraint [constraints]
+  (struct hybrid-strips-conjuntive-constraint ::ConjunctiveConstraint constraints))
+
+(defmethod evaluate-constraint ::ConjunctiveConstraint [constraint var-map objects [discrete-atoms numeric-vals]]
+;  (doseq [x (:constraints constraint)] (println x (evaluate-constraint x var-map objects [discrete-atoms numeric-vals])))
+  (every? #(evaluate-constraint % var-map objects [discrete-atoms numeric-vals]) (:constraints constraint)))
+
+(defmethod split-constraint ::ConjunctiveConstraint [constraint var-map objects]
+  (let [bits (map #(split-constraint % var-map objects) (:constraints constraint))]
+    [(apply concat (map first bits))
+     (apply concat (map second bits))
+     (make-conjunctive-constraint (filter identity (map #(nth % 2) bits)))]))
+
+(defmethod get-numeric-yield ::ConjunctiveConstraint  [constraint var-map objects [discrete-atoms numeric-vals]]
+  (loop [constraints (seq (:constraints constraint)) yield []]
+    (if constraints
+        (when-let [c (get-numeric-yield (first constraints) var-map objects [discrete-atoms numeric-vals])]
+	  (recur (next constraints) (into yield c)))
+      yield)))
 
 
 (derive ::ForallConstraint ::Constraint)
@@ -158,15 +209,35 @@
 	    (for [combo (apply util/cartesian-product (map #(get objects (first %)) vars))]
 	      (into var-map (map (fn [val tv] [(second tv) val]) combo vars))))))
 
+(defmethod split-constraint ::ForallConstraint [constraint var-map objects]
+;  (println (:condition constraint) (isa? (:class constraint) ::ConjunctiveConstraint))
+  (if (or (empty? (:condition constraint))
+	  (and (isa? (:class (:condition constraint)) ::ConjunctiveConstraint)
+	       (empty? (util/safe-get (:condition constraint) :constraints))))
+      (let [var-maps
+	     (let [vars (seq (:vars constraint))]
+	       (for [combo (apply util/cartesian-product (map #(get objects (first %)) vars))]
+		 (into var-map (map (fn [val tv] [(second tv) val]) combo vars))))
+	    bits (map #(split-constraint (:yield constraint) % objects) var-maps)]
+;;	(println "EMPTY")
+	[(apply concat (map first bits))
+	 (apply concat (map second bits))
+	 (make-conjunctive-constraint (filter identity (map #(nth % 2) bits)))])
+    [nil nil constraint]))
 
-(derive ::ConjunctiveConstraint ::Constraint)
-(defstruct hybrid-strips-conjuntive-constraint :class :constraints)
-(defn- make-conjunctive-constraint [constraints]
-  (struct hybrid-strips-conjuntive-constraint ::ConjunctiveConstraint constraints))
+(defmethod get-numeric-yield ::ForallConstraint [constraint var-map objects [discrete-atoms numeric-vals]]
+  (let [consistent-var-maps
+        (filter #(evaluate-constraint (:condition constraint) % objects [discrete-atoms numeric-vals])
+          (let [vars (seq (:vars constraint))]
+	    (for [combo (apply util/cartesian-product (map #(get objects (first %)) vars))]
+	      (into var-map (map (fn [val tv] [(second tv) val]) combo vars)))))]
+    (loop [var-maps (seq consistent-var-maps) yield []]
+      (if var-maps
+        (when-let [c (get-numeric-yield (:yield constraint) (first var-maps) objects [discrete-atoms numeric-vals])]
+	  (recur (next var-maps) (into yield c)))
+	yield))))
 
-(defmethod evaluate-constraint ::ConjunctiveConstraint [constraint var-map objects [discrete-atoms numeric-vals]]
-;  (doseq [x (:constraints constraint)] (println x (evaluate-constraint x var-map objects [discrete-atoms numeric-vals])))
-  (every? #(evaluate-constraint % var-map objects [discrete-atoms numeric-vals]) (:constraints constraint)))
+
 
 
 
@@ -450,44 +521,190 @@
 
 ; Instantiated actions
 
-(defstruct hybrid-strips-action :schema :var-map)
+;(defstruct hybrid-strips-action :schema :var-map)
 
-(defn make-hybrid-strips-action [schema var-map] (struct hybrid-strips-action schema var-map))
-
-(defn hybrid-strips-action->action [action instance]
-  (let [schema (util/safe-get action :schema)
-	effect (util/safe-get schema :effect)
-	cost-expr (util/safe-get schema :cost-expr)
-	var-map (util/safe-get action :var-map)]
+(defn- hybrid-strips-action->action [schema var-map action-space]
+;  (println var-map)
+  (let [effect (util/safe-get schema :effect)
+	cost-expr (util/safe-get schema :cost-expr)]
     (envs/make-action 
-     (:name schema)
+     (vec (cons (:name schema) (map #(util/safe-get var-map (second %)) (:vars schema))))
      (fn [state] 
        [(execute-effect effect var-map state)
 	(- (evaluate-numeric-expr cost-expr var-map (second state)))])
-     (make-constraint-condition (util/safe-get schema :precondition) (util/safe-get instance :objects) var-map))))
+     (make-constraint-condition (util/safe-get schema :precondition) (util/safe-get action-space :objects) var-map))))
 
-(defn get-hs-action [instance name var-map]
-  (hybrid-strips-action->action
-   (make-hybrid-strips-action (util/safe-get-in instance [:domain :action-schemata name]) var-map)
-   instance))
+(defn get-hs-action 
+  ([instance full-name]
+     (let [schema (util/safe-get-in instance [:domain :action-schemata (first full-name)])]
+       (hybrid-strips-action->action schema (into {} (map #(vector (second %1) %2) (util/safe-get schema :vars) (rest full-name))) (:action-space instance))))
+  ([instance name var-map]
+     (hybrid-strips-action->action (util/safe-get-in instance [:domain :action-schemata name]) var-map (:action-space instance))))
+
+; Quasi-instantiated actions
+
 
 ; Action space (TODO)
-       
-(defstruct hybrid-action-space :class)
 
-(defn make-hybrid-action-space [] (struct hybrid-action-space ::HybridActionSpace))
+
+(import '(java.util HashMap HashSet Arrays ArrayList))
+(set! *warn-on-reflection* true)
+
+(defn- get-next-atom [actions blacklist]
+  (let [#^HashMap atom-counts (HashMap.)]
+    (doseq [action actions]
+      (doseq [p (:pos action)] (.put atom-counts p (inc (or (.get atom-counts p) 0))))
+      (doseq [n (:neg action)] (.put atom-counts n (inc (or (.get atom-counts n) 0)))))
+    (doseq [atom blacklist] (.remove atom-counts atom))
+    (when-not (.isEmpty atom-counts)
+      (key (util/first-maximal-element val atom-counts)))))
+
+
+(defn- make-successor-generator 
+  ([actions] (make-successor-generator actions nil))
+  ([actions blacklist]
+  (util/timeout)
+  (let [most-common-atom (get-next-atom actions blacklist)]
+    (if (nil? most-common-atom) 
+        (fn [state] actions)
+      (let [pos-list (ArrayList.)
+	    neg-list (ArrayList.)
+	    dc-list  (ArrayList.)]
+	(doseq [action actions]
+	  (let [in-pos? (contains? (:pos action) most-common-atom)
+		in-neg? (contains? (:neg action) most-common-atom)]
+	    (cond (and in-pos? in-neg?) nil ;(prn "Warning: contradictory preconditions for action" action) 
+		  (and in-pos? (not in-neg?)) (.add pos-list action)
+		  (and in-neg? (not in-pos?)) (.add neg-list action)
+		  :else                       (.add dc-list action))))
+	(let [pos-actions (seq pos-list)
+	      neg-actions (seq neg-list)
+	      dc-actions  (seq dc-list)
+	    next-blacklist (cons most-common-atom blacklist)
+	    pos-branch (if pos-actions (make-successor-generator pos-actions next-blacklist) (constantly nil))
+	    neg-branch (if neg-actions (make-successor-generator neg-actions next-blacklist) (constantly nil))
+	    dc-branch  (if dc-actions  (make-successor-generator dc-actions  next-blacklist) (constantly nil))]
+	(fn [state] (concat (if (contains? state most-common-atom) (pos-branch state) (neg-branch state)) (dc-branch state))))))))) 
+
+(set! *warn-on-reflection* false)
+
+       
+(defstruct hybrid-action-space :class :discrete-generator :objects :discrete-grid-size)
+
+(defstruct hybrid-strips-quasi-action :schema :var-map :pos :neg :num-vars :num)
+
+(defn- make-hybrid-action-space [discrete-types objects action-schemata discrete-grid-size]
+;  (println (first action-schemata));(map :effect action-schemata))
+  (struct hybrid-action-space ::HybridActionSpace
+	(make-successor-generator 
+  	  (for [schema (vals action-schemata)
+	        :let [{:keys [vars precondition]} schema
+		      [d-vars n-vars] (split-with #(contains? discrete-types (first %)) vars)]
+		args (apply util/cartesian-product (map #(util/safe-get objects (first %)) d-vars))]
+	  (let [var-map (into {} (map vector (map second d-vars) args))
+		[p n num] (split-constraint precondition var-map objects)]
+	    ;(println (:name schema) var-map p n)
+	    (struct hybrid-strips-quasi-action schema var-map (set p) (set n) (set (map second n-vars)) num))))
+	objects
+	discrete-grid-size))
+    
+
+
+(defstruct interval :left :left-open :right :right-open)
+
+(defn random-draw [interval]
+  (let [l (:left interval) r (:right interval)]
+    (util/assert-is (<= l r))
+    (+ l (* (rand) (- r l)))))
+
+(defn intersect-intervals [i1 i2]
+  (let [l1 (:left i1) r1 (:right i1) lo1 (:left-open i1) ro1 (:right-open i1)
+	l2 (:left i2) r2 (:right i2) lo2 (:left-open i2) ro2 (:right-open i2)]
+    (struct interval 
+	    (max l1 l2)
+	    (cond (> l1 l2) lo1 (< l1 l2) lo2 :else (or lo1 lo2))
+	    (min r1 r2)
+	    (cond (< r1 r2) ro1 (> r1 r2) ro2 :else (or ro1 ro2)))))
+
+(def *real-line* (struct interval Double/NEGATIVE_INFINITY true Double/POSITIVE_INFINITY true))
+
+(defmulti applicable-quasi-actions (fn [state action-space] (:class action-space)))
+
+(defmethod applicable-quasi-actions ::HybridActionSpace [[discrete-atoms numeric-vals] action-space]
+  (for [action ((:discrete-generator action-space) discrete-atoms)
+	:let [{:keys [var-map num]} action ;(do (println (:name (:schema action)) (:var-map action)) action)
+	      num (get-numeric-yield num var-map (:objects action-space) [discrete-atoms numeric-vals])]
+	:when num]
+    (let [num-vars    (:num-vars action)]
+;      (println "done")
+      (util/assert-is (<= (count num-vars) 1))
+      (if (empty? num-vars)
+          (do (util/assert-is (empty? num))
+	      (assoc action :num {}))
+	(assoc action :num
+ 	  {(first num-vars) 
+	   (reduce intersect-intervals
+		   *real-line*
+		   (for [c num]
+		     (let [{:keys [pred left right]} c
+			   rval (:constant right)] 
+			   ;(evaluate-numeric-expr right var-map numeric-vals)]
+		       (util/assert-is (isa? (:class c) ::NumConstraint))
+		       (util/assert-is (isa? (:class left) ::NumVar))
+		       (util/assert-is (isa? (:class right) ::NumConst))
+		       (util/assert-is (= (first num-vars) (:var left)))
+		       (condp = pred
+			 =  (struct interval rval false rval false)
+			 <  (struct interval Double/NEGATIVE_INFINITY true rval true)
+			 <= (struct interval Double/NEGATIVE_INFINITY true rval false)
+			 >  (struct interval rval true Double/POSITIVE_INFINITY true)
+			 >= (struct interval rval false Double/POSITIVE_INFINITY true)))))})))))
+
+
+(defn get-quasi-action-numeric-intervals [action] ; Returns map from num-vars to intervals.
+  (:num action))
+		 
+(defn ground-quasi-action 
+  ([action num-var-map action-space]
+     (util/assert-is (every? num-var-map (:num-vars action)))
+     (hybrid-strips-action->action (:schema action) (merge num-var-map (:var-map action)) 
+				   action-space)))
+
+(defn discrete-quasi-action-instantiations [action action-space grid]
+  (if (empty? (:num-vars action))
+      [(ground-quasi-action action nil action-space)]
+    (let [[var interval]  (first (:num action))]
+      (for [i (range (int (Math/ceil (/ (:left interval) grid)))
+		     (inc (int (Math/floor (/ (:right interval) grid)))))]		     
+	(ground-quasi-action action {var (* i grid)} action-space)))))
+
+
+(defn all-quasi-action-instantiations [action action-space]
+ ; (println (:name (:schema action)) (:var-map action))
+  (if (empty? (:num-vars action))
+      [(ground-quasi-action action nil action-space)]
+    (repeatedly #(ground-quasi-action action
+				      (util/map-vals random-draw (:num action))
+				      action-space))))
+
+(defn applicable-discrete-actions [[discrete-atoms numeric-vals] action-space grid]
+  (mapcat #(discrete-quasi-action-instantiations % action-space grid)
+	  (applicable-quasi-actions [discrete-atoms numeric-vals] action-space)))
+
 
 (defmethod envs/applicable-actions ::HybridActionSpace [state action-space]
-  (throw (UnsupportedOperationException.)))
+  (util/assert-is (:discrete-grid-size action-space))
+  (applicable-discrete-actions state action-space (:discrete-grid-size action-space)))
 
 (defmethod envs/all-actions ::HybridActionSpace [action-space]
   (throw (UnsupportedOperationException.)))
+
 
 ; Tricky - for now, punt and require single numeric variable, not appearing in forall conditions.
 ; Build a little successor generator for finding consistent instantiations of discrete vars?
 ; Ignore yield of forall, just look at discrete 
 
-; First stage: already ground out discrete vars, run through successor generator 
+; First stage: ground out discrete vars, run through successor generator 
  
 ; Second stage: for each action, collect conjunction of numeric constraints
 ; Separate into constraints involving numeric vars and others
@@ -500,16 +717,16 @@
 (derive ::HybridStripsPlanningInstance ::envs/PropositionalEnvironment)
 (defstruct hybrid-strips-planning-instance 
   :class :name :domain :objects :init-atoms :init-fns :goal-atoms :fluent-atoms :state-space :action-space)
-
+  
 (defn- get-instantiations [thing-map objects]
   (for [[n types] thing-map,
 	args (apply util/cartesian-product (map #(util/safe-get objects %) types))]
-    (vec (cons n args))))  
+    (vec (cons n args))))
 
 (defn make-hybrid-strips-planning-instance
   ([name domain objects init-atoms init-fns goal-atoms]
-     (make-hybrid-strips-planning-instance name domain objects init-atoms init-fns goal-atoms str))
-  ([name domain objects init-atoms init-fns goal-atoms state-str-fn]
+     (make-hybrid-strips-planning-instance name domain objects init-atoms init-fns goal-atoms str nil))
+  ([name domain objects init-atoms init-fns goal-atoms state-str-fn discrete-grid-size]
  ;    (println objects init-atoms init-fns goal-atoms)
      (let [{:keys [discrete-types numeric-types predicates numeric-functions action-schemata equality?]} domain
 	   discrete-type-map (into {} (map #(vector % nil) discrete-types))
@@ -530,7 +747,7 @@
 	 (set (map #(check-atom % predicates object-type-map) goal-atoms))
 	 all-atoms
 	 (make-hybrid-state-space all-atoms (util/keyset init-fns) state-str-fn)
-	 (make-hybrid-action-space)))))
+	 (make-hybrid-action-space discrete-types objects action-schemata discrete-grid-size)))))
 
 
 
