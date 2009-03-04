@@ -27,7 +27,7 @@
      {'loc (map first city-gas-prices)}
      (set (concat 
 	   [['at start]] 
-	   (for [[c g p] city-gas-prices :when (> g 0)] ['has-gas c])
+;	   (for [[c g p] city-gas-prices :when (> g 0)] ['has-gas c])
 	   (for [[f t l] edges] ['road-between f t])))
      (assoc (into {} (concat (util/forcat [[c g p] city-gas-prices]
 					  [[['gas-at c] g] [['gas-price c] p]])

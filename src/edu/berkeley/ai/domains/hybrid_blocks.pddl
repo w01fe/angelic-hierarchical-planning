@@ -1,12 +1,12 @@
 ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
-;;; Warehouse world
+;;; Hybrid blocks
 ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
 ; (0,0) is at bottom left.
 ; gripper is basically a point unless holding a block.
 ; Edge must be flush with blocks to pick up / put down.
 ; TODO: make carrying cost a fn of block size or something ?
 
-(define (domain WAREHOUSE-HYBRID)
+(define (domain hybrid-blocks)
   (:requirements :strips :typing :equality :numbers)
   (:types block)
   (:numeric-types x y)

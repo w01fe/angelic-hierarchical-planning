@@ -1,3 +1,17 @@
+Need: numeric
+ - hierarchy
+ - valuations
+ - descriptions
+
+- Question: all intervals, or leave in constraints?   Correlations
+  would be quite nice.
+
+- Main difference in hierarchy: numeric params can be intervals
+
+deal with 0-cost actions ???
+
+; prune inconsistent intervals...
+
 ------------------------------------
 From earlier meeting
 

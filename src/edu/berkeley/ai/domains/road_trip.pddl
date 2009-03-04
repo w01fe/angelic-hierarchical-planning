@@ -14,7 +14,8 @@
   (:predicates 
    (at ?l - loc) 
    (road-between ?l1 - loc ?l2 - loc)
-   (has-gas ?l - loc))
+;   (has-gas ?l - loc)
+    )
   (:numeric-functions
    (gas)                             - gas
    (tank-size)                       - gas
@@ -26,7 +27,7 @@
      :parameters   (?l - loc ?g - gas)
      :precondition 
        (and (at ?l)
-	    (has-gas ?l)
+;	    (has-gas ?l)
 	    (>= ?g 0)
 	    (<= ?g (- (tank-size) (gas)))
 	    (<= ?g (gas-at ?l)))
