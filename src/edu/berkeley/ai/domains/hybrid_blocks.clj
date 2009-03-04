@@ -221,6 +221,7 @@
   (animate-hb-seq (make-hybrid-blocks-strips-env 20 20 [7 16] '[[a 1 5 10 3 [[c 0 1 4 2] [d 4 2 6 5 [[e 1 1 2 8]]]]] [b 12 4 6 6 [[f 0 3 6 2 [[g 1 1 2 2] [h 4 1 2 2]]]]]] '[[a [[b]]]])
 		  '[[get e d] [up-holding e 18] [right-holding e 11]])
 
+  (map :name (first (a-star-graph-search (ss-node (make-hybrid-blocks-strips-env 6 2 [1 1] '[[a 1 1 2 1] [b 4 1 2 1]] '[[a [[b]]]] 1)))))
 )
 
 

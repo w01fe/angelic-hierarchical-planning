@@ -104,9 +104,9 @@
 			  discrete-vars (when-not only-atomic-var?  numeric-vars) numeric-functions )
 		    right (parse-and-check-numeric-expression  (nth expr 2)
 			  discrete-vars (when-not only-atomic-var? numeric-vars) numeric-functions)]
-		  (when (= op *) 
-		    (util/assert-is (or (isa? (:class left) ::NumConst) 
-					(isa? (:class right) ::NumConst))))
+;		  (when (= op *) 
+;		    (util/assert-is (or (isa? (:class left) ::NumConst) 
+;					(isa? (:class right) ::NumConst))))
 		  (make-numeric-expression op left right))))))
 	  
 (util/deftest numeric-exprs 
@@ -661,7 +661,7 @@
 			 >= (struct interval rval false Double/POSITIVE_INFINITY true)))))})))))
 
 
-(defn get-quasi-action-numeric-intervals [action] ; Returns map from num-vars to intervals.
+(defn quasi-action-numeric-intervals [action] ; Returns map from num-vars to intervals.
   (:num action))
 		 
 (defn ground-quasi-action 
@@ -734,7 +734,9 @@
 	   object-type-map (into {} (for [[t os] objects, o os] [o t]))
 	   all-atoms (set (get-instantiations predicates objects))]
        (doseq [nf-inst (get-instantiations numeric-functions objects)]
-	 (util/assert-is (number? (get init-fns nf-inst))))
+	 (when-not (number? (get init-fns nf-inst))
+	   (println "Warning: No initial number for " nf-inst)))
+;	 (util/assert-is (number? (get init-fns nf-inst))))
        (struct hybrid-strips-planning-instance ::HybridStripsPlanningInstance
 	 name
 	 domain

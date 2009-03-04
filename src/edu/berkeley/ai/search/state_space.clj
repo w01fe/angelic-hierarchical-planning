@@ -80,7 +80,9 @@
     [(:act-seq ^(:state node)) (:reward ^(:state node))]))
 
 (defmethod node-str ::StateSpaceNode [node] 
-  (envs/state-str (:state-space (:search-space node)) (:state node)))
+;  (envs/state-str (:state-space (:search-space node)) (:state node)))
+;  (envs/state-str (:state-space (:search-space node)) (:state node)))
+  (str (vec (map :name (:act-seq ^(:state node))))))
 
 
 ;(defmethod node-parent ::StateSpaceNode [node] 
