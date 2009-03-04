@@ -53,6 +53,10 @@
 
   (:action left-empty
      :parameters   (?ngx - x)
+     :split-points (forall (?b - block)
+			   (and (<= (blockty ?b) (grippery))
+				(<= (blockcx ?b) (gripperx)))
+			   (= ?ngx (blockcx ?b)))
      :precondition 
        (and (gripperempty)
 	    (<= ?ngx (gripperx))
@@ -66,6 +70,10 @@
 
   (:action right-empty
      :parameters   (?ngx - x)
+     :split-points (forall (?b - block)
+			   (and (<= (blockty ?b) (grippery))
+				(>= (blockcx ?b) (gripperx)))
+			   (= ?ngx (blockcx ?b)))
      :precondition 
        (and (gripperempty)
 	    (>= ?ngx (gripperx))
@@ -79,6 +87,10 @@
 
   (:action up-empty
      :parameters   (?ngy - y)
+     :split-points (forall (?b - block)
+			   (and (>= (blockty ?b) (grippery))
+				(forall (?c - block) nil (not (on ?c ?b))))
+			   (= ?ngy (blockty ?b)))
      :precondition 
        (and (gripperempty)
 	    (>= ?ngy (grippery))
@@ -88,6 +100,10 @@
 
   (:action down-empty
      :parameters   (?ngy - y)
+     :split-points (forall (?b - block)
+			   (and (<= (- (blockcx ?b) (blocklw ?b)) (gripperx))
+				(>= (+ (blockcx ?b) (blockrw ?b)) (gripperx)))
+			   (= ?ngy (blockty ?b)))
      :precondition 
        (and (gripperempty)
 	    (<= ?ngy (grippery))
@@ -101,6 +117,9 @@
 
   (:action up-holding
      :parameters   (?b - block ?ngy - y)
+     :split-points (forall (?c - block)
+			   (>= (blockty ?c) (grippery))
+			   (= ?ngy (blockty ?c)))
      :precondition 
        (and (holding ?b)
 	    (>= ?ngy (grippery))
@@ -113,6 +132,10 @@
 
   (:action down-holding
      :parameters   (?b - block ?ngy - y)
+     :split-points (forall (?c - block)
+			   (and (<= (- (blockcx ?c) (blocklw ?c)) (gripperx))
+				(>= (+ (blockcx ?c) (blockrw ?c)) (gripperx)))
+			   (= ?ngy (+ (blockty ?c) (blockh ?b))))
      :precondition 
        (and (holding ?b)
 	    (<= ?ngy (grippery))
@@ -129,6 +152,11 @@
 
   (:action left-holding
      :parameters   (?b - block ?ngx - x)
+     :split-points (forall (?c - block)
+			   (and (<= (blockty ?c) (grippery))
+				(<= (- (blockcx ?c) (blocklw ?c)) (gripperx)))
+			   (and (= ?ngx (- (+ (blockcx ?c) (blockrw ?c)) (blockrw ?b)))
+				(= ?ngx (+ (- (blockcx ?c) (blocklw ?c)) (blocklw ?b)))))
      :precondition 
        (and (holding ?b)
 	    (<= ?ngx (gripperx))
@@ -145,6 +173,11 @@
 
   (:action right-holding
      :parameters   (?b - block ?ngx - x)
+     :split-points (forall (?c - block)
+			   (and (<= (blockty ?c) (grippery))
+				(>= (+ (blockcx ?c) (blockrw ?c)) (gripperx)))
+			   (and (= ?ngx (- (+ (blockcx ?c) (blockrw ?c)) (blockrw ?b)))
+				(= ?ngx (+ (- (blockcx ?c) (blocklw ?c)) (blocklw ?b)))))
      :precondition 
        (and (holding ?b)
 	    (>= ?ngx (gripperx))

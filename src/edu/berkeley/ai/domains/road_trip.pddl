@@ -25,6 +25,9 @@
 
   (:action refuel
      :parameters   (?l - loc ?g - gas)
+     :split-points (and (= ?g 0)
+			(= ?g (- (tank-size) (gas)))
+			(= ?g (gas-at ?l)))
      :precondition 
        (and (at ?l)
 ;	    (has-gas ?l)

@@ -11,7 +11,7 @@
 		      :precondition (and (holding :?b)
 					 ;; TODO: better bounds with a forall?
 					 (>= :?dx (+ (- (blockcx :?to) (blocklw :?to)) (blocklw :?b)))					       (<= :?dx (- (+ (blockcx :?to) (blockrw :?to)) (blockrw :?b)))) 
-		      :expansion ((nav-put :?b :?to :?dx) (move-blocks)))
+		      :expansion ((go-put :?b :?to :?dx) (move-blocks)))
        :refinement   (:precondition (gripperempty)
 		      :expansion    ((move-blocks)))
        :optimistic   (:opt 0)
@@ -26,12 +26,12 @@
 		      :precondition (and (on :?b :?from)
 					 ;; TODO: better bounds with a forall?
 					 (>= :?dx (+ (- (blockcx :?to) (blocklw :?to)) (blocklw :?b)))					       (<= :?dx (- (+ (blockcx :?to) (blockrw :?to)) (blockrw :?b)))) 
-		      :expansion ((nav-get :?b :?from) (nav-put :?b :?to :?dx) (move-blocks)))
+		      :expansion ((go-get :?b :?from) (go-put :?b :?to :?dx) (move-blocks)))
        :optimistic   (:opt 0)
        :pessimistic  (:pess))
 
 
-  (:hla nav-get
+  (:hla go-get
        :parameters (?b - block ?from - block)
        :precondition (and (gripperempty) (on ?b ?from))
        :refinement (:parameters (:?dx - x :?dy - y)
@@ -54,7 +54,7 @@
 					  (- (height) (grippery))
 					  (- (height) (blockty ?b))))))))       
 
-  (:hla nav-put
+  (:hla go-put
        :parameters (?b - block ?to - block ?dx - x)
        :precondition (holding ?b) 
        :refinement (:parameters (:?dy - y)

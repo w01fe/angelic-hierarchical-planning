@@ -12,6 +12,9 @@ deal with 0-cost actions ???
 
 ; prune inconsistent intervals...
 
+; TODO: specify split points / strategies in hierarchy!!!
+; Explicitly mark interval params?
+
 ------------------------------------
 From earlier meeting
 
