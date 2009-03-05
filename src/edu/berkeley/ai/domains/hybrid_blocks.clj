@@ -177,10 +177,10 @@
        
 (set! *warn-on-reflection* false)
 
-(defn animate-hb-seq [env action-names]
+(defn animate-hb-seq [env action-names delay-ms]
   (reduce (fn [s a] 
 	    (visualize-hb-state s)
-	    (Thread/sleep 1000)
+	    (Thread/sleep delay-ms)
 	    (envs/safe-next-state s (hs/get-hs-action env a)))
 	  (envs/get-initial-state env) action-names))
 
@@ -222,6 +222,13 @@
 		  '[[get e d] [up-holding e 18] [right-holding e 11]])
 
   (map :name (first (a-star-graph-search (ss-node (make-hybrid-blocks-strips-env 6 2 [1 1] '[[a 1 1 2 1] [b 4 1 2 1]] '[[a [[b]]]] 1)))))
+
+  (map :name (first (a-star-graph-search (ss-node (make-hybrid-blocks-strips-env 6 2 [1 1] '[[a 1 1 2 1] [b 4 1 2 1]] '[[a [[b]]]])))))
+
+  (let [env (make-hybrid-blocks-strips-env 6 2 [1 1] '[[a 1 1 2 1] [b 4 1 2 1]] '[[a [[b]]]]) [as rew] (time (a-star-graph-search (ss-node env)))] (animate-hb-seq env (map :name as) 500) rew)
+
+ ; Suboptimal due to split points, optimal with discrete grid = 1
+ (let [env (make-hybrid-blocks-strips-env 10 4 [1 1] '[[a 1 3 6 1] [b 7 1 2 1 [[c 0 1 2 2]]]] '[[a [[b] [c]]]]) [as rew] (time (a-star-graph-search (ss-node env)))] (animate-hb-seq env (map :name as) 500) rew)
 )
 
 
