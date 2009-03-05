@@ -131,7 +131,7 @@
 	  :when (= f 'blockh)]
       b)))
 
-(defn visualize-hb-state [[discrete-atoms numeric-vals]]
+(defn visualize-hb-state [state]
     (when (not (.isVisible *frame*))
       (def #^JPanel *panel* (JPanel.))
       (def #^JFrame *frame* (JFrame. "Hybrid Blocks State"))
@@ -139,7 +139,8 @@
 	(.add *panel*)
 	(.setSize 400 400)
 	(.setVisible true)))
-    (let [#^Graphics g (.getGraphics *panel*)
+    (let [[discrete-atoms numeric-vals] state
+	  #^Graphics g (.getGraphics *panel*)
 	  height (util/safe-get numeric-vals '[height])
 	  width  (util/safe-get numeric-vals '[width])
 	  hpix (.getWidth *panel*)
@@ -172,17 +173,19 @@
       (doto g
 	(.drawLine  gx 0 gx (+ gy 3))
 	(.drawLine  (- gx 3) gy (+ gx 3) gy))
-      ))
+      )
+    state)
 ;      (.drawLine g 0 0 10 10))))
        
 (set! *warn-on-reflection* false)
 
 (defn animate-hb-seq [env action-names delay-ms]
+  (visualize-hb-state 
   (reduce (fn [s a] 
 	    (visualize-hb-state s)
 	    (Thread/sleep delay-ms)
 	    (envs/safe-next-state s (hs/get-hs-action env a)))
-	  (envs/get-initial-state env) action-names))
+	  (envs/get-initial-state env) action-names)))
 
 (defn animate-random-hb-seq [env n-steps delay-ms]
   (let [as (envs/get-action-space env)]
@@ -229,6 +232,16 @@
 
  ; Suboptimal due to split points, optimal with discrete grid = 1
  (let [env (make-hybrid-blocks-strips-env 10 4 [1 1] '[[a 1 3 6 1] [b 7 1 2 1 [[c 0 1 2 2]]]] '[[a [[b] [c]]]]) [as rew] (time (a-star-graph-search (ss-node env)))] (animate-hb-seq env (map :name as) 500) rew)
+
+ ; Similar, but requires extra move
+ ; can be used with discrete grid 2
+ (let [env (make-hybrid-blocks-strips-env 11 8 [9 8] '[[d 1 1 2 2 [[e 0 1 2 2]]] [a 3 3 6 2] [b 9 1 2 4 [[c 0 1 2 4]]]] '[[a [[b] [c [[e]]] [d]]]]) [as rew] (time (a-star-graph-search (ss-node env)))] (animate-hb-seq env (map :name as) 500) rew)
+
+
+
+
+
+
 )
 
 

@@ -6,9 +6,10 @@ Need: numeric
 - Question: all intervals, or leave in constraints?   Correlations
   would be quite nice.
 
-- Main difference in hierarchy: numeric params can be intervals
+- Main difference in hierarchy: numeric params can be intervals 
+  ( also for primitives in these hierarchies.)
 
-deal with 0-cost actions ???
+deal with 0-cost actions ???  Seems not a problem in current domains/hierarchies.
 
 ; prune inconsistent intervals...
 
@@ -17,6 +18,7 @@ deal with 0-cost actions ???
 
 ;TODO: intelligently figure out split points in terms of preconditions
  of future actions!!!!!  ! !! !!!
+
 
 ------------------------------------
 From earlier meeting

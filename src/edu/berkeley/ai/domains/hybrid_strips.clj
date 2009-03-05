@@ -704,7 +704,7 @@
 				(util/assert-is (= (:var left) var))
 				(util/assert-is (= (:class right) ::NumConst))
 				(util/safe-get right :constant))))]
-;      (println interval split-points)
+    ;  (println (:name (:schema action)) (:var-map action) interval split-points)
       (for [x split-points 
 	    :when (interval-contains? interval x)]
 	(ground-quasi-action action {var x} action-space)))))

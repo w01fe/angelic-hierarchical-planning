@@ -36,7 +36,8 @@
      :effect       
        (and (not (gripperempty))
 	    (not (on ?b ?c))
-	    (holding ?b)))
+	    (holding ?b))
+      :cost 10)
 
   (:action put
      :parameters   (?b - block ?c - block)
@@ -48,7 +49,8 @@
      :effect       
        (and (not (holding ?b))
 	    (on ?b ?c)
-	    (gripperempty)))
+	    (gripperempty))
+     :cost 10)
 
 
   (:action left-empty
@@ -67,7 +69,7 @@
 			 (>= (gripperx) (blockcx ?b)))
 		    (>= ?ngx (+ (blockcx ?b) (blockrw ?b)))))
      :effect (= (gripperx) ?ngx)
-     :cost   (* 0.1 (- (gripperx) ?ngx)))
+     :cost   (* 1 (- (gripperx) ?ngx)))
 
   (:action right-empty
      :parameters   (?ngx - x)
@@ -85,7 +87,7 @@
 			 (<= (gripperx) (blockcx ?b)))
 		    (<= ?ngx (- (blockcx ?b) (blocklw ?b)))))
      :effect (= (gripperx) ?ngx)
-     :cost   (* 0.1 (- ?ngx (gripperx))))
+     :cost   (* 1 (- ?ngx (gripperx))))
 
   (:action up-empty
      :parameters   (?ngy - y)
@@ -98,7 +100,7 @@
 	    (>= ?ngy (grippery))
 	    (<= ?ngy (height)))
      :effect (= (grippery) ?ngy)
-     :cost   (* 0.1 (- ?ngy (grippery))))
+     :cost   (* 1 (- ?ngy (grippery))))
 
   (:action down-empty
      :parameters   (?ngy - y)
@@ -115,13 +117,14 @@
 			 (> (+ (blockcx ?b) (blockrw ?b)) (gripperx)))
 		    (>= ?ngy (blockty ?b))))
      :effect (= (grippery) ?ngy)
-     :cost   (* 0.1 (- (grippery) ?ngy)))
+     :cost   (* 1 (- (grippery) ?ngy)))
 
 
   (:action up-holding
      :parameters   (?b - block ?ngy - y)
      :split-points (forall (?c - block)
-			   (>= (+ (blockty ?c) (blockh ?b)) (grippery))
+			   (and (not (block= ?b ?c))
+				(>= (+ (blockty ?c) (blockh ?b)) (grippery)))
 			   (= ?ngy (+ (blockty ?c) (blockh ?b))))
      :precondition 
        (and (holding ?b)
@@ -130,13 +133,14 @@
      :effect       
        (and (= (grippery) ?ngy)
 	    (= (blockty ?b) ?ngy))
-     :cost (* 0.2 (- ?ngy (grippery))))
+     :cost (* 2 (- ?ngy (grippery))))
 
 
   (:action down-holding
      :parameters   (?b - block ?ngy - y)
      :split-points (forall (?c - block)
-			   (and (<= (- (blockcx ?c) (blocklw ?c)) (gripperx))
+			   (and (not (block= ?b ?c))
+			        (<= (- (blockcx ?c) (blocklw ?c)) (gripperx))
 				(>= (+ (blockcx ?c) (blockrw ?c)) (gripperx)))
 			   (= ?ngy (+ (blockty ?c) (blockh ?b))))
      :precondition 
@@ -150,16 +154,19 @@
      :effect       
        (and (= (grippery)   ?ngy)
 	    (= (blockty ?b) ?ngy))
-     :cost (* 0.2 (- (grippery) ?ngy)))
+     :cost (* 2 (- (grippery) ?ngy)))
 
 
   (:action left-holding
      :parameters   (?b - block ?ngx - x)
      :split-points (forall (?c - block)
-			   (and (<= (blockty ?c) (grippery))
+			   (and ;(<= (blockty ?c) (grippery))
+			        (not (block= ?b ?c))
 				(<= (- (blockcx ?c) (blocklw ?c)) (gripperx)))
 			   (and (= ?ngx (- (+ (blockcx ?c) (blockrw ?c)) (blockrw ?b)))
-				(= ?ngx (+ (- (blockcx ?c) (blocklw ?c)) (blocklw ?b)))))
+				(= ?ngx (+ (- (blockcx ?c) (blocklw ?c)) (blocklw ?b)))
+				(= ?ngx (+ (+ (blockcx ?c) (blockrw ?c)) (blocklw ?b)))
+				(= ?ngx (- (- (blockcx ?c) (blocklw ?c)) (blockrw ?b)))))
      :precondition 
        (and (holding ?b)
 	    (<= ?ngx (gripperx))
@@ -172,15 +179,18 @@
      :effect       
        (and (= (gripperx)   ?ngx)
 	    (= (blockcx ?b) ?ngx))
-     :cost (* 0.2 (- (gripperx) ?ngx)))
+     :cost (* 2 (- (gripperx) ?ngx)))
 
   (:action right-holding
      :parameters   (?b - block ?ngx - x)
      :split-points (forall (?c - block)
-			   (and (<= (blockty ?c) (grippery))
+			   (and ;(<= (blockty ?c) (grippery))
+			        (not (block= ?b ?c))
 				(>= (+ (blockcx ?c) (blockrw ?c)) (gripperx)))
 			   (and (= ?ngx (- (+ (blockcx ?c) (blockrw ?c)) (blockrw ?b)))
-				(= ?ngx (+ (- (blockcx ?c) (blocklw ?c)) (blocklw ?b)))))
+				(= ?ngx (+ (- (blockcx ?c) (blocklw ?c)) (blocklw ?b)))
+				(= ?ngx (+ (+ (blockcx ?c) (blockrw ?c)) (blocklw ?b)))
+				(= ?ngx (- (- (blockcx ?c) (blocklw ?c)) (blockrw ?b)))))
      :precondition 
        (and (holding ?b)
 	    (>= ?ngx (gripperx))
@@ -193,6 +203,6 @@
      :effect       
        (and (= (gripperx)   ?ngx)
 	    (= (blockcx ?b) ?ngx))
-     :cost (* 0.2 (- ?ngx (gripperx))))
+     :cost (* 2 (- ?ngx (gripperx))))
 
   )
