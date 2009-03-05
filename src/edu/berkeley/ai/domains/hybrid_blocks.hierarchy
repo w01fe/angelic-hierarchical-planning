@@ -41,15 +41,15 @@
        :optimistic  (:hybrid-ncstrips 
 		     (:effect    (and (= (gripperx) (blockcx ?b)) (= (grippery) (blockty ?b))
 				      (not (gripperempty)) (not (on ?b ?from)) (holding ?b))
-		      :cost-expr (+ 1 
-				    (* .1
+		      :cost-expr (+ 10 
+				    (* 1
 				       (+ (util/abs (- (blockcx ?b) (gripperx)))
 					  (util/abs (- (blockty ?b) (grippery))))))))
        :pessimistic (:hybrid-ncstrips 
 		     (:effect    (and (= (gripperx) (blockcx ?b)) (= (grippery) (blockty ?b))
 				      (not (gripperempty)) (not (on ?b ?from)) (holding ?b))
-		      :cost-expr (+ 1 
-				    (* .1 
+		      :cost-expr (+ 10 
+				    (* 1 
 				       (+ (util/abs (- (blockcx ?b) (gripperx)))
 					  (- (height) (grippery))
 					  (- (height) (blockty ?b))))))))       
@@ -64,8 +64,8 @@
        :optimistic  (:hybrid-ncstrips 
 		     (:effect    (and (= (gripperx) ?dx) (= (grippery) (+ (blockty ?to) (blockh ?b)))
 				      (gripperempty) (on ?b ?to) (not (holding ?b)))
-		      :cost-expr (+ 1 
-				    (* .2
+		      :cost-expr (+ 10 
+				    (* 2
 				       (+ (util/abs (- ?dx (gripperx)))
 					  (util/abs (- (+ (blockty ?c) (blockh ?b)) (grippery))))))))
        :pessimistic (:pess))
@@ -86,12 +86,12 @@
 				(down-empty ?dy)))
        :optimistic  (:hybrid-ncstrips 
 		     (:effect    (and (= (gripperx) ?dx) (= (grippery) ?dy))
-		      :cost-expr (* .1
+		      :cost-expr (* 1
 				    (+ (util/abs (- ?dx (gripperx)))
 				       (util/abs (- ?dy (grippery)))))))
        :pessimistic (:hybrid-ncstrips 
 		     (:effect    (and (= (gripperx) ?dx) (= (grippery) ?dy))
-		      :cost-expr (* .1 
+		      :cost-expr (* 1 
 				    (+ (util/abs (- ?dx (gripperx)))
 				       (- (height) (grippery))
 				       (- (height) ?dy))))))
@@ -111,7 +111,7 @@
        :optimistic  (:hybrid-ncstrips 
 		     (:effect    (and (= (gripperx) ?dx) (= (grippery) ?dy)
 				      (= (blockcx ?b) ?dx) (= (blockty ?b) ?dy))
-		      :cost-expr (* .2
+		      :cost-expr (* 2
 				    (+ (util/abs (- ?dx (gripperx)))
 				       (util/abs (- ?dy (grippery)))))))
        :pessimistic (:hybrid-ncstrips 
@@ -120,7 +120,7 @@
 					    (<= (blockty ?c) (- (height) (blockh ?b))))
 		      :effect    (and (= (gripperx) ?dx) (= (grippery) ?dy)
 				      (= (blockcx ?b) ?dx) (= (blockty ?b) ?dy))
-		      :cost-expr (* .2 
+		      :cost-expr (* 2 
 				    (+ (util/abs (- ?dx (gripperx)))
 				       (- (height) (grippery))
 				       (- (height) ?dy))))))
