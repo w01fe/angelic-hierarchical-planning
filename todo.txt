@@ -15,6 +15,9 @@ deal with 0-cost actions ???
 ; TODO: specify split points / strategies in hierarchy!!!
 ; Explicitly mark interval params?
 
+;TODO: intelligently figure out split points in terms of preconditions
+ of future actions!!!!!  ! !! !!!
+
 ------------------------------------
 From earlier meeting
 

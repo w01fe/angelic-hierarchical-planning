@@ -55,7 +55,8 @@
      :parameters   (?ngx - x)
      :split-points (forall (?b - block)
 			   (and (<= (blockty ?b) (grippery))
-				(<= (blockcx ?b) (gripperx)))
+				(<= (blockcx ?b) (gripperx))
+				(forall (?c - block) nil (not (on ?c ?b))))
 			   (= ?ngx (blockcx ?b)))
      :precondition 
        (and (gripperempty)
@@ -72,7 +73,8 @@
      :parameters   (?ngx - x)
      :split-points (forall (?b - block)
 			   (and (<= (blockty ?b) (grippery))
-				(>= (blockcx ?b) (gripperx)))
+				(>= (blockcx ?b) (gripperx))
+				(forall (?c - block) nil (not (on ?c ?b))))
 			   (= ?ngx (blockcx ?b)))
      :precondition 
        (and (gripperempty)
@@ -107,9 +109,10 @@
      :precondition 
        (and (gripperempty)
 	    (<= ?ngy (grippery))
+	    (>= ?ngy 0)
 	    (forall (?b - block)
-		    (and (<= (- (blockcx ?b) (blocklw ?b)) (gripperx))
-			 (>= (+ (blockcx ?b) (blockrw ?b)) (gripperx)))
+		    (and (< (- (blockcx ?b) (blocklw ?b)) (gripperx))
+			 (> (+ (blockcx ?b) (blockrw ?b)) (gripperx)))
 		    (>= ?ngy (blockty ?b))))
      :effect (= (grippery) ?ngy)
      :cost   (* 0.1 (- (grippery) ?ngy)))
@@ -118,8 +121,8 @@
   (:action up-holding
      :parameters   (?b - block ?ngy - y)
      :split-points (forall (?c - block)
-			   (>= (blockty ?c) (grippery))
-			   (= ?ngy (blockty ?c)))
+			   (>= (+ (blockty ?c) (blockh ?b)) (grippery))
+			   (= ?ngy (+ (blockty ?c) (blockh ?b))))
      :precondition 
        (and (holding ?b)
 	    (>= ?ngy (grippery))

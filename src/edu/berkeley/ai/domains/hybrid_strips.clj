@@ -379,16 +379,17 @@
 
 
 (defstruct hybrid-strips-action-schema 
-  :class :name :vars :precondition :effect :cost-expr)
+  :class :name :vars :split-points :precondition :effect :cost-expr)
 
-(defn make-hybrid-action-schema [name vars precondition effect cost-expr]
+(defn make-hybrid-action-schema [name vars split-points precondition effect cost-expr]
   (struct hybrid-strips-action-schema ::HybridActionSchema 
-    name vars precondition effect cost-expr))
+    name vars split-points precondition effect cost-expr))
 
 (defn- parse-hybrid-action-schema [action discrete-types numeric-types predicates numeric-functions]
 ;  (println action discrete-types numeric-types predicates numeric-functions)
   (util/match [[[:action       ~name]
 		[:parameters   ~parameters]
+		[:optional [:split-points ~split-points]]
 		[:precondition ~precondition]
 		[:effect       ~effect]
 		[:optional [:cost  ~cost]]]
@@ -407,6 +408,7 @@
       (make-hybrid-action-schema
        name
        vars 
+       (parse-and-check-constraint split-points discrete-vars predicates numeric-vars numeric-functions true)
        (parse-and-check-constraint precondition discrete-vars predicates numeric-vars numeric-functions true)
        (parse-and-check-effect     effect       discrete-vars predicates numeric-vars numeric-functions)
        (parse-and-check-numeric-expression (or cost 1) discrete-vars numeric-vars numeric-functions)))))
@@ -626,10 +628,15 @@
 	    (min r1 r2)
 	    (cond (< r1 r2) ro1 (> r1 r2) ro2 :else (or ro1 ro2)))))
 
+(defn interval-contains? [i x]
+  (and (or (> x (:left i))  (and (= x (:left i))  (not (:left-open i))))
+       (or (< x (:right i)) (and (= x (:right i)) (not (:right-open i))))))
+
 (def *real-line* (struct interval Double/NEGATIVE_INFINITY true Double/POSITIVE_INFINITY true))
 
 (defmulti applicable-quasi-actions (fn [state action-space] (:class action-space)))
 
+; TODO: prune empty intervals.
 (defmethod applicable-quasi-actions ::HybridActionSpace [[discrete-atoms numeric-vals] action-space]
   (for [action ((:discrete-generator action-space) discrete-atoms)
 	:let [{:keys [var-map num]} action ;(do (println (:name (:schema action)) (:var-map action)) action)
@@ -674,9 +681,38 @@
   (if (empty? (:num-vars action))
       [(ground-quasi-action action nil action-space)]
     (let [[var interval]  (first (:num action))]
+ ;     (println (:name (:schema action)) (:var-map action) var interval)
       (for [i (range (int (Math/ceil (/ (:left interval) grid)))
 		     (inc (int (Math/floor (/ (:right interval) grid)))))]		     
 	(ground-quasi-action action {var (* i grid)} action-space)))))
+
+(defn split-quasi-action-instantiations [[discrete-atoms numeric-vals] action action-space]
+  (if (empty? (:num-vars action))
+      [(ground-quasi-action action nil action-space)]
+    (let [[var interval]   (first (:num action))
+	  split-constraint (util/safe-get-in action [:schema :split-points])
+	  split-clauses    (get-numeric-yield split-constraint 
+			     (:var-map action) 
+			     (:objects action-space) 
+			     [discrete-atoms numeric-vals])
+	  split-points     (distinct 
+			    (for [c split-clauses]
+			      (let [{:keys [class pred left right]} c]
+				(util/assert-is (= class ::NumConstraint))
+				(util/assert-is (= pred =))
+				(util/assert-is (= (:class left) ::NumVar))
+				(util/assert-is (= (:var left) var))
+				(util/assert-is (= (:class right) ::NumConst))
+				(util/safe-get right :constant))))]
+;      (println interval split-points)
+      (for [x split-points 
+	    :when (interval-contains? interval x)]
+	(ground-quasi-action action {var x} action-space)))))
+
+      
+;      (for [i (range (int (Math/ceil (/ (:left interval) grid)))
+;		     (inc (int (Math/floor (/ (:right interval) grid)))))]		     
+;	(ground-quasi-action action {var (* i grid)} action-space)))))
 
 
 (defn all-quasi-action-instantiations [action action-space]
@@ -688,13 +724,19 @@
 				      action-space))))
 
 (defn applicable-discrete-actions [[discrete-atoms numeric-vals] action-space grid]
+ ; (println "discrete")
   (mapcat #(discrete-quasi-action-instantiations % action-space grid)
 	  (applicable-quasi-actions [discrete-atoms numeric-vals] action-space)))
 
+(defn applicable-split-actions [[discrete-atoms numeric-vals] action-space]
+ ; (println "split")
+  (mapcat #(split-quasi-action-instantiations [discrete-atoms numeric-vals] % action-space)
+	  (applicable-quasi-actions [discrete-atoms numeric-vals] action-space)))
 
 (defmethod envs/applicable-actions ::HybridActionSpace [state action-space]
-  (util/assert-is (:discrete-grid-size action-space))
-  (applicable-discrete-actions state action-space (:discrete-grid-size action-space)))
+  (if (:discrete-grid-size action-space) 
+      (applicable-discrete-actions state action-space (:discrete-grid-size action-space))
+    (applicable-split-actions state action-space)))
 
 (defmethod envs/all-actions ::HybridActionSpace [action-space]
   (throw (UnsupportedOperationException.)))
