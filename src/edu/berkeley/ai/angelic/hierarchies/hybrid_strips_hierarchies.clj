@@ -4,7 +4,7 @@
   (:require [edu.berkeley.ai [util :as util] [envs :as envs]]
         [edu.berkeley.ai.util [propositions :as props] [hybrid :as hybrid]]
         [edu.berkeley.ai.domains.hybrid-strips :as hs]
-        [edu.berkeley.ai.angelic.ncstrips-descriptions :as ncstrips]
+        [edu.berkeley.ai.angelic.hybrid-ncstrips-descriptions :as hybrid-ncstrips]
 	[edu.berkeley.ai.search.smart-csps :as smart-csps]
         )
   )
@@ -98,11 +98,12 @@
        nil)))))
 
 
-(defn make-hybrid-ncstrips-primitive-description-schema [& args] nil)
-;; TODO TODO TODO
-(defn- make-hybrid-strips-primitive-hla-schema [hs-schema]
+
+(defn- make-hybrid-strips-primitive-hla-schema [hs-schema discrete-types numeric-types]
   (let [{:keys [name vars split-points precondition effect cost-expr]} hs-schema
-	desc (make-hybrid-ncstrips-primitive-description-schema hs-schema vars precondition effect cost-expr)]
+	[discrete-vars numeric-vars] (hybrid/split-var-maps vars discrete-types numeric-types)
+	desc (hybrid-ncstrips/make-hybrid-ncstrips-description-schema discrete-vars numeric-vars
+	       [(hybrid-ncstrips/make-hybrid-ncstrips-effect-schema hybrid/*true-constraint* effect hybrid/*empty-effect* cost-expr)])]
     (make-hybrid-strips-hla-schema name vars split-points precondition :primitive desc desc hs-schema)))
 
 
@@ -119,8 +120,8 @@
       (util/assert-is (some #(= (:name %) 'act) hla-schemata))
       (util/map-map #(vector (:name %) %) 
 	(concat hla-schemata
-	  (map #(make-hybrid-strips-primitive-hla-schema % ;discrete-types numeric-types predicates numeric-functions
-							 ) (vals action-schemata)))))))
+	  (map #(make-hybrid-strips-primitive-hla-schema % discrete-types numeric-types)
+	       (vals action-schemata)))))))
 
      
 (defmethod parse-hierarchy-type :hybrid-strips-hierarchy [type contents domain]
@@ -136,9 +137,14 @@
 )
 
 
+
 ;; TODO: flat hybrid strips hierarchy.
 
 
+
+
+
+;; Planning with hybrid strips hierarchies.
 
 
 

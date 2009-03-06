@@ -60,14 +60,12 @@
 
 
 (derive ::NumExpr ::Num)
-(defstruct hybrid-strips-numeric-expression :class :op :left :right)
-(defn make-numeric-expression [op left right]
-  (struct hybrid-strips-numeric-expression ::NumExpr op left right))
+(defstruct hybrid-strips-numeric-expression :class :op :args)
+(defn make-numeric-expression [op args]
+  (struct hybrid-strips-numeric-expression ::NumExpr op args))
 
 (defmethod evaluate-numeric-expr ::NumExpr [expr var-map numeric-vals]
-  ((:op expr)
-   (evaluate-numeric-expr (:left expr) var-map numeric-vals)
-   (evaluate-numeric-expr (:right expr) var-map numeric-vals)))
+  (apply (:op expr) (map #(evaluate-numeric-expr % var-map numeric-vals) (:args expr))))
 
 
 (defn parse-and-check-numeric-expression 
@@ -82,16 +80,13 @@
         (contains? numeric-functions (first expr))
 	  (make-numeric-form (check-hybrid-atom expr numeric-functions discrete-vars))
         :else 
-          (do (assert-is (= (count expr) 3))
-	      (let [op   (safe-get {'* * '+ + '- -} (first expr))
-		    left (parse-and-check-numeric-expression (nth expr 1)
-			  discrete-vars (when-not only-atomic-var?  numeric-vars) numeric-functions )
-		    right (parse-and-check-numeric-expression  (nth expr 2)
-			  discrete-vars (when-not only-atomic-var? numeric-vars) numeric-functions)]
-;		  (when (= op *) 
-;		    (assert-is (or (isa? (:class left) ::NumConst) 
-;					(isa? (:class right) ::NumConst))))
-		  (make-numeric-expression op left right))))))
+	  (let [[op arity]   (safe-get {'* [* 2] '+ [+ 2] '- [- 2] 'abs [abs 1]} (first expr))]
+	    (assert-is (= arity (count (next expr))) "%s" expr)
+	    (make-numeric-expression op 
+	      (map #(parse-and-check-numeric-expression % 
+		     discrete-vars (when-not only-atomic-var?  numeric-vars) numeric-functions)
+		   (next expr)))))))
+
 	  
 (deftest numeric-exprs 
   (is (= 25
@@ -222,7 +217,7 @@
 	yield))))
 
 
-
+(def *true-constraint* (make-conjunctive-constraint nil))
 
 
 (declare parse-and-check-constraint)
@@ -333,11 +328,13 @@
      (reduce (fn [nv ae] (execute-assignment ae var-map nv numeric-vals)) numeric-vals (:assignments effect))]))
  
 
+(def *empty-effect* (make-effect nil nil nil))
 
 (defn parse-and-check-effect [effect discrete-vars predicates numeric-vars numeric-functions]
-  (let [effects (if (= (first effect) 'and) (next effect) (list effect))
+  (let [effects (if (or (empty? effect) (= (first effect) 'and)) (next effect) (list effect))
 	{:keys [adds deletes assignments]}
           (group-by (fn [[a]] (cond (= a '=) :assignments (= a 'not) :deletes :else :adds)) effects)]
+;    (println adds deletes assignments)
     (make-effect 
      (doall (for [a adds] 
 	      (check-hybrid-atom a predicates discrete-vars)))

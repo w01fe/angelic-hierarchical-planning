@@ -85,6 +85,5 @@
 	  (.put m pred-name (cons pred (.get m pred-name)))))
       [true-map poss-map])));)
 
-(import '(java.util HashMap))
 (defmethod valuation->pred-maps ::DNFSimpleValuation [val]
   (do-valuation->pred-maps val))

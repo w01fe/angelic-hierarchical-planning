@@ -3,7 +3,7 @@
   (:use edu.berkeley.ai.angelic)
   (:require [edu.berkeley.ai.util :as util] 
             [edu.berkeley.ai.util [propositions :as props] [hybrid :as hybrid]]
-            [edu.berkeley.ai.domains.strips :as strips]
+            [edu.berkeley.ai.domains.hybrid-strips :as hs]
             [edu.berkeley.ai.angelic.dnf-simple-valuations :as dsv]
 	    [edu.berkeley.ai.search.smart-csps :as smart-csps])
   )
@@ -11,66 +11,52 @@
 ;;; NCStrips descriptions
 
 
+;; Effect schemata
+
+(defstruct hybrid-ncstrips-effect-schema :precondition :effect :possible-effect :cost-epxr)
+
+(defn make-hybrid-ncstrips-effect-schema [precondition effect possible-effect cost-expr]
+  (struct hybrid-ncstrips-effect-schema precondition effect possible-effect cost-expr))
+
+(defn parse-hybrid-ncstrips-effect-schema [effect discrete-vars predicates numeric-vars numeric-fns]
+;  (println effect)
+  (util/match [#{[:optional [:precondition    ~pre]]
+		 [:optional [:effect          ~eff]]
+		 [:optional [:possible-effect ~poss]]
+		 [:cost-expr ~cost-expr]}
+	       (util/partition-all 2 effect)]
+    (util/assert-is (empty? poss))
+    (make-hybrid-ncstrips-effect-schema
+     (hybrid/parse-and-check-constraint pre discrete-vars predicates numeric-vars numeric-fns)
+     (hybrid/parse-and-check-effect eff discrete-vars predicates numeric-vars numeric-fns)
+     (hybrid/parse-and-check-effect poss discrete-vars predicates numeric-vars numeric-fns)
+     (hybrid/parse-and-check-numeric-expression cost-expr discrete-vars numeric-vars numeric-fns))))
+     
+
+;; Description schemata
+
+
+
+(defstruct hybrid-ncstrips-description-schema :class :discrete-vars :numeric-vars  :effects)
+(defn make-hybrid-ncstrips-description-schema [discrete-vars numeric-vars effects]
+    (struct hybrid-ncstrips-description-schema ::HybridNCStripsDescriptionSchema 
+	    discrete-vars numeric-vars effects))
+
+(defmethod parse-description :hybrid-ncstrips [desc domain vars]  
+  (util/assert-is (isa? (:class domain) ::hs/HybridStripsPlanningDomain))
+  (let [{:keys [discrete-types numeric-types predicates numeric-functions]} domain
+	[discrete-vars numeric-vars] (hybrid/split-var-maps vars discrete-types numeric-types)]
+    (make-hybrid-ncstrips-description-schema discrete-vars numeric-vars
+      (doall (map #(parse-hybrid-ncstrips-effect-schema % discrete-vars predicates numeric-vars numeric-functions) (next desc))))))
+
+
+
+
+
 (derive ::HybridNCStripsDescription :edu.berkeley.ai.angelic/PropositionalDescription)
 
 
-;; Single conditional dffects
-
-(defmethod parse-description :hybrid-ncstrips [desc domain vars]  
-  nil)
-
-
 (comment
-
-(defstruct ncstrips-effect-schema 
-  :pos-preconditions :neg-preconditions :forall-preconditions
-  :adds :deletes :forall-effects
-  :possible-adds :possible-deletes :possible-forall-effects 
-  :forall-cost :cost-fn)
-
-(defn make-ncstrips-effect-schema [pos-preconditions neg-preconditions forall-preconditions
-				   adds deletes forall-effects
-				   possible-adds possible-deletes possible-forall-effects 
-				   forall-cost cost-expr]
-  (struct ncstrips-effect-schema 
-	  pos-preconditions neg-preconditions forall-preconditions
-	  adds deletes forall-effects
-	  possible-adds possible-deletes possible-forall-effects
-	  forall-cost cost-expr))
-
-(defn- normalize-ncstrips-forall [types vars-and-objects predicates [args [pos-pre neg-pre] [pos-eff neg-eff]]]
- ; (println args pos-pre neg-pre pos-eff neg-eff)
-  (let [vars-and-objects (props/check-objects types (concat vars-and-objects args))
-	atom-checker (fn [atoms] (set (map #(props/check-atom types vars-and-objects predicates %) atoms)))]
-    [args [(atom-checker pos-pre) (atom-checker neg-pre)] [(atom-checker pos-eff) (atom-checker neg-eff)]]))
-    
-
-(defn- normalize-ncstrips-effect-atoms [types vars-and-objects predicates effect]
- ; (prn "\n\n" effect "\n\n")
-  (let [atom-checker (fn [atoms] (set (map #(props/check-atom types vars-and-objects predicates %) atoms)))]
-    (apply make-ncstrips-effect-schema 
-	   (concat (for [[f forall?] 
-			 [[:pos-preconditions false]
-			  [:neg-preconditions false]
-			  [:forall-preconditions true]
-			  [:adds false]
-			  [:deletes false]
-			  [:forall-effects true]
-			  [:possible-adds false]
-			  [:possible-deletes false]
-			  [:possible-forall-effects true]]]
-		     (let [thing (util/safe-get effect f)]
-		       (if forall? 
-			   (map #(normalize-ncstrips-forall types vars-and-objects predicates %) thing)
-			 (atom-checker thing))))
-		   [(when-let [fc (util/safe-get effect :forall-cost)] 
-		      (normalize-ncstrips-forall types vars-and-objects predicates fc))]
-		   [(util/safe-get effect :cost-fn)]))))
-      
-
-(defn- check-ncstrips-effect [types vars-and-objects predicates effect]
-  ;(simplify-ncstrips-effect 
-   (normalize-ncstrips-effect-atoms types vars-and-objects predicates effect))
 
 
 
@@ -84,38 +70,6 @@
   ; TODO: check mutual exclusion condition!objects
   (struct ncstrips-description-schema ::NCStripsDescriptionSchema (doall (filter identity (map (partial check-ncstrips-effect types vars-and-objects predicates) effects))) vars))
 
-(defmethod parse-description :ncstrips [desc domain vars]  
-  (util/assert-is (isa? (:class domain) :edu.berkeley.ai.domains.strips/StripsPlanningDomain))
-  (make-ncstrips-description-schema 
-   (util/safe-get domain :types) 
-   (props/check-objects (util/safe-get domain :types) (concat (util/safe-get domain :guaranteed-objs) vars)) 
-   (util/safe-get domain :predicates)
-   (for [clause (next desc)]
-     (util/match [#{[:optional [:precondition    ~pre]]
-		    [:optional [:effect          ~eff]]
-		    [:optional [:possible-effect ~poss]]
-		    [:optional [:cost-parameters ~cost-parameters]]
-		    [:optional [:cost-precondition ~cost-precondition]]
-		    [:cost-expr ~cost-expr]}
-		  (util/partition-all 2 clause)]
-       (let [[pos-pre neg-pre forall-pre] (props/parse-pddl-conjunction-forall pre),
-	     [add     del     forall-eff] (props/parse-pddl-conjunction-forall eff),
-	     [p-add   p-del   forall-p-eff] (props/parse-pddl-conjunction-forall poss),
-	     cost-parameters (props/parse-typed-pddl-list cost-parameters)]
-;	 (println pos-pre neg-pre forall-pre add del forall-eff p-add p-del forall-p-eff "\n\n")
-	 (when cost-precondition (util/assert-is (not (empty? cost-parameters))))
-;	 (println cost-expr)
-;	 (println (eval '*ns*))
-	 (make-ncstrips-effect-schema 
-	   pos-pre neg-pre forall-pre 
-	   add del forall-eff
-	   p-add p-del forall-p-eff 
-	   (when cost-parameters [cost-parameters (props/parse-pddl-conjunction cost-precondition) [nil nil]])
-	   (binding [*ns* (find-ns 'edu.berkeley.ai.angelic.ncstrips-descriptions)]
-	      (eval `(fn ncstrips-cost-fn ~(vec (map second (concat vars cost-parameters))) ~cost-expr)))))))
-   vars))
-
-;   (parse-hierarchy "/Users/jawolfe/projects/angel/src/edu/berkeley/ai/domains/warehouse.hierarchy" (make-warehouse-strips-domain))
 
 
 ;; At this point, when we instantiate, we have to handle four sets of CSPs
