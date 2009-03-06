@@ -5,6 +5,15 @@
 
 ;;; Helper types for expressions, assignments, and conditions
 
+(defn split-var-maps [vars discrete-types numeric-types]
+  (map (fn [vars] (into {} (map (fn [[t v]] [v t]) vars)))
+	     (separate 
+	      (fn [[t v]] 
+		(cond (contains? discrete-types t) true
+		      (contains? numeric-types t)  false
+		      :else (throw (IllegalArgumentException.))))
+	      vars)))
+
 ;; Helper
 
 (defn check-hybrid-atom [atom arg-map var-types]

@@ -49,14 +49,7 @@
 		[:optional [:cost  ~cost]]]
 	       (util/partition-all 2 action)]
     (let [vars (props/parse-typed-pddl-list parameters)
-	  [discrete-vars numeric-vars] 
-	    (map (fn [vars] (into {} (map (fn [[t v]] [v t]) vars)))
-	     (util/separate 
-	      (fn [[t v]] 
-		(cond (contains? discrete-types t) true
-		      (contains? numeric-types t)  false
-		      :else (throw (IllegalArgumentException.))))
-	      vars))]
+	  [discrete-vars numeric-vars] (hybrid/split-var-maps vars discrete-types numeric-types) ]
  ;     (println vars discrete-vars numeric-vars)
       (util/assert-is (<= (count numeric-vars) 1))
       (make-hybrid-action-schema

@@ -13,6 +13,11 @@
 (defn map-vals [f m]
   (into {} (map (fn [[k v]] [k (f v)]) m)))
 
+
+(defn assoc-f [m k f]
+  (assoc m k
+    (f (get m k))))
+
 (defn assoc-cons [m k v]
   (assoc m k
     (cons v
@@ -41,6 +46,11 @@
      (when (every? (fn [[k v]] (= v (get m1 k v))) m2)
        (apply merge-agree (merge m1 m2) maps))))
   
+(defn merge-disjoint [m1 m2]
+  (let [ret (merge m1 m2)]
+    (assert-is (= (count ret) (+ (count m1) (count m2))))
+    ret))
+
 (defn assoc-cat "Like assoc but for maps to lists"
   [m k v]
   (assoc m k (concat v (get m k))))

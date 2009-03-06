@@ -2,7 +2,7 @@
   (:use [edu.berkeley.ai.angelic :as angelic] 
         [edu.berkeley.ai.angelic.hierarchies :as hierarchies])
   (:require [edu.berkeley.ai [util :as util] [envs :as envs]]
-        [edu.berkeley.ai.util.propositions :as props]
+        [edu.berkeley.ai.util [propositions :as props] [hybrid :as hybrid]]
         [edu.berkeley.ai.domains.hybrid-strips :as hs]
         [edu.berkeley.ai.angelic.ncstrips-descriptions :as ncstrips]
 	[edu.berkeley.ai.search.smart-csps :as smart-csps]
@@ -10,200 +10,149 @@
   )
 
 
-;; A hybrid version of strips_hierarchies that allows numeric
- ; variables and states.
+;;;; A hybrid version of strips_hierarchies that allows numeric variables and states.
 
 
-; Immediate refinements are [name pos-prec neg-prec unk-types expansion]
+;; Refinement schemata
+
+(defstruct hybrid-strips-refinement-schema :name  :discrete-vars :numeric-vars :precondition :expansion)
+(defn make-hybrid-strips-refinement-schema [name discrete-vars numeric-vars  precondition expansion]
+  (struct hybrid-strips-refinement-schema name  discrete-vars numeric-vars precondition expansion))
+
+(def *noop-hs-hla-name* (gensym "noop"))
+
+(defn- check-hs-refinement-schema [ref hla-var-map all-actions]
+  (let [{:keys [discrete-vars numeric-vars expansion]} ref
+	all-vars (reduce util/merge-disjoint hla-var-map [discrete-vars numeric-vars])]
+    (assoc ref :expansion
+      (doall 
+       (for [action expansion]
+	 (let [params (next action)
+	       declared-types (util/safe-get all-actions (first action))]
+	   (util/assert-is (= (count params) (count declared-types)))
+	   (util/assert-is (every? identity (map #(= %1 (util/safe-get all-vars %2)) declared-types params)))
+	   (vec action)))))))
+
+
+(defn parse-hybrid-strips-refinement-schema [ref discrete-types discrete-vars predicates numeric-types numeric-vars numeric-functions]
+  (util/match [[[:optional [:name ~ref-name]]
+		[:optional [:parameters ~parameters]]
+		[:optional [:precondition ~precondition]]
+		[:expansion ~expansion]]
+	       (util/partition-all 2 ref)]
+    (let [vars (props/parse-typed-pddl-list parameters)
+	  [more-discrete-vars more-numeric-vars] (hybrid/split-var-maps vars discrete-types numeric-types)] 
+      (make-hybrid-strips-refinement-schema
+       (or ref-name (gensym))
+       more-discrete-vars more-numeric-vars
+       (hybrid/parse-and-check-constraint precondition 
+				   (util/merge-disjoint discrete-vars more-discrete-vars) predicates
+				   (util/merge-disjoint numeric-vars more-numeric-vars) numeric-functions true)
+       (or (seq expansion) [[*noop-hs-hla-name*]])))))
+
 
 ;; HLA schemata
 
-(comment
-
-(defstruct strips-hla-schema :class :name :vars :pos-pre :neg-pre :refinement-schemata :optimistic-schema :pessimistic-schema :primitive)
-
-(defn make-strips-hla-schema [name parameters pos-preconditions neg-preconditions refinement-schemata optimistic-schema pessimistic-schema primitive]
-  (struct strips-hla-schema ::StripsHLASchema name parameters pos-preconditions neg-preconditions 
+(defstruct hybrid-strips-hla-schema :class :name :vars :split-points :precondition :refinement-schemata :optimistic-schema :pessimistic-schema :primitive)
+(defn make-hybrid-strips-hla-schema [name parameters split-points precondition refinement-schemata optimistic-schema pessimistic-schema primitive]
+  (struct hybrid-strips-hla-schema ::HybridStripsHLASchema name parameters split-points precondition
 	  refinement-schemata optimistic-schema pessimistic-schema primitive))
 
-(def *noop-strips-hla-schema* 
-     (make-strips-hla-schema (gensym "noop") nil nil nil nil *identity-description* *identity-description* :noop))
-
-; TODO: double check about removing precs from NCSTRIPS for primitives.
-; TODO: some more general way to do this (without focusing on ncstrips)
-(defn- make-strips-primitive-hla-schema [types objects predicates action]
-  (let [desc (ncstrips/make-ncstrips-description-schema 
-	      types (props/check-objects types (concat objects (:vars action))) predicates 
-	      [(ncstrips/make-ncstrips-effect-schema nil nil nil ; (:pos-pre action) (:neg-pre action) TODO: double check
-					      (:add-list action) (:delete-list action) nil nil nil nil nil (constantly (:cost action)))] 
-	      (:vars action))]
-    (make-strips-hla-schema (:name action) (:vars action) (:pos-pre action) (:neg-pre action) 
-			    :primitive desc desc action)))
+(def *noop-hs-hla-schema* 
+     (make-hybrid-strips-hla-schema *noop-hs-hla-name* nil nil (hybrid/make-conjunctive-constraint nil)
+				    nil *identity-description* *identity-description* :noop))
 
 
-(defn parse-strips-hla-schema [hla domain]
-  (util/match [#{[:optional [:parameters   ~parameters]]
-	    [:optional [:precondition ~precondition]]
-	    [:multiple [:refinement   ~refinements]]
-	    [:optional [:optimistic   ~optimistic]]
-	    [:optional [:pessimistic  ~pessimistic]]
-	    [:optional [:exact        ~exact]]}
-	  (util/partition-all 2 (next hla))]
-    (when exact (util/assert-is (empty? optimistic)) (util/assert-is (empty? pessimistic)))
-    (let [name (first hla)
-	  [pos-pre neg-pre] (props/parse-pddl-conjunction precondition)
-	   params        (props/parse-typed-pddl-list parameters)] 
-      (make-strips-hla-schema
-       name
-       params
-       pos-pre
-       neg-pre
-       (map (fn [refinement]
-	      (util/match [[[:optional [:name ~ref-name]]
-			    [:optional [:parameters ~parameters]]
-			    [:optional [:precondition ~precondition]]
-			    [:expansion ~expansion]]
-			   (util/partition-all 2 refinement)]
-		(let [[pp np] (props/parse-pddl-conjunction precondition)]
-		  [(if ref-name (util/symbol-cat name '- ref-name) (gensym name)) pp np 
-		   (util/map-map (fn [[x y]] [y x]) (props/parse-typed-pddl-list parameters)) 
-		   (or (seq expansion) (list (list (:name *noop-strips-hla-schema*))))])))
-	    refinements)
-       (parse-description (or optimistic exact [:opt]) domain params)
-       (parse-description (or pessimistic exact [:pess]) domain params)
-       nil))))
-
-
-(defn- check-hla-expansion [types vars-and-objects all-actions expansion]
-  (doall
-  (for [action expansion]
-    (do 
-      (let [params (next action)
-	    declared-types (util/safe-get all-actions (first action))]
-	(util/assert-is (= (count params) (count declared-types)))
-	(doseq [[type par] (map vector declared-types params)]
-	  (props/check-type types vars-and-objects par type)))      
-      (vec action)))))
-
-(comment  ; TODO: fix this up when actually using union types
-(defn get-dummy-var-type-map [types all-actions declared-types expansion]
-  (util/map-vals #(props/maximal-subtypes types %)
-    (reduce 
-     (fn [type-map [var type]]
-       (if (contains? type-map var)
-	   (util/assoc-cons type-map var type)
-         type-map))
-     (util/map-map (fn [[t v]] [v [t]]) declared-types)
-     (util/forcat [action expansion]
-       (map vector (next action) (util/safe-get all-actions (first action)))))))
-   )
-
-(defn- check-hla-schema [types guaranteed-objs predicates all-actions hla-schema] 
+(defn- check-hs-hla-schema [hla-schema all-actions] 
   (util/assert-is (contains? #{nil :noop} (util/safe-get hla-schema :primitive)))
   (util/assert-is (not (map? (:vars hla-schema))))
   (util/assert-is (util/distinct-elts? (map first (:refinement-schemata hla-schema))) "non-distinct refinement names %s" hla-schema)
-  (let [vars-and-objects (props/check-objects types (concat guaranteed-objs (:vars hla-schema)))
-	atom-checker     (fn [atoms] (map #(props/check-atom types vars-and-objects predicates %) atoms))]
-    (make-strips-hla-schema 
-     (:name hla-schema)
-     (:vars hla-schema)
-     (atom-checker (:pos-pre hla-schema))
-     (atom-checker (:neg-pre hla-schema))
-     (doall 
-     (map (fn [[name pos-pre neg-pre dummy-map expansion]]
-	    (let [impl-vars-and-objects (reduce (fn [m [v t]] (util/assoc-cons m t v)) vars-and-objects dummy-map) 
-		  impl-atom-checker (fn [atoms] (map #(props/check-atom types impl-vars-and-objects predicates %) atoms))]
-;	      (prn (:name hla-schema) dummy-map)
-	      [name
-	       (impl-atom-checker pos-pre)
-	       (impl-atom-checker neg-pre)
-	       dummy-map
-	       (check-hla-expansion 
-		types 
-		impl-vars-and-objects
-		all-actions 
-		expansion)]))
-	  (:refinement-schemata hla-schema)))
-     (:optimistic-schema hla-schema)
-     (:pessimistic-schema hla-schema)
-     (:primitive hla-schema))))
+  (let [var-map (into {} (map (fn [[x y]] [y x]) (:vars hla-schema)))]
+    (util/assoc-f hla-schema :refinement-schemata
+      (fn [refs] (doall (map #(check-hs-refinement-schema % var-map all-actions) refs))))))
 
-(defn- check-hla-schemata [types guaranteed-objs predicates actions hla-schemata]
-;  (prn hla-schemata)
-  (let [all-actions (merge (util/map-map #(vector (:name %) (map first (:vars %))) actions)
-			   (util/map-map #(vector (:name %) (map first (:vars %))) hla-schemata))]
-;    (prn all-actions)
-    (util/assert-is (= (count all-actions) (+ (count actions) (count hla-schemata))))
-    (let [hla-schemata (doall (map #(check-hla-schema types guaranteed-objs predicates all-actions %) hla-schemata))]
-      (util/assert-is (some #(= (:name %) 'act) hla-schemata))
-      (util/map-map #(vector (:name %) %) 
-	       (concat hla-schemata
-		       (map #(make-strips-primitive-hla-schema types guaranteed-objs predicates %) actions))))))
+
+(defn parse-hybrid-strips-hla-schema [hla domain]
+;  (println hla)
+  (let [{:keys [discrete-types numeric-types predicates numeric-functions action-schemata]} domain]
+   (util/match [#{[:optional [:parameters   ~parameters]]
+		 [:optional [:precondition ~precondition]]
+		 [:multiple [:refinement   ~refinements]]
+		 [:optional [:optimistic   ~optimistic]]
+		 [:optional [:pessimistic  ~pessimistic]]
+		 [:optional [:exact        ~exact]]}
+	       (util/partition-all 2 (next hla))]
+    (when exact (util/assert-is (empty? optimistic)) (util/assert-is (empty? pessimistic)))
+    (let [name (first hla)
+	  vars (props/parse-typed-pddl-list parameters)
+	  [discrete-vars numeric-vars] (hybrid/split-var-maps vars discrete-types numeric-types)] 
+      (make-hybrid-strips-hla-schema
+       name
+       vars
+       nil
+       (hybrid/parse-and-check-constraint precondition discrete-vars predicates numeric-vars numeric-functions true)
+       (doall (map #(parse-hybrid-strips-refinement-schema % discrete-types discrete-vars predicates numeric-types numeric-vars numeric-functions)
+		   refinements))
+       (parse-description (or optimistic exact [:opt]) domain vars)
+       (parse-description (or pessimistic exact [:pess]) domain vars)
+       nil)))))
+
+
+(defn make-hybrid-ncstrips-primitive-description-schema [& args] nil)
+;; TODO TODO TODO
+(defn- make-hybrid-strips-primitive-hla-schema [hs-schema]
+  (let [{:keys [name vars split-points precondition effect cost-expr]} hs-schema
+	desc (make-hybrid-ncstrips-primitive-description-schema hs-schema vars precondition effect cost-expr)]
+    (make-hybrid-strips-hla-schema name vars split-points precondition :primitive desc desc hs-schema)))
+
 
 
 
 ;; Parse and check an entire hierarchy   
+
+(defn- check-hs-hla-schemata [hla-schemata domain]
+  (let [{:keys [discrete-types numeric-types predicates numeric-functions action-schemata]} domain
+	all-actions (util/map-map #(vector (:name %) (map first (:vars %))) (concat hla-schemata (vals action-schemata)))]
+ ;   (println (keys all-actions))
+    (util/assert-is (= (count all-actions) (+ (count action-schemata) (count hla-schemata))))
+    (let [hla-schemata (doall (map #(check-hs-hla-schema % all-actions) hla-schemata))]
+      (util/assert-is (some #(= (:name %) 'act) hla-schemata))
+      (util/map-map #(vector (:name %) %) 
+	(concat hla-schemata
+	  (map #(make-hybrid-strips-primitive-hla-schema % ;discrete-types numeric-types predicates numeric-functions
+							 ) (vals action-schemata)))))))
+
      
-(defmethod parse-hierarchy-type :strips-hierarchy [type contents domain]
-  (util/assert-is (isa? (:class domain) :edu.berkeley.ai.domains.strips/StripsPlanningDomain))
+(defmethod parse-hierarchy-type :hybrid-strips-hierarchy [type contents domain]
+  (util/assert-is (isa? (:class domain) ::hs/HybridStripsPlanningDomain))
   (util/match [[[:multiple (:hla ~@hlas)]] contents]
-    {:class ::StripsHierarchySchema, :hlas
-     (check-hla-schemata (:types domain) (:guaranteed-objs domain) (:predicates domain) (:action-schemata domain)
-			 (cons *noop-strips-hla-schema* (map #(parse-strips-hla-schema % domain) hlas)))}))
-
-(defn make-flat-act-optimistic-description-schema [upper-reward-fn]
-  {:class ::FlatActOptimisticDescriptionSchema :upper-reward-fn upper-reward-fn})
-
-(defmethod parse-description :flat-act [desc domain params]
-  (util/assert-is (= (count desc) 2))
-  (make-flat-act-optimistic-description-schema (second desc)))
-
-(defmethod instantiate-description-schema ::FlatActOptimisticDescriptionSchema [desc instance]
-  (make-flat-act-optimistic-description (envs/get-goal instance) (:upper-reward-fn desc)))
-
-(defmethod ground-description :edu.berkeley.ai.angelic.hierarchies/FlatActOptimisticDescription [desc var-map] desc)
+    {:class ::HybridStripsHierarchySchema, :hlas
+     (check-hs-hla-schemata (cons *noop-hs-hla-schema* (map #(parse-hybrid-strips-hla-schema % domain) hlas)) domain)}))
 
 
-; TODO: use ncstrips for Act description?
-; Immediate refinements are [name pos-prec neg-prec unk-types expansion]
-; TODO: check it's correct to ignore primitive precs.
-(defn make-flat-strips-hierarchy-schema [domain upper-reward-fn]
-  (util/assert-is (isa? (:class domain) :edu.berkeley.ai.domains.strips/StripsPlanningDomain))
-  {:class ::StripsHierarchySchema
-   :hlas 
-     (util/map-map #(vector (:name %) %) 
-       (cons *noop-strips-hla-schema*
-	(cons
-	  (make-strips-hla-schema
-	   'act nil nil nil
-	   (cons ['empty nil nil nil [[(util/safe-get *noop-strips-hla-schema* :name)]]]
-		 (for [action (:action-schemata domain)]
-		   (let [dummy-vars (for [[t v] (:vars action)] [(keyword (str "?" v)) t])]
-		     [(:name action) nil nil (into {} dummy-vars) [(into [(:name action)] (map first dummy-vars)) ['act]]])))
-	   (parse-description (if (fn? upper-reward-fn) [:flat-act upper-reward-fn] upper-reward-fn) domain nil)
-	      ;make-flat-act-optimistic-description-schema upper-reward-fn)
-	   *pessimal-description* nil)
-	  (map #(make-strips-primitive-hla-schema 
-                 (:types domain) (:guaranteed-objs domain) (:predicates domain) %)
-	       (:action-schemata domain)))))})
+(comment
+  (parse-hierarchy "/Users/jawolfe/Projects/angel/src/edu/berkeley/ai/domains/road_trip.hierarchy" (make-road-trip-strips-domain))
+  (parse-hierarchy "/Users/jawolfe/Projects/angel/src/edu/berkeley/ai/domains/hybrid_blocks.hierarchy" (make-hybrid-blocks-strips-domain))
+)
 
-(defn get-flat-strips-hierarchy 
-  ([env] (get-flat-strips-hierarchy env (constantly 0)))
-  ([env act-desc-or-upper-reward-fn]
-   (instantiate-hierarchy 
-    (make-flat-strips-hierarchy-schema (envs/get-domain env) act-desc-or-upper-reward-fn) env)))
+
+;; TODO: flat hybrid strips hierarchy.
+
+
+
+
+
+
+
+
+
+
+
+
 
 
 
 (comment 
-  (parse-hierarchy "/Users/jawolfe/Projects/angel/src/edu/berkeley/ai/domains/nav_switch.hierarchy"
-		   (make-nav-switch-strips-domain))
-
-		    )
-
-
-
-
 
 
 
@@ -313,13 +262,6 @@
 
 
 
-(comment 
-  (instantiate-hierarchy
-   (parse-hierarchy "/Users/jawolfe/Projects/angel/src/edu/berkeley/ai/domains/nav_switch.hierarchy"
-		    (make-nav-switch-strips-domain))
-   (make-nav-switch-strips-env 2 2 [[0 0]] [1 0] true [0 1]))
-
-		    )
 
 
 ;; HLA methods
@@ -386,57 +328,6 @@
 		   expansion
 		   (cons (envs/conjoin-conditions precondition ground-impl-pre)
 			 (repeat envs/*true-condition*)))))))))
-
-
-
-;; Used by AHLRTA
-
-(defn convert-to-prim-act-strips-hla [initial-node]
-  (let [{:keys [hierarchy schema var-map precondition]} initial-node,
-	{:keys [hla-schema-map problem-instance]}              hierarchy,
-	{:keys [trans-objects const-pred-map domain]}          problem-instance,
-	act-vars      (map (fn [[t v]] [v t]) (util/safe-get-in hla-schema-map ['act :vars]))
-	prim-action-schemata (util/safe-get domain :action-schemata)]
-    (make-strips-hla
-     hierarchy
-     (instantiate-strips-hla-schema
-      (make-strips-hla-schema 
-       (gensym "pa-strips-top-level-action")
-       [] nil nil
-       (for [action prim-action-schemata]
-	 (let [prim-vars (for [[t v] (:vars action)] [(gensym (str "?" v)) t])]
-	   [(:name action) nil nil (into {} (concat prim-vars act-vars)) 
-	    [(into [(:name action)] (map first prim-vars)) 
-	     (into ['act] (map first act-vars))]]))
-       (parse-description [:opt] :dummy :dummy)
-       (parse-description [:pess] :dummy :dummy)
-       nil)
-      problem-instance hla-schema-map trans-objects const-pred-map)
-     {}
-     envs/*true-condition*
-     false)))
-
-
-
-
-
-
-
-(comment 
-  (let [domain (make-nav-switch-strips-domain), env (constant-predicate-simplify (make-nav-switch-strips-env 2 2 [[0 0]] [1 0] true [0 1])), node (make-initial-top-down-forward-node :edu.berkeley.ai.angelic.dnf-simple-valuations/DNFSimpleValuation  (instantiate-hierarchy (make-flat-strips-hierarchy-schema domain (constantly 0)) env))] (count node))
-
-
-  (let [domain (make-nav-switch-strips-domain), env (constant-predicate-simplify (make-nav-switch-strips-env 2 2 [[0 0]] [1 0] true [0 1])), node (make-initial-top-down-forward-node :edu.berkeley.ai.angelic.dnf-simple-valuations/DNFSimpleValuation  (instantiate-hierarchy (parse-hierarchy "/Users/jawolfe/Projects/angel/src/edu/berkeley/ai/domains/nav_switch.hierarchy" domain) env))] (count node))
-
-
- ;(time (second (a-star-search node))))
-  )
-	      
-
-
-
-
-
 
 
 )
