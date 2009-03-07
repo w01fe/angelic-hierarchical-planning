@@ -117,3 +117,19 @@
 (defmethod conjoin-conditions    [::TrueCondition ::FalseCondition] [tc fc] fc)
 (defmethod conjoin-conditions    [::FalseCondition ::TrueCondition] [fc tc] fc)
 (defmethod ground-propositional-condition ::TrueCondition [c var-map] c)
+
+
+
+; Constraints for hybrid state spaces
+
+(derive ::ConstraintCondition ::Condition)
+(defstruct constraint-condition :class :constraint :objects :var-map)
+
+(defn make-constraint-condition [constraint objects var-map] 
+  (struct constraint-condition ::ConstraintCondition constraint objects var-map))
+
+(defmethod satisfies-condition? ::ConstraintCondition [s c]
+  (edu.berkeley.ai.util.hybrid/evaluate-constraint (:constraint c) (:var-map c) (:objects c) s))
+
+(defmethod consistent-condition? ::ConstraintCondition [condition]
+  (throw (UnsupportedOperationException.)))

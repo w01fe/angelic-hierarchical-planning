@@ -74,6 +74,12 @@
 	   (next vs)))
       (make-interval l lo r ro))))
 
+(defn bisect-interval [i]
+  (assert-is (not (interval-point interval)))
+  (let [{:keys [left right left-open right-open]} i
+	mid (/ (+ left right) 2)]
+    [(make-interval left left-open mid false)
+     (make-interval mid true       right right-open)]))
 
 ;; Convex Polytopes
 

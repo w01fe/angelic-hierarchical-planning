@@ -77,6 +77,8 @@
       
 (defn keyset [m] (set (keys m)))
 
+(defn trans-map "Get a map representing the (safe) composition of m1 and m2" [m1 m2]
+  (map-vals #(safe-get m2 %) m1))
       
 (comment   ; group-by in clojure.contrib.seq-utils.
 (defn categorize 

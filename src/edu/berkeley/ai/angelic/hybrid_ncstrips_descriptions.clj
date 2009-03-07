@@ -64,13 +64,6 @@
 
 ;; Ungrounded NCStrips description schemata
 
-(defstruct ncstrips-description-schema :class :effects :vars)
-
-(defn make-ncstrips-description-schema [types vars-and-objects predicates effects vars]
-  ; TODO: check mutual exclusion condition!objects
-  (struct ncstrips-description-schema ::NCStripsDescriptionSchema (doall (filter identity (map (partial check-ncstrips-effect types vars-and-objects predicates) effects))) vars))
-
-
 
 ;; At this point, when we instantiate, we have to handle four sets of CSPs
 ;; For each, we would like to evaluate it now, if possible

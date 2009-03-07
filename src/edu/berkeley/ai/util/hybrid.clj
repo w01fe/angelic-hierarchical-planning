@@ -29,6 +29,17 @@
 
 (defmulti evaluate-numeric-expr (fn [expr var-map numeric-vals] (:class expr))) 
 
+(defmulti ground-and-simplify-numeric-expr (fn [expr var-map constant-numeric-fns numeric-vals] (:class expr)))
+(defmulti extract-numeric-expr-form-and-diff (fn [expr] (:class expr)))  
+(defmulti translate-numeric-expr-vars (fn [expr var-map] (:class expr))) 
+
+(defmethod ground-and-simplify-numeric-expr   ::Num [expr var-map constant-numeric-fns numeric-vals] expr)
+
+(defmethod extract-numeric-expr-form-and-diff ::Num [expr]         (throw (UnsupportedOperationException.)))
+
+(defmethod translate-numeric-expr-vars        ::Num [expr var-map] expr) 
+
+
 
 (derive ::NumConst ::Num)
 (defstruct hybrid-strips-numeric-constant :class :constant)
@@ -48,6 +59,10 @@
 (defmethod evaluate-numeric-expr ::NumVar [expr var-map numeric-vals]
   (safe-get var-map (:var expr)))
 
+(defmethod translate-numeric-expr-vars        ::NumVar [expr var-map] 
+  (make-numeric-var (safe-get var-map (:var expr)))) 
+
+
 
 (derive ::NumForm ::Num)
 (defstruct hybrid-strips-numeric-form :class :form)
@@ -58,6 +73,17 @@
   ;(println var-map)
   (safe-get numeric-vals (props/simplify-atom var-map (:form expr))))
 
+(defmethod ground-and-simplify-numeric-expr   ::NumForm [expr var-map constant-numeric-fns numeric-vals]
+  (let [form (props/simplify-atom var-map (:form expr))]
+    (if (contains? constant-numeric-fns (first form))
+        (make-numeric-constant (interval-point (safe-get numeric-vals form)))
+      (make-numeric-form form))))
+
+(defmethod extract-numeric-expr-form-and-diff ::NumForm [expr]         
+  [expr 0])
+
+
+
 
 (derive ::NumExpr ::Num)
 (defstruct hybrid-strips-numeric-expression :class :op :args)
@@ -66,6 +92,30 @@
 
 (defmethod evaluate-numeric-expr ::NumExpr [expr var-map numeric-vals]
   (apply (:op expr) (map #(evaluate-numeric-expr % var-map numeric-vals) (:args expr))))
+
+(defmethod ground-and-simplify-numeric-expr   ::NumExpr [expr var-map constant-numeric-fns numeric-vals]
+  (let [op (:op expr)
+	args (map #(ground-and-simplify-numeric-expr % var-map constant-numeric-fns numeric-vals) (:args expr))]
+;    (println "\nGO\n" (:args expr) "\n\n\n" args "\n\n")
+    (if (every? #(isa? (:class %) ::NumConst) args)
+        (make-numeric-constant (apply op (map :constant args)))
+      (make-numeric-expression op args))))
+
+(defmethod extract-numeric-expr-form-and-diff ::NumExpr [expr] 
+  (let [op (:op expr)
+	args (:args expr)
+	[left right] args]
+;    (println "ARGS" args)
+    (assert-is (contains? #{+ -} op))
+    (assert-is (= 2 (count args)))
+    (assert-is (isa? (:class right) ::NumConst))
+    (let [[e diff] (extract-numeric-expr-form-and-diff left)]
+      [e (op diff (:constant right))])))
+
+(defmethod translate-numeric-expr-vars        ::NumExpr [expr var-map] 
+  (make-numeric-expression (:op expr) (map #(translate-numeric-expr-vars % var-map) (:args expr))))
+
+
 
 
 (defn parse-and-check-numeric-expression 
@@ -105,6 +155,17 @@
   ; Get nil (false) or a possibly-empty list of numeric constraints, where the :left is a single ::NumVar expression.
 
 
+; Idea: left - right = diff, diff is a number, left may be a var or form, right must be a form or constant .
+; This is the restricted form of numeric constraint allowed in hybrid-strips-hierarchies for now.
+(defstruct hybrid-strips-difference-constraint :pred :left :right :diff)
+(defn make-hybrid-strips-difference-constraint [pred left right diff]
+  (struct hybrid-strips-difference-constraint pred left right diff))
+
+(defmulti extract-difference-constraints (fn [constraint var-map constant-numeric-functions numeric-vals] (:class constraint)))
+
+;; Extract a set of difference constraints
+
+
 (derive ::NumConstraint ::Constraint)
 (defstruct hybrid-strips-numeric-constraint :class :pred :left :right)
 (defn make-numeric-constraint [pred left right]
@@ -123,6 +184,19 @@
       [(make-numeric-constraint (:pred constraint) (:left constraint) 
 	 (make-numeric-constant (evaluate-numeric-expr (:right constraint) var-map numeric-vals)))]
     (when (evaluate-constraint constraint var-map objects [discrete-atoms numeric-vals]) [])))
+
+
+(defmethod extract-difference-constraints ::NumConstraint 
+  [constraint var-map constant-numeric-functions numeric-vals] 
+  (let [{:keys [pred left right]} constraint
+	left  (ground-and-simplify-numeric-expr left var-map constant-numeric-functions numeric-vals)
+	right (ground-and-simplify-numeric-expr right var-map constant-numeric-functions numeric-vals)]
+    (assert-is (contains? #{::NumVar ::NumForm} (:class left)))
+    (apply make-hybrid-strips-difference-constraint 
+	   pred 
+	   left
+	   (extract-numeric-expr-form-and-diff right))))					
+
 
 
 
@@ -172,6 +246,10 @@
         (when-let [c (get-numeric-yield (first constraints) var-map objects [discrete-atoms numeric-vals])]
 	  (recur (next constraints) (into yield c)))
       yield)))
+
+(defmethod extract-difference-constraints ::ConjunctiveConstraint [constraint var-map constant-numeric-functions numeric-vals] 
+  (apply concat (map #(extract-difference-constraints % var-map constant-numeric-functions numeric-vals) (:constraints constraint))))
+
 
 
 (derive ::ForallConstraint ::Constraint)
@@ -346,6 +424,13 @@
 		  (make-assignment (check-hybrid-atom (nth a 1) numeric-functions discrete-vars)
 				   (parse-and-check-numeric-expression (nth a 2) discrete-vars numeric-vars numeric-functions))))))))
 	 
+
+(defn effected-predicates [effect]
+  (set (map first (concat (:adds effect) (:deletes effect)))))
+
+(defn effected-functions [effect]
+  (set (map first (map :form (:assignments effect)))))
+
 (deftest hybrid-effects
   (is
    (= ['#{[fee] [frob xv] [bar xv]} '{[fra] 17 [frax xv] 13 }]

@@ -73,12 +73,13 @@
 (derive ::HybridStripsPlanningDomain ::envs/PropositionalDomain)
 
 (defstruct hybrid-strips-planning-domain 
-  :class :name :discrete-types :numeric-types :predicates :numeric-functions :action-schemata :equality?)
+  :class :name :discrete-types :numeric-types :predicates :numeric-functions :action-schemata :equality?
+  :constant-predicates :constant-numeric-functions)
 
 (defn- make-hybrid-strips-planning-domain 
-  [name discrete-types numeric-types predicates numeric-functions action-schemata equality?]
+  [name discrete-types numeric-types predicates numeric-functions action-schemata equality? constant-predicates constant-functions]
   (struct hybrid-strips-planning-domain ::HybridStripsPlanningDomain
-	  name discrete-types numeric-types predicates numeric-functions action-schemata equality?))
+	  name discrete-types numeric-types predicates numeric-functions action-schemata equality? constant-predicates constant-functions))
 
 (defn- check-numeric-functions [numeric-functions discrete-type-map numeric-types]
   (let [tl (props/parse-typed-pddl-list numeric-functions)]
@@ -121,7 +122,17 @@
        predicates
        numeric-functions
        (into {} (map #(vector (util/safe-get % :name) %) action-schemata))
-       equality?))))
+       equality?
+       (util/difference (util/keyset predicates)
+	 (apply util/union 
+	   (for [as action-schemata]
+	     (hybrid/effected-predicates (:effect as)))))
+       (util/difference (util/keyset numeric-functions)
+	 (apply util/union
+	   (for [as action-schemata]
+	     (hybrid/effected-functions (:effect as)))))
+
+       ))))
  
 
 
@@ -152,27 +163,12 @@
 
 ;; Actions and action space
 
-; Constraints
-
-(derive ::ConstraintCondition ::envs/Condition)
-(defstruct constraint-condition :class :constraint :objects :var-map)
-
-(defn make-constraint-condition [constraint objects var-map] 
-  (struct constraint-condition ::ConstraintCondition constraint objects var-map))
-
-(defmethod envs/satisfies-condition? ::ConstraintCondition [s c]
- ; (println (:constraint c) (:var-map c) (:objects c))
-  (evaluate-constraint (:constraint c) (:var-map c) (:objects c) s))
-
-(defmethod envs/consistent-condition? ::ConstraintCondition [condition]
-  (throw (UnsupportedOperationException.)))
-
 
 ; Instantiated actions
 
 ;(defstruct hybrid-strips-action :schema :var-map)
 
-(defn- hybrid-strips-action->action [schema var-map action-space]
+(defn hybrid-strips-action->action [schema var-map action-space]
 ;  (println var-map)
   (let [effect (util/safe-get schema :effect)
 	cost-expr (util/safe-get schema :cost-expr)]
@@ -181,7 +177,7 @@
      (fn [state] 
        [(execute-effect effect var-map state)
 	(- (evaluate-numeric-expr cost-expr var-map (second state)))])
-     (make-constraint-condition (util/safe-get schema :precondition) (util/safe-get action-space :objects) var-map))))
+     (envs/make-constraint-condition (util/safe-get schema :precondition) (util/safe-get action-space :objects) var-map))))
 
 (defn get-hs-action 
   ([instance full-name]
@@ -430,7 +426,7 @@
 
 (defmethod envs/get-goal          ::HybridStripsPlanningInstance [instance]
 ;  (println (:goal-atoms instance))
-  (make-constraint-condition
+  (envs/make-constraint-condition
    (make-conjunctive-constraint
     (map #(make-discrete-pos-constraint %) (:goal-atoms instance)))
    nil 

@@ -233,7 +233,7 @@
 	       (next args) (next vars))))))
 
 ;; pulls all ***constant*** constraints from refinement, not just first action? 
-(defn extract-preconditions [var-map action-inst hla-map] "Returns [pos neg]"
+(defn- extract-preconditions [var-map action-inst hla-map] "Returns [pos neg]"
   (let [[act-name & args] action-inst
 	hla (util/safe-get hla-map act-name)
 	trans-var-map (translate-var-map hla args var-map)

@@ -1,5 +1,6 @@
 (ns edu.berkeley.ai.angelic.hybrid-dnf-simple-valuations
   (:use [edu.berkeley.ai.angelic :as angelic])
+  (:import [java.util HashMap])
   (:require [edu.berkeley.ai [util :as util] [envs :as envs]]
             [edu.berkeley.ai.util [propositions :as props] [hybrid :as hybrid]]
 	    ))
@@ -52,7 +53,13 @@
   (throw (UnsupportedOperationException.)))
 
 (defmethod valuation->pred-maps   ::HybridDNFSimpleValuation [val]
-  (throw (UnsupportedOperationException.)))
+  (for [clause (util/safe-get val :clauses)]
+    (let [true-map (HashMap.) poss-map (HashMap.)]
+      (doseq [[#^clojure.lang.APersistentVector pred stat] (util/safe-get clause :conj)]
+	(let [#^HashMap m (if (= stat :true) true-map poss-map)
+	      pred-name (.get pred 0)]
+	  (.put m pred-name (cons pred (.get m pred-name)))))
+      [true-map poss-map])));)
 
 
 (comment 
