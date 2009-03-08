@@ -375,7 +375,7 @@
 
 (derive ::HybridStripsPlanningInstance ::envs/PropositionalEnvironment)
 (defstruct hybrid-strips-planning-instance 
-  :class :name :domain :objects :init-atoms :init-fns :goal-atoms :fluent-atoms :state-space :action-space)
+  :class :name :domain :objects :init-atoms :init-fns :goal-atoms :fluent-atoms :state-space :action-space :constant-numeric-vals)
   
 (defn- get-instantiations [thing-map objects]
   (for [[n types] thing-map,
@@ -387,7 +387,7 @@
      (make-hybrid-strips-planning-instance name domain objects init-atoms init-fns goal-atoms str nil))
   ([name domain objects init-atoms init-fns goal-atoms state-str-fn discrete-grid-size]
  ;    (println objects init-atoms init-fns goal-atoms)
-     (let [{:keys [discrete-types numeric-types predicates numeric-functions action-schemata equality?]} domain
+     (let [{:keys [discrete-types numeric-types predicates numeric-functions action-schemata equality? constant-numeric-functions]} domain
 	   discrete-type-map (into {} (map #(vector % nil) discrete-types))
 	   objects (props/check-objects discrete-type-map objects)
 	   object-type-map (into {} (for [[t os] objects, o os] [o t]))
@@ -408,7 +408,9 @@
 	 (set (map #(check-hybrid-atom % predicates object-type-map) goal-atoms))
 	 all-atoms
 	 (make-hybrid-state-space all-atoms (util/keyset init-fns) state-str-fn)
-	 (make-hybrid-action-space discrete-types objects action-schemata discrete-grid-size)))))
+	 (make-hybrid-action-space discrete-types objects action-schemata discrete-grid-size)
+	 (into {} (filter #(contains? constant-numeric-functions (first (key %))) init-fns))
+	 ))))
 
 
 

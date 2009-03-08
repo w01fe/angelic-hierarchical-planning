@@ -43,7 +43,7 @@
 
 
 (comment 
-  (make-road-trip-strips-env [['a 3 2] ['b 0 0]] [[a b 2]] 'a 'b 1 4 1)
+  (make-road-trip-strips-env [['a 3 2] ['b 0 0]] '[[a b 2]] 'a 'b 1 4 1)
 
 (let [e (make-road-trip-strips-env [['a 3 2] ['b 0 0]] '[[a b 2]] 'a 'b 1 4 1)
         as (get-action-space e)]

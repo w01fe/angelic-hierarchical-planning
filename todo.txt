@@ -1,3 +1,6 @@
+TODO: Primitive should pass precondition to NCSTRIPS
+
+
 Need: numeric
  - hierarchy
  - valuations

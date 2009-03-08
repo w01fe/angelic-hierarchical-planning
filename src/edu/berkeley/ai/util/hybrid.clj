@@ -31,13 +31,13 @@
 
 (defmulti ground-and-simplify-numeric-expr (fn [expr var-map constant-numeric-fns numeric-vals] (:class expr)))
 (defmulti extract-numeric-expr-form-and-diff (fn [expr] (:class expr)))  
-(defmulti translate-numeric-expr-vars (fn [expr var-map] (:class expr))) 
+;(defmulti translate-numeric-expr-vars (fn [expr var-map] (:class expr))) 
 
 (defmethod ground-and-simplify-numeric-expr   ::Num [expr var-map constant-numeric-fns numeric-vals] expr)
 
 (defmethod extract-numeric-expr-form-and-diff ::Num [expr]         (throw (UnsupportedOperationException.)))
 
-(defmethod translate-numeric-expr-vars        ::Num [expr var-map] expr) 
+;(defmethod translate-numeric-expr-vars        ::Num [expr var-map] expr) 
 
 
 
@@ -59,8 +59,8 @@
 (defmethod evaluate-numeric-expr ::NumVar [expr var-map numeric-vals]
   (safe-get var-map (:var expr)))
 
-(defmethod translate-numeric-expr-vars        ::NumVar [expr var-map] 
-  (make-numeric-var (safe-get var-map (:var expr)))) 
+;(defmethod translate-numeric-expr-vars        ::NumVar [expr var-map] 
+;  (make-numeric-var (safe-get var-map (:var expr)))) 
 
 
 
@@ -112,8 +112,8 @@
     (let [[e diff] (extract-numeric-expr-form-and-diff left)]
       [e (op diff (:constant right))])))
 
-(defmethod translate-numeric-expr-vars        ::NumExpr [expr var-map] 
-  (make-numeric-expression (:op expr) (map #(translate-numeric-expr-vars % var-map) (:args expr))))
+;(defmethod translate-numeric-expr-vars        ::NumExpr [expr var-map] 
+;  (make-numeric-expression (:op expr) (map #(translate-numeric-expr-vars % var-map) (:args expr))))
 
 
 

@@ -4,7 +4,7 @@
   (:require [edu.berkeley.ai.util :as util] 
             [edu.berkeley.ai.util [propositions :as props] [hybrid :as hybrid]]
             [edu.berkeley.ai.domains.hybrid-strips :as hs]
-            [edu.berkeley.ai.angelic.dnf-simple-valuations :as dsv]
+            [edu.berkeley.ai.angelic.hybrid-dnf-simple-valuations :as hdsv]
 	    [edu.berkeley.ai.search.smart-csps :as smart-csps])
   )
 
@@ -55,6 +55,8 @@
 
 (derive ::HybridNCStripsDescription :edu.berkeley.ai.angelic/PropositionalDescription)
 
+(defmethod instantiate-description-schema ::HybridNCStripsDescriptionSchema [desc instance]
+  desc) ;;TODO
 
 (comment
 

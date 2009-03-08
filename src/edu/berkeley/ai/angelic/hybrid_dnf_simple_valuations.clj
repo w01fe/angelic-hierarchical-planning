@@ -42,6 +42,55 @@
   false)
 
 
+;; Hierarchical preconditions for use with this sort of valuation
+;(derive ::HybridHierarchicalPrecondition ::envs/Conddition
+(defstruct hybrid-hierarchical-precondition :pos :neg :var-const :var-form :form-form :form-const)
+
+(defn make-hybrid-hierarchical-precondition [pos neg var-const var-form form-form form-const]
+  (struct hybrid-hierarchical-precondition pos neg var-const var-form form-form form-const))
+
+(def *true-hhp* (make-hybrid-hierarchical-precondition nil nil nil nil nil nil))
+
+(defn conjoin-hybrid-hierarchical-preconditions [h1 h2]
+  (cond (= h1 *true-hhp*) h2
+	(= h2 *true-hhp*) h1
+	:else             (merge-with concat h1 h2)))
+
+(let [types 
+      [[::hybrid/NumVar ::hybrid/NumConst]
+       [::hybrid/NumVar ::hybrid/NumForm]
+       [::hybrid/NumForm ::hybrid/NumForm]
+       [::hybrid/NumForm ::hybrid/NumConst]]]
+  (defn extract-hybrid-hierarchical-precondition [pos neg num var-map constant-numeric-functions numeric-vals]
+    (let [diffs (hybrid/extract-difference-constraints num var-map constant-numeric-functions numeric-vals)
+	  cdiffs (util/group-by #(vector (:class (:left %)) (:class (:right %))) diffs)]
+      (util/assert-is (empty? (util/difference-coll (util/keyset types) types)))
+      (apply make-hybrid-hierarchical-precondition 
+	     (map #(props/simplify-atom var-map %) pos)
+	     (map #(props/simplify-atom var-map %) neg)
+	     (map cdiffs types)))))
+
+;; TODO: change to dish out
+(defn split-and-var-translate-hhp [con var-pos-map expansion-len]
+  (let [{:keys [pos neg var-form form-form form-const]} con
+	ret (vec (cons (make-hybrid-hierarchical-precondition 
+			pos neg nil nil form-form form-const) 
+		       (repeat (dec expansion-len) *true-hhp*)))]
+    (reduce (fn [ret vf]
+	      (let [var (util/safe-get vf :var)
+		    [ind nv] (util/safe-get var-pos-map var)]
+		(assoc ret ind
+		       (util/assoc-cons (nth ret ind)
+			  :var-form (hybrid/make-numeric-var nv)))))
+	    var-form)))
+
+
+(defn restrict-var-map [val con var-map]
+  "Perform inference the opposite way of restrict-valuation."
+  ;; TODO!!
+  )
+
+
 ;; TODO!!
 (defmethod restrict-valuation       [::HybridDNFSimpleValuation :edu.berkeley.ai.envs/ConjunctiveCondition] [val con]
   (throw (UnsupportedOperationException.))) 
