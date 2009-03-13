@@ -212,8 +212,9 @@
 	  (let [#^com.bluemarsh.graphmaker.core.util.FibonacciHeap$Node n n] 
 		(< cost (.getKey n))) 
 		(let [#^com.bluemarsh.graphmaker.core.util.FibonacciHeap$Node n n]
-				 (do (.decreaseKey heap n cost)        :decreased))
-	  true                 :ignored)))
+				 (do (.decreaseKey heap n item cost)        :decreased))
+	  true                 (do ;(println "\n\n" (edu.berkeley.ai.search/node-str item) (:state item) cost "\n" (edu.berkeley.ai.search/node-str (.getData n)) (:state (.getData n)) (.getKey n) ) 
+				   :ignored))))
 
 (defmethod pq-remove-min! ::GraphPriorityQueue [pq]
   (let [#^HashMap m (:map pq) 
@@ -314,7 +315,7 @@
   "Add or decrease key for item as appropriate.  Returns :added, :decreased, or :ignored"
   (let [#^com.bluemarsh.graphmaker.core.util.FibonacciHeap$Node n (.get m item)]
     (cond (nil? n)             (do (.put m item (.insert pq item cost)) :added)
-	  (< cost (.getKey n)) (do (.decreaseKey pq n cost)        :decreased)
+	  (< cost (.getKey n)) (do (.decreaseKey pq n item cost)        :decreased)
 	  true                 :ignored)))
 
 (defn fancy-pq-remove! [[#^HashMap m #^FibonacciHeap pq] item]
@@ -373,7 +374,7 @@
 	#^FibonacciHeap pq (:heap fpq)
 	#^com.bluemarsh.graphmaker.core.util.FibonacciHeap$Node n (.get m item)]
     (cond (nil? n)             (do (.put m item (.insert pq item cost)) :added)
-	  (< cost (.getKey n)) (do (.decreaseKey pq n cost)        :decreased)
+	  (< cost (.getKey n)) (do (.decreaseKey pq n item cost)        :decreased)
 	  true                 :ignored)))
 
 (defmethod pq-remove-min! ::GraphPriorityQueue [fpq]

@@ -131,8 +131,8 @@ public class FibonacciHeap {
      * @exception  IllegalArgumentException
      *             if k is larger than x.key value.
      */
-    public void decreaseKey(Node x, double k) {
-        decreaseKey(x, k, false);
+    public void decreaseKey(Node x, Object newData, double k) {
+        decreaseKey(x, newData, k, false);
     }
 
     /**
@@ -143,11 +143,12 @@ public class FibonacciHeap {
      * @param  k       new key value for node x.
      * @param  delete  true if deleting node (in which case, k is ignored).
      */
-    private void decreaseKey(Node x, double k, boolean delete) {
+    private void decreaseKey(Node x, Object newData, double k, boolean delete) {
         if (!delete && k > x.key) {
             throw new IllegalArgumentException("cannot increase key value");
         }
         x.key = k;
+		x.data = newData;
         Node y = x.parent;
         if (y != null && (delete || k < y.key)) {
             y.cut(x, min);
@@ -168,7 +169,7 @@ public class FibonacciHeap {
      */
     public void delete(Node x) {
         // make x as small as possible
-        decreaseKey(x, 0, true);
+        decreaseKey(x, x.data, 0, true);
         // remove the smallest, which decreases n also
         removeMin();
     }
@@ -355,6 +356,7 @@ public class FibonacciHeap {
         }
 
 		public double getKey() {return key;}
+		public Object getData() {return data;}
 
         /**
          * Performs a cascading cut operation. Cuts this from its parent
