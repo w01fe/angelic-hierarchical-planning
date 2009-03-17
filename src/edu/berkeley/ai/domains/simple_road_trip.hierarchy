@@ -1,0 +1,17 @@
+;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
+;;; 4 Op-blocks world
+;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
+
+(define (hierarchy road-trip)
+  (:type :hybrid-strips-hierarchy)
+  (:hla act
+       :parameters   (?cx - loc)
+       :precondition (at ?cx)
+       :refinement   (:expansion ())    
+       :refinement   (:parameters (?dx - loc ?g - gas)
+		      :precondition (road-between ?cx ?dx)
+		      :expansion ((refuel ?cx ?g) (drive ?cx ?dx) (act ?dx)))    
+       :optimistic   (:opt 0)
+       :pessimistic  (:pess))
+   )
+

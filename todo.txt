@@ -1,4 +1,14 @@
-TODO: Primitive should pass precondition to NCSTRIPS
+experiments
+
+Simplified road-trip
+
+PDDL 2.1, approximate cont. planning paper, relation to our approach.
+
+Find domination relations.
+
+set-valued variables in HLA
+graph and state abstraction and progression-free planning
+Domains other than WW
 
 
 Need: numeric
@@ -6,103 +16,6 @@ Need: numeric
  - valuations
  - descriptions
 
-- Question: all intervals, or leave in constraints?   Correlations
-  would be quite nice.
-
-- Main difference in hierarchy: numeric params can be intervals 
-  ( also for primitives in these hierarchies.)
-
-- Issue with split points:
-  - Numeric fn vals become intervals
-  - Split points become intervals
-  - Numeric fn vals become intervals on expressions
-  - ........
-  - (or, regions become polytopes, set of constraints, rather than set
-     of intervals. )
-   - With ordinary bisection, ... 
-      - this does not really come up except with pessimistic descriptions?
-  
-; Think: progress situation where block A, width 2, has center [1,
-  3] on B of width 4.  Put down C (width 1) on block B.  
-
-Split DNf into two clauses:
-
-Both: A on B, C on B.
-1: A left of C:    A in [1,2], C in [A+1.5, 3.5]
-2. A right of C: A in [2, 3], C in [A-1.5, 3.5]
-
-Or, if you like, A in [1,2], C in [2.5, 3.5], A + 1.5 < C.
-
-Now, put down D (with .5) on block B .......
-Still get set of binary inequalities, in fact, always
-of form 0 <= A - 1 <= C - 2.5 <= d - 3.25 <= .5 
-
-These can always be checked for feasibility in constant time.
-
-Moreover, reward can be sum of expressions ...
-  but must refer to block positions at particular points in time.
-  i.e., must maintain constraints as well.
-
-Final output of plan will essentially be set of LPs ? (equivalent to
-ILP, more or less -- better or worse?).  
-
-(for single plan, entire problem is not ILP -- PSPACE...)
-
-
-Hmmm.
-
-This may even happen when split points are not intervals? ?? 
-Then, things may be even harder (assuming split points capture all
-discrete behavior.).
-
-Lets say we try to do with pure split points. 
-
-A on B, center in [1, 3].
-Put down C on B, width 1.  
-Initial interval: [.5, 3.5].  Get optimistic cost, no pessimistic?
-Split to [.5 2], [2 3.5].  Get Optimistic, pessimistic must deal with
-overlap.  Can store constraint C + 1.5 < B, OR choose arbitrary split:
-C in [.5, 1], B in [1.3] (i.e.).  Ideally, would depend on future?
-
-Reward here must be a single number.  (?).  Or, we're back in ILP land
-(?).
-
-Split points can stay intervals.  
-
-Simplest version: 
-  No split points.  Only intervals.  Etc.  Do this first.
-
-Even better: do everything in terms of abstract "polytope" objects.
-Operations:
- - Intersect
- - Union (maybe -- won't preserve convexity)
- - ??? (operations that provide inner and outer bound, given prec +
- eff.  
-
-
-
-; Can probably identify feasibility by repeated projection in roughly
-  linear time.  OR, never, if feasible region is a single
-  point... leave this to the experts.
-
-If nonlinear, all of this goes out the window? 
-
-
-Why ??
-
-
-
-
-; TODO: check on testing feasibility of linear program 
-  - same as solving system of equations in constraints-vars unknowns?  n^2.5-3?
-
-; TODO: think about complextiy of hybrid-blocks. 
-  - Hypothesis:
-    - LP (poly) iff all fully feasible intervals for putdown specified
-          ; (X left of Y)  n^4.5.
-    - NP complete otherwise (rational block sizes).
-
-deal with 0-cost actions ???  Seems not a problem in current domains/hierarchies.
 
 ; prune inconsistent intervals...
 
@@ -112,6 +25,10 @@ deal with 0-cost actions ???  Seems not a problem in current domains/hierarchies
 ;TODO: intelligently figure out split points in terms of preconditions
  of future actions!!!!!  ! !! !!!
 
+  - On this note, see notes in hybrid_dnf_simple_Valuations;
+    even with simple DTP scheme, without split points, can never pack
+    blocks tightly.  (Picking pess interval depends on future).  
+  
 
 ------------------------------------
 From earlier meeting
@@ -141,20 +58,15 @@ Planning graph with HLAs (big state spaces)
 
 ------------------------------------
 
-What should we shoot for for journal paper?
- - Continuous
- - AADD
-....
 Stuart's view of continuous.
-smart bisection
 cell decomposition planners are angelic.
-freespace
 assembly or construction?  Where you can't separate the two problems.
-
-Email about domains.
 
 ------------------------------------
  
+Talks
+
+
 randomize refinement ordering ??
 
 longer term 

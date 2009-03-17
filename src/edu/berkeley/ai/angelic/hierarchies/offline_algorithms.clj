@@ -53,7 +53,6 @@
 ;			   (println "committing to " (search/node-str best-ref))
 ;			   (println "options were: " (map #(vector (search/node-str %) (search/reward-bounds %)) great-refs))
 ;			   (println)
-;			   (alts/clear-alt-graph-cache best-ref)
 			   (queues/pq-remove-all! pq)
 			   (queues/pq-add! pq best-ref (priority-fn best-ref)))
 		       (doseq [ref good-refs]

@@ -6,6 +6,9 @@
 	   )
  )
 
+; TODO: look at pattern/production matching, ala soar, instead?
+  ; Chapter 9 AIMA - benefit: incremental.
+
 ; TODO: all unary constraints should be resolved first, domains filtered? 
 ; TODO: order vars and constraints to put const first
 

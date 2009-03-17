@@ -85,13 +85,36 @@
 	    var-form)))
 
 
+; TODO: what if we have two constraints on a given variable.
+; Are we required to properly implement tightest transitive closure for pessimistic?
+; Not here, but below ...
+
+; Say x > y, x < z, y = [1, 3], z = [0, 2]
+; y = 3 is not achievable under any primitive refinement
+
+; Vars can say whatever they want (as long as you don't care about hierarchical preconditions ...)
+
 (defn restrict-var-map [val con var-map]
   "Perform inference the opposite way of restrict-valuation."
   ;; TODO!!
   )
 
 
-;; TODO!!
+
+;; TODO: here we are *required* to, at least for pessimistic, find transitive closure of constraints or some such.
+; This can require considering arbitrary numbers of state variables & constraints together?  
+; X > Y + 1 > Z + 2 > Q + 4 > R. R in [0,1].  These chains may pass through HLA vars.  
+; Constraints form a lattice?  Except there may be cycles with different diffs.  
+
+; --> Simple Temporal Problem !!!!
+; Set of STP intervals correct for optimistic
+; For pessimistic, need non-overlapping intervals (*every* state) 
+ ; idea: take upper-maximal and lower-maximal intervals?  This will make clause set grow exp'lly in general... 
+   ; otherwise, which is right?  fill up on gas, or buy no gas ??? 
+
+; Be sure to leave var constraints in there.  
+
+
 (defmethod restrict-valuation       [::HybridDNFSimpleValuation :edu.berkeley.ai.envs/ConjunctiveCondition] [val con]
   (throw (UnsupportedOperationException.))) 
   

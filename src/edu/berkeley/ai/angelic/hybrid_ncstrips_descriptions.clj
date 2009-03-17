@@ -52,11 +52,36 @@
 
 
 
+;; Here, challenges are:
+  ; Forall preconditions split clauses
+    ; conjunction of disjunctions.  
+    ; When a disjunction hits another disjunction (i.e., interval/unk), BOOM
+    ; When it hits a normal clause .... kills it or leaves it.  
+
+  ; Simple way: split for each combination of applicable forall clauses.
+  ; But this may be wasteful, when the yield always resolves true (or is domainted by another effect). 
+   ; How do we reduce splits ?????
+
+  ; After splits, get to do whole restrict_valuation game over again (STP).???????????????????
+
+
 
 (derive ::HybridNCStripsDescription :edu.berkeley.ai.angelic/PropositionalDescription)
 
 (defmethod instantiate-description-schema ::HybridNCStripsDescriptionSchema [desc instance]
   desc) ;;TODO
+
+(defmethod ground-description ::HybridNCStripsDescriptionSchema [schema var-map]
+  (throw (UnsupportedOperationException.)))
+
+(defmethod progress-optimistic [::hdsv/HybridDNFSimpleValuation ::HybridNCStripsDescription] [val desc]
+  (throw (UnsupportedOperationException.)))
+
+(defmethod progress-pessimistic [::hdsv/HybridDNFSimpleValuation ::HybridNCStripsDescription] [val desc]
+  (throw (UnsupportedOperationException.)))
+
+
+
 
 (comment
 
