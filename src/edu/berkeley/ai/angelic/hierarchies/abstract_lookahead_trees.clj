@@ -81,25 +81,37 @@
 (defn do-restrict-valuation-alt [x y]
   (restrict-valuation x y))
 
+
+(def *op-counter* (util/sref 0))
+(def *pp-counter* (util/sref 0))
+
+(defn reset-op-counter [] (util/sref-set! *op-counter* 0))
+(defn reset-pp-counter [] (util/sref-set! *pp-counter* 0))
+
+(defn reset-progression-counters [] (reset-op-counter) (reset-pp-counter))
+
+
 (defn pessimistic-valuation [node]
 ;  (println "lb")
   (let [s (:pessimistic-valuation ^node)]
     (or (util/sref-get s)
 	(util/sref-set! s 
-	  (progress-pessimistic 
-	   (do-restrict-valuation-alt (pessimistic-valuation (:previous node)) 
-			       (hla-hierarchical-preconditions (:hla node)))
-	   (hla-pessimistic-description (:hla node)))))))
+	  (do (util/sref-up! *pp-counter* inc)
+	      (progress-pessimistic 
+	       (do-restrict-valuation-alt (pessimistic-valuation (:previous node)) 
+					  (hla-hierarchical-preconditions (:hla node)))
+	       (hla-pessimistic-description (:hla node))))))))
 
 
 (defn optimistic-valuation [node]
   (let [s (:optimistic-valuation ^node)]
     (or (util/sref-get s)
 	(util/sref-set! s 
-	  (progress-optimistic 
-	   (do-restrict-valuation-alt (optimistic-valuation (:previous node))
-			       (hla-hierarchical-preconditions (:hla node)))
-	   (hla-optimistic-description (:hla node)))))))
+	  (do (util/sref-up! *op-counter* inc)
+	      (progress-optimistic 
+	       (do-restrict-valuation-alt (optimistic-valuation (:previous node))
+					  (hla-hierarchical-preconditions (:hla node)))
+	       (hla-optimistic-description (:hla node))))))))
 
 
 ;; Choice functions, used by search algorithms
