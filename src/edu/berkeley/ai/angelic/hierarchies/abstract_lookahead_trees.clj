@@ -289,7 +289,7 @@
 
 (defmethod search/immediate-refinements ::ALTPlanNode [node] 
   (util/timeout)
-  (util/sref-set! *ref-counter* (inc (util/sref-get *ref-counter*)))
+  (util/sref-up! search/*ref-counter* inc)
   (let [alt         (util/safe-get node :alt)
 	graph?      (util/safe-get alt :graph?)
 	full-graph? (= graph? :full)

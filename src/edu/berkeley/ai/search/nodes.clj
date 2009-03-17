@@ -15,7 +15,13 @@
 
 (defmulti #^{:doc "Analogue of g-cost, if available"} reward-so-far :class)
 
-(defmulti #^{:doc "(pref. lazy) seq of node refinements; should begin with primitive."} immediate-refinements :class)
+
+(def *ref-counter* (util/sref 0))
+
+(defn reset-ref-counter [] 
+  (util/sref-set! *ref-counter* 0))
+
+(defmulti #^{:doc "(pref. lazy) seq of node refinements; should begin with primitive.  Should increment ref-counter."} immediate-refinements :class)
 
 (defmulti #^{:doc "If this node represents a single plan, return [it reward]; otherwise, return nil"} primitive-refinement :class)
 

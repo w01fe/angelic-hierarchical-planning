@@ -1,4 +1,17 @@
+Missing things in experiments
+ - Support for old graph
+ - Support for singleton-only graph
+
 experiments
+ - Offline
+    - Incl. various offline and online 
+ - Online
+
+ - Things to measure
+   - time
+   - memory (?)
+   - number of refinements/expansions
+   - number of next-states/progressions 
 
 Simplified road-trip
 

@@ -62,6 +62,7 @@
 
 (defmethod immediate-refinements ::StateSpaceNode [node] 
   (util/timeout)
+  (util/sref-up! *ref-counter* inc)
   (let [search-space (:search-space node)
 	state (:state node)]
     (map #(make-state-space-node search-space %) 

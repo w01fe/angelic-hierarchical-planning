@@ -54,12 +54,6 @@
    env))
 
 
-(def *ref-counter* (util/sref 0))
-
-(defn reset-ref-counter [] 
-  (util/sref-set! *ref-counter* 0))
-
-
 (comment ; Not sure if this will be needed later. ..
 
   ; Search space for use with action hierarchies
