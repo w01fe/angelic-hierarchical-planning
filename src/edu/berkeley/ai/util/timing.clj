@@ -139,6 +139,20 @@
 		   (do (kill-future pool# future#) :memout))))))))))
 
 
+;; When we're actually timing, we need to warmup first.
+
+(defmacro warm-up "Run expr until at least min-secs have elapsed, default 10." 
+  ([expr] `(warm-up ~expr 10))
+  ([expr min-secs] 
+     `(let [c# (counter-from 0)]
+	(time-limit (while true (timeout) (c#) ~expr) ~min-secs)
+	(dec (c#)))))
+
+(defmacro with-warm-up [expr min-secs time-macro & macro-args]
+  `(do (warm-up ~expr ~min-secs)
+       (~time-macro ~expr ~@macro-args)))
+
+
 (defn interrupt-all-threads []
   (doseq [#^Thread thread (.keySet (Thread/getAllStackTraces))]
     (.interrupt thread)))
