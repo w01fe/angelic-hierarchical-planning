@@ -201,23 +201,32 @@
     [(seq pl) (seq nl)]))
 ;      [(map grounder pos) (map grounder neg)])))
 
+; We must be careful here!! Old version of forall had a bug ...
+;Suppose we have (+/- (P X), - (Q X))
+;Execute (forall x (P X) (Q X))
+;Correct output: (- (P X), - (Q X)), (+ (P X), + (Q X))
+;Current output: (+/- (P X), + (Q X))
+;  - misses states, AND adds spurious states 
+; Unlike in refinement generation, here we care about possible vs. necessary values.
+; Solution: for now, require constant preconditions for foralls -- seems not much of a restriction.
+
+
 ; Make a function that takes pred-maps as arguments and returns grounded [pos neg]
 (defn- ground-ncstrips-csp [[args csp [pos neg]] var-map]
   (if (smart-csps/smart-csp-const? csp)
       (let [results (get-csp-results csp pos neg var-map [[:dummy :dummy]])]
 	(fn [pred-maps] results))
-    (fn [pred-maps] (get-csp-results csp pos neg var-map pred-maps))))
+    (throw (UnsupportedOperationException. "Forall conditions must be constant."))))
+;    (fn [pred-maps] (get-csp-results csp pos neg var-map pred-maps))))
 
 (defn- ground-ncstrips-cost [forall cost-fn var-map hla-vars]
   (if (not forall)
       (let [result (apply cost-fn (map #(util/safe-get var-map (second %)) hla-vars))]
-	(fn [pred-maps] result))
+	(fn [pred-maps combiner] result))
     (let [early-args (map #(util/safe-get var-map (second %)) hla-vars)
 	  [args csp _] forall]
-;      (println csp var-map hla-vars)
-      (fn [pred-maps]
-;	(println pred-maps)
-        (reduce max  ;; TODO???
+      (fn [pred-maps combiner]
+        (reduce combiner  
 	  (for [combo (smart-csps/get-smart-csp-solutions csp var-map pred-maps)]
 	    (let [final-map (merge combo var-map)]
 	      (apply cost-fn (concat early-args (map #(util/safe-get final-map (second %)) args))))))))))
@@ -257,7 +266,7 @@
 ;Note that right now, pos-del + add --> add, del + pos-add --> pos-add, del + pos-del --> del.
 ; Right now, undefined if certain + uncertain effects combined (except delete + pos-add).
 ; TODO: enforce constraints?  
-(defn- progress-effect-clause [effect clause]
+(defn- progress-effect-clause [effect clause combiner]
 ;  (println "Progress " effect clause)
   (let [pos-pre (util/safe-get effect :pos-preconditions)
 	neg-pre (util/safe-get effect :neg-preconditions)]
@@ -282,7 +291,7 @@
 	   [(into after-dels
 	      (concat (map #(vector % :true) adds)
 		      (map #(vector % :unknown) unks)))
-	     (- ((util/safe-get effect :cost-fn) pred-maps))]))))))
+	     (- ((util/safe-get effect :cost-fn) pred-maps combiner))]))))))
 
 (defn- progress-ncstrips [val desc combiner]
 ;  (println "proggy " val combiner)
@@ -291,7 +300,7 @@
 	 (filter identity
 	  (for [clause (:dnf val)
 		effect (:effects desc)]
-	    (progress-effect-clause effect clause))))]
+	    (progress-effect-clause effect clause combiner))))]
 ;    (prn results)
 ;    (println val desc combiner)
     (if results  
@@ -309,6 +318,8 @@
   (progress-ncstrips val desc min))
 
 
+;; Want to regress descriptions
+ ; Issue: interpretation of foralls is tricky, due to ordering of effects.  (Can't interpret as simple formulae).
 
 
 

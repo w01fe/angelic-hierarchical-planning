@@ -348,6 +348,17 @@
     
 
 
+;;; For ICAPS07 algorithm, and perhaps other uses
+
+(defn decompose-plan
+  "Take a node corresponding to a pessimistically succeeding plan, and return a 
+   set of fresh nodes corresponding to the subproblem of finding a primitive refinement of that
+   particular action."
+  [node]
+  (util/assert-is (> (search/lower-reward-bound node) Double/NEGATIVE_INFINITY))
+  )
+
+
 
 
 (comment
@@ -428,7 +439,7 @@
 
 (util/deftest alt-down-warehouse
  (util/testing "flat-strips hierarchy"
-   (doseq [simplifier (butlast *simplifiers*)
+   (doseq [simplifier [(second *simplifiers*)]
 	   maker [strips-hierarchies/get-flat-strips-hierarchy 
 		  #(get-hierarchy warehouse/*warehouse-hierarchy-unguided* %)]]
      (get-and-check-sol *strips-wh-sols* (maker (simplifier *strips-wh*))))))
