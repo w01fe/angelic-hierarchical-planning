@@ -266,6 +266,37 @@
 ;Note that right now, pos-del + add --> add, del + pos-add --> pos-add, del + pos-del --> del.
 ; Right now, undefined if certain + uncertain effects combined (except delete + pos-add).
 ; TODO: enforce constraints?  
+
+
+; Current algorithm:
+ ; Apply preconditions
+ ; Apply deletes
+ ; Determine applicable possible-effects
+ ; Apply adds 
+ ; Apply possible-effects.
+
+; Current matrix:
+;    d  a pd pa
+;--------------
+;d | d  a  d pb
+;a |    a  I  I
+;pd|      pd pb  
+;pa|         pa
+
+; New algorithm:
+ ; Apply preconditions
+ ; Apply deletes
+ ; Apply adds
+ ; Apply possible effects
+;    d  a pd pa
+;--------------
+;d | d  a  d pb
+;a |    a pb  a
+;pd|      pd pb  
+;pa|         pa
+
+
+
 (defn- progress-effect-clause [effect clause combiner]
 ;  (println "Progress " effect clause)
   (let [pos-pre (util/safe-get effect :pos-preconditions)
@@ -277,21 +308,18 @@
 ;	(println more-pos-pre more-neg-pre)
 	(when (and (every? clause more-pos-pre)
 		   (every? #(not (= :true (clause %))) more-neg-pre))
-;	  (println "go")
 	  (let [all-pos-pre   (concat more-pos-pre pos-pre)
 		all-neg-pre   (concat more-neg-pre neg-pre)
-		clause        (into (reduce dissoc clause all-neg-pre) (map #(vector % :true) all-pos-pre))
+		after-pre        (into (reduce dissoc clause all-neg-pre) (map #(vector % :true) all-pos-pre))
 		[adds dels]   (apply map concat [(util/safe-get effect :adds) (util/safe-get effect :deletes)]
 				     (map #(% pred-maps) (util/safe-get effect :effect-fns)))
+	       	after-eff     (into (reduce dissoc after-pre dels) (map #(vector % :true) adds))
 		[padds pdels] (apply map concat [(util/safe-get effect :possible-adds) (util/safe-get effect :possible-deletes)]
 				      (map #(% pred-maps) (util/safe-get effect :possible-effect-fns)))
-		after-dels    (reduce dissoc clause dels)
- 		unks          (concat (filter #(not= :true (after-dels %)) padds)
-				      (filter #(= :true (after-dels %))    pdels))]
-	   [(into after-dels
-	      (concat (map #(vector % :true) adds)
-		      (map #(vector % :unknown) unks)))
-	     (- ((util/safe-get effect :cost-fn) pred-maps combiner))]))))))
+ 		unks          (concat (filter #(nil?    (after-eff %)) padds)
+				      (filter #(= :true (after-eff %)) pdels))]
+	   [(into after-eff (map #(vector % :unknown) unks))
+	    (- ((util/safe-get effect :cost-fn) pred-maps combiner))]))))))
 
 (defn- progress-ncstrips [val desc combiner]
 ;  (println "proggy " val combiner)
