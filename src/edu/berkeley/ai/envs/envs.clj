@@ -40,6 +40,12 @@
      [(conj act-seq action)
       (+ reward-so-far reward)]]))
 
+; Can't do this because of goal preprocessing. .. 
+(defn sub-environment "Make a new environment with changed initial state and/or goal.  This may be very DANGEROUS since instance may preprocess the goal in ways not taken into account here."
+  ([env new-init] (sub-environment env new-init (get-goal env)))
+  ([env new-init new-goal]
+     (make-environment new-init (get-state-space env) (get-action-space env) new-goal)))
+
 ;; Useful sanity check
 
 

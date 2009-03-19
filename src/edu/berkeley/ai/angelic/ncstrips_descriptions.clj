@@ -338,7 +338,7 @@
       (do ;(println "Warning: empty valuation being produced in progress-ncstrips") 
 	  *pessimal-valuation*))
 ))
-      
+(      
 (defmethod progress-optimistic [:edu.berkeley.ai.angelic.dnf-simple-valuations/DNFSimpleValuation ::NCStripsDescription] [val desc]
   (progress-ncstrips val desc max))
 
@@ -348,8 +348,75 @@
 
 ;; Want to regress descriptions
  ; Issue: interpretation of foralls is tricky, due to ordering of effects.  (Can't interpret as simple formulae).
+ ; Now, foralls are guaranteed to be constant, can forget that they exist. 
 
+; Progression is:
 
+; New algorithm:
+ ; Test preconditions
+ ; Apply preconditions
+ ; Apply deletes
+ ; Apply adds
+ ; Apply possible effects
+;    d  a pd pa
+;--------------
+;d | d  a  d pb
+;a |    a pb  a
+;pd|      pd pb  
+;pa|         pa
 
+; In regression, if all things were unique, would simply swap effects and preconditions,
+; add possible-effects corresponding to negated effects ....
 
+; + x --> pre x, poss-del x
+; Poss-add -> Poss-del.
 
+; Preconditions come from effects.
+  ; Adds supersede deletes
+  ; Then, opposite possibles cancel certains
+
+; Possible effects come from
+  ; Negated possible effects
+  ; Negated effects 
+  ; (just union???)
+
+; Effects are just preconditions  
+
+; How about multiple effects ????????
+ ; Would independent be correct?
+ ; Even if so, must split since new preconditions may not be disjoint ........
+ ; But right now, we don't actually care if preconditions are disjoint .  
+  
+;; For now, ignore costs.
+
+(defmethod invert-description ::NCStripsDescription [desc] 
+  (struct ncstrips-description ::NCStripsDescription
+   (doall
+    (for [effect (util/safe-get desc :effects)]
+      (let [pred-maps         :DUMMY
+	    [pos-pre neg-pre] (map set 
+  	                        (apply map concat [(util/safe-get effect :pos-preconditions)
+						 (util/safe-get effect :neg-preconditions)] 
+				     (map #(% pred-maps) (util/safe-get effect :precondition-fns))))
+	    [adds dels]       (map set
+				(apply map concat [(util/safe-get effect :adds) 
+						 (util/safe-get effect :deletes)]
+				     (map #(% pred-maps) (util/safe-get effect :effect-fns))))
+	    [padds pdels]     (map set 
+				(apply map concat [(util/safe-get effect :possible-adds) 
+						 (util/safe-get effect :possible-deletes)]
+				     (map #(% pred-maps) (util/safe-get effect :possible-effect-fns))))]
+	(make-ncstrips-effect 
+	 (util/difference adds pdels)
+	 (util/difference  dels adds padds)
+	 nil
+	 pos-pre
+	 neg-pre
+	 nil
+	 (util/union dels pdels)
+	 (util/union adds padds)
+	 nil
+	 (fn [pred-maps combiner]
+	   (cond (= combiner max) Double/NEGATIVE_INFINITY
+		 (= combiner min) Double/POSITIVE_INFINITY
+		 :else            (throw (IllegalArgumentException.))))))))))

@@ -5,9 +5,16 @@
 (defmulti progress-optimistic (fn [val desc] [(:class val) (:class desc)]))
 (defmulti progress-pessimistic (fn [val desc] [(:class val) (:class desc)]))
 
+(defmulti invert-description (fn [desc] (:class desc)))
+
 (defmulti regress-optimistic (fn [val desc] [(:class val) (:class desc)]))
 (defmulti regress-pessimistic (fn [val desc] [(:class val) (:class desc)]))
 
+(defmethod regress-optimistic :default [val desc]
+  (progress-optimistic val (invert-description desc)))
+
+(defmethod regress-pessimistic :default [val desc]
+  (progress-pessimistic val (invert-description desc)))
 
 
 ;; Explicit descriptions

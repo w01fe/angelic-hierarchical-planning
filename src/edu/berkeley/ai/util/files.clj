@@ -8,3 +8,5 @@
 (defn spit-object [f o]
   (.writeObject (ObjectOutputStream. (FileOutputStream. f)) o))
 
+(defn read-file [f]
+  (read-string (slurp f)))

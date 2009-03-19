@@ -415,8 +415,15 @@
      envs/*true-condition*
      false)))
 
-
-
+;; Used in decomposition
+; TODO: DANGEROUS
+(defn sub-environment-hla "Change the initial state and goal associated iwth this hierarchy.  This may be very dangerous since things like goal- predicates and descriptions will not be re-instantiated.  Can only be used safely when all references to the goal are in actions with pessimal pessimisitc descriptions, and actions with non-vacuous pessimistic descriptions never refine to such actions."
+  [hla new-init new-goal]
+  (assoc hla
+    :hierarchy 
+    (assoc (util/safe-get hla :hierarchy)
+      :problem-instance
+      (envs/sub-environment (util/safe-get-in hla [:hierarchy :problem-instance]) new-init new-goal))))
 
 
 

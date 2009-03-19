@@ -193,7 +193,7 @@
 	name ((:node-counter ^alt))]
     (.add #^HashSet (:live-set ^alt) name)
     (loop [actions initial-plan
-	   previous (make-alt-root-node alt (make-initial-valuation valuation-class env))]
+	   previous (make-alt-root-node alt (state->valuation valuation-class (get-initial-state env)))]
       (if (empty? actions)
           (make-alt-plan-node node-type alt name previous)
 	(recur (next actions)
@@ -350,13 +350,48 @@
 
 ;;; For ICAPS07 algorithm, and perhaps other uses
 
+(defn state->condition [state instance]
+  (let [all-atoms (util/to-set (util/safe-get instance :all-atoms))]
+    (envs/make-conjunctive-condition state (util/difference all-atoms state))))
+
+(defn extract-state-seq [plan state-seq]
+  (if (nil? (:previous plan))
+      state-seq
+    (recur (:previous plan)
+	   (cons 
+	    (extract-a-state 
+	     (sub-intersect-valuations 
+	      (pessimistic-valuation (:previous node))
+	      (restrict-valuation 
+	       (progress-pessimistic
+		(hla-pessimistic-description (:hla plan))
+		(state->valuation ::dsv/DNFSimpleValuation (first state-seq)))
+	       (hla-hierarchical-preconditions (:hla plan)))))						       
+	    state-seq))))    
+
 (defn decompose-plan
   "Take a node corresponding to a pessimistically succeeding plan, and return a 
-   set of fresh nodes corresponding to the subproblem of finding a primitive refinement of that
+   sequence of fresh nodes corresponding to the subproblem of finding a primitive refinement of that
    particular action."
   [node]
   (util/assert-is (> (search/lower-reward-bound node) Double/NEGATIVE_INFINITY))
-  )
+  (let [env       (hla-environment (:hla (:plan node)))
+	state-seq (extract-state-seq (:plan node) [(extract-a-state 
+						    (restrict-valuation 
+						     (node-pessimistic-valuation node)
+						     (envs/get-goal env)))])
+	alt       (util/safe-get node :alt)]
+    (util/assert-is (= (first state-seq) (envs/get-initial-state env)))
+    (util/assert-is (envs/satisfies-condition? (last state-seq) (envs/get-goal env)))
+    (map 
+     (fn [[s s2] a] 
+       (make-initial-alt-node 
+	(edu.berkeley.ai.angelic.hierarchies.strips-hierarchies/sub-environment-hla a s (state->condition s2))
+	(util/safe-get alt :ref-choice-fn)
+	(util/safe-get alt :cache?)
+	(util/safe-get alt :graph?)))
+     (partition 2 1 state-seq)
+     (rest (reverse (iterate-while :previous (:plan node)))))))
 
 
 

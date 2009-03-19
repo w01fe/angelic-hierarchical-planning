@@ -6,6 +6,62 @@
   )
   
 
+;;; Algorithm from ICAPS 07 paper, modulo Act simplification
+
+
+;; With decompose
+
+
+; Add decompose operation to ALTs.
+(defn hierarchical-forward-search "Node ref fn must be set properly to mimic ICAPS07 behavior"
+  ([node] (hierarchical-forward-search node #{}))
+  ([node blackset]
+   (let [pq  (queues/make-stack-pq)]
+    (queues/pq-add! pq node 0)
+    (loop []
+      (when-not (queues/pq-empty? pq)
+	(let [next          (queues/pq-remove-min! pq)
+	      succeeds-opt? (> (search/upper-reward-bound next) Double/NEGATIVE_INFINITY)]
+	  (if (not succeeds-opt?)
+	      (recur)
+	    (or (search/extract-a-solution next)
+		(let [succeeds-pess? (> (search/lower-reward-bound next) Double/NEGATIVE_INFINITY)
+		      key            (util/safe-get node :plan)] ;; TODO: specific to ALTs)]
+		  (if (and succeeds-pess? (not (contains? blackset key)))
+  		      (mapcat 
+		       #(hierarchical-forward-search % (conj blackset key (util/safe-get % :plan)))
+		       (alts/decompose-plan node))
+		    (do (doseq [ref (search/immediate-refinements next)]
+			  (queues/pq-add! pq ref 0))
+			(recur))))))))))))
+
+
+;; Also without decompose
+
+(defn simple-hierarchical-forward-search "Node ref fn must be set properly to mimic ICAPS07 behavior"
+  [node]
+  (let [pq  (queues/make-stack-pq)]
+    (queues/pq-add! pq node 0)
+    (loop []
+      (when-not (queues/pq-empty? pq)
+	(let [next          (queues/pq-remove-min! pq)
+	      succeeds-opt? (> (search/upper-reward-bound next) Double/NEGATIVE_INFINITY)]
+	  (if (not succeeds-opt?)
+	      (recur)
+	    (or (search/extract-a-solution next)
+		(let [succeeds-pess? (> (search/lower-reward-bound next) Double/NEGATIVE_INFINITY)
+		      next           (if succeeds-pess?
+				       (do (queues/pq-remove-all! pq)
+					   (search/reroot-at-node next))
+				       next)]
+		  (doseq [ref (search/immediate-refinements next)]
+		    (queues/pq-add! pq ref 0))
+		  (recur)))))))))
+
+
+
+;;; Algorithms from ICAPS 08 paper
+
 (defn aha-star-search  "AHA*.  Identical to A* up to tiebreaking.  Assumes integer costs."
   [node]
   (search/first-optimal-solution node (queues/make-tree-search-pq)  

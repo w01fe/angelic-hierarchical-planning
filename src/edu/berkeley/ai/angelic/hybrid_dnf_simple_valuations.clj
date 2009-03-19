@@ -24,8 +24,8 @@
 (def *reward-var* [(gensym "reward")]) ; Special dummy variable used to store reward
 
 
-(defmethod make-initial-valuation     ::HybridDNFSimpleValuation [type env]
-  (let [[discrete-atoms numeric-fns] (envs/get-initial-state env)]
+(defmethod state->valuation     ::HybridDNFSimpleValuation [type state]
+  (let [[discrete-atoms numeric-fns] state]
     (make-hybrid-dnf-simple-valuation 
      [(make-hybrid-dnf-clause
        (util/map-map #(vector % :true) discrete-atoms)

@@ -1,6 +1,6 @@
 (in-ns 'edu.berkeley.ai.angelic)
 
-(defmulti make-initial-valuation (fn [type env] type))
+(defmulti state->valuation (fn [type state] type))
 
 (defmulti get-valuation-lower-bound :class)
 (defmulti get-valuation-upper-bound :class)
@@ -16,9 +16,21 @@
 (defmulti #^{:doc "Get a (hopefully canonical) possibly implicit representation of the state set"}
           get-valuation-states :class)
 
+(defmulti #^{:doc "Get a state consistent with this valuation, or nil if none"}
+          extract-a-state :class)
+
+(defmulti #^{:doc "Intersect these valuations, keeping the reward part from the first."}
+          intersect-valuations (fn [v1 v2] [(:class v1) (:class v2)]))
+
+(defmulti #^{:doc "Like intersect-valuations, but returns a non-empty subset of the intersection as quickly as possible."}
+          sub-intersect-valuations (fn [v1 v2] [(:class v1) (:class v2)]))
+
+
 (defmethod get-valuation-states ::Valuation [val]
   (.keySet (explicit-valuation-map val)))
 
+(defmethod extract-a-state ::Valuation [val]
+  (first (keys (explicit-valuation-map val))))
 
 
 ;; Endpoint Valuations
@@ -92,8 +104,8 @@
 	       map))
 	   {} state-value-pairs)))
 
-(defmethod make-initial-valuation ::ExplicitValuation [type env]
-  (make-explicit-valuation [[(envs/get-initial-state env) 0]]))
+(defmethod state->valuation ::ExplicitValuation [type state]
+  (make-explicit-valuation [[state 0]]))
 
 (defmethod get-valuation-lower-bound ::ExplicitValuation [val]
   (if-let [v (vals (:state-map val))]

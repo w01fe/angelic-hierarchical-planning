@@ -23,8 +23,8 @@
 
 
   
-(defmethod make-initial-valuation     ::DNFSimpleValuation [type env]
-  (make-dnf-simple-valuation (list (util/map-map #(vector % :true) (envs/get-initial-state env))) 0))
+(defmethod state->valuation     ::DNFSimpleValuation [type state]
+  (make-dnf-simple-valuation (list (util/map-map #(vector % :true) state)) 0))
 
 (defmethod get-valuation-lower-bound ::DNFSimpleValuation [val] (:bound val))
 
@@ -72,6 +72,10 @@
 (defmethod get-valuation-states     ::DNFSimpleValuation [val]
   (:dnf val))
 
+(defmethod extract-a-state          ::DNFSimpleValuation [v]
+  (when-first [clause (:dnf v)]
+    (set (map key (filter (fn [p] (= (val p) :true)) clause)))))
+
 ; TODO: special case non-constraint case ?
 
 (defn- do-valuation->pred-maps [val]
@@ -87,3 +91,30 @@
 
 (defmethod valuation->pred-maps ::DNFSimpleValuation [val]
   (do-valuation->pred-maps val))
+
+
+(defn intersect-dnf-clauses [c1 c2]
+  (loop [ret c1 other (seq c2)]
+    (if-let [[atom tv] (first other)]
+        (if (= tv :unknown) 
+	    (recur ret (next other))
+	  (when (get c1 atom)
+	    (recur (assoc ret atom :true) (next other))))
+      (loop [ret ret other (seq c1)]
+	(if-let [[atom tv] (first other)]
+	    (if (get c2 atom) 
+	        (recur ret (next other))
+	      (when-not (= tv :true)
+		(recur (dissoc ret atom) (next other))))
+	  ret)))))
+
+
+(defmethod intersect-valuations [::DNFSimpleValuation ::DNFSimpleValuation] [v1 v2]
+  (make-dnf-simple-valuation 
+   (disj (set (for [c1 (:dnf v1) c2 (:dnf v2)] (intersect-dnf-clauses c1 c2))) nil)
+   (:bound v1)))
+
+(defmethod sub-intersect-valuations [::DNFSimpleValuation ::DNFSimpleValuation] [v1 v2]
+  (let [c (first (filter identity (for [c1 (:dnf v1) c2 (:dnf v2)] (intersect-dnf-clauses c1 c2))))]
+    (util/assert-is (identity c))
+    (make-dnf-simple-valuation #{c} (:bound v1))))
