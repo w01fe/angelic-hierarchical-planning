@@ -11,53 +11,74 @@
 
 ;; With decompose
 
+(defn concat-solutions [sols]
+  [(apply concat (map first sols))
+   (reduce + (map second sols))])
 
 ; Add decompose operation to ALTs.
-(defn hierarchical-forward-search "Node ref fn must be set properly to mimic ICAPS07 behavior"
+(defn hierarchical-forward-search "Node ref fn and graph must be set properly to mimic ICAPS07 behavior"
   ([node] (hierarchical-forward-search node #{}))
   ([node blackset]
-   (let [pq  (queues/make-stack-pq)]
-    (queues/pq-add! pq node 0)
-    (loop []
-      (when-not (queues/pq-empty? pq)
-	(let [next          (queues/pq-remove-min! pq)
-	      succeeds-opt? (> (search/upper-reward-bound next) Double/NEGATIVE_INFINITY)]
-	  (if (not succeeds-opt?)
-	      (recur)
-	    (or (search/extract-a-solution next)
-		(let [succeeds-pess? (> (search/lower-reward-bound next) Double/NEGATIVE_INFINITY)
-		      key            (util/safe-get node :plan)] ;; TODO: specific to ALTs)]
-		  (if (and succeeds-pess? (not (contains? blackset key)))
-  		      (mapcat 
-		       #(hierarchical-forward-search % (conj blackset key (util/safe-get % :plan)))
-		       (alts/decompose-plan node))
-		    (do (doseq [ref (search/immediate-refinements next)]
-			  (queues/pq-add! pq ref 0))
-			(recur))))))))))))
+   (some 
+    (fn [d]
+     (let [pq  (queues/make-stack-pq)]
+      (queues/pq-add! pq (assoc node :depth 0) 0)
+      (loop []
+	(when-not (queues/pq-empty? pq)
+	  (let [next          (queues/pq-remove-min! pq)
+		succeeds-opt? (> (search/upper-reward-bound next) Double/NEGATIVE_INFINITY)]
+	    (if (or (not succeeds-opt?) (> (:depth next) d))
+		(recur)
+	      (or (search/extract-a-solution next)
+		  (let [succeeds-pess? (> (search/lower-reward-bound next) Double/NEGATIVE_INFINITY)
+			key            (util/safe-get next :plan)] ;; TODO: specific to ALTs)]
+		    (if (and succeeds-pess? (not (contains? blackset key)))
+			(concat-solutions 
+			 (map 
+			  #(hierarchical-forward-search % (conj blackset key (util/safe-get % :plan)))
+			  (alts/decompose-plan next)))
+		      (do (doseq [ref (search/immediate-refinements next)]
+			    (queues/pq-add! pq (assoc ref :depth (inc (:depth next))) 0))
+			  (recur)))))))))))
+    (iterate inc 0))))
+   
+(comment 
+  (time-limit (map :name (first (hierarchical-forward-search (alt-node (get-hierarchy *warehouse-hierarchy* (constant-predicate-simplify (make-warehouse-strips-env 3 4 [1 2] false {0 '[b a] 2 '[c]} nil ['[a b c]]))) (make-first-maximal-choice-fn '{act 10 move-blocks 9 move-block 8 move-to 7 navigate 6 nav 5}) false false)))) 30)
+  )
 
 
 ;; Also without decompose
 
-(defn simple-hierarchical-forward-search "Node ref fn must be set properly to mimic ICAPS07 behavior"
+(comment 
+ ; Doesn't work ... iterative deepening and decomposition are really needed to make this work
+ ; (randomness would suffice in some, but perhaps not all, cases.)
+(defn simple-hierarchical-forward-search "Node ref fn and graph must be set properly to mimic ICAPS07 behavior"
   [node]
+ (some 
+  (fn [d] (println d)
   (let [pq  (queues/make-stack-pq)]
-    (queues/pq-add! pq node 0)
+    (queues/pq-add! pq (assoc node :depth 0) 0)
     (loop []
       (when-not (queues/pq-empty? pq)
 	(let [next          (queues/pq-remove-min! pq)
 	      succeeds-opt? (> (search/upper-reward-bound next) Double/NEGATIVE_INFINITY)]
-	  (if (not succeeds-opt?)
+;	  (println (search/node-str next))
+	  (if (or (not succeeds-opt?) (> (:depth next) d))
 	      (recur)
 	    (or (search/extract-a-solution next)
 		(let [succeeds-pess? (> (search/lower-reward-bound next) Double/NEGATIVE_INFINITY)
 		      next           (if succeeds-pess?
-				       (do (queues/pq-remove-all! pq)
+				       (do (println "committing to " (search/node-str next))
+					   (queues/pq-remove-all! pq)
 					   (search/reroot-at-node next))
 				       next)]
 		  (doseq [ref (search/immediate-refinements next)]
-		    (queues/pq-add! pq ref 0))
+		    (queues/pq-add! pq (assoc ref :depth (inc (:depth next))) 0))
 		  (recur)))))))))
+  (iterate inc 0)))
 
+(time-limit (simple-hierarchical-forward-search (alt-node (get-hierarchy *warehouse-hierarchy* (constant-predicate-simplify (make-warehouse-strips-env 3 3 [1 1] false {0 '[a] 2 '[b]} nil ['[b a]]))) (make-first-maximal-choice-fn '{act 10 move-blocks 9 move-block 8 move-to 7 navigate 6 nav 5}) false false)) 10)
+)
 
 
 ;;; Algorithms from ICAPS 08 paper

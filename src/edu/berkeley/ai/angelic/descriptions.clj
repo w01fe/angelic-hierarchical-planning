@@ -95,6 +95,7 @@
 (prefer-method progress-pessimistic [::Valuation ::IdentityDescription] [::PessimalValuation ::Description])
 (defmethod progress-optimistic [::Valuation ::IdentityDescription] [val desc] val)
 (defmethod progress-pessimistic [::Valuation ::IdentityDescription] [val desc] val)
+(defmethod invert-description   ::IdentityDescription [desc] desc)
 
 
 

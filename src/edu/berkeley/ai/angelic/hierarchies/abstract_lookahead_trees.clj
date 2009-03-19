@@ -131,6 +131,19 @@
     (when (:previous node)
       (if (hla-primitive? (:hla node)) (recur (:previous node)) node))))
 
+(defn make-first-maximal-choice-fn [level-map]
+  (fn [node]
+    (loop [node (:plan node), cur nil, max-level Double/NEGATIVE_INFINITY]
+      (if-let [prev (:previous node)]
+          (if (hla-primitive? (:hla node)) 
+  	      (recur prev cur max-level)
+  	    (let [n (first (hla-name (:hla node)))
+		  level (util/lazy-get level-map n (do (println "WARNING: no level for " n) 0))]
+	      (if (>= level max-level) 
+ 	          (recur prev node (double level))
+	        (recur prev cur max-level))))
+        cur))))
+
 ; Almost icaps, except tiebreaks towards earlier, not higher-level...
 (defn icaps-choice-fn [node]
   (loop [node (:plan node), cur nil, maxgap Double/NEGATIVE_INFINITY]
@@ -193,7 +206,7 @@
 	name ((:node-counter ^alt))]
     (.add #^HashSet (:live-set ^alt) name)
     (loop [actions initial-plan
-	   previous (make-alt-root-node alt (state->valuation valuation-class (get-initial-state env)))]
+	   previous (make-alt-root-node alt (state->valuation valuation-class (envs/get-initial-state env)))]
       (if (empty? actions)
           (make-alt-plan-node node-type alt name previous)
 	(recur (next actions)
@@ -351,7 +364,7 @@
 ;;; For ICAPS07 algorithm, and perhaps other uses
 
 (defn state->condition [state instance]
-  (let [all-atoms (util/to-set (util/safe-get instance :all-atoms))]
+  (let [all-atoms (util/to-set (util/safe-get (envs/get-state-space instance) :vars))]
     (envs/make-conjunctive-condition state (util/difference all-atoms state))))
 
 (defn extract-state-seq [plan state-seq]
@@ -361,11 +374,11 @@
 	   (cons 
 	    (extract-a-state 
 	     (sub-intersect-valuations 
-	      (pessimistic-valuation (:previous node))
+	      (pessimistic-valuation (:previous plan))
 	      (restrict-valuation 
-	       (progress-pessimistic
-		(hla-pessimistic-description (:hla plan))
-		(state->valuation ::dsv/DNFSimpleValuation (first state-seq)))
+	       (regress-pessimistic
+		(state->valuation ::dsv/DNFSimpleValuation (first state-seq))
+		(hla-pessimistic-description (:hla plan)))
 	       (hla-hierarchical-preconditions (:hla plan)))))						       
 	    state-seq))))    
 
@@ -378,20 +391,22 @@
   (let [env       (hla-environment (:hla (:plan node)))
 	state-seq (extract-state-seq (:plan node) [(extract-a-state 
 						    (restrict-valuation 
-						     (node-pessimistic-valuation node)
+						     (pessimistic-valuation (:plan node))
 						     (envs/get-goal env)))])
 	alt       (util/safe-get node :alt)]
+  ;  (println "decomposing " (search/node-str node) " on \n" (util/str-join "\n\n" (map #(envs/state-str env %) state-seq)))
     (util/assert-is (= (first state-seq) (envs/get-initial-state env)))
     (util/assert-is (envs/satisfies-condition? (last state-seq) (envs/get-goal env)))
     (map 
      (fn [[s s2] a] 
        (make-initial-alt-node 
-	(edu.berkeley.ai.angelic.hierarchies.strips-hierarchies/sub-environment-hla a s (state->condition s2))
+	(edu.berkeley.ai.angelic.hierarchies.strips-hierarchies/sub-environment-hla 
+	 (:hla a) s (state->condition s2 env))
 	(util/safe-get alt :ref-choice-fn)
 	(util/safe-get alt :cache?)
 	(util/safe-get alt :graph?)))
      (partition 2 1 state-seq)
-     (rest (reverse (iterate-while :previous (:plan node)))))))
+     (rest (reverse (util/iterate-while :previous (:plan node)))))))
 
 
 

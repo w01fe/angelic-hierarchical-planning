@@ -338,7 +338,7 @@
       (do ;(println "Warning: empty valuation being produced in progress-ncstrips") 
 	  *pessimal-valuation*))
 ))
-(      
+      
 (defmethod progress-optimistic [:edu.berkeley.ai.angelic.dnf-simple-valuations/DNFSimpleValuation ::NCStripsDescription] [val desc]
   (progress-ncstrips val desc max))
 
