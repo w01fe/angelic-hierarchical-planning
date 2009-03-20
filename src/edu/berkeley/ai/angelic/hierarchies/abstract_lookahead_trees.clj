@@ -298,7 +298,9 @@
 	       (or (not (:graph? alt)) 
 		   (graph-add-and-check! alt nxt (next actions) name)))
 	  (recur node nxt (next actions) alt name)
-	(util/print-debug 3 "Late prune at" (search/node-str {:plan nxt}))))))
+	(util/print-debug 3 "Late prune at" (search/node-str {:class ::ALTPlanNode :plan nxt})
+			  ;(optimistic-valuation (:previous nxt))
+			  )))))
 
 (defmethod search/immediate-refinements ::ALTPlanNode [node] 
   (util/timeout)

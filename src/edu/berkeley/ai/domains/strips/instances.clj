@@ -249,7 +249,7 @@
        (util/safe-get instance :state-str-fn))
       :always-true-atoms always-true-atoms 
 ;      :always-false-atoms always-false-atoms
-      :const-pred-map (reduce (fn [m pred] (util/assoc-cons m (nth pred 0) pred)) {} always-true-atoms))))
+      :const-pred-map (util/map-vals set (reduce (fn [m pred] (util/assoc-cons m (nth pred 0) pred)) {} always-true-atoms)))))
 
 
 

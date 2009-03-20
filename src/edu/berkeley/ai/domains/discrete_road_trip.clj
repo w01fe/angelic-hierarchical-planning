@@ -36,8 +36,8 @@
 	   (for [[f t l] edges] ['road-length f t l])
 	   (for [[l p] city-gas-prices :when p] [(util/symbol-cat 'has-gas p) l])
 	   (for [x (range max-gas)] ['one-greater (inc x) x])
-	   (for [x1 (range (inc max-gas)), x2 (range (inc max-gas))] ['sum x1 x2 (min (+ x1 x2) max-gas)])
-;	   (for [s (range (inc max-gas)), x (range (inc s))] ['sum x (- s x) s])
+	   (for [x1 (range (inc max-gas)), x2 (range (inc max-gas))] ['overflow-sum x1 x2 (min (+ x1 x2) max-gas)])
+	   (for [s (range (inc max-gas)), x (range (inc s))] ['sum x (- s x) s])
 	   (for [x1 (range (inc max-gas)), x2 (range (inc x1))] ['geq x1 x2])
 	   (medians 0 max-gas)))
      [['at end]]
@@ -49,6 +49,11 @@
 
 
 (comment 
+
+
+(interactive-search (alt-node (get-hierarchy *drt-hierarchy* (constant-predicate-simplify (make-discrete-road-trip-strips-env '{a 2 b 1 c nil d 3} '[[a b 1] [b c 3] [c d 6]] 'a 'd 0 16))) (make-first-maximal-choice-fn '{act 10 next-stop1 9 next-stop2 9 next-stop3 9 fill-up1 8 fill-up2 8 fill-up3 8 drive-to 8})))
+
+
   (make-road-trip-strips-env [['a 3 2] ['b 0 0]] '[[a b 2]] 'a 'b 1 4 1)
 
 (let [e (make-road-trip-strips-env [['a 3 2] ['b 0 0]] '[[a b 2]] 'a 'b 1 4 1)

@@ -161,7 +161,8 @@
 (defmethod instantiate-description-schema ::NCStripsDescriptionSchema [desc instance]
   (util/assert-is (isa? (:class instance) :edu.berkeley.ai.domains.strips/StripsPlanningInstance))
   (assoc desc :effects (doall (map #(instantiate-ncstrips-effect-schema % (util/safe-get desc :vars) instance) 
-				   (util/safe-get desc :effects)))))
+				   (util/safe-get desc :effects)))
+	 :const-pred-map (get instance :const-pred-map)))
 
 
 ;  (instantiate-hierarchy (parse-hierarchy "/Users/jawolfe/projects/angel/src/edu/berkeley/ai/domains/warehouse.hierarchy" (make-warehouse-strips-domain)) (make-warehouse-strips-env 2 2 [1 1] false {0 '[a]} nil ['[a table1]]))
@@ -191,6 +192,8 @@
 (defstruct ncstrips-description :class :effects)
 
 (import '(java.util ArrayList))
+
+(comment ; old version without hack for discrete-road-trip
 (defn- get-csp-results [csp pos neg var-map pred-maps]
   (let [pl (ArrayList.), nl (ArrayList.)]
     (doseq [combo (smart-csps/get-smart-csp-solutions csp var-map pred-maps)]
@@ -199,7 +202,29 @@
 	(doseq [p pos] (.add pl (grounder p)))
 	(doseq [n neg] (.add nl (grounder n)))))
     [(seq pl) (seq nl)]))
+)
+
+(defn- get-csp-results [csp pos neg var-map pred-maps const-pred-map]
+;  (println const-pred-map)
+  (let [pl (ArrayList.), nl (ArrayList.)]
+    (doseq [combo (smart-csps/get-smart-csp-solutions csp var-map pred-maps)]
+      (let [final-map (merge var-map combo)  
+  	    grounder #(props/simplify-atom final-map %)]
+	(doseq [p pos] 
+	  (if-let [ca (get const-pred-map (first p))]
+	      (when-not (contains? ca (grounder p))
+		(.add pl [(gensym)]))
+	    (.add pl (grounder p))))
+	(doseq [n neg] 
+	  (if-let [ca (get const-pred-map (first n))]
+	    (when (contains? ca (grounder n))
+	      (.add pl [(gensym)]))
+	    (.add nl (grounder n)))
+	  )))
+    [(seq pl) (seq nl)]))
+
 ;      [(map grounder pos) (map grounder neg)])))
+
 
 ; We must be careful here!! Old version of forall had a bug ...
 ;Suppose we have (+/- (P X), - (Q X))
@@ -212,12 +237,12 @@
 
 
 ; Make a function that takes pred-maps as arguments and returns grounded [pos neg]
-(defn- ground-ncstrips-csp [[args csp [pos neg]] var-map]
+(defn- ground-ncstrips-csp [[args csp [pos neg]] var-map const-pred-map]
   (if (smart-csps/smart-csp-const? csp)
-      (let [results (get-csp-results csp pos neg var-map [[:dummy :dummy]])]
+      (let [results (get-csp-results csp pos neg var-map [[:dummy :dummy]] const-pred-map)]
 	(fn [pred-maps] results))
-    (throw (UnsupportedOperationException. "Forall conditions must be constant."))))
-;    (fn [pred-maps] (get-csp-results csp pos neg var-map pred-maps))))
+ ;   (throw (UnsupportedOperationException. "Forall conditions must be constant."))))
+    (fn [pred-maps] (get-csp-results csp pos neg var-map pred-maps const-pred-map))))
 
 (defn- ground-ncstrips-cost [forall cost-fn var-map hla-vars]
   (if (not forall)
@@ -235,31 +260,31 @@
 ; TODO: this is still slow -- set accounts 10% of time! 
 ; TODO: is this definition of cost-expr sufficiently general?
 ; TODO: lazy eval cost somehow? (no set)?
-(defn- ground-ncstrips-effect-atoms [var-map effect hla-vars]
+(defn- ground-ncstrips-effect-atoms [var-map effect hla-vars const-pred-map]
   (let [instantiator #(props/simplify-atom var-map %)]
     (make-ncstrips-effect 
      (map instantiator (util/safe-get effect :pos-preconditions))
      (map instantiator (util/safe-get effect :neg-preconditions))
-     (map #(ground-ncstrips-csp % var-map) (util/safe-get effect :forall-preconditions))
+     (map #(ground-ncstrips-csp % var-map const-pred-map) (util/safe-get effect :forall-preconditions))
      (map instantiator (util/safe-get effect :adds))
      (map instantiator (util/safe-get effect :deletes))
-     (map #(ground-ncstrips-csp % var-map) (util/safe-get effect :forall-effects))
+     (map #(ground-ncstrips-csp % var-map nil) (util/safe-get effect :forall-effects))
      (map instantiator (util/safe-get effect :possible-adds))
      (map instantiator (util/safe-get effect :possible-deletes))
-     (map #(ground-ncstrips-csp % var-map) (util/safe-get effect :possible-forall-effects))
+     (map #(ground-ncstrips-csp % var-map nil) (util/safe-get effect :possible-forall-effects))
      (ground-ncstrips-cost (util/safe-get effect :forall-cost) (util/safe-get effect :cost-fn) var-map hla-vars))))
 
 
 ; TODO: put back simplification?  Or provide ground-and-constant-simplify method?
-(defn- ground-ncstrips-effect [effect var-map hla-vars]
+(defn- ground-ncstrips-effect [effect var-map hla-vars const-pred-map]
 ;  (simplify-ncstrips-effect
-   (ground-ncstrips-effect-atoms var-map effect hla-vars))
+   (ground-ncstrips-effect-atoms var-map effect hla-vars const-pred-map))
 
 
 (defmethod ground-description ::NCStripsDescriptionSchema [schema var-map]
   (struct ncstrips-description ::NCStripsDescription
 ;	  (filter identity 
-     (map #(ground-ncstrips-effect % var-map (:vars schema)) (:effects schema))))
+     (map #(ground-ncstrips-effect % var-map (:vars schema) (util/safe-get schema :const-pred-map)) (:effects schema))))
 
   
 ; TODO: make more efficient  

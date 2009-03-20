@@ -11,6 +11,10 @@ Missing things in experiments
 
 TODO: figure out what to do with forall conditions in NCSTRIPS.
 
+TODO: was ignoring constant yield of ncstrips.
+TODO: possible multiple sums for final gas (need separate
+overflow-sum, regular-sum).
+
 -----------------------------------
 
 set-valued variables in HLA
