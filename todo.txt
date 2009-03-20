@@ -9,20 +9,13 @@ Missing things in experiments
  - Support for old graph
  - Support for singleton-only graph
 
-Find domination relations.
+TODO: figure out what to do with forall conditions in NCSTRIPS.
+
+-----------------------------------
 
 set-valued variables in HLA
 graph and state abstraction and progression-free planning
 Domains other than WW
-
-
-Need: numeric
- - hierarchy
- - valuations
- - descriptions
-
-
-; prune inconsistent intervals...
 
 ; TODO: specify split points / strategies in hierarchy!!!
 ; Explicitly mark interval params?
