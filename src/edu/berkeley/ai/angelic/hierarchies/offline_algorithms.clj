@@ -12,8 +12,9 @@
 ;; With decompose
 
 (defn concat-solutions [sols]
-  [(apply concat (map first sols))
-   (reduce + (map second sols))])
+;  (println sols)
+  [(apply concat nil (map first sols))
+   (reduce + 0 (map second sols))])
 
 ; Add decompose operation to ALTs.
 (defn hierarchical-forward-search "Node ref fn and graph must be set properly to mimic ICAPS07 behavior"
@@ -48,48 +49,22 @@
 
 
 ;; Also without decompose
-
-(comment 
  ; Doesn't work ... iterative deepening and decomposition are really needed to make this work
  ; (randomness would suffice in some, but perhaps not all, cases.)
-(defn simple-hierarchical-forward-search "Node ref fn and graph must be set properly to mimic ICAPS07 behavior"
-  [node]
- (some 
-  (fn [d] (println d)
-  (let [pq  (queues/make-stack-pq)]
-    (queues/pq-add! pq (assoc node :depth 0) 0)
-    (loop []
-      (when-not (queues/pq-empty? pq)
-	(let [next          (queues/pq-remove-min! pq)
-	      succeeds-opt? (> (search/upper-reward-bound next) Double/NEGATIVE_INFINITY)]
-;	  (println (search/node-str next))
-	  (if (or (not succeeds-opt?) (> (:depth next) d))
-	      (recur)
-	    (or (search/extract-a-solution next)
-		(let [succeeds-pess? (> (search/lower-reward-bound next) Double/NEGATIVE_INFINITY)
-		      next           (if succeeds-pess?
-				       (do (println "committing to " (search/node-str next))
-					   (queues/pq-remove-all! pq)
-					   (search/reroot-at-node next))
-				       next)]
-		  (doseq [ref (search/immediate-refinements next)]
-		    (queues/pq-add! pq (assoc ref :depth (inc (:depth next))) 0))
-		  (recur)))))))))
-  (iterate inc 0)))
 
-(time-limit (simple-hierarchical-forward-search (alt-node (get-hierarchy *warehouse-hierarchy* (constant-predicate-simplify (make-warehouse-strips-env 3 3 [1 1] false {0 '[a] 2 '[b]} nil ['[b a]]))) (make-first-maximal-choice-fn '{act 10 move-blocks 9 move-block 8 move-to 7 navigate 6 nav 5}) false false)) 10)
-)
+
 
 
 ;;; Algorithms from ICAPS 08 paper
 
+(defn aha-star-priority-fn [x] 
+  (- 0
+     (search/upper-reward-bound x)
+     (/ (max (search/lower-reward-bound x) -999999.0) 1000000.0)))
+
 (defn aha-star-search  "AHA*.  Identical to A* up to tiebreaking.  Assumes integer costs."
   [node]
-  (search/first-optimal-solution node (queues/make-tree-search-pq)  
-    (fn cost-fn [x] 
-      (- 0
-	 (search/upper-reward-bound x)
-	 (/ (max (search/lower-reward-bound x) -999999.0) 1000000.0)))))
+  (search/first-optimal-solution node (queues/make-tree-search-pq) aha-star-priority-fn))
 
 
 ;; TODO: check up on threshold updating  (right now, commits to monotonic seq)
@@ -138,7 +113,68 @@
 
      
 
+;;; New versions of ICAPS 08 that include decompose.
 
+
+(defn aha-star-decomposed-search  "AHA*.  Identical to A* up to tiebreaking.  Assumes integer costs."
+  [node]
+  (let [pq (queues/make-tree-search-pq)]
+    (queues/pq-add! pq node (aha-star-priority-fn node))
+    (loop []
+      (when-not (queues/pq-empty? pq)
+	(let [next (queues/pq-remove-min! pq)]
+;	  (println (search/node-str next))
+	  (if (search/dead-end? next) 
+	      (recur)
+	    (or (search/extract-optimal-solution next)
+		(and (= (search/upper-reward-bound next) (search/lower-reward-bound next))
+		     (> (alts/alt-node-hla-count next) 1)
+		     (do (println "Committing to " (search/node-str next)) true)
+		     (concat-solutions 
+		      (map aha-star-decomposed-search (alts/decompose-plan next))))
+		(do 
+		  (doseq [ref (search/immediate-refinements next)]
+;		    (println "ref " (search/node-str ref))
+		    (queues/pq-add! pq ref (aha-star-priority-fn ref)))
+		  (recur)))))))))
+
+
+(defn ahss-decomposed-search "Pass a *finite* threshold"
+  ([node] (ahss-decomposed-search node (- Double/MAX_VALUE)))
+  ([node threshold] (ahss-decomposed-search node threshold alts/icaps-priority-fn))
+  ([node threshold priority-fn]
+ ;    (println (search/node-plan-length node) (alts/alt-node-hla-count node))
+     (let [pq        (queues/make-tree-search-pq)
+	   [sol rew] (search/extract-a-solution node)]
+       (queues/pq-add! pq node (priority-fn node))
+       (when (>= (search/upper-reward-bound node) threshold)  ; Handle degenerate
+	 (if (and rew (>= rew threshold)) [sol rew]           ; cases
+  	   (loop [threshold threshold]
+	     (when-not (queues/pq-empty? pq)
+	       (let [next (queues/pq-remove-min! pq)  ; Has no imm. sol, upper >= thresh
+		     refs (search/immediate-refinements next)
+		     good-refs (filter #(>= (search/upper-reward-bound %) threshold) refs)
+		     sols      (filter identity (map search/extract-a-solution good-refs))
+		     good-sols (seq (filter #(>= (second %) threshold) sols))]
+		 (if good-sols  ; Found a good enough primitive refinement
+		     (util/first-maximal-element second good-sols)
+                   (if-let [great-refs (seq (filter #(>= (search/lower-reward-bound %) threshold) good-refs))]
+		       (let [best-ref 
+			     (util/first-maximal-element ; tie break
+			      #(+ (search/lower-reward-bound %) (/ (search/upper-reward-bound %) 100000.0))
+			      great-refs)]
+;			 (println "committing to " (search/node-str best-ref))
+			 (if (> (alts/alt-node-hla-count best-ref) 1)
+			     (concat-solutions
+			      (map #(ahss-decomposed-search % (search/lower-reward-bound %) priority-fn)
+				   (alts/decompose-plan best-ref)))
+			   (do (queues/pq-remove-all! pq)
+			       (queues/pq-add! pq (search/reroot-at-node best-ref) (priority-fn best-ref))
+			       (recur (search/lower-reward-bound best-ref)))))
+		     (do
+		       (doseq [ref good-refs]
+		         (queues/pq-add! pq ref (priority-fn ref)))
+		       (recur threshold))))))))))))
 
 
 ;; Testing

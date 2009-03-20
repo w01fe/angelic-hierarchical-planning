@@ -358,7 +358,12 @@
   (let [first-node (last (butlast (util/iterate-while :previous (:plan node))))
 	first-hla  (:hla first-node)]
     (hla-primitive first-hla)))
-    
+
+(defmethod search/node-plan-length ::ALTPlanNode [node]
+  (dec (count (util/iterate-while :previous (:plan node)))))
+
+(defn alt-node-hla-count  [node]
+  (count (remove #(hla-primitive? (:hla %)) (butlast (util/iterate-while :previous (:plan node))))))
 
 
 ;;; For ICAPS07 algorithm, and perhaps other uses
