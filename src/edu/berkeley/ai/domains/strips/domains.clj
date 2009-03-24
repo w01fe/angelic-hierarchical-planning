@@ -106,19 +106,22 @@
   (util/match [[define [domain ~name]
 		[:requirements ~@requirements]
 		[:types ~@types]
+		[:optional [:auxillary-fluents ~@aux]]
 		[:predicates ~@predicates]
 		~@actions]
 	       (read-string (.toLowerCase (slurp file)))]
     (let [requirements (set requirements)]
       (util/assert-is (util/subset? requirements #{:strips :typing :equality}))
       (util/assert-is (util/subset? #{:strips :typing} requirements))
-      (make-strips-planning-domain 
-       name
-       types
-       nil
-       (map props/parse-pddl-predicate predicates)
-       (map parse-pddl-action-schema actions)
-       (contains? requirements :equality)))))
+      (assoc
+       (make-strips-planning-domain 
+	name
+	types
+	nil
+	(map props/parse-pddl-predicate predicates)
+	(map parse-pddl-action-schema actions)
+	(contains? requirements :equality))
+       :auxillary-fluents aux))))
 
 
 ;; Identify constant/inertia preds
@@ -131,18 +134,22 @@
 (defn constant-annotate-strips-planning-domain [domain]
   (if (isa? (:class domain) ::CAStripsPlanningDomain) domain
     (let [;equality?       (:equality? domain)
+	  aux (util/safe-get domain :auxillary-fluents)
 	  action-schemata (util/safe-get domain :action-schemata)
 	  all-preds (util/keyset (util/safe-get domain :predicates))
 	  add-preds (set (for [as action-schemata, add (util/safe-get as :add-list)] (first add)))
 	  del-preds (set (for [as action-schemata, del (util/safe-get as :delete-list)] (first del)))]
 ;      (when equality? (util/assert-is (and (not add-preds '=) (not del-preds '=))))
+      (util/assert-is (every? all-preds aux))
       (struct ca-strips-planning-domain ::CAStripsPlanningDomain
 	(util/safe-get domain :name)
 	(util/safe-get domain :types)
 	(util/safe-get domain :guaranteed-objs)
 	(util/safe-get domain :predicates)
 	action-schemata
-	(util/difference (util/difference all-preds add-preds) del-preds)
+	(util/difference-coll 
+	 (util/difference (util/difference all-preds add-preds) del-preds) 
+	 aux) 
 ;	(util/difference add-preds del-preds)
 ;	(util/difference del-preds add-preds)
 	nil nil

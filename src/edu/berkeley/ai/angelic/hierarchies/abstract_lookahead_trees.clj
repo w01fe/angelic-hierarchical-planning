@@ -305,7 +305,8 @@
 (defmethod search/immediate-refinements ::ALTPlanNode [node] 
   (util/timeout)
   (util/sref-up! search/*ref-counter* inc)
-  (let [alt         (util/safe-get node :alt)
+  (let [urb         (search/upper-reward-bound node)
+	alt         (util/safe-get node :alt)
 	graph?      (util/safe-get alt :graph?)
 	full-graph? (= graph? :full)
 	plan        (:plan node)
@@ -329,6 +330,9 @@
 			   (map vector before-nodes (iterate next all-actions)))
 	       (when-let [nxt (construct-immediate-refinement node (:previous ref-node) tail-actions alt name )]
 		 (when graph? (.add #^HashSet (:live-set ^alt) name))
+;		 (when (> (search/upper-reward-bound nxt) urb) 
+;		   (util/sref-set! (:upper-reward-bound ^(:plan nxt)) urb)
+;		   (println "Fixing Upper Inconcistency" urb (search/upper-reward-bound nxt)))
 		 nxt)
 	       (util/print-debug 3 "early prune")
 	       ))))))))

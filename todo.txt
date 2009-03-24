@@ -4,6 +4,13 @@ road trip
 
 Maybe subsumption checker will save us ... ?
 
+Issue: HLAs less accurate than Act description ... (inconsistent). 
+
+make unguided versions?
+
+Also: weighted A*
+Early-weighted max-gap choice fn. 
+
 - Bad choice fn can eliminate pruning, make unsolvable problems loop
   forever... Act description should fix?  Also, better next-stop descriptions...
   - TODO: suggests a new form of pruning ????? 
@@ -27,6 +34,8 @@ Ways out:
 traveled...
   ... Can do OK, not great, by splitting initially at city-dist.  
 
+
+REMOVE HACK from strips comain (unpaid gas)
 ------------
   ... Or, just charge 1 for driving, adjust gas prices accordingly?
   Yes.  Assume always start with 0 gas.

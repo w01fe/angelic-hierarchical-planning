@@ -13,6 +13,8 @@
 
 (def *drt-hierarchy* "/Users/jawolfe/projects/angel/src/edu/berkeley/ai/domains/discrete_road_trip.hierarchy")
 
+(def *drt-fancy-hierarchy* "/Users/jawolfe/projects/angel/src/edu/berkeley/ai/domains/discrete_road_trip_fancy.hierarchy")
+
 (def *drt-flat-hierarchy* "/Users/jawolfe/projects/angel/src/edu/berkeley/ai/domains/discrete_road_trip_flat.hierarchy")
 
 
@@ -41,11 +43,11 @@
       'price prices}  
      (set (concat 
 	   [['at start] ['visited start] ['gas 0] ['max-gas max-gas] ['zero 0] ['one-greater max-gas max-gas]
-	 ;   ['max-price (apply min prices)]
+	    ['max-price (apply min prices)] ['unpaid-gas 0]
 	    ]
 	   (for [[f t l] edges] ['road-length f t l])
 	   (for [[l p] city-gas-prices] (if p ['gas-price l (- p)] ['no-gas l]))
-;	   (for [p1 prices, p2 prices] ['lower-price p1 p2 (max p1 p2)])
+	   (for [p1 prices, p2 prices] ['lower-price p1 p2 (max p1 p2)])
 	   (for [x (range max-gas)] ['one-greater (inc x) x])
 	   (for [x1 (range (inc max-gas)), x2 (range (inc max-gas))] ['overflow-sum x1 x2 (min (+ x1 x2) max-gas)])
 	   (for [s (range (inc max-gas)), x (range (inc s))] ['sum x (- s x) s])
@@ -125,20 +127,23 @@
 	 (util/assert-is (= (count dnf) 1))
 	 (let [visited   (HashSet.)
 	       positions (HashSet.)
-	       gas       (HashSet.)]
+	       gas       (HashSet.)
+	       unpaid    (HashSet.)]
 	   (doseq [clause dnf, [atom] clause]
 	     (let [pred (first atom)]
 	       (cond (= pred 'visited) (.add visited   (nth atom 1))
 		     (= pred 'at)      (.add positions (nth atom 1))
+		     (= pred 'unpaid-gas)     (.add unpaid       (nth atom 1))
 		     (= pred 'gas)     (.add gas       (nth atom 1)))))
 	   (util/assert-is (= (count positions) 1))
 	   (util/assert-is (= (count gas) 1))
+	   (util/assert-is (= (count unpaid) 1))
 	   (let [cities-of-interest (conj (apply disj goal-cities visited) (first positions))
 		 sub-sp-graph       (graphs/sub-graph sp-graph cities-of-interest)
 		 [mst dist]         (graphs/minimum-spanning-tree sub-sp-graph)]
 	     (- 0 
 		(* dist *drt-drive-cost*)
-		(* cheapest-gas (max 0 (- dist (first gas))))))))))))
+		(* cheapest-gas (max 0 (- dist (- (first gas) (first unpaid)))))))))))))
 	  
 
 (defmethod angelic/ground-description ::DRTActDescription [desc var-map] desc)

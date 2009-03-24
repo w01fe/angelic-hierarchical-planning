@@ -78,6 +78,7 @@
   (doall
   (for [action expansion]
     (do 
+;      (println action)
       (let [params (next action)
 	    declared-types (util/safe-get all-actions (first action))]
 	(util/assert-is (= (count params) (count declared-types)))
