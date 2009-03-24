@@ -42,7 +42,9 @@
 (defstruct strips-planning-instance :class :name :domain :objects :trans-objects :init-atoms :goal-atoms :all-atoms :all-actions :state-str-fn)
 
 (defn- make-strips-planning-instance- [name domain objects trans-objects init-atoms goal-atoms all-atoms all-actions state-str-fn]
-  (struct strips-planning-instance ::StripsPlanningInstance name domain objects trans-objects init-atoms goal-atoms all-atoms all-actions state-str-fn))
+  (with-meta 
+   (struct strips-planning-instance ::StripsPlanningInstance name domain objects trans-objects init-atoms goal-atoms all-atoms all-actions state-str-fn)
+   {:domain-size-cache (util/sref {})}))
 
 (defn make-strips-planning-instance 
   ([name domain objects init-atoms goal-atoms]
@@ -182,7 +184,7 @@
 
 ;;; Constant predicate-simplified strips domain and modified methods.
 
-(defn- get-cps-strips-action-instantiations  [action-schemata all-objects fluent-atoms always-true-atoms]
+(defn- get-cps-strips-action-instantiations  [action-schemata all-objects fluent-atoms always-true-atoms instance]
   (let [allowed-pred-inst-maps 
 	  [[(reduce (fn [m atom] (util/assoc-cons m (first atom) atom)) {} always-true-atoms)
 	    (reduce (fn [m atom] (util/assoc-cons m (first atom) atom)) {} fluent-atoms)]]]
@@ -191,7 +193,9 @@
       (util/forcat [schema action-schemata]
         (let [{:keys [name vars pos-pre neg-pre add-list delete-list cost]} schema
 	      unk-domains (util/map-map (fn [[t v]] [v (set (util/safe-get all-objects t))]) vars)
-  	      csp (smart-csps/create-smart-csp pos-pre neg-pre {} unk-domains {})]
+  	      csp (smart-csps/create-smart-csp pos-pre neg-pre {} unk-domains {} instance)]
+;	  (println "Just made csp for action " (:name schema))
+;	  (throw (IllegalArgumentException.))
 ;	  (println name vars pos-pre neg-pre unk-domains)
 	  (for [var-map (smart-csps/get-smart-csp-solutions csp {} allowed-pred-inst-maps)]
 	    (let [simplifier (fn [x] (set (filter fluent-atoms (map #(props/simplify-atom var-map %) x))))
@@ -245,7 +249,7 @@
        (seq fluent-goal-atoms)
        fluent-atoms
        (get-cps-strips-action-instantiations (util/safe-get-in instance [:domain :action-schemata])
-					     trans-objects fluent-atoms always-true-atoms)
+					     trans-objects fluent-atoms always-true-atoms instance)
        (util/safe-get instance :state-str-fn))
       :always-true-atoms always-true-atoms 
 ;      :always-false-atoms always-false-atoms
@@ -309,7 +313,21 @@
     (util/assert-is (= (count pred-apps) 1))
     (nfirst pred-apps)))
   
-
+;; Instantiated variables are limited to allowed tuples ... positions are 0-indexed.
+(defmethod envs/expected-domain-size ::StripsPlanningInstance [inst pred arg-pos inst-pos]
+  (let [mem (util/safe-get ^inst :domain-size-cache)
+	args [pred arg-pos (set inst-pos)]]
+    (if-let [e (find (util/sref-get mem) args)]
+        (val e)
+      (let [atoms (or (get (:const-pred-map inst) pred) 
+		  (filter #(= (first %) pred) (:init-atoms inst)))
+	    val 
+	      (util/mean
+	       (map (fn [tuples] (count (distinct (map #(nth % arg-pos) tuples))))
+		    (vals
+		     (util/group-by (fn [tuple] (util/vec-map #(nth tuple %) inst-pos)) atoms))))]
+	(util/sref-set! mem (assoc (util/sref-get mem) args val))
+	val))))
 
 
 

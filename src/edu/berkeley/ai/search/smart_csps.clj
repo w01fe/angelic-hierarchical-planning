@@ -3,6 +3,7 @@
  (:import [java.util HashMap Map ArrayList])
  (:require [edu.berkeley.ai.util :as util] 
 	   [edu.berkeley.ai.util.propositions :as props]
+	   [edu.berkeley.ai.envs :as envs]
 	   )
  )
 
@@ -152,60 +153,38 @@
 
 ;;;;;; Ordering vars
 
-(defn expected-const-prop- [pred args arg-index const-tuples unk all-domains instantiated-set]
-;  (println "ecp- " pred args arg-index const-tuples unk instantiated-set (all-domains unk))
-  (cond (= arg-index (count args))
-	  (let [unk-index (inc (util/position unk args))]
-	    (count (distinct (map #(nth % unk-index) const-tuples))))
-        (contains? instantiated-set (nth args arg-index))
-          (util/mean
-            (map (fn [dval] (expected-const-prop- pred args (inc arg-index) (filter #(= dval (nth % arg-index)) const-tuples)
-						 unk all-domains instantiated-set))
-		 (util/safe-get all-domains (nth args arg-index))))
-;	        (= (nth args arg-index) unk)
-        :else
-	  (recur pred args (inc arg-index) 
-		 (filter #(contains? (util/safe-get all-domains (nth args arg-index)) 
-				     (nth % (inc arg-index))) 
-			 const-tuples) 
-		 unk all-domains instantiated-set)))
-
-; Expected proportion of domain values not ruled out by gen-pred - sum over uninstantiated, avg over instantiated 
-(defn expected-const-prop [gen-pred pred-instances const-tuple-map unk domain all-domains instantiated-set]
+(defn expected-pred-prop [gen-pred pred-instances unk domain-size instantiated-set instance]
   (let [[pred & args] (get pred-instances gen-pred)]
-;    (println gen-pred pred args)
-    (/ (expected-const-prop- pred args 0 (util/safe-get const-tuple-map pred) unk all-domains instantiated-set)
-       (count domain))))
+;    (println pred args unk instantiated-set (util/position unk args) (for [[i v] (util/indexed args) :when (contains? instantiated-set v)] (inc i)))
+    (/ (envs/expected-domain-size instance pred (inc (util/position unk args)) 
+				  (for [[i v] (util/indexed args) :when (contains? instantiated-set v)] (inc i)))
+       domain-size)))
 
-; TODO: hints about # pred instantiations (e.g., (atx b x) is functional) -- for now, do something stupid.
-(defn expected-fluent-prop [gen-pred pred-instances unk instantiated-set]
-  (Math/pow 0.6 (inc (count (util/intersection instantiated-set (set (next (get pred-instances gen-pred))))))))
-
-(defn expected-domain-size [unk all-domains var-pred-map pred-instances const-tuples instantiated-set]
+(defn expected-domain-size-preds [unk all-domains var-pred-map pred-instances const-tuples instantiated-set instance]
   (let [[pos-const neg-const pos-fluent neg-fluent] (util/safe-get var-pred-map unk)
-	domain (util/safe-get all-domains unk)]
-;    (println unk pos-const neg-const pos-fluent neg-fluent)
-    (* (count domain)
-       (reduce * (map #(expected-const-prop % pred-instances const-tuples unk domain all-domains instantiated-set) pos-const)) 
-       (reduce * (map #(- 1 (expected-const-prop % pred-instances const-tuples unk domain all-domains instantiated-set)) neg-const))
-       (reduce * (map #(expected-fluent-prop % pred-instances unk instantiated-set) pos-fluent))  
-       (reduce * (map #(- 1 (expected-fluent-prop % pred-instances unk instantiated-set)) neg-fluent)))))  
+	domain-size (count (util/safe-get all-domains unk))]
+ ;   (println "\n\n\n" unk pos-const neg-const pos-fluent neg-fluent)
+    (* domain-size 
+       (reduce * (map #(expected-pred-prop % pred-instances unk domain-size instantiated-set instance) 
+		      (concat pos-const pos-fluent))) 
+       (reduce * (map #(- 1 (expected-pred-prop % pred-instances unk domain-size instantiated-set instance)) 
+		      (concat neg-const neg-fluent))))))
 
-(defn get-unk-ordering [unk-set all-domains var-pred-map pred-instances const-tuples instantiated-set unk-order]
+(defn get-unk-ordering [unk-set all-domains var-pred-map pred-instances const-tuples instantiated-set unk-order instance]
   (if (empty? unk-set) unk-order
       (let [next
 	      (util/first-maximal-element 
-		(fn [unk] (- (expected-domain-size unk all-domains var-pred-map pred-instances const-tuples instantiated-set)))
+		(fn [unk] (- (expected-domain-size-preds unk all-domains var-pred-map pred-instances const-tuples instantiated-set instance)))
 		unk-set)]
-	(recur (disj unk-set next) all-domains var-pred-map pred-instances const-tuples (conj instantiated-set next) (conj unk-order next)))))
+	(recur (disj unk-set next) all-domains var-pred-map pred-instances const-tuples (conj instantiated-set next) (conj unk-order next) instance))))
 
-(defn get-var-ordering [args unks all-domains var-pred-map pred-instances const-tuples]
+(defn get-var-ordering [args unks all-domains var-pred-map pred-instances const-tuples instance]
   (let [filterer (fn [vars] (set (remove (fn [var] (every? empty? (util/safe-get var-pred-map var))) vars)))
 	args (filterer args)]
 ;	unks (filterer unks)]
 ;    (println "GVO " args unks var-pred-map)
     (concat (map #(vector % true)  args)
-  	    (map #(vector % false) (get-unk-ordering unks all-domains var-pred-map pred-instances const-tuples args [])))))
+  	    (map #(vector % false) (get-unk-ordering unks all-domains var-pred-map pred-instances const-tuples args [] instance)))))
 
 
 ;;; Making final maps.  TODO: precompile?
@@ -300,7 +279,7 @@
 ;	  tuple-map unaries))
 
 (import '(java.util HashMap))
-(defn create-smart-csp [pos-pre neg-pre arg-domains unk-domains const-pred-map]
+(defn create-smart-csp [pos-pre neg-pre arg-domains unk-domains const-pred-map instance]
  ; (println "Making CSP: " pos-pre neg-pre arg-domains unk-domains const-pred-map)
   (let [const-preds (util/keyset const-pred-map)
 	dummy-unary-var (gensym "dummy-unary")
@@ -336,7 +315,7 @@
 					  (pos-fluent-map var)
 					  (neg-fluent-map var)]])
 			      vars))
-	ordered-vars (get-var-ordering args unks (merge unk-domains arg-domains) var-pred-map pred-instances const-pred-map)
+	ordered-vars (get-var-ordering args unks (merge unk-domains arg-domains) var-pred-map pred-instances const-pred-map instance)
 	var-ordering (vec (map first ordered-vars))]
  ;   (println "Var ordering: " var-ordering)
     (util/assert-is (empty? (util/intersection args unks)))
@@ -449,3 +428,35 @@
 
 
 
+(comment 
+
+(defn expected-const-prop- [pred args arg-index const-tuples unk all-domains instantiated-set]
+;  (println "ecp- " pred args arg-index const-tuples unk instantiated-set (all-domains unk))
+  (cond (= arg-index (count args))
+	  (let [unk-index (inc (util/position unk args))]
+	    (count (distinct (map #(nth % unk-index) const-tuples))))
+        (contains? instantiated-set (nth args arg-index))
+          (util/mean
+            (map (fn [dval] (expected-const-prop- pred args (inc arg-index) (filter #(= dval (nth % arg-index)) const-tuples)
+						 unk all-domains instantiated-set))
+		 (util/safe-get all-domains (nth args arg-index))))
+;	        (= (nth args arg-index) unk)
+        :else
+	  (recur pred args (inc arg-index) 
+		 (filter #(contains? (util/safe-get all-domains (nth args arg-index)) 
+				     (nth % (inc arg-index))) 
+			 const-tuples) 
+		 unk all-domains instantiated-set)))
+
+; Expected proportion of domain values not ruled out by gen-pred - sum over uninstantiated, avg over instantiated 
+(defn expected-const-prop [gen-pred pred-instances const-tuple-map unk domain all-domains instantiated-set]
+  (let [[pred & args] (get pred-instances gen-pred)]
+;    (println gen-pred (get pred-instances gen-pred) (count (get const-tuple-map pred)))
+;    (println gen-pred pred args)
+    (/ (expected-const-prop- pred args 0 (util/safe-get const-tuple-map pred) unk all-domains instantiated-set)
+       (count domain))))
+
+; TODO: hints about # pred instantiations (e.g., (atx b x) is functional) -- for now, do something stupid.
+(defn expected-fluent-prop [gen-pred pred-instances unk instantiated-set]
+  (Math/pow 0.6 (inc (count (util/intersection instantiated-set (set (next (get pred-instances gen-pred))))))))
+)

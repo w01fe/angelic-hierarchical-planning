@@ -89,3 +89,5 @@
 (defmulti #^{:doc "Get the ::PropositionalDomain associated with this ::PropositionalEnvironment"}
   get-domain :class)
 
+(defmulti #^{:doc "Get the expected number of distinct values for arg-pos allowed by pred, given inst-pos vars instantiated."}
+  expected-domain-size (fn [inst pred arg-pos inst-pos] (:class inst)))

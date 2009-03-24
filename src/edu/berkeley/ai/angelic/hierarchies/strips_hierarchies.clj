@@ -274,9 +274,9 @@
 			 (map #(extract-preconditions var-map % hla-map)
 			      (next expansion)))))]
 	   (util/assert-is (not (empty? expansion)))
-;	   (print "Constructing CSP for " name " " r-name ": " );(set all-pos-pre) (set all-neg-pre)) 
+;	   (print "\nConstructing  ref CSP for " name " " r-name ": " );(set all-pos-pre) (set all-neg-pre)) 
 	   [r-name (deconst pos-prec) (deconst neg-prec) 
-	    (smart-csps/create-smart-csp (set all-pos-pre) (set all-neg-pre) arg-val-map dummy-val-map const-pred-map)
+	    (smart-csps/create-smart-csp (set all-pos-pre) (set all-neg-pre) arg-val-map dummy-val-map const-pred-map instance)
 	    expansion]))))
      (instantiate-description-schema optimistic-schema instance)
      (instantiate-description-schema pessimistic-schema instance)

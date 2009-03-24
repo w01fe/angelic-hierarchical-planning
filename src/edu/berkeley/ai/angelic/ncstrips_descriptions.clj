@@ -126,12 +126,13 @@
 (defn instantiate-ncstrips-forall-schema [[args [pos neg] body] vars instance]
   (let [trans-objects (util/safe-get instance :trans-objects)]
   ;   (println "futzing " args pos neg body vars        (util/map-map (fn [[type var]] [var (util/safe-get trans-objects type)]) vars)
-       (util/map-map (fn [[type var]] [var (util/safe-get trans-objects type)]) args)
+;       (util/map-map (fn [[type var]] [var (util/safe-get trans-objects type)]) args)
+;    (print "\nConstructing ncstrips-forall CSP for " args " " vars " "  pos " " neg " " body " : "  )
     [args
      (smart-csps/create-smart-csp pos neg 
        (util/map-map (fn [[type var]] [var (util/safe-get trans-objects type)]) vars)
        (util/map-map (fn [[type var]] [var (util/safe-get trans-objects type)]) args)
-       (:const-pred-map instance))
+       (:const-pred-map instance) instance)
      body]))
        
 	       

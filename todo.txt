@@ -1,9 +1,14 @@
 road trip
- - binary search
- - subsumption checker
- - hacking in gas prices (multiple primitive actions?) and road
- lengths 
+- subsumption checker (?)
+- heuristic
+-test domains 
 
+- Look at reducing overhead of smart csp creation without hurting
+  quality of var ordering.
+
+- Var ordering quality already bad ?  gf before cg.  
+
+- Hashing triggers evaluation of strips actions; avoid?
 
 Missing things in experiments
  - Support for old graph
