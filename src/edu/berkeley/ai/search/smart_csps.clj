@@ -338,7 +338,8 @@
   (and (empty? (smart-csp-pos-fluent-constraints csp))
        (empty? (smart-csp-neg-fluent-constraints csp))))
        
-
+(defmethod envs/expected-domain-size ::DummyEnv [env pred ind inst-ind] 1)
+(def *dummy-env* {:class ::DummyEnv})
 
 (require '[edu.berkeley.ai.angelic :as angelic])
 (require '[edu.berkeley.ai.angelic.dnf-simple-valuations :as dnf-simple-valuations] )
@@ -350,7 +351,7 @@
 	(create-smart-csp #{['boo :a :b]} #{['bap :a :b]} 
 			  {:c #{5 6}}
 			  {:a #{1 2} :b #{3 4}} 
-			  {'boo '[[boo 1 3] [boo 1 4] [boo 2 3]] 'bap '[[bap 1 3]]})
+			  {'boo '[[boo 1 3] [boo 1 4] [boo 2 3]] 'bap '[[bap 1 3]]} *dummy-env*)
 	{:c 5}
 	[[{} {}]]))
       #{{:a 1 :b 4} {:a 2 :b 3}}))
@@ -360,7 +361,7 @@
 	(create-smart-csp #{['boo] ['bee :a]} #{['bap]} 
 			  {}
 			  {:a #{1 2 3 4 5}}
-			  {})
+			  {} *dummy-env*)
 	{}
 	(angelic/valuation->pred-maps 
 	 (dnf-simple-valuations/make-dnf-simple-valuation 
@@ -376,7 +377,7 @@
 	(create-smart-csp #{['boo] ['bee :a]} #{['bap]} 
 			  {}
 			  {:a #{1 2 3 4 5} :b #{7 8}}
-			  {})
+			  {} *dummy-env*)
 	{}
 	(angelic/valuation->pred-maps 
 	 (dnf-simple-valuations/make-dnf-simple-valuation 
@@ -392,7 +393,8 @@
 	(create-smart-csp #{['boo :a :b] ['bee :a :d] ['box :d]} #{['bap :a :b] ['biz :a :b] ['bat :a :b :d]} 
 			  {:c #{5 6}}
 			  {:a #{1 2} :b #{3 4 5} :d #{4 5 6}} 
-			  {'boo '[[boo 1 3] [boo 1 4] [boo 2 3] [boo 2 5] [boo 1 5]] 'bap '[[bap 1 3]]})
+			  {'boo '[[boo 1 3] [boo 1 4] [boo 2 3] [boo 2 5] [boo 1 5]] 'bap '[[bap 1 3]]}
+			  *dummy-env*)
 	{:c 5}
 	(angelic/valuation->pred-maps 
 	 (dnf-simple-valuations/make-dnf-simple-valuation 
