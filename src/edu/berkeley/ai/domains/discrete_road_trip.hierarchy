@@ -17,7 +17,7 @@
 		      :precondition (and (no-gas ?cx)
 					 (road-length ?cx ?dx ?l))
 		      :expansion ((drive-to ?cx ?dx ?l) (act ?dx ?zero ?maxg)))    
-       :optimistic   (:opt 0)
+       :optimistic   (:drt-act)
        :pessimistic  (:pess))
 
 

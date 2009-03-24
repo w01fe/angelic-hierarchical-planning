@@ -1,7 +1,10 @@
 (ns edu.berkeley.ai.domains.discrete-road-trip
  (:require [edu.berkeley.ai [util :as util] [envs :as envs]] 
+	   [edu.berkeley.ai.util.graphs :as graphs]
            [edu.berkeley.ai.envs.states :as states]
-           [edu.berkeley.ai.domains.strips :as strips])
+           [edu.berkeley.ai.domains.strips :as strips]
+	   [edu.berkeley.ai.angelic :as angelic]
+	   [edu.berkeley.ai.angelic.dnf-simple-valuations :as dsv])
  )
 
 
@@ -59,15 +62,23 @@
 
 ;(def *road-trip* (strips/constant-predicate-simplify (make-discrete-road-trip-strips-env '{a 2 b 1 c nil d 3} '[[a b 1] [b c 3] [c d 6]] 'a 'd 0 16)))
 
-(defn make-random-dag-discrete-road-trip-strips-env [n-cities price-dist max-gas edge-p]
+(defn make-random-drt-env [n-cities price-dist max-gas edge-p n-goals]
+  (util/assert-is (> n-cities (inc n-goals)))
+  (make-discrete-road-trip-strips-env
+   (into {} (for [c (range n-cities)] [(util/symbol-cat 'city c) (util/sample-from price-dist)])) 
+   (for [c1 (range n-cities) c2 (range n-cities) :when  (and (not (= c1 c2)) (util/rand-bool edge-p))]
+     [(util/symbol-cat 'city c1) (util/symbol-cat 'city c2) (inc (rand-int max-gas))])
+   'city0 (map #(util/symbol-cat 'city %) (range 1 (inc n-goals))) max-gas))
+
+(defn make-random-dag-drt-env [n-cities price-dist max-gas edge-hl]
   (util/assert-is (> n-cities 1))
   (make-discrete-road-trip-strips-env
    (into {} (for [c (range n-cities)] [(util/symbol-cat 'city c) (util/sample-from price-dist)])) 
-   (for [c2 (range n-cities) c1 (range c2) :when  (util/rand-bool edge-p)]
+   (for [c2 (range n-cities) c1 (range c2) :when  (util/rand-bool (Math/pow 0.5 (double (/ (- c2 c1) edge-hl))))]
      [(util/symbol-cat 'city c1) (util/symbol-cat 'city c2) (inc (rand-int max-gas))])
    'city0 [(util/symbol-cat 'city (dec n-cities))] max-gas))
    
-(defn make-random-drt-tsp [n-cities price-dist max-gas edge-p]
+(defn make-random-tsp-drt-env [n-cities price-dist max-gas edge-p]
   (util/assert-is (> n-cities 1))
   (make-discrete-road-trip-strips-env
    (into {} (for [c (range n-cities)] [(util/symbol-cat 'city c) (util/sample-from price-dist)])) 
@@ -76,6 +87,83 @@
        [[sc1 sc2 g] [sc2 sc1 g]]))
    'city0 (for [c (range n-cities)] (util/symbol-cat 'city c)) max-gas))
    
+
+
+;; Heuristics
+
+(def *drt-drive-cost* 5)
+
+(derive ::DRTActDescriptionSchema ::angelic/PropositionalDescription)
+
+(defmethod angelic/parse-description :drt-act [desc domain params]
+  {:class ::DRTActDescriptionSchema})
+
+
+(derive ::DRTActDescription ::angelic/PropositionalDescription)
+(defstruct drt-act-description :class :fn)
+(defn make-drt-act-description [fn] (struct drt-act-description ::DRTActDescription fn))
+
+
+(import '[java.util HashSet])
+
+(defmethod angelic/instantiate-description-schema ::DRTActDescriptionSchema [desc instance]
+  (let [goal-atoms   (util/safe-get instance :goal-atoms)
+	const-preds  (util/safe-get instance :const-pred-map)
+	road-lengths (util/safe-get const-preds 'road-length)
+	gas-prices   (util/safe-get const-preds 'gas-price)
+	cities       (util/to-set (util/safe-get-in instance [:trans-objects 'loc]))]
+    (doseq [atom goal-atoms] (util/assert-is (= (first atom) 'visited)))
+    (let [cheapest-gas (- (apply max (map #(nth % 2) gas-prices)))
+	  goal-cities  (set (map second goal-atoms))
+	  graph        (graphs/make-undirected-graph 
+			cities
+			(apply merge-with min (for [[_ c1 c2 l] road-lengths] {#{c1 c2} l})))
+	  sp-graph     (graphs/shortest-path-graph graph)]
+   ;   (println "CREATE ACT" cheapest-gas goal-cities sp-graph)
+      (make-drt-act-description
+       (fn [dnf]
+	 (util/assert-is (= (count dnf) 1))
+	 (let [visited   (HashSet.)
+	       positions (HashSet.)
+	       gas       (HashSet.)]
+	   (doseq [clause dnf, [atom] clause]
+	     (let [pred (first atom)]
+	       (cond (= pred 'visited) (.add visited   (nth atom 1))
+		     (= pred 'at)      (.add positions (nth atom 1))
+		     (= pred 'gas)     (.add gas       (nth atom 1)))))
+	   (util/assert-is (= (count positions) 1))
+	   (util/assert-is (= (count gas) 1))
+	   (let [cities-of-interest (conj (apply disj goal-cities visited) (first positions))
+		 sub-sp-graph       (graphs/sub-graph sp-graph cities-of-interest)
+		 [mst dist]         (graphs/minimum-spanning-tree sub-sp-graph)]
+	     (- 0 
+		(* dist *drt-drive-cost*)
+		(* cheapest-gas (max 0 (- dist (first gas))))))))))))
+	  
+
+(defmethod angelic/ground-description ::DRTActDescription [desc var-map] desc)
+  
+
+(defmethod angelic/progress-optimistic [::angelic/PessimalValuation ::DRTActDescription] [val desc]  val)
+
+(defmethod angelic/progress-optimistic [::dsv/DNFSimpleValuation ::DRTActDescription] [val desc]
+  (angelic/make-conditional-valuation 
+   envs/*true-condition*
+   (+ (angelic/get-valuation-upper-bound val) ((:fn desc) (util/safe-get val :dnf)))))
+
+(defmethod angelic/progress-pessimistic [::angelic/Valuation ::DRTActDescription] [val desc]
+  (throw (UnsupportedOperationException.)))
+
+
+
+
+
+
+
+
+
+
+
 
 
 (comment 
@@ -87,6 +175,12 @@
        (let [n (alt-node (f) icaps-choice-fn)]
 	 (println (time (second (aha-star-search n))))))))
 
+(defn test-rot 
+  ([env] 
+     (doseq [i (range 2), [f t] [[#(get-hierarchy *drt-hierarchy* env) true] [#(get-hierarchy *drt-flat-hierarchy* env) false]]]
+       (let [n (alt-node (f) icaps-choice-fn) sol (time (aha-star-search n))]
+	 (if t (println (map :name (first sol)))) (println (second sol))))))
+
 (do (def *e* (constant-predicate-simplify (make-random-discrete-road-trip-strips-env 3 '{nil 0.3, 1 0.2, 2 0.5}  63 0.5))) (time-limit (test-rot *e*) 10))
 
 (do (def *e* (constant-predicate-simplify (make-random-drt-tsp 5 '{nil 0.3, 1 0.2, 10 0.5} 63 1.0))) (test-rot *e*))
@@ -94,7 +188,7 @@
 (interactive-search (alt-node (get-hierarchy *drt-hierarchy* ) (make-first-maximal-choice-fn '{act 10 next-stop1 9 next-stop2 9 next-stop3 9 fill-up1 8 fill-up2 8 fill-up3 8 drive-to 8})))
 
 
-  (make-road-trip-strips-env [['a 3 2] ['b 0 0]] '[[a b 2]] 'a 'b 1 4 1)
+  (constant-predicate-simplify (make-discrete-road-trip-strips-env '{a 2 b nil} '[[a b 5]] 'a '[b] 10))
 
 (let [e (make-road-trip-strips-env [['a 3 2] ['b 0 0]] '[[a b 2]] 'a 'b 1 4 1)
         as (get-action-space e)]

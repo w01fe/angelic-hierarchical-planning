@@ -1,13 +1,17 @@
 road trip
 - subsumption checker (?)
-- heuristic
--test domains 
+- test domains 
 
+Maybe subsumption checker will save us ... ?
 
 - Bad choice fn can eliminate pruning, make unsolvable problems loop
   forever... Act description should fix?  Also, better next-stop descriptions...
   - TODO: suggests a new form of pruning ????? 
   - Or something else?  This seems important to think about.
+
+ - IDEA: cost-shifting.  I.e. , I'd like to pay to drive, and take
+   that out of earlier gas costs.  Problem: need explicit support to
+   make sure in sync?
 
 Ways out: 
   - Improve hierarchy

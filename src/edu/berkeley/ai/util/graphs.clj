@@ -62,8 +62,9 @@
 	(pq-add! q es c)))
     (loop [em {}
 	   c  0]
-      (if (= (count em) n)
-  	  [(make-undirected-graph- nodes em) c]
+      (cond (= (count em) n) [(make-undirected-graph- nodes em) c]
+	    (pq-empty? q)    [nil Double/POSITIVE_INFINITY]
+	    :else
 	(let [[e ec] (pq-remove-min-with-cost! q)]
 	  (let [[n1 n2] (seq e)]
 	    (if (ds-separate? ds n1 n2)

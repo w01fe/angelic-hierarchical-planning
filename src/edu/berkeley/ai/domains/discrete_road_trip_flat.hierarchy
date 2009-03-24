@@ -14,8 +14,7 @@
 		      :expansion ((get-gas ?l ?p ?cg ?fg) (act)))    
        :refinement   (:parameters (?from - loc ?to - loc ?cg - gas ?len - gas ?fg - gas)
 		      :expansion ((drive ?from ?to ?cg ?len ?fg) (act)))    
-       :optimistic   (:opt 0)
+       :optimistic   (:drt-act)
        :pessimistic  (:pess))
-
   )
 
