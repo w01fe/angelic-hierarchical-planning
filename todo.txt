@@ -3,22 +3,40 @@ road trip
 - heuristic
 -test domains 
 
-- Look at reducing overhead of smart csp creation without hurting
-  quality of var ordering.
 
-- Var ordering quality already bad ?  gf before cg.  
+- Bad choice fn can eliminate pruning, make unsolvable problems loop
+  forever... Act description should fix?  Also, better next-stop descriptions...
+  - TODO: suggests a new form of pruning ????? 
+  - Or something else?  This seems important to think about.
 
-- Hashing triggers evaluation of strips actions; avoid?
+Ways out: 
+  - Improve hierarchy
+  - Change choice fn
+  - Add pruning
+  - Change domain  (i.e., to TSP-like.  Problem: requires way to
+  handle cycles.  Also doesn't help much, still get DP for single path
+  ?)
+
+... Could add travel cost.
+
+... Or, Would be OK as long as you always pay at least 1 for each unit
+traveled...
+  ... Can do OK, not great, by splitting initially at city-dist.  
+
+------------
+  ... Or, just charge 1 for driving, adjust gas prices accordingly?
+  Yes.  Assume always start with 0 gas.
+  
+... Can help hierarchy by adding multi-gas actinos.
+
+... Much simplification by allowing strips cost-exprs.  
+------------
 
 Missing things in experiments
  - Support for old graph
  - Support for singleton-only graph
 
 TODO: figure out what to do with forall conditions in NCSTRIPS.
-
-TODO: was ignoring constant yield of ncstrips.
-TODO: possible multiple sums for final gas (need separate
-overflow-sum, regular-sum).
 
 -----------------------------------
 
@@ -116,6 +134,7 @@ Efficiency
      ; Possible issue: differing hierarchical preconditions
    ; Cache instantiated NCStrips descriptions?
    ;  (allow identityhashmap...
+  - Hashing triggers evaluation of strips actions; avoid?
   
  
  - Refinement cache? (i.e., JIT grounding)?

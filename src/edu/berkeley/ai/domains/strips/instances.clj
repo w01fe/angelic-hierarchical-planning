@@ -317,15 +317,17 @@
 (defmethod envs/expected-domain-size ::StripsPlanningInstance [inst pred arg-pos inst-pos]
   (let [mem (util/safe-get ^inst :domain-size-cache)
 	args [pred arg-pos (set inst-pos)]]
+;    (println pred arg-pos inst-pos)
     (if-let [e (find (util/sref-get mem) args)]
         (val e)
       (let [atoms (or (get (:const-pred-map inst) pred) 
 		  (filter #(= (first %) pred) (:init-atoms inst)))
 	    val 
-	      (util/mean
-	       (map (fn [tuples] (count (distinct (map #(nth % arg-pos) tuples))))
-		    (vals
-		     (util/group-by (fn [tuple] (util/vec-map #(nth tuple %) inst-pos)) atoms))))]
+	      (if (empty? atoms) 0
+  	        (util/mean
+		 (map (fn [tuples] (count (distinct (map #(nth % arg-pos) tuples))))
+		      (vals
+		       (util/group-by (fn [tuple] (util/vec-map #(nth tuple %) inst-pos)) atoms)))))]
 	(util/sref-set! mem (assoc (util/sref-get mem) args val))
 	val))))
 

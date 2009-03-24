@@ -10,6 +10,7 @@
   (:types loc gas)
   (:predicates 
    (at ?l - loc) 
+   (visited ?l - loc)
    (gas ?g - gas)
    (zero ?g - gas)
    (max-gas ?g - gas)
@@ -73,6 +74,7 @@
      :effect       
        (and (not (at ?from))
 	    (at ?to)
+	    (visited ?to)
 	    (not (gas ?cg))
 	    (gas ?fg))
      :cost  

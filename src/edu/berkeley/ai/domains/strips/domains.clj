@@ -137,8 +137,10 @@
 	(util/safe-get domain :predicates)
 	action-schemata
 	(util/difference (util/difference all-preds add-preds) del-preds)
-	(util/difference add-preds del-preds)
-	(util/difference del-preds add-preds)))))
+;	(util/difference add-preds del-preds)
+;	(util/difference del-preds add-preds)
+	nil nil
+	))))
 	
   
 
