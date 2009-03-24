@@ -29,16 +29,20 @@
 (defn make-discrete-road-trip-strips-env 
   [city-gas-prices edges start dests max-gas]
   (println city-gas-prices edges start dests max-gas)
+  (let [prices (map - (filter identity (distinct (vals city-gas-prices))))]
     (strips/make-strips-planning-instance 
      "discrete-road-trip"
      (make-discrete-road-trip-strips-domain)
      {'loc (keys city-gas-prices)
       'gas (range (inc max-gas))
-      'price (map - (filter identity (distinct (vals city-gas-prices))))}  
+      'price prices}  
      (set (concat 
-	   [['at start] ['visited start] ['gas 0] ['max-gas max-gas] ['zero 0] ['one-greater max-gas max-gas]] 
+	   [['at start] ['visited start] ['gas 0] ['max-gas max-gas] ['zero 0] ['one-greater max-gas max-gas]
+	 ;   ['max-price (apply min prices)]
+	    ]
 	   (for [[f t l] edges] ['road-length f t l])
 	   (for [[l p] city-gas-prices] (if p ['gas-price l (- p)] ['no-gas l]))
+;	   (for [p1 prices, p2 prices] ['lower-price p1 p2 (max p1 p2)])
 	   (for [x (range max-gas)] ['one-greater (inc x) x])
 	   (for [x1 (range (inc max-gas)), x2 (range (inc max-gas))] ['overflow-sum x1 x2 (min (+ x1 x2) max-gas)])
 	   (for [s (range (inc max-gas)), x (range (inc s))] ['sum x (- s x) s])
@@ -49,13 +53,13 @@
        (format "At %s with %s gas." 
 	       (some #(when (= (first %) 'at) (second %)) s)
 	       (some #(when (= (first %) 'gas) (second %)) s)))
-     ))
+     )))
 
 ; Note; use of ICAPS choice fn is essential for good perf.
 
 ;(def *road-trip* (strips/constant-predicate-simplify (make-discrete-road-trip-strips-env '{a 2 b 1 c nil d 3} '[[a b 1] [b c 3] [c d 6]] 'a 'd 0 16)))
 
-(defn make-random-discrete-road-trip-strips-env [n-cities price-dist max-gas edge-p]
+(defn make-random-dag-discrete-road-trip-strips-env [n-cities price-dist max-gas edge-p]
   (util/assert-is (> n-cities 1))
   (make-discrete-road-trip-strips-env
    (into {} (for [c (range n-cities)] [(util/symbol-cat 'city c) (util/sample-from price-dist)])) 
@@ -63,6 +67,14 @@
      [(util/symbol-cat 'city c1) (util/symbol-cat 'city c2) (inc (rand-int max-gas))])
    'city0 [(util/symbol-cat 'city (dec n-cities))] max-gas))
    
+(defn make-random-drt-tsp [n-cities price-dist max-gas edge-p]
+  (util/assert-is (> n-cities 1))
+  (make-discrete-road-trip-strips-env
+   (into {} (for [c (range n-cities)] [(util/symbol-cat 'city c) (util/sample-from price-dist)])) 
+   (util/forcat [c1 (range n-cities) c2 (range c1) :when (and (util/rand-bool edge-p))]
+     (let [sc1 (util/symbol-cat 'city c1), sc2 (util/symbol-cat 'city c2), g (inc (rand-int max-gas))]
+       [[sc1 sc2 g] [sc2 sc1 g]]))
+   'city0 (for [c (range n-cities)] (util/symbol-cat 'city c)) max-gas))
    
 
 
@@ -76,6 +88,8 @@
 	 (println (time (second (aha-star-search n))))))))
 
 (do (def *e* (constant-predicate-simplify (make-random-discrete-road-trip-strips-env 3 '{nil 0.3, 1 0.2, 2 0.5}  63 0.5))) (time-limit (test-rot *e*) 10))
+
+(do (def *e* (constant-predicate-simplify (make-random-drt-tsp 5 '{nil 0.3, 1 0.2, 10 0.5} 63 1.0))) (test-rot *e*))
 
 (interactive-search (alt-node (get-hierarchy *drt-hierarchy* ) (make-first-maximal-choice-fn '{act 10 next-stop1 9 next-stop2 9 next-stop3 9 fill-up1 8 fill-up2 8 fill-up3 8 drive-to 8})))
 

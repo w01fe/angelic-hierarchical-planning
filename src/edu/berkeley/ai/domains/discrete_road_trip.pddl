@@ -51,6 +51,6 @@
 	    (not (gas ?cg))
 	    (gas ?fg))
      :cost  
-       0)
+       (* 5 ?len))
 
   )
