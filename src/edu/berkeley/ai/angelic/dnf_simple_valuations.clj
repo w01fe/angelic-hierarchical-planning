@@ -69,8 +69,20 @@
      (filter identity (for [clause (:dnf val)] (restrict-clause clause pos neg)))
      (:bound val))))
 
-(defmethod get-valuation-states     ::DNFSimpleValuation [val]
-  (:dnf val))
+
+;; For now, a valid subsumption map maps predicates to clojure predicates.
+; One valuation subsumes another if every possibly-true value in the latter is subsumed by a possibly-true value in former.
+
+
+(defmethod get-valuation-states     ::DNFSimpleValuation [val subsumption-map]
+  (util/assert-is (empty? subsumption-map))
+  [(:dnf val) *no-subsumption-info*])
+
+
+(defmethod valuation-subsumes?     [::DNFSimpleValuationSI ::DNFSimpleValuationSI] [val1 val2 subsumption-map]
+  (throw (IllegalArgumentException.))
+  )
+
 
 (defmethod extract-a-state          ::DNFSimpleValuation [v]
   (when-first [clause (:dnf v)]

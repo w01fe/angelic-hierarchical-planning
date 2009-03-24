@@ -1,56 +1,20 @@
 road trip
 - subsumption checker (?)
 - test domains 
-
-Maybe subsumption checker will save us ... ?
-
-Issue: HLAs less accurate than Act description ... (inconsistent). 
-
-make unguided versions?
+- make unguided versions?
 
 Also: weighted A*
+
 Early-weighted max-gap choice fn. 
 
-- Bad choice fn can eliminate pruning, make unsolvable problems loop
-  forever... Act description should fix?  Also, better next-stop descriptions...
-  - TODO: suggests a new form of pruning ????? 
-  - Or something else?  This seems important to think about.
-
- - IDEA: cost-shifting.  I.e. , I'd like to pay to drive, and take
-   that out of earlier gas costs.  Problem: need explicit support to
-   make sure in sync?
-
-Ways out: 
-  - Improve hierarchy
-  - Change choice fn
-  - Add pruning
-  - Change domain  (i.e., to TSP-like.  Problem: requires way to
-  handle cycles.  Also doesn't help much, still get DP for single path
-  ?)
-
-... Could add travel cost.
-
-... Or, Would be OK as long as you always pay at least 1 for each unit
-traveled...
-  ... Can do OK, not great, by splitting initially at city-dist.  
-
-
-REMOVE HACK from strips comain (unpaid gas)
-------------
-  ... Or, just charge 1 for driving, adjust gas prices accordingly?
-  Yes.  Assume always start with 0 gas.
-
-... PAss min gas price so far with act.
-------------
-
-
 Missing things in experiments
- - Support for old graph
- - Support for singleton-only graph
+ - Support for old graph (done)
+ - Support for singleton-only graph (?)
 
-TODO: figure out what to do with forall conditions in NCSTRIPS.
 
 -----------------------------------
+
+TODO: figure out what to do with forall conditions in NCSTRIPS.
 
 set-valued variables in HLA
 graph and state abstraction and progression-free planning
@@ -65,6 +29,15 @@ Domains other than WW
   - On this note, see notes in hybrid_dnf_simple_Valuations;
     even with simple DTP scheme, without split points, can never pack
     blocks tightly.  (Picking pess interval depends on future).  
+
+- Bad choice fn can eliminate pruning, make unsolvable problems loop
+  forever... Act description should fix?  Also, better next-stop descriptions...
+  - TODO: suggests a new form of pruning ????? 
+  - Or something else?  This seems important to think about.
+
+ - IDEA: cost-shifting.  I.e. , I'd like to pay to drive, and take
+   that out of earlier gas costs.  Problem: need explicit support to
+   make sure in sync?
   
 
 ------------------------------------

@@ -13,8 +13,11 @@
 
 (defmulti explicit-valuation-map :class)
 
-(defmulti #^{:doc "Get a (hopefully canonical) possibly implicit representation of the state set"}
-          get-valuation-states :class)
+(defmulti #^{:doc "Get a (hopefully canonical), possibly implicit representation of the state set, ignoring predicates in subsumption-map, plus an auxillary representation of this remaining information with use of valuation-subsumes"}
+          get-valuation-states (fn [val subsumption-map] (:class val)))
+
+(defmulti #^{:doc "Does val1 subsume val2, given that they have identical get-valuation-states under subsumption-map"}
+          valuation-subsumes? (fn [val1 val2 subsumption-map] [(:class val1) (:class val2)]))
 
 (defmulti #^{:doc "Get a state consistent with this valuation, or nil if none"}
           extract-a-state :class)
@@ -26,8 +29,15 @@
           sub-intersect-valuations (fn [v1 v2] [(:class v1) (:class v2)]))
 
 
-(defmethod get-valuation-states ::Valuation [val]
-  (.keySet (explicit-valuation-map val)))
+(def *no-subsumption-info* {:class ::NoSubsumptionInfo})
+
+(defmethod valuation-subsumes?     [::NoSubsumptionInfo ::NoSubsumptionInfo] [val1 val2 subsumption-map]
+  true
+  )
+
+(defmethod get-valuation-states ::Valuation [val subsumption-map]
+  (util/assert-is (empty? subsumption-map))
+  [(.keySet (explicit-valuation-map val)) *no-subsumption-info*])
 
 (defmethod extract-a-state ::Valuation [val]
   (first (keys (explicit-valuation-map val))))
@@ -81,7 +91,7 @@
 
 ;(defmethod explicit-valuation-map ::ConditionalValuation [val] {})
 
-(defmethod get-valuation-states ::ConditionalValuation [val] (gensym))
+(defmethod get-valuation-states ::ConditionalValuation [val subsumption-map] [(gensym) nil])
 
 
 
