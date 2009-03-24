@@ -16,6 +16,7 @@
    (max-gas ?g - gas)
    (road-length ?l1 - loc ?l2 - loc ?l - gas)
    (gas-price ?l - loc ?p - price)
+   (no-gas ?l - loc)
    (one-greater ?g1 - gas ?g2 - gas)
    (geq ?g1 - gas ?g2 - gas)
    (overflow-sum ?g1 - gas ?g2 - gas ?gs - gas)

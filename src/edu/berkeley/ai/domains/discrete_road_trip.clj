@@ -36,7 +36,7 @@
      (set (concat 
 	   [['at start] ['visited start] ['gas 0] ['max-gas max-gas] ['zero 0] ['one-greater max-gas max-gas]] 
 	   (for [[f t l] edges] ['road-length f t l])
-	   (for [[l p] city-gas-prices :when p] ['gas-price l (- p)])
+	   (for [[l p] city-gas-prices] (if p ['gas-price l (- p)] ['no-gas l]))
 	   (for [x (range max-gas)] ['one-greater (inc x) x])
 	   (for [x1 (range (inc max-gas)), x2 (range (inc max-gas))] ['overflow-sum x1 x2 (min (+ x1 x2) max-gas)])
 	   (for [s (range (inc max-gas)), x (range (inc s))] ['sum x (- s x) s])

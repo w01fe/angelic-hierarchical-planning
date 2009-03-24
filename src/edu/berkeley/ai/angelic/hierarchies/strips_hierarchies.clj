@@ -34,7 +34,8 @@
   (let [desc (ncstrips/make-ncstrips-description-schema 
 	      types (props/check-objects types (concat objects (:vars action))) predicates 
 	      [(ncstrips/make-ncstrips-effect-schema nil nil nil ; (:pos-pre action) (:neg-pre action) TODO: double check
-					      (:add-list action) (:delete-list action) nil nil nil nil nil (constantly (:cost action)))] 
+					      (:add-list action) (:delete-list action) nil nil nil nil nil 
+					      (if (number? (:cost action)) (constantly (:cost action)) (:cost-fn action)))] 
 	      (:vars action))]
     (make-strips-hla-schema (:name action) (:vars action) (:pos-pre action) (:neg-pre action) 
 			    :primitive desc desc action)))
