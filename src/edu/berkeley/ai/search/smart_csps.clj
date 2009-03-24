@@ -164,11 +164,12 @@
   (let [[pos-const neg-const pos-fluent neg-fluent] (util/safe-get var-pred-map unk)
 	domain-size (count (util/safe-get all-domains unk))]
  ;   (println "\n\n\n" unk pos-const neg-const pos-fluent neg-fluent)
-    (* domain-size 
+    (if (= 0 domain-size) 0
+      (* domain-size 
        (reduce * (map #(expected-pred-prop % pred-instances unk domain-size instantiated-set instance) 
 		      (concat pos-const pos-fluent))) 
        (reduce * (map #(- 1 (expected-pred-prop % pred-instances unk domain-size instantiated-set instance)) 
-		      (concat neg-const neg-fluent))))))
+		      (concat neg-const neg-fluent)))))))
 
 (defn get-unk-ordering [unk-set all-domains var-pred-map pred-instances const-tuples instantiated-set unk-order instance]
   (if (empty? unk-set) unk-order

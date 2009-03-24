@@ -30,12 +30,12 @@
        (and (at ?l)
 	    (gas-price ?l ?p)
 	    (gas ?cg)
-	    (one-greater ?fg ?cg))
+	    (geq ?fg ?cg) (not (gas= ?cg ?fg)))
      :effect 
-       (and (not (gas ?cg))
+       (and (not (gas ?cg)) 
 	    (gas ?fg))
      :cost   
-       (- ?p))
+       (* ?p (- ?cg ?fg)))
 
   (:action drive
      :parameters   (?from - loc ?to - loc ?cg - gas ?len - gas ?fg - gas)

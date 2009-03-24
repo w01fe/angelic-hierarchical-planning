@@ -26,14 +26,10 @@ traveled...
 ------------
   ... Or, just charge 1 for driving, adjust gas prices accordingly?
   Yes.  Assume always start with 0 gas.
-  
-... Can help hierarchy by adding multi-gas actinos.
-
-... Much simplification by allowing strips cost-exprs.  
-
 
 ... PAss min gas price so far with act.
 ------------
+
 
 Missing things in experiments
  - Support for old graph

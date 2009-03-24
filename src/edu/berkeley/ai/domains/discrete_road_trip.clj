@@ -10,6 +10,8 @@
 
 (def *drt-hierarchy* "/Users/jawolfe/projects/angel/src/edu/berkeley/ai/domains/discrete_road_trip.hierarchy")
 
+(def *drt-flat-hierarchy* "/Users/jawolfe/projects/angel/src/edu/berkeley/ai/domains/discrete_road_trip_flat.hierarchy")
+
 
 (let [f (util/path-local "discrete_road_trip.pddl")]
   (defn make-discrete-road-trip-strips-domain []
@@ -51,32 +53,29 @@
 
 ; Note; use of ICAPS choice fn is essential for good perf.
 
-(def *road-trip* (strips/constant-predicate-simplify (make-discrete-road-trip-strips-env '{a 2 b 1 c nil d 3} '[[a b 1] [b c 3] [c d 6]] 'a 'd 0 16)))
+;(def *road-trip* (strips/constant-predicate-simplify (make-discrete-road-trip-strips-env '{a 2 b 1 c nil d 3} '[[a b 1] [b c 3] [c d 6]] 'a 'd 0 16)))
 
-(defn make-random-discrete-road-trip-strips-env [n-cities max-gas nogas-p edge-p]
+(defn make-random-discrete-road-trip-strips-env [n-cities price-dist max-gas edge-p]
   (util/assert-is (> n-cities 1))
   (make-discrete-road-trip-strips-env
-   (into {}
-	 (for [c (range n-cities)] [(util/symbol-cat 'city c) 
-				    (when-not (util/rand-bool nogas-p)
-				      (util/rand-elt [1 2 3]))]))
+   (into {} (for [c (range n-cities)] [(util/symbol-cat 'city c) (util/sample-from price-dist)])) 
    (for [c2 (range n-cities) c1 (range c2) :when  (util/rand-bool edge-p)]
      [(util/symbol-cat 'city c1) (util/symbol-cat 'city c2) (inc (rand-int max-gas))])
-   'city0 (util/symbol-cat 'city (dec n-cities)) 0 max-gas))
+   'city0 [(util/symbol-cat 'city (dec n-cities))] max-gas))
    
    
 
 
 (comment 
 
-(def *e* (constant-predicate-simplify (make-discrete-road-trip-strips-env '{city3 2, city2 3, city1 1, city0 3} '([city0 city2 7] [city2 city1 5] [city3 city0 3]) 'city0 'city1 0 10)))
 
-(defn test-rt 
-  ([] (test-rt *road-trip*))
+(defn test-rot 
   ([env] 
-     (doseq [f [#(get-hierarchy *drt-hierarchy* env) #(get-flat-strips-hierarchy env)]]
+     (doseq [i (range 2), f [#(get-hierarchy *drt-hierarchy* env) #(get-flat-strips-hierarchy env) #(get-hierarchy *drt-flat-hierarchy* env)]]
        (let [n (alt-node (f) icaps-choice-fn)]
 	 (println (time (second (aha-star-search n))))))))
+
+(do (def *e* (constant-predicate-simplify (make-random-discrete-road-trip-strips-env 3 '{nil 0.3, 1 0.2, 2 0.5}  63 0.5))) (time-limit (test-rot *e*) 10))
 
 (interactive-search (alt-node (get-hierarchy *drt-hierarchy* ) (make-first-maximal-choice-fn '{act 10 next-stop1 9 next-stop2 9 next-stop3 9 fill-up1 8 fill-up2 8 fill-up3 8 drive-to 8})))
 

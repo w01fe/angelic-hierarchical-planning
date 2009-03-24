@@ -57,10 +57,10 @@
   (:hla fill-up
        :parameters   (?cx - loc ?p - price ?g - gas)
        :refinement   (:precondition (zero ?g)
-		      :expansion ())    
+		      :expansion ())
        :refinement   (:parameters (?dg - gas ?cg - gas ?fg - gas)
-		      :precondition (one-greater ?g ?dg)
-		      :expansion ((get-gas ?cx ?p ?cg ?fg) (fill-up ?cx ?p ?dg)))
+		      :precondition (overflow-sum ?cg ?g ?fg)
+		      :expansion ((get-gas ?cx ?p ?cg ?fg)))
        :exact        (:ncstrips
 		      (:effect       (forall (?cg - gas ?fg - gas) 
 					     (and (gas ?cg) (overflow-sum ?cg ?g ?fg))

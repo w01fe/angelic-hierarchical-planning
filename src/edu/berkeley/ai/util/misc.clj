@@ -26,8 +26,6 @@
 (defn aset-double2 [#^"[[D" a i j v] (Double2Arrays/set a i j v))
 (defn aget-double2 [#^"[[D" a i j] (Double2Arrays/get a i j))
 
-(defn rand-bool [p]
-  (< (rand) p))
 
 (import '[edu.berkeley.ai.util HungarianAlgorithm])
 (defn maximum-matching "Edges are [n1 n2 weight].  Returns weight." 
