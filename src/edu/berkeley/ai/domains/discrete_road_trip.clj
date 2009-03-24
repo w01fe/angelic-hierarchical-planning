@@ -25,17 +25,18 @@
 	     (medians median max))))))
 		  
 (defn make-discrete-road-trip-strips-env 
-  [city-gas-prices edges start dests init-gas max-gas]
-  (println city-gas-prices edges start dests init-gas max-gas)
+  [city-gas-prices edges start dests max-gas]
+  (println city-gas-prices edges start dests max-gas)
     (strips/make-strips-planning-instance 
      "discrete-road-trip"
      (make-discrete-road-trip-strips-domain)
-     {'loc (map key city-gas-prices)
-      'gas (range (inc max-gas))}  
+     {'loc (keys city-gas-prices)
+      'gas (range (inc max-gas))
+      'price (map - (filter identity (distinct (vals city-gas-prices))))}  
      (set (concat 
-	   [['at start] ['visited start] ['gas init-gas] ['max-gas max-gas] ['zero 0] ['one-greater max-gas max-gas]] 
+	   [['at start] ['visited start] ['gas 0] ['max-gas max-gas] ['zero 0] ['one-greater max-gas max-gas]] 
 	   (for [[f t l] edges] ['road-length f t l])
-	   (for [[l p] city-gas-prices :when p] [(util/symbol-cat 'has-gas p) l])
+	   (for [[l p] city-gas-prices :when p] ['gas-price l (- p)])
 	   (for [x (range max-gas)] ['one-greater (inc x) x])
 	   (for [x1 (range (inc max-gas)), x2 (range (inc max-gas))] ['overflow-sum x1 x2 (min (+ x1 x2) max-gas)])
 	   (for [s (range (inc max-gas)), x (range (inc s))] ['sum x (- s x) s])

@@ -26,7 +26,10 @@
      (simplifier (:neg-pre schema))
      (simplifier (:add-list schema))
      (simplifier (:delete-list schema))
-     (:cost schema))))
+     (if (number? (:cost schema)) 
+         (:cost schema)
+       (apply (:cost-fn schema) (map #(util/safe-get var-map (second %)) (:vars schema))))
+     nil)))
 
 (defn- get-strips-action-instantiations  [action-schemata all-objects]
   (for [schema action-schemata,
@@ -206,7 +209,11 @@
 	      (when (empty? (util/intersection pos-pre neg-pre))
 		(make-strips-action-schema
 		 (into [name] (map #(util/safe-get var-map (second %)) vars))
-		 nil pos-pre neg-pre add-list delete-list cost)))))))))
+		 nil pos-pre neg-pre add-list delete-list 
+		 (if (number? cost) 
+		     cost
+		   (apply (:cost-fn schema) (map #(util/safe-get var-map (second %)) vars)))
+		 nil)))))))))
 
 
 (defn constant-predicate-simplify [instance]
@@ -271,7 +278,8 @@
    (flattener (util/safe-get action :neg-pre)) 
    (flattener (util/safe-get action :add-list)) 
    (flattener (util/safe-get action :delete-list)) 
-   (util/safe-get action :cost)))
+   (util/safe-get action :cost)
+   nil))
 
 (import '(java.util HashMap))
 

@@ -4,10 +4,11 @@
 
 ;; STRIPS action schemata
 
-(defstruct strips-action-schema :class :name :vars :pos-pre :neg-pre :add-list :delete-list :cost)
+; Cost is numeric cost, or expression.  Cost-fn is compiled fn from vars to numeric cost.
+(defstruct strips-action-schema :class :name :vars :pos-pre :neg-pre :add-list :delete-list :cost :cost-fn)
 
-(defn make-strips-action-schema [name vars pos-pre neg-pre add-list delete-list cost]
-  (struct strips-action-schema ::StripsActionSchema name vars pos-pre neg-pre add-list delete-list cost))
+(defn make-strips-action-schema [name vars pos-pre neg-pre add-list delete-list cost cost-fn]
+  (struct strips-action-schema ::StripsActionSchema name vars pos-pre neg-pre add-list delete-list cost cost-fn))
 
 (defn- parse-pddl-action-schema [action]
   (util/match [[[:action       ~name]
@@ -25,7 +26,9 @@
        neg-pre
        adds
        deletes
-       (or cost 1)))))
+       (or cost 1)
+       nil
+       ))))
 
 
 (defn- check-action-schema [types guaranteed-objs predicates action-schema] 
@@ -40,7 +43,10 @@
      (atom-checker (:neg-pre       action-schema))
      (atom-checker (:add-list      action-schema))
      (atom-checker (:delete-list   action-schema))
-     (:cost action-schema))))
+     (:cost action-schema)
+     (binding [*ns* (find-ns 'edu.berkeley.ai.domains.strips)]
+       (eval `(fn strips-cost-fn ~(vec (map second (:vars action-schema))) ~(:cost action-schema))))
+     )))
 
 (defn- check-action-schemata [types guaranteed-objs predicates action-schemata]
   (util/assert-is (util/distinct-elts? (map :name action-schemata)))
