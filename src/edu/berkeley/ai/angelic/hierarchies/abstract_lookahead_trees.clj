@@ -144,24 +144,32 @@
 	        (recur prev cur max-level))))
         cur))))
 
-; Almost icaps, except tiebreaks towards earlier, not higher-level...
-(defn icaps-choice-fn [node]
-  (loop [node (:plan node), cur nil, maxgap Double/NEGATIVE_INFINITY]
-    (if-let [prev (:previous node)]
-        (if (hla-primitive? (:hla node)) (recur prev cur maxgap)
-        (let [opt      (- (get-valuation-upper-bound (optimistic-valuation node))
-			  (get-valuation-upper-bound (optimistic-valuation prev)))
-	      mypess   (get-valuation-lower-bound (pessimistic-valuation node))
-	      prevpess (get-valuation-lower-bound (pessimistic-valuation prev))
-	      pess     (if (> prevpess Double/NEGATIVE_INFINITY)
-			   (- mypess prevpess)
-			 Double/NEGATIVE_INFINITY)
-	      gap      (- opt pess)]
+
+; Like ICAPS, but weights exponentially towards earlier actions.
+(defn make-weighted-icaps-choice-fn [weight]
+  (let [weight (double weight)]
+   (fn [node]
+    (loop [node (:plan node), cur nil, maxgap Double/NEGATIVE_INFINITY]
+      (if-let [prev (:previous node)]
+          (if (hla-primitive? (:hla node)) (recur prev cur (/ maxgap weight))
+            (let [opt      (- (get-valuation-upper-bound (optimistic-valuation node))
+			      (get-valuation-upper-bound (optimistic-valuation prev)))
+		  mypess   (get-valuation-lower-bound (pessimistic-valuation node))
+		  prevpess (get-valuation-lower-bound (pessimistic-valuation prev))
+		  pess     (if (> prevpess Double/NEGATIVE_INFINITY)
+			     (- mypess prevpess)
+			     Double/NEGATIVE_INFINITY)
+		  gap      (- opt pess)]
 ;	  (println (hla-name (:hla node)) gap opt pess mypess prevpess)
-	  (if (>= gap maxgap)
-	      (recur prev node (double gap))
-	    (recur prev cur maxgap))))
-      cur)))
+	      (if (>= gap maxgap)
+	          (recur prev node (/ (double gap) weight))
+		(recur prev cur (/ maxgap weight)))))
+	cur)))))
+
+; Almost icaps, except tiebreaks towards earlier, not higher-level...
+(def icaps-choice-fn 
+  (make-weighted-icaps-choice-fn 1))
+
 
 
 ; Sometimes this priority fn misguides us ... pessimistic desc. too pessimistic...
