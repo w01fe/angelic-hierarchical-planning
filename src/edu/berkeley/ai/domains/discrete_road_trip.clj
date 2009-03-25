@@ -51,6 +51,7 @@
 	   (for [p1 prices, p2 prices] ['lower-price p1 p2 (max p1 p2)])
 	   (for [x (range max-gas)] ['one-greater (inc x) x])
 	   (for [x1 (range (inc max-gas)), x2 (range (inc max-gas))] ['overflow-sum x1 x2 (min (+ x1 x2) max-gas)])
+	   (for [x1 (range (inc max-gas)), x2 (range (inc max-gas))] ['lower-gas x1 x2 (min x1 x2)])
 	   (for [s (range (inc max-gas)), x (range (inc s))] ['sum x (- s x) s])
 	   (for [x1 (range (inc max-gas)), x2 (range (inc x1))] ['geq x1 x2])
 	   (medians 0 max-gas)))

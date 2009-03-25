@@ -44,18 +44,20 @@
 					     (geq ?fg ?dist))
 		       :effect       (and (not (at ?cx))
 					  (at ?dx) (visited ?dx) 
-				          (forall (?cg - gas ?fg - gas ?ag - gas 
+				          (forall (?cg - gas ?fg - gas ?ag - gas ?sp-unpaid - gas
 						   ?unpaid - gas ?pre-paid - gas ?now-paid - gas ?now-unpaid - gas) 
 						  (and (gas ?cg) (overflow-sum ?cg ?maxg ?fg) (sum ?ag ?dist ?fg)
-						       (unpaid-gas ?unpaid) (sum ?unpaid ?pre-paid ?cg)
+						       (unpaid-gas ?sp-unpaid) (lower-gas ?cg ?sp-unpaid ?unpaid) 
+						       (sum ?unpaid ?pre-paid ?cg)
 						       (sum ?pre-paid ?ming ?now-paid) (sum ?now-paid ?now-unpaid ?fg)
 						       (geq ?now-paid ?dist))
 						  (and (not (gas ?cg)) (gas ?ag)
 						       (not (unpaid-gas ?unpaid)) (unpaid-gas ?now-unpaid)))
-				          (forall (?cg - gas ?fg - gas ?ag - gas 
+				          (forall (?cg - gas ?fg - gas ?ag - gas ?sp-unpaid - gas
 						   ?unpaid - gas ?pre-paid - gas ?now-paid - gas ?now-unpaid - gas) 
 						  (and (gas ?cg) (overflow-sum ?cg ?maxg ?fg) (sum ?ag ?dist ?fg)
-						       (unpaid-gas ?unpaid) (sum ?unpaid ?pre-paid ?cg)
+						       (unpaid-gas ?sp-unpaid) (lower-gas ?cg ?sp-unpaid ?unpaid) 
+						       (sum ?unpaid ?pre-paid ?cg)
 						       (sum ?pre-paid ?ming ?now-paid) (sum ?now-paid ?now-unpaid ?fg)
 						       (not (geq ?now-paid ?dist)))
 						  (and (not (gas ?cg)) (gas ?ag)
@@ -67,7 +69,7 @@
 					(* -1 ?cheapest 
 					   (max 0 
 						(- ?dist  
-						   (+ ?ming (- ?cg ?unpaid))))))))
+						   (+ ?ming (- ?cg (min ?cg ?unpaid)))))))))
        :pessimistic  (:ncstrips
 		      (:precondition (forall (?cg - gas ?fg - gas)
 					     (and (gas ?cg) (overflow-sum ?cg ?maxg ?fg))

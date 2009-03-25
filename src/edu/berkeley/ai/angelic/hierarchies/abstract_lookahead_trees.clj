@@ -209,7 +209,7 @@
   ([valuation-class subsumption-info initial-node ref-choice-fn cache? graph?]
      (make-initial-alt-node ::ALTPlanNode valuation-class subsumption-info initial-node ref-choice-fn cache? graph?))
  ([node-type valuation-class subsumption-info initial-node ref-choice-fn cache? graph?]
-  (util/assert-is (empty? subsumption-info)) ;; Taken out for now.
+;  (util/assert-is (empty? subsumption-info)) ;; Taken out for now. TODO
   (util/assert-is (contains? #{true false :full :old} graph?))
   (let [initial-plan (list initial-node) ;(if (seq? initial-node) initial-node (list initial-node))
 	env (hla-environment (first initial-plan)), 
@@ -231,13 +231,15 @@
 
 (def *dummy-pair-alt* [Double/NEGATIVE_INFINITY (gensym)])
 
+; Right now, subsumption only good for ignoring irrelevant predicates.
 ; Return true if keep, false if prune.
 (defn graph-add-and-check! [alt node rest-plan name]
   (util/assert-is (:graph? alt))
   (let [#^HashMap graph-map (util/safe-get ^alt :graph-map)
 	#^HashSet live-set  (util/safe-get ^alt :live-set)
+	subsumption-info    (util/safe-get alt :subsumption-info)
 	opt-val    (optimistic-valuation node)
-	[opt-states] (get-valuation-states opt-val {})
+	[opt-states] (get-valuation-states opt-val subsumption-info)
 	opt-rew    (get-valuation-upper-bound opt-val)
 	[graph-rew graph-node]  (or (.get graph-map [opt-states rest-plan]) *dummy-pair-alt*)]
 ;	(when (not (or (> opt-rew graph-rew) (and (= opt-rew graph-rew) (contains? ancestor-set graph-node))))
@@ -247,8 +249,8 @@
 	      (and (not (.contains live-set graph-node))
 		   (= opt-rew graph-rew)))
       (let [pess-val    (pessimistic-valuation node)
-	    [pess-states] (get-valuation-states pess-val {})
 	    pess-rew    (get-valuation-lower-bound pess-val)
+	    [pess-states] (get-valuation-states pess-val subsumption-info)
 	    pair        [pess-states rest-plan]
 	    [graph-rew graph-node] (or (.get graph-map pair) *dummy-pair-alt*)]
 	(when (>= pess-rew graph-rew)
@@ -314,7 +316,8 @@
 		   (graph-add-and-check! alt nxt (next actions) name)))
 	  (recur node nxt (next actions) alt name)
 	(util/print-debug 3 "Late prune at" (search/node-str {:class ::ALTPlanNode :plan nxt})
-			  ;(optimistic-valuation (:previous nxt))
+			  (map println (map optimistic-valuation (util/iterate-while :previous nxt)))
+;			  (optimistic-valuation (:previous (:previous nxt)))
 			  )))))
 
 (defmethod search/immediate-refinements ::ALTPlanNode [node] 

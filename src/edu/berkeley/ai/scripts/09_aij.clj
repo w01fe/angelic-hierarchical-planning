@@ -35,6 +35,13 @@
 ;         need way to specify granularity of batching, ...
 ;
 
+;Missing things in experiments
+; - Support for old graph (done)
+; - Support for singleton-only graph (?)
+
+; Weighted ICAPS fn.
+
+; Guided and unguided hierarchies.
 
 
 

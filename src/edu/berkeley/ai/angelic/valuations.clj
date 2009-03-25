@@ -55,6 +55,7 @@
 (defmethod get-valuation-upper-bound ::PessimalValuation [val] Double/NEGATIVE_INFINITY)
 (defmethod restrict-valuation [::PessimalValuation :edu.berkeley.ai.envs/Condition] [val cond] val)
 (defmethod explicit-valuation-map ::PessimalValuation [val] {})
+(defmethod get-valuation-states ::PessimalValuation [val subsumption-map] [nil *no-subsumption-info*])
 
 
 

@@ -23,6 +23,7 @@
    (no-gas ?l - loc)
    (one-greater ?g1 - gas ?g2 - gas)
    (geq ?g1 - gas ?g2 - gas)
+   (lower-gas ?g1 - gas ?g2 - gas ?gl - gas)
    (overflow-sum ?g1 - gas ?g2 - gas ?gs - gas)
    (sum ?g1 - gas ?g2 - gas ?gs - gas)
    (median ?g1 - gas ?gm - gas ?g2 - gas)
