@@ -188,7 +188,20 @@
 
 (do (def *e* (constant-predicate-simplify (make-random-discrete-road-trip-strips-env 3 '{nil 0.3, 1 0.2, 2 0.5}  63 0.5))) (time-limit (test-rot *e*) 10))
 
+(do (def *e* (constant-predicate-simplify (make-random-dag-drt-env 5 '{nil 0.3, 1 0.2, 10 0.5} 63 3))) (test-rot *e*))
+
 (do (def *e* (constant-predicate-simplify (make-random-drt-tsp 5 '{nil 0.3, 1 0.2, 10 0.5} 63 1.0))) (test-rot *e*))
+
+
+; with subsumption!
+
+(defn test-rot 
+  ([env] 
+     (doseq [subs [{} {'gas >= 'unpaid-gas <=}], [f t] [[#(get-hierarchy *drt-hierarchy* env) true] [#(get-hierarchy *drt-fancy-hierarchy* env) false] [#(get-hierarchy *drt-flat-hierarchy* env) false]]]
+       (let [n (alt-node (f) subs icaps-choice-fn true true) sol (time (aha-star-search n))]
+	 (println (sref-get *ref-counter*)) (reset-ref-counter) (if t (println (map :name (first sol)))) (println (second sol))))))
+
+(map :name (first (aha-star-search (alt-node (get-hierarchy *drt-hierarchy* (constant-predicate-simplify (make-discrete-road-trip-strips-env '{a 4 b 2 c 3 d 1} '[[a b 10] [a c 10] [b d 5] [c d 5]] 'a '[d] 15))) '{gas >} icaps-choice-fn true true))))
 
 (interactive-search (alt-node (get-hierarchy *drt-hierarchy* ) (make-first-maximal-choice-fn '{act 10 next-stop1 9 next-stop2 9 next-stop3 9 fill-up1 8 fill-up2 8 fill-up3 8 drive-to 8})))
 

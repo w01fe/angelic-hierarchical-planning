@@ -11,6 +11,8 @@ Missing things in experiments
  - Support for old graph (done)
  - Support for singleton-only graph (?)
 
+Note, a strictly better pruning strategy can still perform worse...
+
 
 -----------------------------------
 

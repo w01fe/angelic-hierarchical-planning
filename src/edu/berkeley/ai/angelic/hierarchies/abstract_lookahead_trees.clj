@@ -201,6 +201,7 @@
   ([valuation-class subsumption-info initial-node ref-choice-fn cache? graph?]
      (make-initial-alt-node ::ALTPlanNode valuation-class subsumption-info initial-node ref-choice-fn cache? graph?))
  ([node-type valuation-class subsumption-info initial-node ref-choice-fn cache? graph?]
+  (util/assert-is (empty? subsumption-info)) ;; Taken out for now.
   (util/assert-is (contains? #{true false :full :old} graph?))
   (let [initial-plan (list initial-node) ;(if (seq? initial-node) initial-node (list initial-node))
 	env (hla-environment (first initial-plan)), 
@@ -220,46 +221,34 @@
 
 ;; Graph stuff
 
-;(def *dummy-pair-alt* [Double/NEGATIVE_INFINITY (gensym)])
+(def *dummy-pair-alt* [Double/NEGATIVE_INFINITY (gensym)])
 
 ; Return true if keep, false if prune.
 (defn graph-add-and-check! [alt node rest-plan name]
   (util/assert-is (:graph? alt))
   (let [#^HashMap graph-map (util/safe-get ^alt :graph-map)
 	#^HashSet live-set  (util/safe-get ^alt :live-set)
-	subsumption-info    (util/safe-get alt :subsumption-info)
-	opt-val             (optimistic-valuation node)
-	[opt-states opt-si] (get-valuation-states opt-val subsumption-info)
-	opt-rew             (get-valuation-upper-bound opt-val)
-	graph-tuples        (.get graph-map [opt-states rest-plan])]
-    (when (every?
-	   (fn [[graph-rew graph-si graph-node]]
-	     (or (and (= (:graph? alt) :old) (not (.contains live-set graph-node)))
-		 (not (valuation-subsumes? graph-si opt-si subsumption-info))
-		 (> opt-rew graph-rew)
-		 (and (not (.contains live-set graph-node))
-		      (= opt-rew graph-rew))))
-	   graph-tuples)
-     ; (println (class (get-valuation-states (pessimistic-valuation node) subsumption-info)))
-      (let [pess-val              (pessimistic-valuation node)
-	    pess-rew              (get-valuation-lower-bound pess-val)]
-	(when (> pess-rew Double/NEGATIVE_INFINITY)
-	  (let [[pess-states pess-si] (get-valuation-states pess-val subsumption-info)
-		pair                  [pess-states rest-plan]
-		graph-tuples          (.get graph-map pair)]
-	    (when (every?
-		   (fn [[graph-rew graph-si graph-node]]
-		     (or (not (valuation-subsumes? graph-si pess-si subsumption-info))
-			 (> pess-rew graph-rew)))
-		   graph-tuples)
-	      (.put graph-map pair
-		(cons [pess-rew pess-si name]
-		      (filter
-		       (fn [[graph-rew graph-si graph-node]]
-			 (or (not (valuation-subsumes? pess-si graph-si subsumption-info))
-			     (> graph-rew pess-rew)))
-		       graph-tuples)))))))
+	opt-val    (optimistic-valuation node)
+	[opt-states] (get-valuation-states opt-val {})
+	opt-rew    (get-valuation-upper-bound opt-val)
+	[graph-rew graph-node]  (or (.get graph-map [opt-states rest-plan]) *dummy-pair-alt*)]
+;	(when (not (or (> opt-rew graph-rew) (and (= opt-rew graph-rew) (contains? ancestor-set graph-node))))
+;	  (println "pruning!" name ancestor-set graph-node graph-rew opt-rew (contains? ancestor-set graph-node)))
+    (when (or (and (= (:graph? alt) :old) (not (.contains live-set graph-node)))
+	      (> opt-rew graph-rew)
+	      (and (not (.contains live-set graph-node))
+		   (= opt-rew graph-rew)))
+      (let [pess-val    (pessimistic-valuation node)
+	    [pess-states] (get-valuation-states pess-val {})
+	    pess-rew    (get-valuation-lower-bound pess-val)
+	    pair        [pess-states rest-plan]
+	    [graph-rew graph-node] (or (.get graph-map pair) *dummy-pair-alt*)]
+	(when (>= pess-rew graph-rew)
+	  (.put graph-map pair [pess-rew name])))
       true)))
+
+
+
 	       
 
 ;; Node methods 
@@ -582,56 +571,51 @@
 
 
 
-(comment ;old version
-  (defn clear-alt-graph-cache "Clear the cache of all but node, and return a new node."
-  [node]
-  (let [alt (:alt node)
-	#^HashMap cache (:graph-map ^alt)
-	#^HashSet live-set (:live-set ^alt)
-	it (.iterator (.entrySet cache))
-	name   (util/safe-get node :name)
-	oldset (conj (util/safe-get node :ancestor-set) name)
-	newset #{name}]
-;    (println (.size cache))
-    (while (.hasNext it)
-      (let [#^Map$Entry next (.next it)
-	    k    (.getKey next)
-	    v    (.getValue next)
-	    v-name (second v)]
-	(if (contains? oldset v-name)
-	    (.setValue next (assoc v 1 name))
-	  (.remove it))))
- ;   (println (.size cache))
-;    node));
-    (.clear live-set)
-    (.add live-set name)
-    (make-alt-plan-node (:class node) alt name (:plan node) newset))))
 
+(comment ; Version with subsumption, didn't help, so taken out for now.
 
-(comment ; Version before subsumption
+; Note, even strictly better subsumption checking can make things worse...
 
 ; Return true if keep, false if prune.
 (defn graph-add-and-check! [alt node rest-plan name]
   (util/assert-is (:graph? alt))
   (let [#^HashMap graph-map (util/safe-get ^alt :graph-map)
 	#^HashSet live-set  (util/safe-get ^alt :live-set)
-	subsumption-info (util/safe-get alt :subsumption-info)
-	opt-val    (optimistic-valuation node)
-	opt-states (get-valuation-states opt-val)
-	opt-rew    (get-valuation-upper-bound opt-val)
-	[graph-rew graph-node]  (or (.get graph-map [opt-states rest-plan]) *dummy-pair-alt*)]
-;	(when (not (or (> opt-rew graph-rew) (and (= opt-rew graph-rew) (contains? ancestor-set graph-node))))
-;	  (println "pruning!" name ancestor-set graph-node graph-rew opt-rew (contains? ancestor-set graph-node)))
-    (when (or (and (= (:graph? alt) :old) (not (.contains live-set graph-node)))
-	      (> opt-rew graph-rew)
-	      (and (not (.contains live-set graph-node))
-		   (= opt-rew graph-rew)))
-      (let [pess-val    (pessimistic-valuation node)
-	    pess-states (get-valuation-states pess-val)
-	    pess-rew    (get-valuation-lower-bound pess-val)
-	    pair        [pess-states rest-plan]
-	    [graph-rew graph-node] (or (.get graph-map pair) *dummy-pair-alt*)]
-	(when (>= pess-rew graph-rew)
-	  (.put graph-map pair [pess-rew name])))
+	subsumption-info    (util/safe-get alt :subsumption-info)
+	opt-val             (optimistic-valuation node)
+	[opt-states opt-si] (get-valuation-states opt-val subsumption-info)
+	opt-rew             (get-valuation-upper-bound opt-val)
+	graph-tuples        (.get graph-map [opt-states rest-plan])]
+;    (println "ca " [opt-rew opt-states opt-si] graph-tuples)
+   ; (println "ca " (count graph-tuples))
+    (when (every?
+	   (fn [[graph-rew graph-si graph-node]]
+	     (or (and (= (:graph? alt) :old) (not (.contains live-set graph-node)))
+		 (not (valuation-subsumes? graph-si opt-si subsumption-info))
+		 (> opt-rew graph-rew)
+		 (and (not (.contains live-set graph-node))
+		      (= opt-rew graph-rew))))
+	   graph-tuples)
+     ; (println (class (get-valuation-states (pessimistic-valuation node) subsumption-info)))
+      (let [pess-val              (pessimistic-valuation node)
+	    pess-rew              (get-valuation-lower-bound pess-val)]
+	(when (> pess-rew Double/NEGATIVE_INFINITY)
+	  (let [[pess-states pess-si] (get-valuation-states pess-val subsumption-info)
+		pair                  [pess-states rest-plan]
+		graph-tuples          (.get graph-map pair)]
+	    ;(println "cb " [pess-rew pess-states pess-si] graph-tuples)
+;	    (println "cb " (count graph-tuples))
+	    (when (every?
+		   (fn [[graph-rew graph-si graph-node]]
+		     (or (not (valuation-subsumes? graph-si pess-si subsumption-info))
+			 (> pess-rew graph-rew)))
+		   graph-tuples)
+	      (.put graph-map pair
+		(cons [pess-rew pess-si name]
+		      (filter
+		       (fn [[graph-rew graph-si graph-node]]
+			 (or (not (valuation-subsumes? pess-si graph-si subsumption-info))
+			     (> graph-rew pess-rew)))
+		       graph-tuples)))))))
       true)))
 )
