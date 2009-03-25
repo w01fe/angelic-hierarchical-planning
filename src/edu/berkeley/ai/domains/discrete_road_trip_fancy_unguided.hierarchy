@@ -1,0 +1,112 @@
+;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
+;;; Discrete road trip
+;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
+;; Playing some dirty tricks with valuations and descriptions here...
+
+
+(define (hierarchy discrete-road-trip)
+  (:type :strips-hierarchy)
+  (:hla act
+       :parameters   (?cx - loc ?zero - gas ?maxg - gas ?cheapest - price)
+       :precondition (and (at ?cx) (zero ?zero) (max-gas ?maxg) (max-price ?cheapest))
+       :refinement   (:expansion ((act2 ?cx ?zero ?maxg ?cheapest)))    
+       :optimistic   (:opt 0)
+       :pessimistic  (:pess))
+
+  (:hla act2
+       :parameters   (?cx - loc ?zero - gas ?maxg - gas ?cheapest - price)
+       :refinement   (:expansion ())    
+       :refinement   (:parameters (?dx - loc ?l - gas ?p - price ?next-cheapest - price)
+		      :precondition (and (gas-price ?cx ?p) (road-length ?cx ?dx ?l)
+					 (lower-price ?cheapest ?p ?next-cheapest))
+		      :expansion ((next-stop ?cx ?dx ?l ?p ?zero ?maxg ?next-cheapest) (act2 ?dx ?zero ?maxg ?next-cheapest)))    
+       :refinement   (:parameters (?dx - loc ?l - gas)
+		      :precondition (and (no-gas ?cx)
+					 (road-length ?cx ?dx ?l))
+		      :expansion ((drive-to ?cx ?dx ?l) (act2 ?dx ?zero ?maxg ?cheapest)))    
+       :optimistic   (:opt 0)
+       :pessimistic  (:pess))
+
+
+  (:hla next-stop
+       :parameters   (?cx - loc ?dx - loc ?dist - gas ?p - price ?ming - gas ?maxg - gas ?cheapest - price)
+       :refinement   (:parameters (?med - gas)
+		      :precondition (and (median ?ming ?med ?maxg))
+		      :expansion ((next-stop ?cx ?dx ?dist ?p ?med ?maxg ?cheapest)))    
+       :refinement   (:parameters (?med - gas ?dmed - gas)
+		      :precondition (and (median ?ming ?med ?maxg) (one-greater ?med ?dmed) (not (gas= ?med ?dmed)))
+		      :expansion ((next-stop ?cx ?dx ?dist ?p ?ming ?dmed ?cheapest)))    
+       :refinement   (:precondition (gas= ?ming ?maxg)
+		      :expansion ((fill-up ?cx ?p ?ming) (drive-to ?cx ?dx ?dist)))    
+       :optimistic   (:ncstrips
+		      (:precondition (forall (?cg - gas ?fg - gas)
+					     (and (gas ?cg) (overflow-sum ?cg ?maxg ?fg))
+					     (geq ?fg ?dist))
+		       :effect       (and (not (at ?cx))
+					  (at ?dx) (visited ?dx) 
+				          (forall (?cg - gas ?fg - gas ?ag - gas 
+						   ?unpaid - gas ?pre-paid - gas ?now-paid - gas ?now-unpaid - gas) 
+						  (and (gas ?cg) (overflow-sum ?cg ?maxg ?fg) (sum ?ag ?dist ?fg)
+						       (unpaid-gas ?unpaid) (sum ?unpaid ?pre-paid ?cg)
+						       (sum ?pre-paid ?ming ?now-paid) (sum ?now-paid ?now-unpaid ?fg)
+						       (geq ?now-paid ?dist))
+						  (and (not (gas ?cg)) (gas ?ag)
+						       (not (unpaid-gas ?unpaid)) (unpaid-gas ?now-unpaid)))
+				          (forall (?cg - gas ?fg - gas ?ag - gas 
+						   ?unpaid - gas ?pre-paid - gas ?now-paid - gas ?now-unpaid - gas) 
+						  (and (gas ?cg) (overflow-sum ?cg ?maxg ?fg) (sum ?ag ?dist ?fg)
+						       (unpaid-gas ?unpaid) (sum ?unpaid ?pre-paid ?cg)
+						       (sum ?pre-paid ?ming ?now-paid) (sum ?now-paid ?now-unpaid ?fg)
+						       (not (geq ?now-paid ?dist)))
+						  (and (not (gas ?cg)) (gas ?ag)
+						       (not (unpaid-gas ?unpaid)) (unpaid-gas ?ag))))
+		       :cost-parameters   (?cg - gas ?unpaid - gas)
+		       :cost-precondition (and (gas ?cg) (unpaid-gas ?unpaid))
+		       :cost-expr    (+ (* 5 ?dist) 
+					(* -1 ?p ?ming) ;(do (println ?dist (+ ?ming (- ?cg ?unpaid))) 0)
+					(* -1 ?cheapest 
+					   (max 0 
+						(- ?dist  
+						   (+ ?ming (- ?cg ?unpaid))))))))
+       :pessimistic  (:ncstrips
+		      (:precondition (forall (?cg - gas ?fg - gas)
+					     (and (gas ?cg) (overflow-sum ?cg ?maxg ?fg))
+					     (geq ?fg ?dist))
+		       :effect       (and (not (at ?cx))
+					  (at ?dx) (visited ?dx)
+				          (forall (?cg - gas ?fg - gas ?ag - gas) 
+						  (and (gas ?cg) (overflow-sum ?cg ?maxg ?fg) (sum ?ag ?dist ?fg))
+						  (and (not (gas ?cg)) (gas ?ag))))
+		       :cost-expr    (+ (* 5 ?dist) (* -1 ?p ?maxg))))
+       )  
+
+
+  (:hla fill-up
+       :parameters   (?cx - loc ?p - price ?g - gas)
+       :refinement   (:precondition (zero ?g)
+		      :expansion ())
+       :refinement   (:parameters (?dg - gas ?cg - gas ?fg - gas)
+		      :precondition (overflow-sum ?cg ?g ?fg)
+		      :expansion ((get-gas ?cx ?p ?cg ?fg)))
+       :exact        (:ncstrips
+		      (:effect      (and 
+				     (forall (?cg - gas ?fg - gas) 
+					     (and (gas ?cg) (overflow-sum ?cg ?g ?fg))
+					     (and (not (gas ?cg)) (gas ?fg))))
+		       :cost-expr (* -1 ?p ?g))))
+
+
+  (:hla drive-to
+       :parameters   (?cx - loc ?dx - loc ?dist - gas)
+       :refinement   (:parameters (?cg - gas ?fg - gas)
+		      :expansion ((drive ?cx ?dx ?cg ?dist ?fg)))
+       :exact        (:ncstrips
+		      (:precondition (forall (?cg - gas) (gas ?cg) (geq ?cg ?dist)) 
+		       :effect       (and (not (at ?cx))
+					  (at ?dx) (visited ?dx)
+					  (forall (?cg - gas ?fg - gas) 
+						  (and (gas ?cg) (sum ?fg ?dist ?cg))
+						  (and (not (gas ?cg)) (gas ?fg))))
+		       :cost-expr (* 5 ?dist))))
+   )
+

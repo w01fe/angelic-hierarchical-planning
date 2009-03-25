@@ -1,0 +1,20 @@
+;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
+;;; Discrete road trip
+;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
+;; Playing some dirty tricks with valuations and descriptions here...
+
+
+(define (hierarchy discrete-road-trip)
+  (:type :strips-hierarchy)
+  (:hla act
+       :parameters   ()
+       :refinement   (:expansion ())    
+       :refinement   (:parameters (?l -  loc ?p - price ?cg - gas ?fg - gas)
+		      :precondition (one-greater ?fg ?cg)
+		      :expansion ((get-gas ?l ?p ?cg ?fg) (act)))    
+       :refinement   (:parameters (?from - loc ?to - loc ?cg - gas ?len - gas ?fg - gas)
+		      :expansion ((drive ?from ?to ?cg ?len ?fg) (act)))    
+       :optimistic   (:opt 0)
+       :pessimistic  (:pess))
+  )
+

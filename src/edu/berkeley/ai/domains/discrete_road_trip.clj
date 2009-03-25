@@ -12,10 +12,11 @@
 ; TODO: figure out how to take this into account?
 
 (def *drt-hierarchy* "/Users/jawolfe/projects/angel/src/edu/berkeley/ai/domains/discrete_road_trip.hierarchy")
-
 (def *drt-fancy-hierarchy* "/Users/jawolfe/projects/angel/src/edu/berkeley/ai/domains/discrete_road_trip_fancy.hierarchy")
-
 (def *drt-flat-hierarchy* "/Users/jawolfe/projects/angel/src/edu/berkeley/ai/domains/discrete_road_trip_flat.hierarchy")
+(def *drt-hierarchy-unguided* "/Users/jawolfe/projects/angel/src/edu/berkeley/ai/domains/discrete_road_trip_unguided.hierarchy")
+(def *drt-fancy-hierarchy-unguided* "/Users/jawolfe/projects/angel/src/edu/berkeley/ai/domains/discrete_road_trip_fancy_unguided.hierarchy")
+(def *drt-flat-hierarchy-unguided* "/Users/jawolfe/projects/angel/src/edu/berkeley/ai/domains/discrete_road_trip_flat_unguided.hierarchy")
 
 
 (let [f (util/path-local "discrete_road_trip.pddl")]
