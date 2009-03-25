@@ -1,6 +1,6 @@
 (ns edu.berkeley.ai.util.queues
   (:refer-clojure)
-  (:import (java.util PriorityQueue HashMap HashSet) (com.bluemarsh.graphmaker.core.util FibonacciHeap)) 
+  (:import (java.util PriorityQueue HashMap IdentityHashMap HashSet) (com.bluemarsh.graphmaker.core.util FibonacciHeap)) 
 ;	   (edu.berkeley.ai.util DelayedSeq))  ; only for old clj
   (:use edu.berkeley.ai.util)
   )
@@ -12,14 +12,25 @@
 
 ; Priority queues for searching
 
-(defmulti pq-add! (fn [a b c] (:class a)))
-(defmulti pq-remove-min! :class)
+(defmulti pq-add! (fn [pq item cost] (:class pq)))
+(defmulti pq-replace! (fn [pq item cost] (:class pq)))  ; a forced version of add.
+(defmulti pq-remove! (fn [pq item] (:class pq)))
+(defmulti pq-peek-min :class)
 (defmulti pq-remove-min-with-cost! :class)
-(defmulti pq-empty? :class)
 (defmulti pq-size :class)
+
+(defmulti pq-empty? :class)
+(defmethod pq-empty? ::PriorityQueue [pq]
+  (zero? (pq-size pq)))
+
+(defmulti pq-remove-min! :class)
+(defmethod pq-remove-min! ::PriorityQueue [pq]
+  (nth (pq-remove-min-with-cost! pq) 0))
+
 (defmulti pq-add-all! (fn [a b] (:class a)))
 (defmethod pq-add-all! ::PriorityQueue [pq items]
   (doseq [[item cost] items] (pq-add! pq item cost)))
+
 (defmulti pq-remove-all! :class)
 (defmethod pq-remove-all! ::PriorityQueue [pq]
   (loop [ret []]
@@ -193,21 +204,67 @@
     (vector (.removeMin heap) c)))
 
 
+
+(derive ::FancyTreePriorityQueue ::PriorityQueue)
+
+(defn make-fancy-tree-search-pq 
+  "Like tree PQ but supports removal, peeking" 
+  [] {:class ::FancyTreePriorityQueue :heap (new FibonacciHeap) :map (IdentityHashMap.)})
+
+(defmethod pq-add! ::FancyTreePriorityQueue [pq item cost]
+  (let [#^FibonacciHeap heap (:heap pq)
+	#^IdentityHashMap       m    (:map pq)]
+    (assert-is (not (.put m item (.insert heap item cost))))
+    :added))
+
+(defmethod pq-peek-min ::FancyTreePriorityQueue [pq]
+  (let [#^FibonacciHeap heap (:heap pq)
+	#^com.bluemarsh.graphmaker.core.util.FibonacciHeap$Node n (.min heap)]
+    (.getKey n)))
+
+(defmethod pq-remove! ::FancyTreePriorityQueue [pq item]
+  (let [#^FibonacciHeap heap (:heap pq)
+	#^IdentityHashMap       m    (:map pq)
+	#^com.bluemarsh.graphmaker.core.util.FibonacciHeap$Node n (.get m item)]
+    (.delete heap n)
+    (.remove m item)
+    :removed))
+
+(defmethod pq-remove-min-with-cost! ::FancyTreePriorityQueue [pq]
+  (let [#^FibonacciHeap heap (:heap pq)
+	#^IdentityHashMap       m    (:map pq)
+	#^com.bluemarsh.graphmaker.core.util.FibonacciHeap$Node n (.min heap)
+	item (.removeMin heap)
+	c (.getKey n)]
+    (.remove m item)
+    [item c]))
+
+(defmethod pq-size  ::FancyTreePriorityQueue [pq]
+  (let [#^FibonacciHeap heap (:heap pq)]
+    (.size heap)))
+
+
+
+
+
+
+
 (derive ::GraphPriorityQueue ::PriorityQueue)
 
 (defn make-graph-search-pq 
-  "For graph search with consistent heuristic.  Remembers everything ever added, each removed at most once."
+  "For graph search with consistent heuristic.  Remembers everything ever added, each removed at most once.  For most uses, a :re-added return value from add indicates an error."
   [] {:class ::GraphPriorityQueue :map (new HashMap) :heap (new FibonacciHeap)})
 
 
 (defmethod pq-add!  ::GraphPriorityQueue [pq item cost]
-  "Add or decrease key for item as appropriate.  Returns :added, :decreased, or :ignored"
+  "Add or decrease key for item as appropriate.  Returns :added, :re-added :decreased, or :ignored"
   (let [#^HashMap m (:map pq) 
 	#^FibonacciHeap heap (:heap pq)
 	n (.get m item)]
     (cond (nil? n)             (do (.put m item (.insert heap item cost)) :added)
 	  (number? n)          (if (< cost n)
-				   (throw (IllegalArgumentException. "Heuristic inconsistency detected."))
+				   (do (.put m item (.insert heap item cost)) :re-added)
+;				   (throw (IllegalArgumentException. "Heuristic inconsistency detected."))
 				 :ignored)
 	  (let [#^com.bluemarsh.graphmaker.core.util.FibonacciHeap$Node n n] 
 		(< cost (.getKey n))) 
@@ -215,6 +272,30 @@
 				 (do (.decreaseKey heap n item cost)        :decreased))
 	  true                 (do ;(println "\n\n" (edu.berkeley.ai.search/node-str item) (:state item) cost "\n" (edu.berkeley.ai.search/node-str (.getData n)) (:state (.getData n)) (.getKey n) ) 
 				   :ignored))))
+
+(defmethod pq-replace!  ::GraphPriorityQueue [pq item cost]
+  "Like pq-add!, but always replace the current value."
+  (let [#^HashMap m (:map pq) 
+	#^FibonacciHeap heap (:heap pq)
+	n (.get m item)]
+    (if (or (nil? n) (number? n)) 
+        (do (.put m item (.insert heap item cost)) :added)
+      (do (pq-remove! pq item)
+	  (pq-replace! pq item cost)
+	  :replaced))))
+
+(defmethod pq-peek-min ::GraphPriorityQueue [pq]
+  (let [#^FibonacciHeap heap (:heap pq)
+	#^com.bluemarsh.graphmaker.core.util.FibonacciHeap$Node n (.min heap)]
+    (.getKey n)))
+
+(defmethod pq-remove! ::GraphPriorityQueue [pq item]
+  (let [#^HashMap m (:map pq) 
+	#^FibonacciHeap heap (:heap pq)
+	#^com.bluemarsh.graphmaker.core.util.FibonacciHeap$Node n (.get m item)]
+    (.delete heap n)
+    (.put m item (.getKey n))
+    :removed))
 
 (defmethod pq-remove-min! ::GraphPriorityQueue [pq]
   (let [#^HashMap m (:map pq) 

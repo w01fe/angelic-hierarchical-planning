@@ -59,6 +59,20 @@
 			  (envs/make-simple-condition #(legal-coord?- (map + (:pos %) delta) height width))))))))
      (envs/make-simple-condition #(= (:pos %) goal-pos) true))))
 
+(defn get-nav-switch-heuristic [goal-pos]
+  (fn [state]
+    (let [pos (util/safe-get state :pos)]
+      (- 0 
+	 (util/abs (- (first pos) (first goal-pos)))
+	 (util/abs (- (second pos) (second goal-pos)))))))
+
+(comment 
+  (do (reset-ref-counter) (println (second (a-star-search (ss-node (make-nav-switch-env 4 4 [[1 1]] [0 3] true [3 0]) (get-nav-switch-heuristic [3 0])))) (sref-get *ref-counter*)))
+
+)
+
+
+
 (let [f (util/path-local "nav_switch.pddl")]
   (defn make-nav-switch-strips-domain []
     (strips/read-strips-planning-domain f)))

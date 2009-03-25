@@ -30,16 +30,97 @@
 ;(defn uniform-cost-graph-search "Tree uniform-cost search"  [node]
 ;  (first-optimal-solution node (queues/make-graph-search-pq) #(- (reward-so-far %))))
 
-;(defn stupid-fn [f]
-;  #(- (f %)))
-
 (defn a-star-search             "Tree a* search"            [node]
   (first-optimal-solution node (queues/make-tree-search-pq)  (fn negator [x] (- (upper-reward-bound x)))))
-;  (first-optimal-solution node (queues/make-tree-search-pq)  #(- (upper-reward-bound %))))
-
 
 (defn a-star-graph-search       "Graph a* search"           [node]
-  (first-optimal-solution node (queues/make-graph-search-pq) #(- (upper-reward-bound %))))
+  (first-optimal-solution node (queues/make-graph-search-pq) (fn negator [x] (- (upper-reward-bound x)))))
+
+
+(defn get-weighted-a-star-priority-fn [wt]
+    (fn was [x] (- (* (dec wt) (reward-so-far x)) (* wt (upper-reward-bound x)))))
+  
+
+(defn weighted-a-star-search    "Tree wtd a* search"        [node wt]
+  (first-optimal-solution node (queues/make-tree-search-pq) (get-weighted-a-star-priority-fn wt))) 
+
+(defn weighted-a-star-graph-search  "Graph wtd a* search"   [node wt]
+  (first-optimal-solution node (queues/make-graph-search-pq)(get-weighted-a-star-priority-fn wt)))
+
+
+
+;; Optimistic A* tree search ( simplified version of Thayer+Ruml, ICAPS 08)
+
+
+(defn- add-to-queues! [prim-pq prim-pf sec-pq sec-pf item]
+    (queues/pq-add! prim-pq item (prim-pf item))
+    (queues/pq-add! sec-pq item (sec-pf item)))
+
+(defn- remove-min-from-queues! [prim-pq sec-pq]
+  (let [item (queues/pq-remove-min! prim-pq)]
+    (queues/pq-remove! sec-pq item)
+    item))
+
+(defn optimistic-a-star-search 
+  "Simplified Optimistic A* (Thayer+Ruml, ICAPS08)" 
+  [node wt sub-pf]
+  (let [opt-pf (fn negator [x] (- (upper-reward-bound x)))
+	opt-pq (queues/make-fancy-tree-search-pq)
+	sub-pq (queues/make-fancy-tree-search-pq)]
+    (add-to-queues! opt-pq opt-pf sub-pq sub-pf node)
+    (loop [sol nil, sol-cost (+ 0 Double/POSITIVE_INFINITY)]
+      (cond (queues/pq-empty? opt-pq)   
+              (do (util/assert-is (= sol-cost Double/POSITIVE_INFINITY)) nil)
+	    (>= (* wt (queues/pq-peek-min opt-pq)) sol-cost)
+	      [sol (- sol-cost)]
+	    :else
+	(let [n (if (< (queues/pq-peek-min sub-pq) sol-cost)
+		    (remove-min-from-queues! sub-pq opt-pq)
+		  (remove-min-from-queues! opt-pq sub-pq))
+	      n-sol (extract-optimal-solution n)]
+	  (if (and n-sol (< (- (second n-sol)) sol-cost))
+	      (recur (first n-sol) (- (second n-sol)))
+	    (do
+	      (doseq [c (immediate-refinements n)]
+;	      (println (node-str n) (node-str c) (opt-pf c) (sub-pf c))
+		(add-to-queues! opt-pq opt-pf sub-pq sub-pf c))
+	      (recur sol sol-cost))))))))
+
+
+
+;; Optimistic A* tree search ( almost paper version of Thayer+Ruml, ICAPS 08)
+
+(defn- add-to-graph-queues! [prim-pq prim-pf sec-pq sec-pf item]
+  (when-not (= :ignored (queues/pq-add! prim-pq item (prim-pf item)))
+    (queues/pq-replace! sec-pq item (sec-pf item))))
+
+(defn optimistic-a-star-graph-search 
+  "Optimistic A* (Thayer+Ruml, ICAPS08)" 
+  [node wt sub-pf]
+  (let [opt-pf (fn negator [x] (- (upper-reward-bound x)))
+	opt-pq (queues/make-graph-search-pq)
+	sub-pq (queues/make-graph-search-pq)]
+    (add-to-graph-queues! opt-pq opt-pf sub-pq sub-pf node)
+    (loop [sol nil, sol-cost (+ 0 Double/POSITIVE_INFINITY)]
+      (cond (queues/pq-empty? opt-pq)   
+              (do (util/assert-is (= sol-cost Double/POSITIVE_INFINITY)) nil)
+	    (>= (* wt (queues/pq-peek-min opt-pq)) sol-cost)
+	      [sol (- sol-cost)]
+	    :else
+	(let [n (if (< (queues/pq-peek-min sub-pq) sol-cost)
+		    (remove-min-from-queues! sub-pq opt-pq)
+		  (remove-min-from-queues! opt-pq sub-pq))
+	      n-sol (extract-optimal-solution n)]
+	  (if (and n-sol (< (- (second n-sol)) sol-cost))
+	      (recur (first n-sol) (- (second n-sol)))
+	    (do
+	      (doseq [c (immediate-refinements n)]
+		(add-to-graph-queues! opt-pq opt-pf sub-pq sub-pf c))
+	      (recur sol sol-cost))))))))
+
+
+
+
 
 
 

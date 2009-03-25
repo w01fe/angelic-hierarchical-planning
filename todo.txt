@@ -1,11 +1,4 @@
-Bug in something (fancy hierarchy?) -- optimistic goes -inf when pess
-is good.
- ; Specifically, driving uses gas but not unpaid-gas ...
-
 Also: weighted A*
-
-Simple ignore for subsumption?
-
 
 
 -----------------------------------
