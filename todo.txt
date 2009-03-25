@@ -1,5 +1,12 @@
-Also: weighted A*
+figure out optimistic aha*
 
+quick re-profile
+
+Priority fns chould be using goal-intersected final costs (but doens't
+really matter for now).
+
+Way to resolve tension between refining early to get more pruning, and
+refining late to get soundly succeeding plan ?
 
 -----------------------------------
 

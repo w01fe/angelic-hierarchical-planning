@@ -191,6 +191,20 @@
 	(butlast (util/iterate-while :previous (util/safe-get node :plan))))))
 
 
+(defn get-weighted-aha-star-priority-fn [wt]
+  (fn [node]  
+    (- 0
+      (util/reduce-key + 
+	(fn [node] 
+	  (let [prev (:previous node)
+		opt  (- (get-valuation-upper-bound (optimistic-valuation node))
+			(get-valuation-upper-bound (optimistic-valuation prev)))
+		pess (- (get-valuation-lower-bound (pessimistic-valuation node))
+			(get-valuation-lower-bound (pessimistic-valuation prev)))]
+	    (max pess (* wt opt))))
+	(butlast (util/iterate-while :previous (util/safe-get node :plan)))))))
+
+
 ;; Constructing initial nodes
 
 

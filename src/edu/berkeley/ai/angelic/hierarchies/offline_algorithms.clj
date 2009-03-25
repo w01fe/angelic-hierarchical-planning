@@ -9,14 +9,11 @@
 ;;; Algorithm from ICAPS 07 paper, modulo Act simplification
 
 
-;; With decompose
-
 (defn concat-solutions [sols]
 ;  (println sols)
   [(apply concat nil (map first sols))
    (reduce + 0 (map second sols))])
 
-; Add decompose operation to ALTs.
 (defn hierarchical-forward-search "Node ref fn and graph must be set properly to mimic ICAPS07 behavior"
   ([node] (hierarchical-forward-search node #{}))
   ([node blackset]
@@ -48,10 +45,6 @@
   )
 
 
-;; Also without decompose
- ; Doesn't work ... iterative deepening and decomposition are really needed to make this work
- ; (randomness would suffice in some, but perhaps not all, cases.)
-
 
 
 
@@ -71,15 +64,10 @@
 (defn ahss-search "Pass a *finite* threshold"
   ([node] (ahss-search node (- Double/MAX_VALUE)))
   ([node threshold] (ahss-search node threshold alts/icaps-priority-fn))
-;		      (fn ahss-priority-fn [node]
-;			(- 0 
-;			   (search/upper-reward-bound node)
-;			   (max (search/lower-reward-bound node) -1000000.0)))))
   ([node threshold priority-fn]
      (let [pq        (queues/make-tree-search-pq)
 	   [sol rew] (search/extract-a-solution node)
-	   threshold (util/sref threshold)]
-          
+	   threshold (util/sref threshold)]          
        (queues/pq-add! pq node (priority-fn node))
        (when (>= (search/upper-reward-bound node) (util/sref-get threshold))  ; Handle degenerate
 	 (if (and rew (>= rew (util/sref-get threshold))) [sol rew]           ; cases
@@ -111,6 +99,7 @@
 		         (queues/pq-add! pq ref (priority-fn ref))))
 		     (recur)))))))))))
 
+  
      
 
 ;;; New versions of ICAPS 08 that include decompose.
@@ -176,6 +165,55 @@
 		         (queues/pq-add! pq ref (priority-fn ref)))
 		       (recur threshold))))))))))))
 
+
+
+;;; New algorithm - optimistic-aha-star-search; based on Thayer+Ruml, ICAPS 08
+; Like ahss, but threshold is a multiplier of hierarchically optimal solution reward.
+
+(defn- add-to-queues! [prim-pq prim-pf sec-pq sec-pf item]
+    (queues/pq-add! prim-pq item (prim-pf item))
+    (queues/pq-add! sec-pq item (sec-pf item)))
+
+(defn- remove-min-from-queues! [prim-pq sec-pq]
+  (let [item (queues/pq-remove-min! prim-pq)]
+    (queues/pq-remove! sec-pq item)
+    item))
+
+(defn optimistic-aha-star-search 
+  ([node wt sub-pf] (optimistic-aha-star-search node wt sub-pf false))
+  ([node wt sub-pf decompose?]
+  (let [opt-pf (fn negator [x] (- (search/upper-reward-bound x)))
+	opt-pq (queues/make-fancy-tree-search-pq)
+	sub-pq (queues/make-fancy-tree-search-pq)]
+    (add-to-queues! opt-pq opt-pf sub-pq sub-pf node)
+    (loop [sol nil, sol-cost (+ 0 Double/POSITIVE_INFINITY)]
+      (cond (queues/pq-empty? opt-pq)   
+              (do (util/assert-is (= sol-cost Double/POSITIVE_INFINITY)) nil)
+	    (>= (* wt (queues/pq-peek-min opt-pq)) sol-cost)
+	      ((if decompose? ahss-decomposed-search ahss-search) 
+	       (search/reroot-at-node sol) (- sol-cost) sub-pf)
+	    :else
+	(let [n (if (< (queues/pq-peek-min sub-pq) sol-cost)
+		    (remove-min-from-queues! sub-pq opt-pq)
+		  (remove-min-from-queues! opt-pq sub-pq))
+	      n-lb (search/lower-reward-bound n)]
+	  (if (< (- n-lb) sol-cost)
+	      (recur n (- n-lb))
+	    (do
+	      (doseq [c (search/immediate-refinements n)]
+;	      (println (node-str n) (node-str c) (opt-pf c) (sub-pf c))
+		(add-to-queues! opt-pq opt-pf sub-pq sub-pf c))
+	      (recur sol sol-cost)))))))))
+
+
+(comment 
+
+ (do (reset-ref-counter) (println (second (time (aha-star-search (alt-node (get-hierarchy *warehouse-hierarchy* (constant-predicate-simplify (make-warehouse-strips-env 4 4 [1 2] false {0 '[a] 2 '[c b]} nil ['[a c table1]]))))))) (sref-get *ref-counter*)))
+
+(do (reset-ref-counter) (println (second (time (optimistic-aha-star-search (alt-node (get-hierarchy *warehouse-hierarchy* (constant-predicate-simplify (make-warehouse-strips-env 4 4 [1 2] false {0 '[a] 2 '[c b]} nil ['[a c table1]]))) icaps-choice-fn) 2 (get-weighted-aha-star-priority-fn 100)))) (sref-get *ref-counter*)))
+
+(interactive-search (alt-node (get-hierarchy *warehouse-hierarchy* (constant-predicate-simplify (make-warehouse-strips-env 4 4 [1 2] false {0 '[a] 2 '[c b]} nil ['[a c table1]]))) icaps-choice-fn) (make-tree-search-pq) (get-weighted-aha-star-priority-fn 10))
+)
 
 ;; Testing
 

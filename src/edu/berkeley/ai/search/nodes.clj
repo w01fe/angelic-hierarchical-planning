@@ -99,10 +99,10 @@
   (queues/pq-add! pq node (priority-fn node))
   (loop []
     (when-not (queues/pq-empty? pq)
-      (let [next (queues/pq-remove-min! pq)
+      (let [[next p] (queues/pq-remove-min-with-cost! pq)
 	    dead-end (dead-end? next)
 	    refs (when-not dead-end (immediate-refinements next))]
-	(print "\n\n" (node-str next) (reward-bounds next))
+	(print "\n\n" (node-str next) p (reward-bounds next))
 	(if dead-end 
 	    (print " is a dead end.")
 	  (print " has refinements \n                    " 
