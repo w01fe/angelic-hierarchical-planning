@@ -1,15 +1,7 @@
-figure out optimistic aha*
-
 quick re-profile
-
-Add ability to use different ref fns (i.e., in different modes of opt-aha)
 
 Way to resolve tension between refining early to get more pruning, and
 refining late to get soundly succeeding plan ?
-
-Interaction between graph and non-optimal-order refinements (e.g.,
-optimistic a*). ??
-
 
 
 -----------------------------------

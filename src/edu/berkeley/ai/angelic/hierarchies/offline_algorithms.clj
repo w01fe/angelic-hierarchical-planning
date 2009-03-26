@@ -168,6 +168,13 @@
 		       (recur threshold))))))))))))
 
 
+;;; New algorithm - weighted aha-star search.
+
+(defn weighted-aha-star-search  "AHA*.  Identical to A* up to tiebreaking.  Assumes integer costs."
+  [node wt]
+  (search/first-optimal-solution node (queues/make-tree-search-pq) 
+				 (alts/get-weighted-aha-star-priority-fn wt)))
+
 
 ;;; New algorithm - optimistic-aha-star-search; based on Thayer+Ruml, ICAPS 08
 ; Like ahss, but threshold is a multiplier of hierarchically optimal solution reward.
