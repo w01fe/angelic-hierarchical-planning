@@ -175,34 +175,41 @@
 ; Sometimes this priority fn misguides us ... pessimistic desc. too pessimistic...
 (defn icaps-priority-fn [node]  
 ;  (println (map hla-name (map :hla (butlast (util/iterate-while :previous (:plan node)))))); (search/node-str node))
-  (- 0
-     (util/reduce-key + 
-	(fn [node] 
-	  (let [prev (:previous node)
-		opt  (- (get-valuation-upper-bound (optimistic-valuation node))
-			(get-valuation-upper-bound (optimistic-valuation prev)))
-		pess (- (get-valuation-lower-bound (pessimistic-valuation node))
-			(get-valuation-lower-bound (pessimistic-valuation prev)))
-		act? (= '[act] (hla-name (:hla node)))]
-	    (max (/ (+ opt pess) 2)
-		 (if act?
-		     (min -1 (* 3 opt))
-		   (* 1.5 opt)))))
-	(butlast (util/iterate-while :previous (util/safe-get node :plan))))))
-
+  (loop [nd (util/safe-get node :plan), 
+	 upper (search/upper-reward-bound node),
+	 lower (search/lower-reward-bound node),
+	 p 0]
+    (if (nil? (:previous nd)) p
+	(let [prev (:previous nd)
+	      prev-upper (get-valuation-upper-bound (optimistic-valuation prev))
+	      prev-lower (get-valuation-lower-bound (pessimistic-valuation prev))
+	      opt  (- upper prev-upper)
+	      pess (- lower prev-lower)
+	      act? (= 'act (first (hla-name (:hla nd))))]
+	  (recur prev prev-upper prev-lower
+		 (- p 
+		    (max (/ (+ opt pess) 2)
+			 (if act?
+			   (min -1 (* 3 opt))
+			   (* 1.5 opt)))))))))
 
 (defn get-weighted-aha-star-priority-fn [wt]
   (fn [node]  
-    (- 0
-      (util/reduce-key + 
-	(fn [node] 
-	  (let [prev (:previous node)
-		opt  (- (get-valuation-upper-bound (optimistic-valuation node))
-			(get-valuation-upper-bound (optimistic-valuation prev)))
-		pess (- (get-valuation-lower-bound (pessimistic-valuation node))
-			(get-valuation-lower-bound (pessimistic-valuation prev)))]
-	    (max pess (* wt opt))))
-	(butlast (util/iterate-while :previous (util/safe-get node :plan)))))))
+    (loop [nd (util/safe-get node :plan), 
+	   upper (search/upper-reward-bound node),
+	   lower (search/lower-reward-bound node),
+	   p 0]
+      (if (nil? (:previous nd)) p
+	  (let [prev (:previous nd)
+		prev-upper (get-valuation-upper-bound (optimistic-valuation prev))
+		prev-lower (get-valuation-lower-bound (pessimistic-valuation prev))
+		opt  (- upper prev-upper)
+		pess (- lower prev-lower)
+		act? (= 'act (first (hla-name (:hla nd))))]
+;	    (println upper lower prev-upper prev-lower opt pess act?)
+	    (recur prev prev-upper prev-lower
+		   (- p 
+		      (max pess (* wt opt)))))))))
 
 
 ;; Constructing initial nodes
@@ -277,7 +284,7 @@
 
 ;; Node methods 
 
-(defmethod search/reroot-at-node ::ALTPlanNode [node]
+(defmethod search/reroot-at-node ::ALTPlanNode [node & args]
   (let [alt (:alt node)
 	#^HashMap cache (:graph-map ^alt)
 	#^HashSet live-set (:live-set ^alt)
@@ -290,7 +297,12 @@
 	  (graph-add-and-check! alt node plan name)
 	  (recur (:previous node) (cons (:hla node) plan)))))
     (.add live-set name)
-    node))
+    (println "refs " (util/sref-get search/*ref-counter*))
+;    (println (first args))
+;    (println (:ref-choice-fn (:alt node)))
+    (if (seq args)
+        (assoc node :alt (assoc (:alt node) :ref-choice-fn (first args)))
+      node)))
 ;  (.clear 
 
 

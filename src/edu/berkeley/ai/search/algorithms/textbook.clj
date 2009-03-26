@@ -78,13 +78,14 @@
 		    (remove-min-from-queues! sub-pq opt-pq)
 		  (remove-min-from-queues! opt-pq sub-pq))
 	      n-sol (extract-optimal-solution n)]
-	  (if (and n-sol (< (- (second n-sol)) sol-cost))
-	      (recur (first n-sol) (- (second n-sol)))
-	    (do
-	      (doseq [c (immediate-refinements n)]
+	  (doseq [c (immediate-refinements n)]
 ;	      (println (node-str n) (node-str c) (opt-pf c) (sub-pf c))
-		(add-to-queues! opt-pq opt-pf sub-pq sub-pf c))
-	      (recur sol sol-cost))))))))
+	    (add-to-queues! opt-pq opt-pf sub-pq sub-pf c))
+	  (if (and n-sol (< (- (second n-sol)) sol-cost))
+	      (do (util/assert-is (= (second n-sol) (upper-reward-bound n)))
+		  (util/assert-is (= (second n-sol) (sub-pf n)))
+		  (recur (first n-sol) (- (second n-sol))))
+	    (recur sol sol-cost)))))))
 
 
 
@@ -111,12 +112,11 @@
 		    (remove-min-from-queues! sub-pq opt-pq)
 		  (remove-min-from-queues! opt-pq sub-pq))
 	      n-sol (extract-optimal-solution n)]
+	  (doseq [c (immediate-refinements n)]
+	    (add-to-graph-queues! opt-pq opt-pf sub-pq sub-pf c))
 	  (if (and n-sol (< (- (second n-sol)) sol-cost))
 	      (recur (first n-sol) (- (second n-sol)))
-	    (do
-	      (doseq [c (immediate-refinements n)]
-		(add-to-graph-queues! opt-pq opt-pf sub-pq sub-pf c))
-	      (recur sol sol-cost))))))))
+	    (recur sol sol-cost)))))))
 
 
 

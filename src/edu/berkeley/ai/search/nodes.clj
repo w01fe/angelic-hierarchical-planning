@@ -44,7 +44,7 @@
 (defmethod node-str ::Node [node] 
   (str node))
 
-(defmulti #^{:doc "Inform the data structure that all refinements but this one have been discarded, and return a new node."} reroot-at-node :class)
+(defmulti #^{:doc "Inform the data structure that all refinements but this one have been discarded, and return a new node."} reroot-at-node (fn [node & args] (:class node)))
 (defmethod reroot-at-node ::Node [node] node)
 
 

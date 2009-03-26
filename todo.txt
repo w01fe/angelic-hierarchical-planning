@@ -5,8 +5,15 @@ quick re-profile
 Priority fns chould be using goal-intersected final costs (but doens't
 really matter for now).
 
+dead ends
+
 Way to resolve tension between refining early to get more pruning, and
 refining late to get soundly succeeding plan ?
+
+Interaction between graph and non-optimal-order refinements (e.g.,
+optimistic a*). ??
+
+
 
 -----------------------------------
 

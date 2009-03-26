@@ -88,7 +88,8 @@
 				(util/first-maximal-element ; tie break
 ;					 search/lower-reward-bound 
 					 #(+ (search/lower-reward-bound %) (/ (search/upper-reward-bound %) 100000.0))
-					 great-refs))]
+					 great-refs)
+				alts/first-choice-fn)]
 			   (util/sref-set! threshold (search/lower-reward-bound best-ref)) ;; TODO??
 ;			   (println "committing to " (search/node-str best-ref))
 ;			   (println "options were: " (map #(vector (search/node-str %) (search/reward-bounds %)) great-refs))
@@ -158,7 +159,8 @@
 			      (map #(ahss-decomposed-search % (search/lower-reward-bound %) priority-fn)
 				   (alts/decompose-plan best-ref)))
 			   (do (queues/pq-remove-all! pq)
-			       (queues/pq-add! pq (search/reroot-at-node best-ref) (priority-fn best-ref))
+			       (queues/pq-add! pq (search/reroot-at-node best-ref alts/first-choice-fn) 
+					       (priority-fn best-ref))
 			       (recur (search/lower-reward-bound best-ref)))))
 		     (do
 		       (doseq [ref good-refs]
@@ -186,24 +188,25 @@
 	opt-pq (queues/make-fancy-tree-search-pq)
 	sub-pq (queues/make-fancy-tree-search-pq)]
     (add-to-queues! opt-pq opt-pf sub-pq sub-pf node)
-    (loop [sol nil, sol-cost (+ 0 Double/POSITIVE_INFINITY)]
+    (loop [sol nil, sol-lb (+ 0 Double/POSITIVE_INFINITY), sol-pri (+ 0 Double/POSITIVE_INFINITY)]
       (cond (queues/pq-empty? opt-pq)   
-              (do (util/assert-is (= sol-cost Double/POSITIVE_INFINITY)) nil)
-	    (>= (* wt (queues/pq-peek-min opt-pq)) sol-cost)
-	      ((if decompose? ahss-decomposed-search ahss-search) 
-	       (search/reroot-at-node sol) (- sol-cost) sub-pf)
+              (do (util/assert-is (= sol-lb Double/POSITIVE_INFINITY)) nil)
+	    (>= (* wt (queues/pq-peek-min opt-pq)) sol-lb)
+	      (do (util/print-debug 2 "committing to " (search/node-str sol))
+		  ((if decompose? ahss-decomposed-search ahss-search) 
+		   (search/reroot-at-node sol alts/first-choice-fn) (- sol-lb) sub-pf))
 	    :else
-	(let [n (if (< (queues/pq-peek-min sub-pq) sol-cost)
+	(let [n (if (< (queues/pq-peek-min sub-pq) sol-pri)
 		    (remove-min-from-queues! sub-pq opt-pq)
 		  (remove-min-from-queues! opt-pq sub-pq))
 	      n-lb (search/lower-reward-bound n)]
-	  (if (< (- n-lb) sol-cost)
-	      (recur n (- n-lb))
-	    (do
-	      (doseq [c (search/immediate-refinements n)]
+	  (println (search/node-str n) (opt-pf n) (sub-pf n))
+	  (doseq [c (search/immediate-refinements n)]
 ;	      (println (node-str n) (node-str c) (opt-pf c) (sub-pf c))
-		(add-to-queues! opt-pq opt-pf sub-pq sub-pf c))
-	      (recur sol sol-cost)))))))))
+	    (add-to-queues! opt-pq opt-pf sub-pq sub-pf c))
+	  (if (< (- n-lb) sol-lb)
+	      (recur n (- n-lb) (sub-pf n))
+	    (recur sol sol-lb sol-pri))))))))
 
 
 (comment 

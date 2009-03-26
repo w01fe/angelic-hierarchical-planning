@@ -213,8 +213,6 @@
 (let [e (make-road-trip-strips-env [['a 3 2] ['b 0 0]] '[[a b 2]] 'a 'b 1 4 1)
         as (get-action-space e)]
     (map :name (applicable-actions (get-initial-state e) as)))
-
-(map :name (first (a-star-graph-search (ss-node (make-road-trip-strips-env [['a 3 2] ['b 0 0] ['c 4 2]] '[[a b 2] [a c 1] [c b 1]] 'a 'b 0 4 1)))))
    
 
   (time (map :name (first (aha-star-search (alt-node (get-hierarchy *drt-hierarchy* (constant-predicate-simplify (make-discrete-road-trip-strips-env '{a 2 b 1 c nil d 3} '[[a b 30] [b c 40] [a c 60] [c d 20]] 'a 'd 0 64))) icaps-choice-fn)))))  
