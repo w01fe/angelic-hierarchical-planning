@@ -18,7 +18,7 @@
 ;; TODO: handle g-cost...
 (defn- make-initial-ahlrta-alt-node [env initial-node ref-choice-fn cache? graph? memory high-level-hla-set]
   (let [initial-node (assoc initial-node :hierarchy (assoc (:hierarchy initial-node) :problem-instance env)) 
-	node (alts/alt-node ::AHLRTAALTPlanNode (hla-default-valuation-type initial-node)
+	node (alts/alt-node ::AHLRTAALTPlanNode (hla-default-valuation-type initial-node) nil
 			    initial-node ref-choice-fn cache? graph?)]
     (assoc node :alt (assoc (:alt node) :memory memory :high-level-hla-set high-level-hla-set)
 	        :plan (assoc (:plan node) 
@@ -106,7 +106,7 @@
 ;; TODO: handle g-cost...
 (defn- make-initial-ahlrta2-alt-node [env initial-node ref-choice-fn cache? graph? ]
   (let [node
-	(alts/alt-node ::alts/ALTPlanNode (hla-default-valuation-type initial-node)
+	(alts/alt-node ::alts/ALTPlanNode (hla-default-valuation-type initial-node) nil
 		       (assoc initial-node :hierarchy (assoc (:hierarchy initial-node) :problem-instance env))
 		       ref-choice-fn cache? graph?)]
     (assoc node :plan (assoc (:plan node) 

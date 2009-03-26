@@ -348,7 +348,7 @@
 	    (- ((util/safe-get effect :cost-fn) pred-maps combiner))]))))))
 
 (defn- progress-ncstrips [val desc combiner]
-;  (println "proggy " val combiner)
+;  (println "progress " val combiner)
   (let [results 
 	(seq 
 	 (filter identity
@@ -415,6 +415,7 @@
   
 ;; For now, ignore costs.
 
+;; Does not work correctly with foralls with non-const conditions!
 (defmethod invert-description ::NCStripsDescription [desc] 
   (struct ncstrips-description ::NCStripsDescription
    (doall
