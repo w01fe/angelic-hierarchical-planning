@@ -200,7 +200,7 @@
 		    (remove-min-from-queues! sub-pq opt-pq)
 		  (remove-min-from-queues! opt-pq sub-pq))
 	      n-lb (search/lower-reward-bound n)]
-	  (println (search/node-str n) (opt-pf n) (sub-pf n))
+;	  (println (search/node-str n) (opt-pf n) (sub-pf n))
 	  (doseq [c (search/immediate-refinements n)]
 ;	      (println (node-str n) (node-str c) (opt-pf c) (sub-pf c))
 	    (add-to-queues! opt-pq opt-pf sub-pq sub-pf c))

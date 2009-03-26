@@ -297,7 +297,7 @@
 	  (graph-add-and-check! alt node plan name)
 	  (recur (:previous node) (cons (:hla node) plan)))))
     (.add live-set name)
-    (println "refs " (util/sref-get search/*ref-counter*))
+;    (println "refs " (util/sref-get search/*ref-counter*))
 ;    (println (first args))
 ;    (println (:ref-choice-fn (:alt node)))
     (if (seq args)
