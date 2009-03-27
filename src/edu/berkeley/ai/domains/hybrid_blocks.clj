@@ -118,6 +118,9 @@
 	   (hs/get-hs-action env 'put '{?b a ?c b})])
        (envs/get-goal env)))))
 
+
+(comment 
+
 (set! *warn-on-reflection* true)
 
 (import '[javax.swing JFrame JPanel] '[java.awt Graphics])
@@ -178,6 +181,8 @@
 ;      (.drawLine g 0 0 10 10))))
        
 (set! *warn-on-reflection* false)
+
+)
 
 (defn animate-hb-seq [env action-names delay-ms]
   (visualize-hb-state 
