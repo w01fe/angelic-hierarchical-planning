@@ -182,7 +182,6 @@
        
 (set! *warn-on-reflection* false)
 
-)
 
 (defn animate-hb-seq [env action-names delay-ms]
   (visualize-hb-state 
@@ -205,6 +204,7 @@
 ;			  (hs/applicable-quasi-actions s as))
 ;			 as)))
 	       (dec n-steps))))))
+)
       
 
 (comment 
