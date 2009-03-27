@@ -25,7 +25,7 @@
 	(apply util/sh 
 	 (concat ["qsub" "-N" name]
 		*default-qsub-options*
-		[:in (str *default-clj* " "f) :dir (dirname f)]))))))
+		[:in (str *default-clj* " "f) :dir (util/dirname f)]))))))
 
 (defn run-experiment-set-subprocesses [es]
   (run-files-subprocesses 
