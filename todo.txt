@@ -1,4 +1,3 @@
-quick re-profile
 
 Way to resolve tension between refining early to get more pruning, and
 refining late to get soundly succeeding plan ?

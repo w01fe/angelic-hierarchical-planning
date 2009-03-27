@@ -11,6 +11,56 @@
 	   )
  )
 
+
+(comment
+
+Variables:
+  - Algorithm
+    - Algorithm parameters
+     - Priority fn
+     - Threshold
+     - Max refinements (online)
+    - ALT parameters
+     - Graph type
+     - Caching
+     - Ref choice fn
+  - Domain :result-
+    - Hierarchy / Heuristic / subsumption
+    - Problem Instance
+  - Formulation (Strips/Strips-hierarchy/Hierarchy)
+
+Hierarchical Algorithms:
+ - HFS    
+ - AHA*
+ - AHSS (threshold, priority fn)
+ - WAHA* (weight)
+ - OAHA* (weight, priority fn)
+ - AHLRTA*  (max-refs, HLAs)
+ - IAHLRTA* (max-refs)
+
+ * Decomposition (briefly mention, at least) 
+ * Early return (first primitive action)?
+ 
+Abstract Lookahead Trees
+ - Ref choice fn (s)
+ - Caching (?)
+ - Graph types (off, old, new, full ?)
+
+Domains 
+ - Warehouse (w/wo heuristic)?
+ - Nav-switch (w/better pess) 
+ - DRT        (types)
+ 
+
+Flat:
+ - Just briefly report on speed gap
+
+
+Infrastructure:
+ - Job format
+ - Cluster framework
+)
+
 ;experiments
 ; - Offline
 ;    - Incl. various offline and online 
@@ -20,6 +70,7 @@
 ; - Online;
 ;
 ; - Things to measure
+;   - startup time
 ;   - time
 ;   - memory (?)
 ;   - number of refinements/expansions
@@ -27,7 +78,7 @@
 ;
 ;- Cluster framework?
 ;  - Given set of jobs, (cartesian product?), folder location, number,
-;  - ... do this job
+;  - ... do this job (after warmups)
 ;   - Clojure launcher for cluster run would be nice
 ;   - One potential hitch: dependencies between jobs
 ;      - May have lattice, if one job times out, don't bother with more

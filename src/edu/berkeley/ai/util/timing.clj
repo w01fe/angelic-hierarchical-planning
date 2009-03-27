@@ -74,8 +74,9 @@
   "Runs expr for at most max-seconds, killing and returning :timeout if out of time,
    otherwise returning [returned-value time-took].  Expr may still execute for awhile after return"
   [expr max-seconds]
-  `(let [#^ExecutorService pool# (java.util.concurrent.Executors/newCachedThreadPool)
-	 #^Callable f#    #(get-time-pair ~expr)
+  `(let [out# *out*
+	 #^ExecutorService pool# (java.util.concurrent.Executors/newCachedThreadPool)
+	 #^Callable f#    #(binding [*out* out#] (get-time-pair ~expr))
 	 #^Future future# (.submit pool# f#)]
     (try (let [v# (.get future# (long (* 1000 ~max-seconds)) java.util.concurrent.TimeUnit/MILLISECONDS)]
 	   (if (< (second v#) (* 1000 ~max-seconds)) v# :timeout2))	   
@@ -94,7 +95,8 @@
 	 limit-mem#  (+ start-mem# (* ~max-mb 1024 1024))
 	 start-time# (System/nanoTime)
 	 limit-time# (+ start-time# (* 1000000000 ~max-seconds)) 
-	 #^Callable f#    #(get-time-pair ~expr)
+	 out# *out*
+	 #^Callable f#    #(binding [*out* out#] (get-time-pair ~expr))
 	 #^Future future# (.submit pool# f#)]
      (loop []
        (if-let [v# 
@@ -119,7 +121,8 @@
 	 limit-mem#  (+ start-mem# (* ~max-mb 1024 1024))
 	 start-time# (System/nanoTime)
 	 limit-time# (+ start-time# (* 1000000000 ~max-seconds)) 
-	 #^Callable f#    #(get-time-pair ~expr)
+	 out# *out*
+	 #^Callable f#    #(binding [*out* out#] (get-time-pair ~expr))
 	 #^Future future# (.submit pool# f#)]
      (loop [max-mem# start-mem#]
        (if-let [v# 

@@ -104,9 +104,9 @@
    ))
     
 
-(def *nav-switch-hierarchy*  "/Users/jawolfe/Projects/angel/src/edu/berkeley/ai/domains/nav_switch.hierarchy")
-(def *nav-switch-hierarchy2* "/Users/jawolfe/Projects/angel/src/edu/berkeley/ai/domains/nav_switch2.hierarchy")
-(def *nav-switch-hierarchy-improved* "/Users/jawolfe/Projects/angel/src/edu/berkeley/ai/domains/nav_switch_improved_go.hierarchy")
+(def *nav-switch-hierarchy*          (util/path-local "nav_switch.hierarchy"))
+(def *nav-switch-hierarchy2*         (util/path-local "nav_switch2.hierarchy"))
+(def *nav-switch-hierarchy-improved* (util/path-local "nav_switch_improved_go.hierarchy"))
 
 (defn- get-and-check-sol [env]
   (map :name

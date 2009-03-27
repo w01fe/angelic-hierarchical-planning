@@ -2,6 +2,14 @@
 
 (def *debug-level* 0)
 
+(defmacro with-out-str2
+  "Evaluates exprs in a context in which *out* is bound to a fresh
+  StringWriter.  Returns [return-val, string]"
+  [& body]
+  `(let [s# (new java.io.StringWriter)]
+     (binding [*out* s#]
+       [(do ~@body) (str s#)])))
+
 (defmacro print-debug [level & args]
   `(when (>= @~#'*debug-level* ~level)
     (println ~@args)))
@@ -85,17 +93,6 @@
 (defn desymbolize [symbol n]
   (read-string (apply str (nthnext (name symbol) n))))
 
-(import '(java.io File))
-
-(def *local-root* "/Users/jawolfe/Projects/angel/src/")
-;  (let [my-path (.getParent (.getAbsoluteFile (File. ".")))
-;	my-suffix (.getParent (File. *file*))]
-;    (assert-is (.endsWith my-path my-suffix))
-;    (.substring my-path 0 (- (count my-path) (count my-suffix)))))
-
-
-(defn path-local [s]
-  (str *local-root* (.getParent (File. *file*)) "/" s))
 
 (defn symbol-abs-diff [sym1 sym2 n]
   (let [s1 (.substring (name sym1) n)

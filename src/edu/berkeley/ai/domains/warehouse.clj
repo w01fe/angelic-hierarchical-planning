@@ -61,8 +61,8 @@
 	     (for [x (range width)]
 	       (get square-map [x y] (if facingright? ">" "<"))))))))))
 
-(def *warehouse-hierarchy-unguided* "/Users/jawolfe/projects/angel/src/edu/berkeley/ai/domains/warehouse_icaps08_unguided.hierarchy")
-(def *warehouse-hierarchy* "/Users/jawolfe/projects/angel/src/edu/berkeley/ai/domains/warehouse_icaps08.hierarchy")
+(def *warehouse-hierarchy-unguided* (util/path-local "warehouse_icaps08_unguided.hierarchy"))
+(def *warehouse-hierarchy*          (util/path-local "warehouse_icaps08.hierarchy"))
 
 
 ; Act description used in hierarchy
