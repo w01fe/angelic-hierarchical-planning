@@ -9,7 +9,9 @@
      ["-r" "n" 
       "-M" "jawolfe@berkeley.edu"
       "-q" "batch"
-      "-l" "nodes=1,ppn=1,cpu3000,mem=1200m"])
+      "-l" "nodes=1:ppn=1:cpu3000"
+      "-l" "mem=1200m"
+      "-l" "walltime=6:00:00"])
 
 (defn run-files-subprocesses [files]
   (doseq [f files]
@@ -23,7 +25,7 @@
 	(apply util/sh 
 	 (concat ["qsub" "-N" name]
 		*default-qsub-options*
-		[:in (str *default-clj* f)]))))))
+		[:in (str *default-clj* " "f) :dir (dirname f)]))))))
 
 (defn run-experiment-set-subprocesses [es]
   (run-files-subprocesses 
