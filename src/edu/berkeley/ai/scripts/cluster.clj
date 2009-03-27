@@ -19,10 +19,11 @@
   ([files]      (run-files-cluster "jawolfe" files))
   ([name files]
      (doseq [f files]
-       (apply util/sh 
-	(concat ["qsub" "-N" name]
+       (println 
+	(apply util/sh 
+	 (concat ["qsub" "-N" name]
 		*default-qsub-options*
-		[:in (str *default-clj* f)])))))
+		[:in (str *default-clj* f)]))))))
 
 (defn run-experiment-set-subprocesses [es]
   (run-files-subprocesses 
