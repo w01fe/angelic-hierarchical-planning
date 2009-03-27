@@ -1,5 +1,5 @@
 (ns edu.berkeley.ai.scripts
- (:require edu.berkeley.ai.scripts.experiments))
+ (:require [edu.berkeley.ai.scripts experiments cluster]))
 
 
 

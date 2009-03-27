@@ -44,13 +44,13 @@
   
 
 (defstruct experiment 
-  :class :parameters :namespace :init-form :form :warmup-time :max-seconds :max-mb :memory-instrument? :result-type)
+  :class :name :parameters :namespace :init-form :form :warmup-time :max-seconds :max-mb :memory-instrument? :result-type)
 
 (defn make-experiment 
   "init-form and form are clojure forms to be eval'd; the results of init-form will be bound to var 
    init for the execution of form."
-  [parameters namespace init-form form warmup-time max-seconds max-mb memory-instrument? result-type]
-  (struct experiment ::Experiment parameters namespace init-form form warmup-time max-seconds max-mb memory-instrument? result-type))
+  [name parameters namespace init-form form warmup-time max-seconds max-mb memory-instrument? result-type]
+  (struct experiment ::Experiment name parameters namespace init-form form warmup-time max-seconds max-mb memory-instrument? result-type))
 
 (defmulti run-experiment :class)
 
@@ -84,6 +84,12 @@
 				  (str init-printed "------------\nEnd init\n-------------" printed)
 				  init-ms ms mb))))))
 
+(defn write-experiment [experiment clj-file out-file]
+  (util/spit clj-file
+    (util/str-join "\n"
+      `[(~'use  'edu.berkeley.ai.scripts.experiments 'edu.berkeley.ai.util)
+	(util/spit ~out-file (run-experiment '~experiment))
+	(System/exit 0)])))
 
 ;;; Experiment-sets should support
   ; Useful ways to parameterize sets of experiments
@@ -133,24 +139,53 @@
   (for [inst (parameter-set-instantiations p-set)]
     [inst (init-fn inst) (form-fn inst)]))
 
-(defstruct experiment-set :class :tuples :namespace :warmup-time :max-seconds :max-mb :memory-instrument? :result-type)
+(defstruct experiment-set :class :name :tuples :namespace :warmup-time :max-seconds :max-mb :memory-instrument? :result-type)
 
 (defn make-experiment-set 
   "tuples is a seq of [param-map init-form form] tuples"
-  [tuples namespace warmup-time max-seconds max-mb memory-instrument? result-type]
-  (struct experiment-set ::ExperimentSet (vec tuples) namespace warmup-time max-seconds max-mb memory-instrument? result-type))
+  [name tuples namespace warmup-time max-seconds max-mb memory-instrument? result-type]
+  (struct experiment-set ::ExperimentSet name (vec tuples) namespace warmup-time max-seconds max-mb memory-instrument? result-type))
 
 (defn experiment-set-count [es] (count (util/safe-get es :tuples)))
 
 (defn experiment-set-nth [es i] 
   (util/assert-is (and (>= i 0) (< i (experiment-set-count es))))
-  (let [{:keys [namespace warmup-time max-seconds max-mb memory-instrument? result-type]} es
+  (let [{:keys [name namespace warmup-time max-seconds max-mb memory-instrument? result-type]} es
 	[params init-form form] (nth (util/safe-get es :tuples) i)]
-    (make-experiment params namespace init-form form warmup-time max-seconds max-mb memory-instrument? result-type)))
+    (make-experiment name params namespace init-form form warmup-time max-seconds max-mb memory-instrument? result-type)))
+
+(defn experiment-set-seq [es] 
+  (for [i (range (experiment-set-count es))]
+    (experiment-set-nth es i)))
 
 (defn run-experiment-set [es]
-  (for [i (range (experiment-set-count es))]
-    (run-experiment (experiment-set-nth es i))))
+  (map run-experiment (experiment-set-seq es)))
+
+(defn write-experiment-set [es run-dir]
+  (let [new-dir (str run-dir (:name es))
+	in-dir  (str new-dir "/in")
+	out-dir (str new-dir "/out")]
+    (when (util/file-exists? new-dir) (throw (IllegalArgumentException. "Run-dir already exists")))
+    (util/mkdirs in-dir out-dir)
+    (for [i (range (experiment-set-count es))]
+      (let [clj-file (str in-dir "/" i ".clj")]
+	(write-experiment (experiment-set-nth es i) clj-file (str out-dir "/" i ".txt"))
+	clj-file))))
+
+(defn experiment-set-files 
+  ([es run-dir] (experiment-set-files es run-dir 0 (experiment-set-count es)))
+  ([es run-dir num] (experiment-set-files es run-dir num (inc num)))
+  ([es run-dir min max]
+  (let [new-dir (str run-dir (:name es))
+	in-dir  (str new-dir "/in")
+	out-dir (str new-dir "/out")]
+    (for [i (range min max)]
+      (let [clj-file (str in-dir "/" i ".clj")]
+	(util/assert-is (util/file-exists? clj-file))
+	clj-file)))))
+
+  
+
 
 
 (comment 

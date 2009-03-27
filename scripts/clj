@@ -1,0 +1,10 @@
+#!/bin/bash
+
+cd `dirname $0`
+
+CLOJURE_JAR=../src$(find ~/.clojure -name "*.jar" -exec printf :{} ';')
+javaargs='-server -Xmx1g'
+
+#echo $CLOJURE_JAR
+
+java $javaargs -cp $CLOJURE_JAR clojure.main $1 $2 $3 $4 $5 $6 $7 $8 $9	
