@@ -1,4 +1,4 @@
-(ns edu.berkeley.ai.domains.09-aij
+(ns edu.berkeley.ai.scripts.z09-aij
  (:require [edu.berkeley.ai [util :as util] [envs :as envs] [search :as search] [angelic :as angelic]] 
            [edu.berkeley.ai.envs.states :as states]
            [edu.berkeley.ai.domains [strips :as strips] [nav-switch :as nav-switch] [warehouse :as warehouse]]
@@ -8,9 +8,39 @@
 	   [edu.berkeley.ai.angelic.hierarchies [strips-hierarchies :as strips-hierarchies] 
 	    [abstract-lookahead-trees :as alts] [offline-algorithms :as offline]
 	    [online-algorithms :as online]]
+	   [edu.berkeley.ai.scripts.experiments :as experiments]
 	   )
  )
 
+; hfs won't work with road trip .....
+
+; Need to configure ref-choice-fns, etc.
+
+(defn make-09-aij-offline-experiment-set []
+  (experiments/make-experiment-set "09-aij-offline"
+    (experiments/parameter-set-tuples 
+     '[:product 
+       [:algorithm [;offline/hierarchical-forward-search
+		     offline/aha-star-search
+		     offline/ahss-search]]
+       [:ref-choice [alts/first-choice-fn
+		      ; alts/icaps-choice-fn
+		      ]]
+       [:domain     []
+	[[warehouse/make-warehouse-strips-env [:args ['[3 4 [1 2] false {0 [b a] 2 [c]} nil [[a b c]]]]]]
+	 [nav-switch/make-nav-switch-strips-env [:args ['[10 10 [[2 2]] [0 9] false [9 0]]]]]]]]
+     (fn [m] #_ (println m) `(alts/alt-node (strips-hierarchies/get-flat-strips-hierarchy (strips/constant-predicate-simplify (apply ~(:domain m) ~(:args m))))
+			~(:ref-choice m)))
+     (fn [m] #_ (println m) `(~(:algorithm m) ~'init)))
+    'edu.berkeley.ai.domains.09-aij
+    10
+    20
+    512
+    nil
+    experiments/*planning-experiment-result*))
+			      
+
+; (make-experiment-set "test" (parameter-set-tuples '[:product [:x [1 2]] [:y [3 4]]] (fn [m] (:x m)) (fn [m] `(+ ~'init ~(:y m)))) 'user nil 2 1 nil *simple-experiment-result*))  
 
 
 ;Variables:
@@ -55,10 +85,6 @@
 ; - Just briefly report on speed gap
 ;
 ;
-;Infrastructure:
-; - Job format
-; - Cluster framework
-;)
 
 
 ;experiments
@@ -68,23 +94,6 @@
 ;    - Flat-strips hierarchy (+heuristic)
 ;    - Real hierarchy (pick1)
 ; - Online;
-;
-; - Things to measure
-;   - startup time
-;   - time
-;   - memory (?)
-;   - number of refinements/expansions
-;   - number of next-states/progressions 
-;
-;- Cluster framework?
-;  - Given set of jobs, (cartesian product?), folder location, number,
-;  - ... do this job (after warmups)
-;   - Clojure launcher for cluster run would be nice
-;   - One potential hitch: dependencies between jobs
-;      - May have lattice, if one job times out, don't bother with more
-;         difficult jobs.  Only within runs on a single machine?  Then,
-;         need way to specify granularity of batching, ...
-;
 
 ;Missing things in experiments
 ; - Support for old graph (done)

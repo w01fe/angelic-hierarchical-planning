@@ -1,6 +1,8 @@
 (in-ns 'edu.berkeley.ai.util)
 
-(import '(java.io File ObjectInputStream FileInputStream ObjectOutputStream FileOutputStream))
+(import '(java.io RandomAccessFile File ObjectInputStream FileInputStream ObjectOutputStream FileOutputStream))
+
+(import '(java.nio ByteBuffer) '(java.nio.channels FileChannel FileChannel$MapMode))
 
 (defn dirname [path]
   (.getParent (File. path))) 
@@ -40,6 +42,16 @@
 	 :when (not (.exists (File. fn)))]
      fn))))
 
+(defn fresh-random-filename 
+  ([prefix] (fresh-random-filename prefix ""))
+  ([prefix suffix]  
+  (first 
+   (for [i (repeatedly #(rand-int 10000000))
+	 :let [fn (str prefix (when-not (= i 1) i) suffix)]
+	 :when (not (.exists (File. fn)))]
+     fn))))
+
+
 (defn mkdirs [& fs]
   (doseq [f fs]
     (.mkdirs (File. f))))
@@ -52,3 +64,7 @@
 
 (defn read-file [f]
   (read-string (slurp f)))
+
+(defn file-as-byte-buffer [f]
+  (let [channel (.getChannel (RandomAccessFile. (File. f) "r"))]
+    (.map channel FileChannel$MapMode/READ_ONLY 0 (.size channel))))

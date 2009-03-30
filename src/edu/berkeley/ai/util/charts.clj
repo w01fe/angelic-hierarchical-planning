@@ -1,62 +1,115 @@
 (ns edu.berkeley.ai.util.charts
-  (:import 
-   [org.jfree.chart ChartFrame ChartPanel JFreeChart ChartFactory]
-   [org.jfree.chart.plot PlotOrientation]
-   [org.jfree.data.category CategoryDataset DefaultCategoryDataset]
-   [org.jfree.data.xy XYDataset XYSeries XYSeriesCollection])
-  (:use edu.berkeley.ai.util)
+  (:use edu.berkeley.ai.util edu.berkeley.ai.util.pdf)
   )
 
+(def *default-gnuplot-dir* "/tmp/")
 
-(defn- make-xy-series [title xys]
-  (let [ret (XYSeries. title)]
-    (doseq [[x y] xys] (.add ret x y))
-    ret))
+(defstruct series
+  :title :data  
+  :type :lw :lt :lc :ps :pt)
 
-(defn- make-xy-series-collection [xys-map]
-  (let [ret (XYSeriesCollection.)]
-    (doseq [[title xys] xys-map]
-       (.addSeries ret (make-xy-series title xys)))
-     ret))
+(defstruct chart
+  :size :pointsize
+  :xrange :xtics :mxtics :xlog :xlabel
+  :yrange :ytics :mytics :ylog :ylabel
+  :key :title :term :extra-commands
+  :default-series-options :series
+  )
 
-(defn scatter-plot 
-  ([data] (scatter-plot data "" "" ""))
-  ([data title x-label y-label]
-     (ChartFactory/createScatterPlot
-      title x-label y-label 
-      (make-xy-series-collection data)
-      PlotOrientation/VERTICAL
-      true true false)))
+(def *default-series-options* 
+     (struct-map series 
+       :type "linespoints" 
+       :lw   2
+       :lt  (cycle [1 2 3 4 5 6 7])
+       :pt  (cycle [1 2 3 4 5 6 7])))
 
-(import '[org.jfree.chart.renderer.xy XYLineAndShapeRenderer]
-	'[org.jfree.chart.event RendererChangeEvent])
-(defn line-plot 
-  ([data] (line-plot data "" "" ""))
-  ([data title x-label y-label]
-     (let [plot 
-	   (ChartFactory/createScatterPlot
-	    title x-label y-label 
-	    (make-xy-series-collection data)
-	    PlotOrientation/VERTICAL
-	    true true false)
-	   #^XYLineAndShapeRenderer renderer (.getRenderer (.getPlot plot))]
-       (.setBaseLinesVisible renderer true)
-       (.setDefaultEntityRadius renderer 100)
-;       (.setSeriesLinesVisible renderer true)
-;       (.setRenderer (.getPlot plot) (XYLineAndShapeRenderer. true true))
-;       (.rendererChanged plot (RendererChangeEvent. renderer))
-       plot)))
+(def *default-chart-options*
+     (struct-map chart
+       :pointsize 1
+       :key       "off"
+       :term      "dashed color"))
        
 
-(defn show-chart 
-  ([chart] (show-chart "Chart" chart))
-  ([title chart]
-     (doto (ChartFrame. title chart)
-       (.pack)
-       (.setVisible true))
-     chart))
+(defn single-quote [s] (str "'" s "'"))
+(defn double-quote [s] (str "\"" s "\""))
+
+(defn fn-or [& args]
+  (some identity args))
+
+(defn dump-series 
+  ([series] (dump-series series (fresh-random-filename *default-gnuplot-dir* ".tmpgd")))
+  ([series filename]
+    (assert-is (contains? #{1 2} (count (first (:columns series)))))
+    (spit filename
+      (str-join "\n"
+	(map (fn [dp] (str-join ", " dp)) 
+	     (safe-get series :columns))))
+    (apply str (single-quote filename)
+	 " using " (if (= 1 (count (first (:columns series)))) "0:1" "1:2")
+	 (when (:title series) (str " t " (double-quote (:title series))))
+	 (when (:type series)  (str " with " (:type series)))
+	 (for [field ["lt" "lw" "lc" "ps" "pt"] :when  ((keyword field) series)]
+	   (str " " field " " ((keyword field) series))))
+    ))
+
+(defn peel-series [m]
+  [(map-vals #(if (coll? %) (first %) %) m)
+   (map-vals #(if (coll? %) (next %) %) m)])
 
 
+(defn dump-chart 
+  ([chart] (dump-chart chart (fresh-random-filename *default-gnuplot-dir* ".pdf")))
+  ([chart pdf-file] (dump-chart chart pdf-file (fresh-random-filename *default-gnuplot-dir* ".tmpgp")))
+  ([chart pdf-file filename]
+     (let [chart                  (merge-with fn-or *default-chart-options* chart)
+	   default-series-options (merge-with fn-or *default-series-options* 
+					 (:default-series-options chart))]
+;       (println chart)
+       (spit filename
+	 (str
+	  "set autoscale x \n"
+	  "set autoscale y \n"
+	  (apply str
+	    (for [field ["pointsize" "size" "title" "key"
+			 "xlabel" "xrange" "xtics" "mxtics" 
+			 "ylabel" "yrange" "ytics" "mytics"]
+		  :when ((keyword field) chart)]
+	      (str "set " field " " ((keyword field) chart) "\n")))
+	  (if (:xlog chart) "set logscale x\n" "unset logscale x\n")
+	  (if (:ylog chart) "set logscale y\n" "unset logscale y\n")
+	  "set term pdf enhanced " (:term chart) "\n"
+	  "set output " (single-quote pdf-file) "\n"
+	  (apply str (for [c (:extra-commands chart)] (str c "\n")))
+	  "plot " 
+	    (str-join ", \\\n"
+	      (loop [in (seq (:series chart)), out [], dso default-series-options]
+		(if in
+		    (let [[cso next-dso] (peel-series dso)]
+		      (recur 
+		       (next in) 
+		       (conj out (dump-series (merge-with fn-or cso (first in))))
+		       next-dso))
+		  out)))
+	    "\n"
+;	  "quit \n"
+	  ))
+       filename)))
 
+
+(defn plot 
+  ([chart] (plot chart nil))
+  ([chart pdf-file] (plot chart pdf-file true))
+  ([chart pdf-file show?]
+     (prln (sh "gnuplot" (prln (dump-chart chart pdf-file))))
+     (when show?
+       (show-pdf-page pdf-file))
+     pdf-file))
+;       (sh "fixbb" ps-file)
+;       (sh "open" "-a" "texshop" ps-file))))
+
+
+(defn gp-rgb [r g b]
+  (doseq [x [r g b]] (assert-is (and (>= x 0) (< x 256))))
+  (format "rgbcolor \"#%02x%02x%02x\"" (int r) (int g) (int b)))
 
 
