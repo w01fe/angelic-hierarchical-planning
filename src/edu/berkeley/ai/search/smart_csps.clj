@@ -439,7 +439,7 @@
 	  (let [unk-index (inc (util/position unk args))]
 	    (count (distinct (map #(nth % unk-index) const-tuples))))
         (contains? instantiated-set (nth args arg-index))
-          (util/mean
+          (apply util/mean
             (map (fn [dval] (expected-const-prop- pred args (inc arg-index) (filter #(= dval (nth % arg-index)) const-tuples)
 						 unk all-domains instantiated-set))
 		 (util/safe-get all-domains (nth args arg-index))))

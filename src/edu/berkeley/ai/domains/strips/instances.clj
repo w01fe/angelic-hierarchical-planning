@@ -332,7 +332,7 @@
 		  (filter #(= (first %) pred) (:init-atoms inst)))
 	    val 
 	      (if (empty? atoms) 0
-  	        (util/mean
+  	        (apply util/mean
 		 (map (fn [tuples] (count (distinct (map #(nth % arg-pos) tuples))))
 		      (vals
 		       (util/group-by (fn [tuple] (util/vec-map #(nth tuple %) inst-pos)) atoms)))))]

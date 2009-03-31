@@ -11,20 +11,20 @@
 
 (def *simple-experiment-result* ::SimpleExperimentResult)
 
-(defstruct simple-experiment-result :class :experiment :timout? :memout? :output :printed :init-ms :ms :mb)
+(defstruct simple-experiment-result :class :experiment :commit-id :timout? :memout? :output :printed :init-ms :ms :mb)
 
 (defmethod setup-experiment-result ::SimpleExperimentResult [experiment] nil)
 
 (defmethod make-experiment-result ::SimpleExperimentResult 
   [experiment setup-info timeout? memout? output printed init-ms ms mb]
   (struct simple-experiment-result ::SimpleExperimentResult 
-	  experiment timeout? memout? output printed init-ms ms mb))
+	  experiment (util/git-commit-id) timeout? memout? output printed init-ms ms mb))
 
 
 (def *planning-experiment-result* ::PlanningExperimentResult)
 
 (defstruct planning-experiment-result 
-  :class :experiment :timout? :memout? :output :printed :init-ms :ms :mb
+  :class :experiment :commit-id :timout? :memout? :output :printed :init-ms :ms :mb
   :next-count :ref-count :op-count :pp-count)
 
 (defmethod setup-experiment-result ::PlanningExperimentResult [experiment]
@@ -35,7 +35,7 @@
 (defmethod make-experiment-result ::PlanningExperimentResult 
   [experiment setup-info timeout? memout? output printed init-ms ms mb]
   (struct planning-experiment-result ::PlanningExperimentResult 
-	  experiment timeout? memout? output printed init-ms ms mb
+	  experiment (util/git-commit-id) timeout? memout? output printed init-ms ms mb
 	  (util/sref-get envs/*next-counter*)
 	  (util/sref-get search/*ref-counter*)
 	  (util/sref-get alts/*op-counter*)
@@ -66,7 +66,7 @@
 		   (eval `(fn [~'init] ~form)))]
       (when warmup-time (util/warm-up (with-out-str (f (init-f))) warmup-time))
       (let [setup-info (setup-experiment-result experiment)
-	    [[init init-printed] init-ms] (util/get-time-pair (util/with-out-str2(init-f)))
+	    [[init init-printed] init-ms] (util/get-time-pair (util/with-out-str2 (init-f)))
 	    result 
 	    (cond memory-instrument?
 		    (util/time-and-memory-instrument (util/with-out-str2 (f init)) max-seconds max-mb)
@@ -159,7 +159,10 @@
     (experiment-set-nth es i)))
 
 (defn run-experiment-set [es]
-  (map run-experiment (experiment-set-seq es)))
+  (print (experiment-set-count es))
+  (for [e (experiment-set-seq es)]
+    (do (print ".")
+	(run-experiment e))))
 
 
 (def *default-run-dir* (util/base-local "runs/"))

@@ -24,10 +24,14 @@
                                  :possible-effect (and (horiz) (not (horiz))) 
                                  :cost-expr (* 2 (+ (util/symbol-abs-diff ?dx ?cx 1)
 				                    (util/symbol-abs-diff ?dy ?cy 1)))))
-       :pessimistic  (:ncstrips (:effect (and (atx ?dx) (aty ?dy) (not (atx ?cx)) (not (aty ?cy))) 
-                                 :possible-effect (and (horiz) (not (horiz))) 
-                                 :cost-expr (* 4 (+ (util/symbol-abs-diff ?dx ?cx 1)
-                                                    (util/symbol-abs-diff ?dy ?cy 1))))))
+       :pessimistic   (:ncstrips (:precondition (horiz)  ; Better than in paper version
+                                 :effect (and (atx ?dx) (aty ?dy) (not (atx ?cx)) (not (aty ?cy))) 
+                                 :cost-expr (+ (* 2 (util/symbol-abs-diff ?dx ?cx 1))
+                                               (* 4 (util/symbol-abs-diff ?dy ?cy 1))))
+			        (:precondition (not (horiz))
+                                 :effect (and (atx ?dx) (aty ?dy) (not (atx ?cx)) (not (aty ?cy))) 
+                                 :cost-expr (+ (* 4 (util/symbol-abs-diff ?dx ?cx 1))
+                                               (* 2 (util/symbol-abs-diff ?dy ?cy 1))))))
        
   (:hla nav       
        :parameters (?cx - xc ?cy - yc ?dx - xc ?dy - yc)

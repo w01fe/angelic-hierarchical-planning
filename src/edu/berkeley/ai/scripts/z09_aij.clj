@@ -110,5 +110,69 @@
 
 (plot (ds->chart (experiment-set-results->dataset (run-experiment-set (make-09-aij-offline-experiment-set))) [:algorithm :domain] :max-mb :ms))
 
+
+
+; AHA* with various versions of nav switch
+(def *results*
+(doall (run-experiment-set
+(make-experiment-set "nav-switch-aha-star"
+  (parameter-set-tuples '[:product [:size [5 10 20]] [:switches [0 1 5 20]] [:run [1 2 3 4 5 6 7 8 9 10]]]
+    (fn [m] `(alt-node (get-hierarchy *nav-switch-hierarchy* (constant-predicate-simplify (make-random-nav-switch-strips-env ~(:size m) ~(:switches m))))))
+    (fn [m] `(solution-name (aha-star-search ~'init))))
+  'user nil 20 512 nil *planning-experiment-result*))))
+
+(plot (ds->chart (ds-summarize (experiment-set-results->dataset *results*) [:size :switches] [[:ms mean (ds-fn [ms] ms)]]) [:switches] :size :ms))
+
+(plot (ds->chart (ds-derive (ds-fn [output] (- (second output))) (filter (ds-fn [run] (= run 1)) (experiment-set-results->dataset *results*)) :cost) [:switches] :size :cost))
+
+; Compare speed of two flat strips hierarchies.  Flat2 is slightly faster.
+(def *args* (map-map #(vector % (make-random-nav-switch-args % 3)) [5 10 20 50]))
+(def *results*
+(doall (run-experiment-set
+(make-experiment-set "nav-switch-hierarchy-vs-flats"
+  (parameter-set-tuples '[:product [:size [5 10 20 50]] [:type [:hierarchical :flat1 :flat2]]]
+    (fn [m] 
+      (cond (= (:type m) :hierarchical)
+	      `(alt-node (get-hierarchy *nav-switch-hierarchy* (constant-predicate-simplify (apply make-nav-switch-strips-env '~(get *args* (:size m))))))
+	      (= (:type m) :flat1)
+	      `(alt-node (get-hierarchy *nav-switch-flat-hierarchy* (constant-predicate-simplify (apply make-nav-switch-strips-env '~(get *args* (:size m))))))
+	      (= (:type m) :flat2)
+	      `(alt-node (get-flat-strips-hierarchy (constant-predicate-simplify (apply make-nav-switch-strips-env '~(get *args* (:size m)))) (make-flat-nav-switch-heuristic [0 ~(dec (:size m))])))
+	      :else (throw (Exception.))))
+    (fn [m] `(solution-name (aha-star-search ~'init))))
+  'user nil 20 512 nil *planning-experiment-result*))))
+
+(plot (ds->chart (experiment-set-results->dataset *results*) [:type] :size :ms))
+
+
+; Simple Nav-switch AHA* results
+(def get-ns-args (memfn (fn [size switches run] (make-random-nav-switch-args size switches))))
+
+(def *results2*
+(doall (run-experiment-set
+(make-experiment-set "nav-switch-aha-star"
+  (parameter-set-tuples '[:product 
+			  [:size [5 20 50 200]] 
+			  [:switches [0 1 20]] 
+			  [:run [1 2 3]]
+			  [:type [:hierarchy :flat-hierarchy :strips]]
+			  ]
+    (fn [m] 
+      (cond (= (:type m) :hierarchy)
+	      `(alt-node (get-hierarchy *nav-switch-hierarchy* (constant-predicate-simplify (apply make-nav-switch-strips-env '~(get-ns-args (:size m) (:switches m) (:run m))))))
+	      (= (:type m) :flat-hierarchy)
+	      `(alt-node (get-flat-strips-hierarchy (constant-predicate-simplify (apply make-nav-switch-strips-env '~(get-ns-args (:size m) (:switches m) (:run m)))) (make-flat-nav-switch-heuristic [0 ~(dec (:size m))])))
+	      (= (:type m) :strips)
+	      `(ss-node (constant-predicate-simplify (apply make-nav-switch-strips-env '~(get-ns-args (:size m) (:switches m) (:run m)))) (make-flat-nav-switch-heuristic [0 ~(dec (:size m))]))
+	      :else (throw (Exception.))))
+    (fn [m] 
+      (cond (= (:type m) :strips)
+	      `(solution-name (a-star-graph-search ~'init))
+	    :else
+	      `(solution-name (aha-star-search ~'init)))))
+  'user nil 20 512 nil *planning-experiment-result*))))
+
+(plot (ds->chart (ds-summarize (experiment-set-results->dataset *results2*) [:type :size :switches] [[:ms (fn [& args] (when (every? identity args ) (apply mean args))) (ds-fn [ms] ms)]]) [:type :switches] :size :ms {:key "top left" :xlabel "size" :ylabel "ms" :title "square nav-switch solution time, grouped by n-switches" :ylog true :xlog true :xtics "4, 2, 256"} (fn [[type switches]] {:lt ({0 1 1 2 20 3} switches) :lc ({:hierarchy (gp-rgb 255 0 0) :flat-hierarchy (gp-rgb 0 255 0) :strips (gp-rgb 0 0 255)} type)})))
+
 )
 

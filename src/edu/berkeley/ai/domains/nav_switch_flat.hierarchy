@@ -1,0 +1,32 @@
+;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
+;;; 4 Op-blocks world
+;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
+
+(define (hierarchy nav-switch)
+  (:type :strips-hierarchy)
+  (:hla act
+       :parameters (?cx - xc ?cy - yc ?gx - xc ?gy - yc)
+       :precondition (and (goal-atx ?gx) (goal-aty ?gy) (atx ?cx) (aty ?cy))
+       :refinement   (:expansion    ((act2 ?cx ?cy ?gx ?gy)))    
+       :optimistic   (:opt 0)
+       :pessimistic  (:pess))
+       
+  (:hla act2
+       :parameters (?cx - xc ?cy - yc ?gx - xc ?gy - yc)
+       :refinement (:precondition (and (atx ?gx) (aty ?gy)) :expansion ())
+       :refinement (:expansion ((flip-h     ?cx ?cy) (act ?cx ?cy ?gx ?gy)))
+       :refinement (:expansion ((flip-v     ?cx ?cy) (act ?cx ?cy ?gx ?gy)))
+       :refinement (:parameters (:? - xc) :expansion ((bad-left   ?cx :?) (act2 :? ?cy ?gx ?gy)))
+       :refinement (:parameters (:? - yc) :expansion ((bad-up     ?cy :?) (act2 ?cx :? ?gx ?gy)))
+       :refinement (:parameters (:? - yc) :expansion ((bad-down   ?cy :?) (act2 ?cx :? ?gx ?gy)))
+       :refinement (:parameters (:? - xc) :expansion ((bad-right  ?cx :?) (act2 :? ?cy ?gx ?gy)))
+       :refinement (:parameters (:? - xc) :expansion ((good-left  ?cx :?) (act2 :? ?cy ?gx ?gy)))
+       :refinement (:parameters (:? - yc) :expansion ((good-up    ?cy :?) (act2 ?cx :? ?gx ?gy)))
+       :refinement (:parameters (:? - yc) :expansion ((good-down  ?cy :?) (act2 ?cx :? ?gx ?gy)))
+       :refinement (:parameters (:? - xc) :expansion ((good-right ?cx :?) (act2 :? ?cy ?gx ?gy)))
+       :optimistic   (:ncstrips (:effect (and (atx ?gx) (aty ?gy) (not (atx ?cx)) (not (aty ?cy))) 
+                                 :possible-effect (and (horiz) (not (horiz))) 
+                                 :cost-expr (* 2 (+ (util/symbol-abs-diff ?gx ?cx 1)
+				                    (util/symbol-abs-diff ?gy ?cy 1)))))
+       :pessimistic  (:pess))
+  )

@@ -105,8 +105,28 @@
     
 
 (def *nav-switch-hierarchy*          (util/path-local "nav_switch.hierarchy"))
-(def *nav-switch-hierarchy2*         (util/path-local "nav_switch2.hierarchy"))
-(def *nav-switch-hierarchy-improved* (util/path-local "nav_switch_improved_go.hierarchy"))
+;(def *nav-switch-hierarchy2*         (util/path-local "nav_switch2.hierarchy"))
+(def *nav-switch-old-hierarchy* (util/path-local "nav_switch_old.hierarchy"))
+(def *nav-switch-flat-hierarchy*          (util/path-local "nav_switch_flat.hierarchy"))
+
+
+(defn make-random-nav-switch-args [size n-switches]
+  (util/assert-is (>= (* size size) n-switches))
+  [size size 
+   (take n-switches (distinct (repeatedly #(vector (rand-int size) (rand-int size)))))
+   [(dec size) 0]
+   true
+   [0 (dec size)]])
+
+(defn make-random-nav-switch-strips-env [size n-switches]
+  (apply make-nav-switch-strips-env (make-random-nav-switch-args size n-switches)))
+
+
+(defn make-flat-nav-switch-heuristic [[goal-x goal-y]]
+   (fn [state] 
+     (* -2 (+ (util/abs (- (util/desymbolize (first (strips/get-strips-state-pred-val state 'atx)) 1) goal-x)) 
+	      (util/abs (- (util/desymbolize (first (strips/get-strips-state-pred-val state 'aty)) 1) goal-y))))))
+
 
 (defn- get-and-check-sol [env]
   (map :name

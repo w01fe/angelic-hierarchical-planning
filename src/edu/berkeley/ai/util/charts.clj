@@ -70,11 +70,15 @@
 	  "set autoscale x \n"
 	  "set autoscale y \n"
 	  (apply str
-	    (for [field ["pointsize" "size" "title" "key"
-			 "xlabel" "xrange" "xtics" "mxtics" 
-			 "ylabel" "yrange" "ytics" "mytics"]
+	    (for [field ["pointsize" "size" "key"
+			 "xrange" "xtics" "mxtics" 
+			 "yrange" "ytics" "mytics"]
 		  :when ((keyword field) chart)]
 	      (str "set " field " " ((keyword field) chart) "\n")))
+	  (apply str
+	    (for [field ["title" "xlabel" "ylabel"]
+		  :when ((keyword field) chart)]
+	      (str "set " field " " (double-quote ((keyword field) chart)) "\n")))
 	  (if (:xlog chart) "set logscale x\n" "unset logscale x\n")
 	  (if (:ylog chart) "set logscale y\n" "unset logscale y\n")
 	  "set term pdf enhanced " (:term chart) "\n"

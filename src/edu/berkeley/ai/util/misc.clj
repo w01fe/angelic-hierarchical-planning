@@ -1,5 +1,8 @@
 (in-ns 'edu.berkeley.ai.util)
 
+(defn git-commit-id []
+  (aget (.split (sh "git" "log" "-1" :dir (root-local "")) "\n") 0))
+
 (def *debug-level* 0)
 
 (defmacro with-out-str2
