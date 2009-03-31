@@ -39,6 +39,7 @@
       (recur (safe-get m (first ks)) (next ks))
     m))
 
+
 (defn merge-agree "Like merge but returns nil if there are inconsistencies."
   ([] {})
   ([map] map)

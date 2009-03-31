@@ -34,18 +34,18 @@
 (defn double-quote [s] (str "\"" s "\""))
 
 (defn fn-or [& args]
-  (some identity args))
+  (some identity (reverse args)))
 
 (defn dump-series 
   ([series] (dump-series series (fresh-random-filename *default-gnuplot-dir* ".tmpgd")))
   ([series filename]
-    (assert-is (contains? #{1 2} (count (first (:columns series)))))
+    (assert-is (contains? #{1 2} (count (first (:data series)))))
     (spit filename
       (str-join "\n"
 	(map (fn [dp] (str-join ", " dp)) 
-	     (safe-get series :columns))))
+	     (safe-get series :data))))
     (apply str (single-quote filename)
-	 " using " (if (= 1 (count (first (:columns series)))) "0:1" "1:2")
+	 " using " (if (= 1 (count (first (:data series)))) "0:1" "1:2")
 	 (when (:title series) (str " t " (double-quote (:title series))))
 	 (when (:type series)  (str " with " (:type series)))
 	 (for [field ["lt" "lw" "lc" "ps" "pt"] :when  ((keyword field) series)]
@@ -97,7 +97,7 @@
 
 
 (defn plot 
-  ([chart] (plot chart nil))
+  ([chart] (plot chart (fresh-random-filename *default-gnuplot-dir* ".pdf")))
   ([chart pdf-file] (plot chart pdf-file true))
   ([chart pdf-file show?]
      (prln (sh "gnuplot" (prln (dump-chart chart pdf-file))))

@@ -3,7 +3,6 @@
 	    [edu.berkeley.ai.scripts.experiments :as experiments]))
 
 (def *default-clj* (util/base-local "scripts/clj"))
-(def *default-run-dir* (util/base-local "runs/"))
 
 (def *default-qsub-options*
      ["-r" "n" 
@@ -29,12 +28,12 @@
 
 (defn run-experiment-set-subprocesses [es]
   (run-files-subprocesses 
-   (experiments/write-experiment-set es *default-run-dir*)))
+   (experiments/write-experiment-set es)))
 
 (defn run-experiment-set-cluster [es]
   (run-files-cluster 
    (:name es)
-   (experiments/write-experiment-set es *default-run-dir*)))
+   (experiments/write-experiment-set es)))
 
 ;(defn run-in-subprocess [filename forms] 
 ;  (util/spit filename (util/str-join "\n" forms))

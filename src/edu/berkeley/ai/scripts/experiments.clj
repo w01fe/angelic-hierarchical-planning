@@ -161,7 +161,12 @@
 (defn run-experiment-set [es]
   (map run-experiment (experiment-set-seq es)))
 
-(defn write-experiment-set [es run-dir]
+
+(def *default-run-dir* (util/base-local "runs/"))
+
+(defn write-experiment-set 
+  ([es] (write-experiment-set es *default-run-dir*))
+  ([es run-dir]
   (let [new-dir (str run-dir (:name es))
 	in-dir  (str new-dir "/in")
 	out-dir (str new-dir "/out")]
@@ -170,9 +175,10 @@
     (for [i (range (experiment-set-count es))]
       (let [clj-file (str in-dir "/" i ".clj")]
 	(write-experiment (experiment-set-nth es i) clj-file (str out-dir "/" i ".txt"))
-	clj-file))))
+	clj-file)))))
 
 (defn experiment-set-files 
+  ([es] (experiment-set-files es *default-run-dir*))
   ([es run-dir] (experiment-set-files es run-dir 0 (experiment-set-count es)))
   ([es run-dir num] (experiment-set-files es run-dir num (inc num)))
   ([es run-dir min max]
@@ -184,7 +190,26 @@
 	(util/assert-is (util/file-exists? clj-file))
 	clj-file)))))
 
+(defn read-experiment-set-results 
+  ([es] (read-experiment-set-results es *default-run-dir*))
+  ([es run-dir]
+     (let [new-dir (str run-dir (:name es))
+	   out-dir (str new-dir "/out")]
+       (doall
+	(for [i (range (experiment-set-count es))]
+	  (util/read-file (str out-dir "/" i ".txt")))))))
+
+
+(defn experiment-result->map [er]
+  (let [experiment (:experiment er)
+	parameters (:parameters experiment)]
+    (util/merge-disjoint 
+     parameters
+     (util/merge-disjoint (dissoc (into {} experiment) :parameters :class)
+			  (dissoc (into {} er)         :experiment :class)))))
   
+(defn experiment-set-results->dataset [results]
+  (map experiment-result->map results))
 
 
 

@@ -31,9 +31,9 @@
 	 [nav-switch/make-nav-switch-strips-env [:args ['[10 10 [[2 2]] [0 9] false [9 0]]]]]]]]
      (fn [m] #_ (println m) `(alts/alt-node (strips-hierarchies/get-flat-strips-hierarchy (strips/constant-predicate-simplify (apply ~(:domain m) ~(:args m))))
 			~(:ref-choice m)))
-     (fn [m] #_ (println m) `(~(:algorithm m) ~'init)))
-    'edu.berkeley.ai.domains.09-aij
-    10
+     (fn [m] #_ (println m) `(envs/solution-name (~(:algorithm m) ~'init))))
+    'edu.berkeley.ai.scripts.z09-aij
+    nil
     20
     512
     nil
@@ -102,4 +102,13 @@
 ; Weighted ICAPS fn.
 
 ; Guided and unguided hierarchies.
+
+
+(comment 
+
+(use 'edu.berkeley.ai.util.datasets 'edu.berkeley.ai.util.charts 'edu.berkeley.ai.scripts.experiments 'edu.berkeley.ai.scripts.z09-aij :reload-all)
+
+(plot (ds->chart (experiment-set-results->dataset (run-experiment-set (make-09-aij-offline-experiment-set))) [:algorithm :domain] :max-mb :ms))
+
+)
 

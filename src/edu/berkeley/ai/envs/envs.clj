@@ -62,7 +62,8 @@
 ;; Useful sanity check
 
 
-
+(defn solution-name [[act-seq reward]]
+  [(map :name act-seq) reward])
 
 (defn check-solution [env [act-seq reward]]
   (let [action-space (get-action-space env)
