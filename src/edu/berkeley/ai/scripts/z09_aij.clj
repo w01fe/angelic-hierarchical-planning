@@ -38,7 +38,21 @@
     512
     nil
     experiments/*planning-experiment-result*))
-			      
+	
+
+(def get-ns-argsm (memoize (fn [size switches run] (nav-switch/make-random-nav-switch-args size switches))))
+
+(defn make-nav-switch-experiment-set []
+  (experiments/make-experiment-set "nav-switch"
+  (experiments/parameter-set-tuples '[:product 
+			  [:size [5 20 50]] 
+			  [:switches [0 1]] 
+			  [:run [1 2]]
+			  ]
+    (fn [m] 
+      `(alts/alt-node (hierarchies/get-hierarchy nav-switch/*nav-switch-hierarchy* (strips/constant-predicate-simplify (apply nav-switch/make-nav-switch-strips-env '~(get-ns-argsm (:size m) (:switches m) (:run m)))))))
+    (fn [m] `(envs/solution-name (offline/aha-star-search ~'init))))
+  'edu.berkeley.ai.scripts.z09-aij nil 20 512 nil experiments/*planning-experiment-result*))
 
 ; (make-experiment-set "test" (parameter-set-tuples '[:product [:x [1 2]] [:y [3 4]]] (fn [m] (:x m)) (fn [m] `(+ ~'init ~(:y m)))) 'user nil 2 1 nil *simple-experiment-result*))  
 
@@ -64,7 +78,7 @@
 ; - AHSS (threshold, priority fn)
 ; - WAHA* (weight)
 ; - OAHA* (weight, priority fn)
-; - AHLRTA*  (max-refs, HLAs)
+0; - AHLRTA*  (max-refs, HLAs)
 ; - IAHLRTA* (max-refs)
 ;
 ; * Decomposition (briefly mention, at least) 
