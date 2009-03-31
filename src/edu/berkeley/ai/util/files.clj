@@ -10,7 +10,7 @@
 (defn file-stem [path]
   (let [i (.lastIndexOf path ".")]
     (if (>= i 0)
-      (.substring path i)
+      (.substring path 0 i)
       path)))
 
 (defmacro current-file []
