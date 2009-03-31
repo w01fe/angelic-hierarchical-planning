@@ -22,7 +22,10 @@
      (doseq [f files]
        (println 
 	(apply util/sh 
-	 (concat ["qsub" "-N" name]
+	 (concat ["qsub" 
+		  "-N" name 
+		  "-o" (str (util/file-stem f ".out"))
+		  "-e" (str (util/file-stem f ".err"))]
 		*default-qsub-options*
 		[:in (str *default-clj* " "f) :dir (util/dirname f)]))))))
 

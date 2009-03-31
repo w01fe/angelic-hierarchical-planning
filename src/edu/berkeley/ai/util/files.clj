@@ -7,6 +7,12 @@
 (defn dirname [path]
   (.getParent (File. path))) 
 
+(defn file-stem [path]
+  (let [i (.lastIndexOf path ".")]
+    (if (>= i 0)
+      (.substring path i)
+      path)))
+
 (defmacro current-file []
   `(if *file*
        (let [f# (ClassLoader/getSystemResource *file*)]
