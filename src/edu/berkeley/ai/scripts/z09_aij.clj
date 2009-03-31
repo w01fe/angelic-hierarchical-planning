@@ -40,19 +40,45 @@
     experiments/*planning-experiment-result*))
 	
 
-(def get-ns-argsm (memoize (fn [size switches run] (nav-switch/make-random-nav-switch-args size switches))))
+(def get-ns-args (memoize (fn [size switches run] (nav-switch/make-random-nav-switch-args size switches))))
 
 (defn make-nav-switch-experiment-set []
-  (experiments/make-experiment-set "nav-switch"
+  (experiments/make-experiment-set "nav-switch-aha-star"
   (experiments/parameter-set-tuples '[:product 
-			  [:size [5 20 50]] 
-			  [:switches [0 1]] 
-			  [:run [1 2]]
+			  [:size [5 20 50 200 500]] 
+			  [:switches [0 1 20]] 
+			  [:run [1 2 3 4 5]]
+			  [:type [:hierarchy :flat-hierarchy :strips]]
 			  ]
     (fn [m] 
-      `(alts/alt-node (hierarchies/get-hierarchy nav-switch/*nav-switch-hierarchy* (strips/constant-predicate-simplify (apply nav-switch/make-nav-switch-strips-env '~(get-ns-argsm (:size m) (:switches m) (:run m)))))))
-    (fn [m] `(envs/solution-name (offline/aha-star-search ~'init))))
-  'edu.berkeley.ai.scripts.z09-aij nil 20 512 nil experiments/*planning-experiment-result*))
+      (cond (= (:type m) :hierarchy)
+	      `(alts/alt-node (hierarchies/get-hierarchy nav-switch/*nav-switch-hierarchy* (strips/constant-predicate-simplify (apply nav-switch/make-nav-switch-strips-env '~(get-ns-args (:size m) (:switches m) (:run m))))))
+	      (= (:type m) :flat-hierarchy)
+	      `(alts/alt-node (hierarchies/get-flat-strips-hierarchy (strips/constant-predicate-simplify (apply nav-switch/make-nav-switch-strips-env '~(get-ns-args (:size m) (:switches m) (:run m)))) (nav-switch/make-flat-nav-switch-heuristic [0 ~(dec (:size m))])))
+	      (= (:type m) :strips)
+	      `(search/ss-node (strips/constant-predicate-simplify (apply nav-switch/make-nav-switch-strips-env '~(get-ns-args (:size m) (:switches m) (:run m)))) (nav-switch/make-flat-nav-switch-heuristic [0 ~(dec (:size m))]))
+	      :else (throw (Exception.))))
+    (fn [m] 
+      (cond (= (:type m) :strips)
+	      `(envs/solution-name (textbook/a-star-graph-search ~'init))
+	    :else
+	      `(envs/solution-name (offline/aha-star-search ~'init)))))
+  'user 10 120 512 nil experiments/*planning-experiment-result*))
+
+
+;  (experiments/make-experiment-set "nav-switch"
+;  (experiments/parameter-set-tuples '[:product 
+;			  [:size [5 20 50]] 
+;			  [:switches [0 1]] 
+;			  [:run [1 2]]
+;			  ]
+ ;   (fn [m] 
+;      `(alts/alt-node (hierarchies/get-hierarchy nav-switch/*nav-switch-hierarchy* (strips/constant-predicate-simplify (apply nav-switch/make-nav-switch-strips-env '~(get-ns-argsm (:size m) (:switches m) (:run m)))))))
+;    (fn [m] `(envs/solution-name (offline/aha-star-search ~'init))))
+;  'edu.berkeley.ai.scripts.z09-aij nil 20 512 nil experiments/*planning-experiment-result*))
+
+
+; (plot (ds->chart (ds-summarize (experiment-set-results->dataset (read-experiment-set-results (make-nav-switch-experiment-set))) [:size :switches] [[:ms (fn [& args] (when (every? identity args ) (apply mean args))) (ds-fn [ms] ms)]]) [:switches] :size :ms ))
 
 ; (make-experiment-set "test" (parameter-set-tuples '[:product [:x [1 2]] [:y [3 4]]] (fn [m] (:x m)) (fn [m] `(+ ~'init ~(:y m)))) 'user nil 2 1 nil *simple-experiment-result*))  
 
