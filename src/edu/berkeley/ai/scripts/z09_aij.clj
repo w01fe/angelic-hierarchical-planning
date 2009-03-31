@@ -54,7 +54,7 @@
       (cond (= (:type m) :hierarchy)
 	      `(alts/alt-node (hierarchies/get-hierarchy nav-switch/*nav-switch-hierarchy* (strips/constant-predicate-simplify (apply nav-switch/make-nav-switch-strips-env '~(get-ns-args (:size m) (:switches m) (:run m))))))
 	      (= (:type m) :flat-hierarchy)
-	      `(alts/alt-node (hierarchies/get-flat-strips-hierarchy (strips/constant-predicate-simplify (apply nav-switch/make-nav-switch-strips-env '~(get-ns-args (:size m) (:switches m) (:run m)))) (nav-switch/make-flat-nav-switch-heuristic [0 ~(dec (:size m))])))
+	      `(alts/alt-node (strips-hierarchies/get-flat-strips-hierarchy (strips/constant-predicate-simplify (apply nav-switch/make-nav-switch-strips-env '~(get-ns-args (:size m) (:switches m) (:run m)))) (nav-switch/make-flat-nav-switch-heuristic [0 ~(dec (:size m))])))
 	      (= (:type m) :strips)
 	      `(search/ss-node (strips/constant-predicate-simplify (apply nav-switch/make-nav-switch-strips-env '~(get-ns-args (:size m) (:switches m) (:run m)))) (nav-switch/make-flat-nav-switch-heuristic [0 ~(dec (:size m))]))
 	      :else (throw (Exception.))))
