@@ -91,13 +91,6 @@
 	(util/spit ~out-file (run-experiment '~experiment))
 	(System/exit 0)])))
 
-;;; Experiment-sets should support
-  ; Useful ways to parameterize sets of experiments
-  ; Reading in and writing out sets of experiments
-  ; (Easy to build a query system around them). 
-
-  ; Would like to be able to query on any subset of parameters..
-
   ; Take: some implicit representation of params (ordered!) and a fn that returns 
    ; [init-form form] given 
   ; Seqable map is fine.  
@@ -139,28 +132,17 @@
   (for [inst (parameter-set-instantiations p-set)]
     [inst (init-fn inst) (form-fn inst)]))
 
-(defstruct experiment-set :class :name :tuples :namespace :warmup-time :max-seconds :max-mb :memory-instrument? :result-type)
-
 (defn make-experiment-set 
-  "tuples is a seq of [param-map init-form form] tuples"
-  [name tuples namespace warmup-time max-seconds max-mb memory-instrument? result-type]
-  (struct experiment-set ::ExperimentSet name (vec tuples) namespace warmup-time max-seconds max-mb memory-instrument? result-type))
+  "init-fn and form-fn take parameter sets and return executable forms."
+  [name p-set init-fn form-fn namespace warmup-time max-seconds max-mb memory-instrument? result-type]
+  (vec 
+   (for [[params init-form form] (parameter-set-tuples p-set init-fn form-fn)]    
+     (make-experiment name params namespace init-form form warmup-time max-seconds max-mb memory-instrument? result-type))))
 
-(defn experiment-set-count [es] (count (util/safe-get es :tuples)))
-
-(defn experiment-set-nth [es i] 
-  (util/assert-is (and (>= i 0) (< i (experiment-set-count es))))
-  (let [{:keys [name namespace warmup-time max-seconds max-mb memory-instrument? result-type]} es
-	[params init-form form] (nth (util/safe-get es :tuples) i)]
-    (make-experiment name params namespace init-form form warmup-time max-seconds max-mb memory-instrument? result-type)))
-
-(defn experiment-set-seq [es] 
-  (for [i (range (experiment-set-count es))]
-    (experiment-set-nth es i)))
 
 (defn run-experiment-set [es]
-  (print (experiment-set-count es))
-  (for [e (experiment-set-seq es)]
+  (print (count es))
+  (for [e es]
     (do (print ".")
 	(run-experiment e))))
 
@@ -170,36 +152,35 @@
 (defn write-experiment-set 
   ([es] (write-experiment-set es *default-run-dir*))
   ([es run-dir]
-  (let [new-dir (str run-dir (:name es))
+  (util/assert-is (> (count es) 0))
+  (let [new-dir (str run-dir (:name (first es)))
 	in-dir  (str new-dir "/in")
 	out-dir (str new-dir "/out")]
     (when (util/file-exists? new-dir) (throw (IllegalArgumentException. "Run-dir already exists")))
     (util/mkdirs in-dir out-dir)
-    (for [i (range (experiment-set-count es))]
+    (doall
+    (for [[i e] (util/indexed es)]
       (let [clj-file (str in-dir "/" i ".clj")]
-	(write-experiment (experiment-set-nth es i) clj-file (str out-dir "/" i ".txt"))
-	clj-file)))))
+	(write-experiment e clj-file (str out-dir "/" i ".txt"))
+	clj-file))))))
 
-(defn experiment-set-files 
-  ([es] (experiment-set-files es *default-run-dir*))
-  ([es run-dir] (experiment-set-files es run-dir 0 (experiment-set-count es)))
-  ([es run-dir num] (experiment-set-files es run-dir num (inc num)))
-  ([es run-dir min max]
-  (let [new-dir (str run-dir (:name es))
-	in-dir  (str new-dir "/in")
+(defn write-experiment-set-results
+  ([results] (write-experiment-set-results results *default-run-dir*))
+  ([results run-dir]
+  (write-experiment-set (map :experiment results))
+  (let [new-dir (str run-dir (:name (:experiment (first results))))
 	out-dir (str new-dir "/out")]
-    (for [i (range min max)]
-      (let [clj-file (str in-dir "/" i ".clj")]
-	(util/assert-is (util/file-exists? clj-file))
-	clj-file)))))
+    (doseq [[i e] (util/indexed results)]
+      (util/spit        e (str out-dir "/" i ".txt")))
+    results)))
 
 (defn read-experiment-set-results 
   ([es] (read-experiment-set-results es *default-run-dir*))
   ([es run-dir]
-     (let [new-dir (str run-dir (:name es))
+     (let [new-dir (str run-dir (:name (first es)))
 	   out-dir (str new-dir "/out")]
        (doall
-	(for [i (range (experiment-set-count es))]
+	(for [i (range (count es))]
 	  (util/read-file (str out-dir "/" i ".txt")))))))
 
 
@@ -217,7 +198,7 @@
 
 
 (comment 
-  (run-experiment-set (make-experiment-set (parameter-set-tuples '[:product [:x [1 2 3]] [:y [3 4 5]]] (fn [m] (:x m)) (fn [m] `(+ ~'init ~(:y m)))) 'user nil 2 1 nil *simple-experiment-result*))  )
+  (run-experiment-set (make-experiment-set "test" '[:product [:x [1 2 3]] [:y [3 4 5]]] (fn [m] (:x m)) (fn [m] `(+ ~'init ~(:y m))) 'user nil 2 1 nil *simple-experiment-result*))  )
 
 ; Args is seq of [param-map init-form form] tuples
 	   

@@ -2,6 +2,47 @@
 Way to resolve tension between refining early to get more pruning, and
 refining late to get soundly succeeding plan ?
 
+Relationship between (strict) A* graph pruning
+(eliminating duplicate nodes) and what we get with ALTs and AHA*.
+
+Get rid of experiment set.  
+
+
+Partition theorem proving - Eyal - junciton trees.  
+Factored planning
+
+Relationship between real intelligence and our approach
+
+Need real domains 
+ - Get rid of simple valuations
+
+Ideas on probabilistic descriptions, synthesis, starting with flat
+hierarchy, learning descriptions, macros, hierarchies bottom up.
+Useful HLAs are ones with high success probability, low computational
+complexity.   All of these things are context-sensitive, can be
+imprecise, except for solid opt/pess descriptions.  
+
+
+AHA* 
+
+States
+  Pruning states from sets
+  Lazy
+  State abstraction
+  Temporary committment
+  Think about out of date things.
+
+Incremental updating
+ - Each node is a little set of variables in the DAG
+ - Across nodes, variables can be tied.  
+  - Variable can be up-to-date or not.
+   - Policy - first time you get to node, regular update
+
+Domains
+
+aIJ paper delay
+-----------------------------------
+
 
 -----------------------------------
 

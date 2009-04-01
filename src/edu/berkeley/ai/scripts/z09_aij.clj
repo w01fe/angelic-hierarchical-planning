@@ -42,12 +42,58 @@
 
 (def get-ns-args (memoize (fn [size switches run] (nav-switch/make-random-nav-switch-args size switches))))
 
+(defn get-ns-form [size switches run]
+  `(strips/constant-predicate-simplify 
+    (apply nav-switch/make-nav-switch-strips-env 
+	   '~(get-ns-args size switches run))))
+
+(defn get-env-init-form [m]
+  (condp = (:domain m)
+    :nav-switch (get-ns-form (:size m) (:switches m) (:run m))))
+
+(defn get-hierarchy-init-form [m env-form]
+  (condp = (:type m)
+    :hierarchy       `(hierarchies/get-hierarchy ~(:hierarchy m) ~env-form)
+    :flat-hierarchy  `(strips-hierarchy/get-flat-strips-hierarchy ~env-form ~((:heuristic m) m))
+    :strips          env-form))
+
+(defn get-node-init-form [m hierarchy-form]
+  (cond (contains? #{:hierarchy :flat-hierarchy} (:type m))
+	  `(alts/alt-node ~hierarchy-form) ;TODO
+	(= :strips (:type m))
+	  `(search/ss-node ~hierarchy-form ~((:heuristic m) m))))
+
+(defn get-init-form [m]
+  (get-node-init-form m (get-hierarchy-init-form m (get-env-init-form m))))
+
+(defn get-solution-form [m]
+  `(envs/solution-name (~(:algorithm m) ~'init ~@(:algorithm-args m))))
+
+(defn make-aij-experiment-set [name max-seconds arg-spec]
+  (experiments/make-experiment-set name
+    (experiments/parameter-set-tuples arg-spec get-init-form get-solution-form)
+    'edu.berkeley.ai.scripts.z09-aij 10 max-seconds 512 nil experiments/*planning-experiment-result*))
+
+(defn make-nav-switch-experiment-set2 []
+  (make-aij-experiment-set "nav-switch-test" 10
+    [:product
+      [:domain [] [[:nav-switch 
+		    [:product
+		     [:heuristic [(fn [m] `(nav-switch/make-flat-nav-switch-heuristic [0 ~(dec (:size m))]))]] 
+		     [:size     [5 10]]
+		     [:switches [1 2]]
+		     [:run      [1]]]]]]
+      [:type   [] [[:hierarchy      [:algorithm [`offline/aha-star-search]]]
+		   [:flat-hierarchy [:algorithm [`offline/aha-star-search]]]
+		   [:strips         [:algorithm [`textbook/a-star-graph-search]]]]]]))
+
 (defn make-nav-switch-experiment-set []
   (experiments/make-experiment-set "nav-switch-aha-star"
   (experiments/parameter-set-tuples '[:product 
 			  [:size [5 20 50 200 500]] 
 			  [:switches [0 1 20]] 
 			  [:run [1 2 3 4 5]]
+			  [:domain :nav-switch]
 			  [:type [:hierarchy :flat-hierarchy :strips]]
 			  ]
     (fn [m] 
@@ -65,22 +111,8 @@
 	      `(envs/solution-name (offline/aha-star-search ~'init)))))
   'user 10 120 512 nil experiments/*planning-experiment-result*))
 
+; (plot (ds->chart (ds-summarize (experiment-set-results->dataset (read-experiment-set-results (make-nav-switch-experiment-set))) [:type :size :switches] [[:ms (fn [& args] (when (every? identity args ) (apply mean args))) (ds-fn [ms] ms)]]) [:type :switches] :size :ms {:key "top left" :xlabel "size" :ylabel "ms" :title "square nav-switch solution time, grouped by n-switches" :ylog true :xlog true :xtics "4, 2, 256"} (fn [[type switches]] {:lt ({0 1 1 2 20 3} switches) :lc ({:hierarchy (gp-rgb 255 0 0) :flat-hierarchy (gp-rgb 0 255 0) :strips (gp-rgb 0 0 255)} type)})))
 
-;  (experiments/make-experiment-set "nav-switch"
-;  (experiments/parameter-set-tuples '[:product 
-;			  [:size [5 20 50]] 
-;			  [:switches [0 1]] 
-;			  [:run [1 2]]
-;			  ]
- ;   (fn [m] 
-;      `(alts/alt-node (hierarchies/get-hierarchy nav-switch/*nav-switch-hierarchy* (strips/constant-predicate-simplify (apply nav-switch/make-nav-switch-strips-env '~(get-ns-argsm (:size m) (:switches m) (:run m)))))))
-;    (fn [m] `(envs/solution-name (offline/aha-star-search ~'init))))
-;  'edu.berkeley.ai.scripts.z09-aij nil 20 512 nil experiments/*planning-experiment-result*))
-
-
-; (plot (ds->chart (ds-summarize (experiment-set-results->dataset (read-experiment-set-results (make-nav-switch-experiment-set))) [:size :switches] [[:ms (fn [& args] (when (every? identity args ) (apply mean args))) (ds-fn [ms] ms)]]) [:switches] :size :ms ))
-
-; (make-experiment-set "test" (parameter-set-tuples '[:product [:x [1 2]] [:y [3 4]]] (fn [m] (:x m)) (fn [m] `(+ ~'init ~(:y m)))) 'user nil 2 1 nil *simple-experiment-result*))  
 
 
 ;Variables:
