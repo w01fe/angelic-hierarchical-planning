@@ -1,20 +1,11 @@
 
-Way to resolve tension between refining early to get more pruning, and
-refining late to get soundly succeeding plan ?
-
 Relationship between (strict) A* graph pruning
 (eliminating duplicate nodes) and what we get with ALTs and AHA*.
 
-Get rid of experiment set.  
+Now, its fine to eliminate duplicate plans (no more ancestors).?  
 
+Understanding decomposed planning.
 
-Partition theorem proving - Eyal - junciton trees.  
-Factored planning
-
-Relationship between real intelligence and our approach
-
-Need real domains 
- - Get rid of simple valuations
 
 Ideas on probabilistic descriptions, synthesis, starting with flat
 hierarchy, learning descriptions, macros, hierarchies bottom up.
@@ -23,161 +14,9 @@ complexity.   All of these things are context-sensitive, can be
 imprecise, except for solid opt/pess descriptions.  
 
 
-AHA* 
-
-States
-  Pruning states from sets
-  Lazy
-  State abstraction
-  Temporary committment
-  Think about out of date things.
-
-Incremental updating
- - Each node is a little set of variables in the DAG
- - Across nodes, variables can be tied.  
-  - Variable can be up-to-date or not.
-   - Policy - first time you get to node, regular update
-
-Domains
-
-aIJ paper delay
------------------------------------
-
-
------------------------------------
 
 TODO: figure out what to do with forall conditions in NCSTRIPS.
 
-set-valued variables in HLA
-graph and state abstraction and progression-free planning
-Domains other than WW
 
-; TODO: specify split points / strategies in hierarchy!!!
-; Explicitly mark interval params?
-
-;TODO: intelligently figure out split points in terms of preconditions
- of future actions!!!!!  ! !! !!!
-
-  - On this note, see notes in hybrid_dnf_simple_Valuations;
-    even with simple DTP scheme, without split points, can never pack
-    blocks tightly.  (Picking pess interval depends on future).  
-
-- Bad choice fn can eliminate pruning, make unsolvable problems loop
-  forever... Act description should fix?  Also, better next-stop descriptions...
-  - TODO: suggests a new form of pruning ????? 
-  - Or something else?  This seems important to think about.
-
- - IDEA: cost-shifting.  I.e. , I'd like to pay to drive, and take
-   that out of earlier gas costs.  Problem: need explicit support to
-   make sure in sync?
-  
-Note, a strictly better pruning strategy can still perform worse...
-
-------------------------------------
-From earlier meeting
-
-- Bruce Donald ? ?? ?
-- Continuous blocks
-- Logistics
-- Tourism
-
-- fuel+time varaible-mpg navigation!
-
-- Merging / splitting
-
-Progression-free planning, with bhaskara's hierarchy (and JIt progression?)
-
---------------- next ---------------
-
-Look at state estimation
-  - Stuart + Eyal or Satish
-  - Hector Levesque  
-  - Sheila McIlraith.
-Have a setting where it's obviously more efficient to do it this way.
-
-Totem destroyer.
-
-Planning graph with HLAs (big state spaces)
-
-------------------------------------
-
-Stuart's view of continuous.
-cell decomposition planners are angelic.
-assembly or construction?  Where you can't separate the two problems.
-
-------------------------------------
- 
-Talks
-
-
-randomize refinement ordering ??
 
 longer term 
- - planning graph (+ relaxed)
-
- - AADDs.
-
- - ; TODO: check for consistency? Ramifications of inconsistency?
- - Unit tests for NCStrips
- - Unit tests that make sure cache/graph are working in ALTs?
-
-
- Merging nodes - do it iff rest of plan is the same ??
-  ; Generalizes right-recursive thing.
-  ; Can't actually prune easily, since states will be same
-  ; Without pruning, this will end up with being everywhere at once -- slow!
-    ; After progressing through *just next HLA*, may collapse, and can prune!!
-      ; But this is just graph ? ? 
-      ; Except: can save on plan suffix comparisions (push out list?) .....
-      ; Graph is still good for comparing within.  i.e. L R Nav ns Nav ?
-      ; Difference is graph only compares opt with pess.  This can give sub-exp just from opt?  But have to join after each action.  Unless add take-step action.
-     ; Further advantage: get graph on *fragments*, not just prefixes!
-
- - Extend DNF valuations to keep track of unaries?
-  ( and only include things in clauses where needed?)
-
- - Tiebreaking?
-
- ; improved-ahlrta without prim-then-act ?!
-
- ; Add weighted A* or that version I saw at ICAPS?
-
-
-
-Efficiency
-  Progression cache  (only 25% for now, skip)
-   ; Superseded by graph search?
-   ; Let descriptions do caching, or do within top-down-forward-search?
-     ; Would capture restrict too
-     ; Possible issue: differing hierarchical preconditions
-   ; Cache instantiated NCStrips descriptions?
-   ;  (allow identityhashmap...
-  - Hashing triggers evaluation of strips actions; avoid?
-  
- 
- - Refinement cache? (i.e., JIT grounding)?
-
- - Combine refinement CSPs to save on making pred-maps
- - Use keyset in smart-csp filter-pos-domains when integrated- save 10%
- 
- ; TODO: can we avoid making a full pass through valuation?
-   i.e., just need to check a single square for no block!!
-   (combination of on-demand and ...)
-    But can't determine position right now without full pass.
-    Would need predicate-indexed form...
-    ; Right now, we do directly test against atoms when progressing...
- 
- ; TODO:  Way to combine benefits of ref-generator and CSP??
- 
- ; TODO: check overhead of repeated iteration through cache.
-   ; Instead, just do it on the fly... (store allowed-ancestor-set in alt.)        
-     Or, use transient set (once ancestor, always ancestor)
- 
-
-; Observation - constant simplifier doesn't help too much when
- you have ref generator
-
-; Idea: angelic iwthout sets of states, just state abstraction?!
-
-; Merge iff right-recursive ??
-  
