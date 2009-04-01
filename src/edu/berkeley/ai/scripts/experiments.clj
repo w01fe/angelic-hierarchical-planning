@@ -142,9 +142,10 @@
 
 (defn run-experiment-set [es]
   (print (count es))
-  (for [e es]
-    (do (print ".")
-	(run-experiment e))))
+  (doall
+   (for [e es]
+     (do (print ".")
+	 (run-experiment e)))))
 
 
 (def *default-run-dir* (util/base-local "runs/"))

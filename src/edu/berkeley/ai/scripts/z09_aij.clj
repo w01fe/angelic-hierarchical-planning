@@ -54,7 +54,7 @@
 (defn get-hierarchy-init-form [m env-form]
   (condp = (:type m)
     :hierarchy       `(hierarchies/get-hierarchy ~(:hierarchy m) ~env-form)
-    :flat-hierarchy  `(strips-hierarchy/get-flat-strips-hierarchy ~env-form ~((:heuristic m) m))
+    :flat-hierarchy  `(strips-hierarchies/get-flat-strips-hierarchy ~env-form ~((:heuristic m) m))
     :strips          env-form))
 
 (defn get-node-init-form [m hierarchy-form]
@@ -71,7 +71,7 @@
 
 (defn make-aij-experiment-set [name max-seconds arg-spec]
   (experiments/make-experiment-set name
-    (experiments/parameter-set-tuples arg-spec get-init-form get-solution-form)
+    arg-spec get-init-form get-solution-form
     'edu.berkeley.ai.scripts.z09-aij 10 max-seconds 512 nil experiments/*planning-experiment-result*))
 
 (defn make-nav-switch-experiment-set2 []
@@ -83,35 +83,32 @@
 		     [:size     [5 10]]
 		     [:switches [1 2]]
 		     [:run      [1]]]]]]
-      [:type   [] [[:hierarchy      [:algorithm [`offline/aha-star-search]]]
+      [:type   [] [[:hierarchy      [:product 
+				     [:algorithm [`offline/aha-star-search]]
+				     [:hierarchy [`nav-switch/*nav-switch-hierarchy*]]]]
 		   [:flat-hierarchy [:algorithm [`offline/aha-star-search]]]
 		   [:strips         [:algorithm [`textbook/a-star-graph-search]]]]]]))
 
-(defn make-nav-switch-experiment-set []
-  (experiments/make-experiment-set "nav-switch-aha-star"
-  (experiments/parameter-set-tuples '[:product 
-			  [:size [5 20 50 200 500]] 
-			  [:switches [0 1 20]] 
-			  [:run [1 2 3 4 5]]
-			  [:domain :nav-switch]
-			  [:type [:hierarchy :flat-hierarchy :strips]]
-			  ]
-    (fn [m] 
-      (cond (= (:type m) :hierarchy)
-	      `(alts/alt-node (hierarchies/get-hierarchy nav-switch/*nav-switch-hierarchy* (strips/constant-predicate-simplify (apply nav-switch/make-nav-switch-strips-env '~(get-ns-args (:size m) (:switches m) (:run m))))))
-	      (= (:type m) :flat-hierarchy)
-	      `(alts/alt-node (strips-hierarchies/get-flat-strips-hierarchy (strips/constant-predicate-simplify (apply nav-switch/make-nav-switch-strips-env '~(get-ns-args (:size m) (:switches m) (:run m)))) (nav-switch/make-flat-nav-switch-heuristic [0 ~(dec (:size m))])))
-	      (= (:type m) :strips)
-	      `(search/ss-node (strips/constant-predicate-simplify (apply nav-switch/make-nav-switch-strips-env '~(get-ns-args (:size m) (:switches m) (:run m)))) (nav-switch/make-flat-nav-switch-heuristic [0 ~(dec (:size m))]))
-	      :else (throw (Exception.))))
-    (fn [m] 
-      (cond (= (:type m) :strips)
-	      `(envs/solution-name (textbook/a-star-graph-search ~'init))
-	    :else
-	      `(envs/solution-name (offline/aha-star-search ~'init)))))
-  'user 10 120 512 nil experiments/*planning-experiment-result*))
 
 ; (plot (ds->chart (ds-summarize (experiment-set-results->dataset (read-experiment-set-results (make-nav-switch-experiment-set))) [:type :size :switches] [[:ms (fn [& args] (when (every? identity args ) (apply mean args))) (ds-fn [ms] ms)]]) [:type :switches] :size :ms {:key "top left" :xlabel "size" :ylabel "ms" :title "square nav-switch solution time, grouped by n-switches" :ylog true :xlog true :xtics "4, 2, 256"} (fn [[type switches]] {:lt ({0 1 1 2 20 3} switches) :lc ({:hierarchy (gp-rgb 255 0 0) :flat-hierarchy (gp-rgb 0 255 0) :strips (gp-rgb 0 0 255)} type)})))
+
+(defn compare-nav-switch-flat-es []
+  (make-aij-experiment-set "compare-nav-switch-flat" 20
+    [:product
+      [:domain [] [[:nav-switch 
+		    [:product
+		     [:heuristic [(fn [m] `(nav-switch/make-flat-nav-switch-heuristic [0 ~(dec (:size m))]))]] 
+		     [:size     [5 10 20 50]]
+		     [:switches [0 5]]
+		     [:run      [1]]]]]]
+     [:algorithm [`offline/aha-star-search]]
+      [:type   [] [[:hierarchy       [:hierarchy [`nav-switch/*nav-switch-hierarchy*]]]
+		   [:hierarchy       [:hierarchy [`nav-switch/*nav-switch-flat-hierarchy*]]]
+		   [:flat-hierarchy  [:hierarchy ['none]]]]]]))
+
+(plot (ds->chart (experiment-set-results->dataset *r*) [:hierarchy :switches] :size :ms))
+
+;(plot (ds->chart (experiment-set-results->dataset *results*) [:type] :size :ms))
 
 
 

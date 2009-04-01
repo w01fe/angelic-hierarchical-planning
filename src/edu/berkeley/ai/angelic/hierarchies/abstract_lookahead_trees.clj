@@ -67,12 +67,12 @@
    {:pessimistic-valuation (util/sref pess-val), :optimistic-valuation (util/sref opt-val)
     :lower-reward-bound (util/sref nil) :upper-reward-bound (util/sref nil) :cache (HashMap.)}))
 
-(defn get-alt-node [alt hla previous-node]
+(defn get-alt-node [alt hla previous-node] "Returns [node cached?]"
   (let [#^HashMap cache (when (util/safe-get alt :cache?) (util/safe-get ^previous-node :cache))]
-    (or (when cache (.get cache hla))
+    (or (when-let [n (and cache (.get cache hla))] [n true])
 	(let [ret (make-alt-node hla previous-node nil nil)]
 	  (when cache (.put cache hla ret))
-	  ret))))
+	  [ret false]))))
 
 
 
@@ -242,7 +242,7 @@
       (if (empty? actions)
           (make-alt-plan-node node-type alt name previous)
 	(recur (next actions)
-	       (get-alt-node alt (first actions) previous)))))))
+	       (first (get-alt-node alt (first actions) previous))))))))
 
 (defn alt-node [& args] (apply make-initial-alt-node args))
 
@@ -336,8 +336,9 @@
 (defmethod construct-immediate-refinement ::ALTPlanNode [node previous actions alt name]
   (if (empty? actions) 
     (make-alt-plan-node (:class node) alt name previous )
-    (let [nxt (get-alt-node alt (first actions) previous)]
+    (let [[nxt cache?] (get-alt-node alt (first actions) previous)]
       (if (and (> (get-valuation-upper-bound (optimistic-valuation nxt)) Double/NEGATIVE_INFINITY)
+	       (or (next actions) (not cache?)) ; Eliminate duplicates.
 	       (or (not (:graph? alt)) 
 		   (graph-add-and-check! alt nxt (next actions) name)))
 	  (recur node nxt (next actions) alt name)
