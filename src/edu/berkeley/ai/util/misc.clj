@@ -5,6 +5,10 @@
 
 (def *debug-level* 0)
 
+(defn single-quote [s] (str "'" s "'"))
+
+(defn double-quote [s] (str "\"" s "\""))
+
 (defmacro with-out-str2
   "Evaluates exprs in a context in which *out* is bound to a fresh
   StringWriter.  Returns [return-val, string]"

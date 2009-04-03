@@ -30,8 +30,6 @@
        :term      "dashed color"))
        
 
-(defn single-quote [s] (str "'" s "'"))
-(defn double-quote [s] (str "\"" s "\""))
 
 (defn fn-or [& args]
   (some identity (reverse args)))
