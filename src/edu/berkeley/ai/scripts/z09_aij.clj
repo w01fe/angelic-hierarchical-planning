@@ -93,7 +93,7 @@
 ; (plot (ds->chart (ds-summarize (experiment-set-results->dataset (read-experiment-set-results (make-nav-switch-experiment-set))) [:type :size :switches] [[:ms (fn [& args] (when (every? identity args ) (apply mean args))) (ds-fn [ms] ms)]]) [:type :switches] :size :ms {:key "top left" :xlabel "size" :ylabel "ms" :title "square nav-switch solution time, grouped by n-switches" :ylog true :xlog true :xtics "4, 2, 256"} (fn [[type switches]] {:lt ({0 1 1 2 20 3} switches) :lc ({:hierarchy (gp-rgb 255 0 0) :flat-hierarchy (gp-rgb 0 255 0) :strips (gp-rgb 0 0 255)} type)})))
 
 (defn compare-nav-switch-flat-es []
-  (make-aij-experiment-set "compare-nav-switch-flat" 20
+  (make-aij-experiment-set "compare-nav-switch-flat" 30
     [:product
       [:domain [] [[:nav-switch 
 		    [:product
@@ -102,13 +102,12 @@
 		     [:switches [0 5]]
 		     [:run      [1]]]]]]
      [:algorithm [`offline/aha-star-search]]
-      [:type   [] [[:hierarchy       [:hierarchy [`nav-switch/*nav-switch-hierarchy*]]]
-		   [:hierarchy       [:hierarchy [`nav-switch/*nav-switch-flat-hierarchy*]]]
+      [:type   [] [[:hierarchy       [:hierarchy [`nav-switch/*nav-switch-hierarchy*
+						  `nav-switch/*nav-switch-flat-hierarchy*]]]
 		   [:flat-hierarchy  [:hierarchy ['none]]]]]]))
 
-(plot (ds->chart (experiment-set-results->dataset *r*) [:hierarchy :switches] :size :ms))
+;(plot (ds->chart (experiment-set-results->dataset *r*) [:hierarchy :switches] :size :ms))
 
-;(plot (ds->chart (experiment-set-results->dataset *results*) [:type] :size :ms))
 
 
 

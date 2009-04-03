@@ -1,5 +1,17 @@
 (in-ns 'edu.berkeley.ai.angelic)
 
+;; Counters
+
+
+(def *op-counter* (util/sref 0))
+(def *pp-counter* (util/sref 0))
+
+(defn reset-op-counter [] (util/sref-set! *op-counter* 0))
+(defn reset-pp-counter [] (util/sref-set! *pp-counter* 0))
+
+(defn reset-progression-counters [] (reset-op-counter) (reset-pp-counter))
+
+
 ;; Methods for descriptions
 
 (defmulti progress-optimistic (fn [val desc] [(:class val) (:class desc)]))

@@ -8,8 +8,9 @@
 
 ;; Abstract lookahead trees, with (optional) forward caching and graph stuff.
 
-; WARNING: plan-Graph search will not work here!  Cannot eliminate duplicate plans due to
-; iteraction with state-graph..
+; TODO: caching prevents garbage collection; should use Apache ReferenceMap with weak/soft values. 
+
+; Note: behaves like plan "graph" when caching turned on.
 
 ; WARNING: can't reuse this (when graph?) or will end up with bad results... possible
  ; failure, or suboptimal plans...
@@ -80,15 +81,6 @@
 
 (defn do-restrict-valuation-alt [x y]
   (restrict-valuation x y))
-
-
-(def *op-counter* (util/sref 0))
-(def *pp-counter* (util/sref 0))
-
-(defn reset-op-counter [] (util/sref-set! *op-counter* 0))
-(defn reset-pp-counter [] (util/sref-set! *pp-counter* 0))
-
-(defn reset-progression-counters [] (reset-op-counter) (reset-pp-counter))
 
 
 (defn pessimistic-valuation [node]

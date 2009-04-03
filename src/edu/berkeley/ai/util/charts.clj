@@ -117,3 +117,28 @@
   (format "rgbcolor \"#%02x%02x%02x\"" (int r) (int g) (int b)))
 
 
+
+
+(comment 
+
+(quick-plot 
+   (mapcar (lambda (Series) (subset->series (apply #'cons series) '(n-refs cost)))
+	   (Ds->list (get-subsets (ds-summarize *ww* '(type n-refs) '(cost)
+						(lambda (x) (list (mean (ds->list x 'cost)))))
+				  '(type) :outer-sort #'string>)))
+   :extras '("set ylabel offset 2,-.5 font \"Times-Roman-Bold,28\""
+	     "set xlabel offset 0,.3 font \"Times-Roman-Bold,28\""
+	     "set title font \"Times-Roman-Bold,30\"  offset 0,-.1 "
+	     "set border lw 3"  "set size ratio .4")
+   :term "\"Times-Roman\" 28 dashlength 3"
+   :default-lw '(9) :default-ps 1  :xrange "[0:5000]"
+   :xtics "out scale 2,1" :ylog t :ytics "out scale 2,1" :mytics 10
+   :default-lc (list (gp-rgb 200 0 0) (gp-rgb 0 150 0))
+   :default-lt '(1 2 5 6) :default-pt '( 1 2 0 0 0 1 0 1 4) ;:size ".3,.3" 
+   :key "at 4500,600" 
+   :xlabel "refinements per env. step" 
+   :ylabel "total solution cost"  
+   :title "online results" 
+   :ps-file (Format nil "~Afigs/ww.eps" *path*))
+
+)

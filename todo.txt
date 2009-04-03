@@ -1,10 +1,40 @@
+Need DNFClauseValuedValuations, check where DSVs are explicitly
+assumed . :(  
 
-Relationship between (strict) A* graph pruning
-(eliminating duplicate nodes) and what we get with ALTs and AHA*.
+Might as well store provenance too, for regression ...
+... and implement incremental progression/merging?
 
-Now, its fine to eliminate duplicate plans (no more ancestors).?  
+Need way to regress through Act :(.
+
+ALGs should have some mode for finding suboptimal plans.
 
 Understanding decomposed planning.
+
+OR-nodes must store: 
+	  four optimistic valuations
+          two pessimistic valuations
+	  two states
+          Final progressed 
+
+who picks states ?
+
+Why did we need states in the first place?
+ Could refine HLA with biggest gap,
+ Best option already known. 
+ - Need it to make consistent "best" choices at OR-nodes.
+
+We can get away with regressing only states, not sets.
+Question: when a val changes, how can we repair optimal path????
+
+Formulate as ALT with two types of nodes: progress node and merge
+node.
+
+(Clauses record provenance.  Assume optimsitic consistency.  rewards
+always go down.  Can only affect some subest of progressed results.
+By decreasing reward by x for decreased by x, or by anything for
+killed state.)
+
+
 
 
 Ideas on probabilistic descriptions, synthesis, starting with flat
@@ -13,10 +43,5 @@ Useful HLAs are ones with high success probability, low computational
 complexity.   All of these things are context-sensitive, can be
 imprecise, except for solid opt/pess descriptions.  
 
-
-
 TODO: figure out what to do with forall conditions in NCSTRIPS.
 
-
-
-longer term 

@@ -204,7 +204,11 @@
 (defn sum-over [f c]
   (reduce (fn [v i] (+ v (f i))) 0 c))
 
+(defn singleton? [c] 
+  (= (count c) 1))
 
+(defn singleton [c]
+  (when (singleton? c) (first c)))
 
 
 

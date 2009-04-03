@@ -22,6 +22,9 @@
 (defmulti #^{:doc "Get a state consistent with this valuation, or nil if none"}
           extract-a-state :class)
 
+(defmulti #^{:doc "Take the union of these valuatons, preserving better values."}
+          union-valuations (fn [v1 v2] [(:class v1) (:class v2)]))
+
 (defmulti #^{:doc "Intersect these valuations, keeping the reward part from the first."}
           intersect-valuations (fn [v1 v2] [(:class v1) (:class v2)]))
 
@@ -56,6 +59,9 @@
 (defmethod restrict-valuation [::PessimalValuation :edu.berkeley.ai.envs/Condition] [val cond] val)
 (defmethod explicit-valuation-map ::PessimalValuation [val] {})
 (defmethod get-valuation-states ::PessimalValuation [val subsumption-map] [nil *no-subsumption-info*])
+(defmethod union-valuations [::PessimalValuation ::Valuation] [v1 v2] v2)
+(defmethod union-valuations [::Valuation ::PessimalValuation] [v1 v2] v1)
+(defmethod union-valuations [::PessimalValuation ::PessimalValuation] [v1 v2] v1)
 
 
 
@@ -92,7 +98,7 @@
 
 ;(defmethod explicit-valuation-map ::ConditionalValuation [val] {})
 
-(defmethod get-valuation-states ::ConditionalValuation [val subsumption-map] [(gensym) nil])
+(defmethod get-valuation-states ::CondinntionalValuation [val subsumption-map] [(gensym) nil])
 
 
 
@@ -141,4 +147,7 @@
 (defmethod explicit-valuation-map ::ExplicitValuation [val]
   (:state-map val))
 
+(defmethod union-valuations [::ExplicitValuation ::ExplicitValuation] [v1 v2]
+  (make-explicit-valuation 
+   (merge-with max (:state-map v1) (:state-map v2))))
 

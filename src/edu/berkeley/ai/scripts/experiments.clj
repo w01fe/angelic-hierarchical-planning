@@ -1,6 +1,5 @@
 (ns edu.berkeley.ai.scripts.experiments
-  (:require [edu.berkeley.ai [util :as util] [search :as search]  [envs :as envs]]
-	    [edu.berkeley.ai.angelic.hierarchies.abstract-lookahead-trees :as alts]))
+  (:require [edu.berkeley.ai [util :as util] [search :as search]  [envs :as envs] [angelic :as angelic]]))
 
 
 (defmulti setup-experiment-result (fn [experiment] (util/safe-get experiment :result-type)))
@@ -30,7 +29,7 @@
 (defmethod setup-experiment-result ::PlanningExperimentResult [experiment]
   (envs/reset-next-counter)
   (search/reset-ref-counter)
-  (alts/reset-progression-counters))
+  (angelic/reset-progression-counters))
 
 (defmethod make-experiment-result ::PlanningExperimentResult 
   [experiment setup-info timeout? memout? output printed init-ms ms mb]
@@ -38,8 +37,8 @@
 	  experiment (util/git-commit-id) timeout? memout? output printed init-ms ms mb
 	  (util/sref-get envs/*next-counter*)
 	  (util/sref-get search/*ref-counter*)
-	  (util/sref-get alts/*op-counter*)
-	  (util/sref-get alts/*pp-counter*)
+	  (util/sref-get angelic/*op-counter*)
+	  (util/sref-get angelic/*pp-counter*)
 	  ))
   
 
