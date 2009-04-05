@@ -234,8 +234,8 @@
 (defmethod angelic/progress-valuation [::dv/DNFValuation ::WarehouseActDescription] [val desc]
   (angelic/make-conditional-valuation 
    envs/*true-condition*
-   (+ (angelic/get-valuation-max-reward val) 
-      ((:fn desc) (keys (util/safe-get val :clause-maps))))))
+   (+ (angelic/valuation-max-reward val) 
+      ((:fn desc) (keys (util/safe-get val :clause-map))))))
 
 
 

@@ -343,7 +343,7 @@
 (def *dummy-env* {:class ::DummyEnv})
 
 (require '[edu.berkeley.ai.angelic :as angelic])
-(require '[edu.berkeley.ai.angelic.dnf-simple-valuations :as dnf-simple-valuations] )
+(require '[edu.berkeley.ai.angelic.dnf-valuations :as dv] )
 
 (util/deftest test-smart-csp
   (util/is 
@@ -365,12 +365,11 @@
 			  {} *dummy-env*)
 	{}
 	(angelic/valuation->pred-maps 
-	 (dnf-simple-valuations/make-dnf-simple-valuation 
-	  #{'{[boo] :unknown [bap] :unknown [bee 1] :unknown} 
-	    '{[bee 1] :true [bee 2] :unknown [bee 3] :true}
-	    '{[bap] :true [bee 2] :true [bee 3] :true [bee 4] :true}
-	    '{[boo] :true [bap] :unknown [bee 5] :unknown}}
-	  0))))
+	 (dv/make-dnf-valuation ::dv/DNFValuation 
+	  {'{[boo] :unknown [bap] :unknown [bee 1] :unknown} 0 
+	    '{[bee 1] :true [bee 2] :unknown [bee 3] :true} 0
+	    '{[bap] :true [bee 2] :true [bee 3] :true [bee 4] :true} 0
+	    '{[boo] :true [bap] :unknown [bee 5] :unknown} 0}))))
       #{{:a 1} {:a 5}}))
   (util/is
    (= (set 
@@ -381,12 +380,12 @@
 			  {} *dummy-env*)
 	{}
 	(angelic/valuation->pred-maps 
-	 (dnf-simple-valuations/make-dnf-simple-valuation 
-	  #{'{[boo] :unknown [bap] :unknown [bee 1] :unknown} 
-	    '{[bee 1] :true [bee 2] :unknown [bee 3] :true}
-	    '{[bap] :true [bee 2] :true [bee 3] :true [bee 4] :true}
-	    '{[boo] :true [bap] :unknown [bee 5] :unknown}}
-	  0))))
+	 (dv/make-dnf-valuation ::dv/DNFValuation
+	  {'{[boo] :unknown [bap] :unknown [bee 1] :unknown}  0
+	    '{[bee 1] :true [bee 2] :unknown [bee 3] :true} 0
+	    '{[bap] :true [bee 2] :true [bee 3] :true [bee 4] :true} 0
+	    '{[boo] :true [bap] :unknown [bee 5] :unknown} 0}
+	  ))))
       #{{:a 1 :b 7} {:a 5 :b 7} {:a 1 :b 8} {:a 5 :b 8}}))
   (util/is
    (= (set 
@@ -398,10 +397,10 @@
 			  *dummy-env*)
 	{:c 5}
 	(angelic/valuation->pred-maps 
-	 (dnf-simple-valuations/make-dnf-simple-valuation 
-	  #{'{[bee 1 4] :true [bee 2 5] :unknown [bee 1 6] :true [box 4] :true [box 5] :true [biz 1 5] :true [biz 2 5] :true [biz 1 4] :unknown [bat 1 5 4] :true} 
-	    '{[bee 1 4] :true [bee 2 5] :unknown [bee 1 6] :true [box 6] :unknown [biz 1 5] :unknown [biz 2 5] :true [biz 1 4] :unknown}}
-	  0))))
+	 (dv/make-dnf-valuation ::dv/DNFValuation
+	  {'{[bee 1 4] :true [bee 2 5] :unknown [bee 1 6] :true [box 4] :true [box 5] :true [biz 1 5] :true [biz 2 5] :true [biz 1 4] :unknown [bat 1 5 4] :true} 0 
+	    '{[bee 1 4] :true [bee 2 5] :unknown [bee 1 6] :true [box 6] :unknown [biz 1 5] :unknown [biz 2 5] :true [biz 1 4] :unknown} 0}
+	  ))))
       #{{:a 1 :b 4 :d 4} {:a 2 :b 3 :d 5} {:a 1 :b 4 :d 6} {:a 1 :b 5 :d 6}})))
       
 		  

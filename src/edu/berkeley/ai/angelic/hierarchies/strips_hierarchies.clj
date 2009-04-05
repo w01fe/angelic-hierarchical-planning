@@ -328,7 +328,7 @@
 (defmethod hla-default-optimistic-valuation-type ::StripsHLA [hla] 
   :edu.berkeley.ai.angelic.dnf-valuations/DNFOptimisticSimpleValuation)
 
-(defmethod hla-default-pessimsitic-valuation-type ::StripsHLA [hla] 
+(defmethod hla-default-pessimistic-valuation-type ::StripsHLA [hla] 
   :edu.berkeley.ai.angelic.dnf-valuations/DNFPessimisticSimpleValuation)
 
 (defmethod hla-environment ::StripsHLA [hla] (util/safe-get (util/safe-get hla :hierarchy) :problem-instance))

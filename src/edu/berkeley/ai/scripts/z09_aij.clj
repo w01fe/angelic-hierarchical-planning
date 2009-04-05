@@ -3,7 +3,7 @@
            [edu.berkeley.ai.envs.states :as states]
            [edu.berkeley.ai.domains [strips :as strips] [nav-switch :as nav-switch] [warehouse :as warehouse]]
 	   [edu.berkeley.ai.search.algorithms.textbook :as textbook]
-	   [edu.berkeley.ai.angelic [dnf-simple-valuations :as dnf-simple-valuations]
+	   [edu.berkeley.ai.angelic [dnf-valuations :as dv]
 	                            [hierarchies :as hierarchies]]
 	   [edu.berkeley.ai.angelic.hierarchies [strips-hierarchies :as strips-hierarchies] 
 	    [abstract-lookahead-trees :as alts] [offline-algorithms :as offline]
@@ -12,7 +12,9 @@
 	   )
  )
 
-; hfs won't work with road trip .....
+; hfs won't work with road trip ..... (shoudl now?)
+
+; TODO: check out simple vs. full valuations.
 
 ; Need to configure ref-choice-fns, etc.
 

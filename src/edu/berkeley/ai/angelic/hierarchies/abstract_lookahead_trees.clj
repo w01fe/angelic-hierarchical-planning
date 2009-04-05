@@ -270,11 +270,11 @@
 	     (or (and (= (:graph? alt) :old) (not (.contains live-set graph-node)))
 		 (not (valuation-subsumes? graph-si opt-si subsumption-info))
 		 (and (not (.contains live-set graph-node))
-		      (valuation-equal? graph-si opt-si subsumption-info))))
+		      (valuation-equals? graph-si opt-si subsumption-info))))
 	   graph-tuples)
      ; (println (class (get-valuation-states (pessimistic-valuation node) subsumption-info)))
       (let [pess-val              (pessimistic-valuation node)]
-	(when (> (get-valuation-max-reward pess-val) Double/NEGATIVE_INFINITY)
+	(when (> (valuation-max-reward pess-val) Double/NEGATIVE_INFINITY)
 	  (let [[pess-states pess-si] (get-valuation-states pess-val subsumption-info)
 		pair                  [pess-states rest-plan]
 		graph-tuples          (.get graph-map pair)]

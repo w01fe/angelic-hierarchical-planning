@@ -96,11 +96,11 @@
 
 ;; Some default method implementations
 
-(defmethod state->valuation [type state] 
+(defn state->valuation [type state] 
   (map->valuation type {state 0}))
 
 (defmethod valuation-max-reward-state :default [v]
-  (when-let [m (seq (explicit-valuation-map v))] (first-maximal-element val m)))
+  (when-let [m (seq (explicit-valuation-map v))] (util/first-maximal-element val m)))
 
 (defmethod valuation-max-reward       :default [v]
   (if-let [[state val] (valuation-max-reward-state v)]
@@ -114,14 +114,14 @@
   (get (explicit-valuation-map val) state Double/NEGATIVE_INFINITY))
 
 
-(defmethod get-valuation-states ::Valuation [val subsumption-map]
+(defmethod get-valuation-states ::Valuation [v subsumption-map]
   (util/assert-is (empty? subsumption-map))
-  (let [ordered-pairs (sort-by #(hash (key %)) (explicit-valuation-map val))]
+  (let [ordered-pairs (sort-by #(hash (key %)) (explicit-valuation-map v))]
     [(map key ordered-pairs)
      {:class ::VectorSubsumptionInfo :reward-seq (map val ordered-pairs)}]))
 
 (defmethod valuation-subsumes?     [::VectorSubsumptionInfo ::VectorSubsumptionInfo] [val1 val2 subsumption-map]
-  (every? (map >= (:reward-seq val1) (:reward-seq val2))))
+  (every? identity (map >= (:reward-seq val1) (:reward-seq val2))))
 
 (defmethod valuation-equals?     [::VectorSubsumptionInfo ::VectorSubsumptionInfo] [val1 val2 subsumption-map]
   (= (:reward-seq val1) (:reward-seq val2)))
@@ -142,9 +142,11 @@
 
 (derive ::PropositionalValuation ::Valuation)
 
+(import '[java.util HashMap])
+
 (defn clause->pred-maps [conjunctive-clause]
   (let [true-map (HashMap.) poss-map (HashMap.)]
-    (doseq [[#^clojure.lang.APersistentVector pred stat] clause]
+    (doseq [[#^clojure.lang.APersistentVector pred stat] conjunctive-clause]
       (let [#^HashMap m (if (= stat :true) true-map poss-map)
 	    pred-name (.get pred 0)]
 	(.put m pred-name (cons pred (.get m pred-name)))))
@@ -169,7 +171,9 @@
 ;;; Both 
 
 (defmulti progress-clause          
-  "Progress this [clause rew] pair through description, returning a new clause->rew map." 
+  "Progress this [clause rew] pair through description, returning a new clause->rew map.
+   Each result clause should have a :pre-clause metadata, which is the corresponding 
+   precondition-restricted version of the initial clause. " 
   (fn [clause desc] (:class desc)))
 
 
@@ -201,26 +205,31 @@
 (derive ::ExplicitValuation ::Valuation)
 (defstruct explicit-valuation :class :state-map)
 
+(derive ::PessimalValuation ::ExplicitValuation)
+(def *pessimal-valuation* {:class ::PessimalValuation :state-map {}})
+
 (defn- make-explicit-valuation- [state-map]
-  (struct explicit-valuation ::ExplicitValuation state-map))
+  (if (empty? state-map) 
+      *pessimal-valuation*
+    (struct explicit-valuation ::ExplicitValuation state-map)))
 
 (defmethod map->valuation ::ExplicitValuation [type state-map] 
-  (make-explicit-valuation state-map))
+  (make-explicit-valuation- state-map))
 
 (defmethod explicit-valuation-map ::ExplicitValuation [val]
   (:state-map val))
 
 (defmethod restrict-valuation [::ExplicitValuation :edu.berkeley.ai.envs/Condition]
   [val condition]
-  (make-explicit-valuation 
+  (make-explicit-valuation- 
    (reduce (fn [m k] (if (envs/satisfies-condition? k condition) 
 		         m
 		       (dissoc m k)))
 	   (:state-map val) (keys (:state-map val)))))
 
 (defmethod union-valuations [::ExplicitValuation ::ExplicitValuation] [v1 v2]
-  (make-explicit-valuation 
-   (merge-best > (:state-map v1) (:state-map v2))))
+  (make-explicit-valuation- 
+   (util/merge-best > (:state-map v1) (:state-map v2))))
 
 
 
@@ -231,20 +240,20 @@
   (struct explicit-description ::ExplicitDescription action-space))
 
 (defmethod progress-valuation [::Valuation ::ExplicitDescription]  [val desc]
-  (make-explicit-valuation 
+  (make-explicit-valuation- 
    (util/merge-best > {} 
     (for [[state reward] (explicit-valuation-map val)
 	  action (envs/applicable-actions state (:action-space desc))]
       (let [[next step-reward] (envs/next-state-and-reward state action)]
 	[next (+ reward step-reward)])))))
 
+(defmethod progress-valuation [::PessimalValuation ::Description]  [val desc] val)
+
 (prefer-method progress-valuation [::Valuation ::IdentityDescription] [::ExplicitValuation ::Description])
-
-
+(prefer-method progress-valuation [::PessimalValuation ::Description] [::Valuation ::ExplicitDescription])
 
 ;;; Pessimal valuations and descriptions
 
-(def *pessimal-valuation* (make-explicit-valuation {}))
 
 (derive ::PessimalDescription ::Description)
 (def *pessimal-description* {:class ::PessimalDescription})
@@ -254,7 +263,10 @@
 (defmethod instantiate-description-schema ::PessimalDescription [desc instance] desc)
 (defmethod ground-description ::PessimalDescription [desc var-map] desc)
 
-(prefer-method progress-valuation [::Valuation ::PessimalDescription] [::ExplicitValuation ::Description])
+(prefer-method progress-valuation [::PessimalValuation ::Description] [::Valuation ::PessimalDescription])
+
+  
+
 
 
 
@@ -274,7 +286,7 @@
   ([max-reward] (make-conditional-valuation envs/*true-condition* max-reward)))
 
 
-(defmethod get-valuation-max-reward ::ConditionalValuation [val] 
+(defmethod valuation-max-reward ::ConditionalValuation [val] 
   (:max-reward val))
 
 (defmethod restrict-valuation [::ConditionalValuation :edu.berkeley.ai.envs/Condition] 
@@ -309,7 +321,7 @@
   (make-conditional-valuation 
    (:condition desc) 
    (+ (:max-reward desc)
-      (get-valuation-upper-bound val))))
+      (valuation-max-reward val))))
 
 
 (defmethod parse-description :opt [desc domain params]

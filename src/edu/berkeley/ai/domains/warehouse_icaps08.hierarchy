@@ -14,7 +14,8 @@
        :refinement   (:parameters (:?b - block :?from - block :?to - block
 				   :?bx - xc :?by - yc :?tox - xc :?toy - yc :?abovetoy - yc)
 		      :precondition (gripperempty)
-		      :expansion ((move-block :?b :?from :?to :?bx :?by :?tox :?toy :?abovetoy) (move-blocks :?b)))	             :optimistic   (:opt 0)
+		      :expansion ((move-block :?b :?from :?to :?bx :?by :?tox :?toy :?abovetoy) (move-blocks :?b)))	             
+       :optimistic   (:opt 0)
        :pessimistic  (:pess))
 
 

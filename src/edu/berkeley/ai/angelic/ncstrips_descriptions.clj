@@ -344,11 +344,11 @@
 				      (map #(% pred-maps) (util/safe-get effect :possible-effect-fns)))
  		unks          (concat (filter #(nil?    (after-eff %)) padds)
 				      (filter #(= :true (after-eff %)) pdels))]
-	   [(into after-eff (map #(vector % :unknown) unks))
+	   [(with-meta (into after-eff (map #(vector % :unknown) unks)) {:pre-clause after-pre})
 	    (- ((util/safe-get effect :cost-fn) pred-maps max))]))))))
 
 (defmethod progress-clause ::NCStripsDescription [[clause rew] desc]
-  (merge-best > {}
+  (util/merge-best > {}
     (for [effect (:effects desc)
 	  :let   [result (progress-effect-clause effect clause)]
 	  :when result]

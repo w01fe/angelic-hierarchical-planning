@@ -20,21 +20,21 @@
 
 (defstruct dnf-valuation :class :clause-map)
 
-(defn- make-dnf-valuation [class clause-map]
+(defn make-dnf-valuation [class clause-map]
   (cond (empty? clause-map)             
 	  *pessimal-valuation*
 	(isa? class ::DNFOptimisticSimpleValuation)
 	  (let [max-rew (apply max (vals clause-map))]
-	    (struct dnf-valuation class (map-vals (constantly max-rew) clause-map)))
+	    (struct dnf-valuation class (util/map-vals (constantly max-rew) clause-map)))
 	(isa? class ::DNFPessimisticSimpleValuation)
 	  (let [min-rew (apply min (vals clause-map))]
-	    (struct dnf-valuation class (map-vals (constantly max-rew) clause-map)))
+	    (struct dnf-valuation class (util/map-vals (constantly min-rew) clause-map)))
 	:else 
 	  (struct dnf-valuation class clause-map)))
 
   
 (defmethod map->valuation     ::DNFValuation [type m]
-  (make-dnf-valuation type (map-keys (fn [s] (util/map-map #(vector % :true) s)) m)))
+  (make-dnf-valuation type (util/map-keys (fn [s] (util/map-map #(vector % :true) s)) m)))
 
 
 (defn- clause-instantiations [clause]
@@ -51,7 +51,7 @@
 (defmethod explicit-valuation-map ::DNFValuation [val]
   (apply util/merge-best > {}
     (for [[clause bound] (:clause-map val)]
-      (map #(vector % bound) (clause-instantiations clause))))))
+      (map #(vector % bound) (clause-instantiations clause)))))
 
 
 (defn- restrict-clause [clause pos neg]
@@ -78,7 +78,7 @@
 
 (defmethod union-valuations         [::DNFValuation ::DNFValuation] [val1 val2]
   (util/assert-is (= (:class val1) (:class val2)))
-  (make-dnf-valuation (:class val1) (merge-best > (:clause-map val1) (:clause-map val2))))
+  (make-dnf-valuation (:class val1) (util/merge-best > (:clause-map val1) (:clause-map val2))))
 
 (defmethod empty-valuation?         ::DNFValuation [v] 
   false)
@@ -134,7 +134,7 @@
 			     subsumption-map))
 		   (:sub-maps val1) (:sub-maps val2)))))
 
-(defmethod valuation-equal?     [::DNFValuationSI ::DNFValuationSI] [val1 val2 subsumption-map]
+(defmethod valuation-equals?     [::DNFValuationSI ::DNFValuationSI] [val1 val2 subsumption-map]
   (and (= (:rews val1) (:rews val2))
        (every? identity 
 	      (map (fn [sub1 sub2]
@@ -164,24 +164,28 @@
       (val (first good-clauses)))))
 
 
-(defmethod progress-valuation [::DNFValuation ::PropositionalDescription] [v desc]
+(defmethod progress-valuation [::DNFValuation :edu.berkeley.ai.angelic/PropositionalDescription] [v desc]
   (make-dnf-valuation (:class v)
     (apply util/merge-best > {} 
 	   (map #(progress-clause % desc) (:clause-map v)))))
 
 
-(defmethod regress-state [::DNFValuation ::PropositionalDescription ::DNFValuation] 
+(defn- matching-clause-state [clause state]
+  (let [[true-atoms unk-atoms] (util/separate (fn [p] (= (val p) :true)) clause)]
+    (set (concat (map key true-atoms)
+		 (filter state (map key unk-atoms))))))
+
+;; TODO: make more efficient?
+(defmethod regress-state [::DNFValuation :edu.berkeley.ai.angelic/PropositionalDescription ::DNFValuation] 
   [state pre-val desc post-val]
   (let [candidate-pairs
-	  (for [clause-pair (:clause-map pre-val)]
-	    [clause-pair 
-	     (apply max Double\NEGATIVE_INFINITY
-	       (map val
- 		 (filter #(clause-includes-state (key %) state)
-			 (progress-clause clause-pair desc))))])]
-    (when candidate-pairs
+	  (for [clause-pair (:clause-map pre-val),
+		[result-clause result-rew] (progress-clause clause-pair desc)
+		:when (clause-includes-state? result-clause state)]
+	    [(util/safe-get ^result-clause :pre-clause) result-rew])]
+    (when (seq candidate-pairs)
       (let [[clause rew] (first (util/first-maximal-element second candidate-pairs))]
-	[(minimal-clause-state clause) rew]))))
+	[(matching-clause-state clause state) rew]))))
 	      
   
 
@@ -209,7 +213,7 @@
   (util/is (test-simple-subsumption '{{[a 4] :true} 5, {[a 3] :true} 0} '{{[a 4] :unknown} 5, {[a 3] :true} 1} false false)))
 
 (util/deftest dnf-fancy-subsumption
-  (let [sub-info {'a #(> (first %1) (first %2)) 'b #(< (first %1) (first %2))}]
+  (let [sub-info {'a *subsumption-preds-gt* 'b *subsumption-preds-lt*}]
     (util/is (valuation-subsumes? 
 	      (second (get-valuation-states (make-dnf-valuation ::DNFValuation '{{[a 4] :true [b 1] :unknown} 5}) sub-info))
 	      (second (get-valuation-states (make-dnf-valuation ::DNFValuation '{{[a 3] :unknown [b 3] :true} 2}) sub-info))
