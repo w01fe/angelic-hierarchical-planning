@@ -3,7 +3,7 @@
            [edu.berkeley.ai.envs.states :as states]
            [edu.berkeley.ai.domains.strips :as strips]
 	   [edu.berkeley.ai.angelic :as angelic]
-	   [edu.berkeley.ai.angelic.dnf-simple-valuations :as dsv])
+	   [edu.berkeley.ai.angelic.dnf-valuations :as dv])
  )
 
 
@@ -229,15 +229,14 @@
 (defmethod angelic/ground-description ::WarehouseActDescription [desc var-map] desc)
   
 
-(defmethod angelic/progress-optimistic [::angelic/PessimalValuation ::WarehouseActDescription] [val desc]  val)
+(defmethod angelic/progress-valuation [::angelic/PessimalValuation ::WarehouseActDescription] [val desc]  val)
 
-(defmethod angelic/progress-optimistic [::dsv/DNFSimpleValuation ::WarehouseActDescription] [val desc]
+(defmethod angelic/progress-valuation [::dv/DNFValuation ::WarehouseActDescription] [val desc]
   (angelic/make-conditional-valuation 
    envs/*true-condition*
-   (+ (angelic/get-valuation-upper-bound val) ((:fn desc) (util/safe-get val :dnf)))))
+   (+ (angelic/get-valuation-max-reward val) 
+      ((:fn desc) (keys (util/safe-get val :clause-maps))))))
 
-(defmethod angelic/progress-pessimistic [::angelic/Valuation ::WarehouseActDescription] [val desc]
-  (throw (UnsupportedOperationException.)))
 
 
 
@@ -272,6 +271,7 @@
 	(util/is (= 14 
 		    (count (get-and-check-sol (simplifier env) true))))))))
 
+(comment
 
 (import '[java.util HashSet])
 
@@ -289,7 +289,7 @@
       (doseq [s (take max-tests gen)]
 	(let [val (edu.berkeley.ai.angelic.dnf-simple-valuations/make-dnf-simple-valuation 
 		   (list (util/map-map #(vector % :true) s)) 0)]
-	  (util/assert-is (>= (angelic/get-valuation-upper-bound (angelic/progress-optimistic val desc)) rew))))
+	  (util/assert-is (>= (angelic/valuation-max-reward (angelic/progress-optimistic val desc)) rew))))
       (when (and (not (empty? gen)) (> max-tests (count gen)))
 	(recur 
 	 (for [s gen, ss (envs/successor-states s as) :when (not (.contains done ss))] 
@@ -300,6 +300,8 @@
 ; (test-descriptions (constant-predicate-simplify (make-warehouse-strips-env 4 4 [1 2] false {0 '[a] 2 '[c b]} nil ['[a c table1]])) (for [bpos [0 2 3], [gpos fr] [[[0 2] true] [[2 2] false]]] (get-initial-state (constant-predicate-simplify (make-warehouse-strips-env 4 4 gpos fr {bpos '[b] 1 '[a c]} nil ['[table1 table0]])))) 10)
 
 ; (test-descriptions (constant-predicate-simplify (make-warehouse-strips-env 7 6 [0 2] true {0 '[b] 1 '[a] 2 '[c]  } nil ['[a b c table5]])) (for [[gpos fr] [[[4 4] true] [[6 4] false]]] (get-initial-state (constant-predicate-simplify (make-warehouse-strips-env 7 6 gpos fr {5 '[a b c]} nil ['[a b c table5]])))) 100000)
+ )
+
 
 (comment 
   (u util domains.strips domains.warehouse envs search search.algorithms.textbook)

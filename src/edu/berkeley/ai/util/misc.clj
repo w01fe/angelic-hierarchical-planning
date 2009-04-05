@@ -254,6 +254,8 @@
 (defn xor [& args]
   (odd? (count (filter identity args))))
   
+(defn same-truth-value? [& args]
+  (apply = (map #(when % true) args)))
 
 (comment 
   (match-mappings 

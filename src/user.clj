@@ -7,7 +7,7 @@
   `(do (l) (use ~@(map #(list 'quote (if (coll? %) (cons (symbol-append 'edu.berkeley.ai. (first %)) (rest %)) (symbol-append 'edu.berkeley.ai. %))) args))))
 
   
-(defn uall [] (u util envs search search.algorithms.textbook angelic angelic.hierarchies domains.nav-switch domains.strips domains.hybrid-strips  angelic.hierarchies.strips-hierarchies util.queues util.graphs domains.warehouse domains.hybrid-blocks domains.discrete-road-trip domains.road-trip angelic.hierarchies.abstract-lookahead-trees angelic.hierarchies.abstract-lookahead-graphs angelic.hierarchies.offline-algorithms angelic.hierarchies.online-algorithms scripts.experiments scripts.cluster scripts.z09-aij util.datasets util.charts))
+(defn uall [] (u util envs search search.algorithms.textbook angelic angelic.hierarchies domains.nav-switch domains.strips domains.hybrid-strips angelic.dnf-valuations angelic.ncstrips-descriptions angelic.hierarchies.strips-hierarchies util.queues util.graphs domains.warehouse domains.hybrid-blocks domains.discrete-road-trip domains.road-trip angelic.hierarchies.abstract-lookahead-trees angelic.hierarchies.abstract-lookahead-graphs angelic.hierarchies.offline-algorithms angelic.hierarchies.online-algorithms scripts.experiments scripts.cluster scripts.z09-aij util.datasets util.charts util.graphviz ))
 
 
 ; These may be useful but cause gui to load

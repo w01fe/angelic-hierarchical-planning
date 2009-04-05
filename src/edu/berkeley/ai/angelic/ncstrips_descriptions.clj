@@ -4,12 +4,12 @@
   (:require [edu.berkeley.ai.util :as util] 
             [edu.berkeley.ai.util.propositions :as props]
             [edu.berkeley.ai.domains.strips :as strips]
-            [edu.berkeley.ai.angelic.dnf-simple-valuations :as dsv]
 	    [edu.berkeley.ai.search.smart-csps :as smart-csps])
   )
 
 ;;; NCStrips descriptions
 
+;; Quantification in forall cost effects is assumed to be "max" over rewards, even in pessimistic descriptions!
 
 (derive ::NCStripsDescription :edu.berkeley.ai.angelic/PropositionalDescription)
 
@@ -323,13 +323,13 @@
 
 
 
-(defn- progress-effect-clause [effect clause combiner]
+(defn- progress-effect-clause [effect clause]
 ;  (println "Progress " effect clause)
   (let [pos-pre (util/safe-get effect :pos-preconditions)
 	neg-pre (util/safe-get effect :neg-preconditions)]
     (when (and (every? clause pos-pre)
 	       (every? #(not (= :true (clause %))) neg-pre))
-      (let [pred-maps (valuation->pred-maps (dsv/make-dnf-simple-valuation #{clause} 0))
+      (let [pred-maps (lazy-seq (list (clause->pred-maps clause)))
 	    [more-pos-pre more-neg-pre] (apply map concat [nil nil] (map #(% pred-maps) (util/safe-get effect :precondition-fns)))]
 ;	(println more-pos-pre more-neg-pre)
 	(when (and (every? clause more-pos-pre)
@@ -345,31 +345,27 @@
  		unks          (concat (filter #(nil?    (after-eff %)) padds)
 				      (filter #(= :true (after-eff %)) pdels))]
 	   [(into after-eff (map #(vector % :unknown) unks))
-	    (- ((util/safe-get effect :cost-fn) pred-maps combiner))]))))))
+	    (- ((util/safe-get effect :cost-fn) pred-maps max))]))))))
 
-(defn- progress-ncstrips [val desc combiner]
-;  (println "progress " val combiner)
-  (let [results 
-	(seq 
-	 (filter identity
-	  (for [clause (:dnf val)
-		effect (:effects desc)]
-	    (progress-effect-clause effect clause combiner))))]
-;    (prn results)
-;    (println val desc combiner)
-    (if results  
-        (dsv/make-dnf-simple-valuation 
-          (map first results)
-	  (+ (:bound val) (reduce combiner (map second results))))
-      (do ;(println "Warning: empty valuation being produced in progress-ncstrips") 
-	  *pessimal-valuation*))
-))
+(defmethod progress-clause ::NCStripsDescription [[clause rew] desc]
+  (merge-best > {}
+    (for [effect (:effects desc)
+	  :let   [result (progress-effect-clause effect clause)]
+	  :when result]
+      (let [[next-clause step-rew] result]
+	[next-clause (+ step-rew rew)]))))
       
-(defmethod progress-optimistic [:edu.berkeley.ai.angelic.dnf-simple-valuations/DNFSimpleValuation ::NCStripsDescription] [val desc]
-  (progress-ncstrips val desc max))
 
-(defmethod progress-pessimistic [:edu.berkeley.ai.angelic.dnf-simple-valuations/DNFSimpleValuation ::NCStripsDescription] [val desc] ;TODO: improve
-  (progress-ncstrips val desc min))
+
+
+
+
+
+
+
+
+
+
 
 
 ;; Want to regress descriptions
@@ -416,6 +412,8 @@
 ;; For now, ignore costs.
 
 ;; Does not work correctly with foralls with non-const conditions!
+
+(comment ; Seemed to work when last tried, but not in use right now. 
 (defmethod invert-description ::NCStripsDescription [desc] 
   (struct ncstrips-description ::NCStripsDescription
    (doall
@@ -447,3 +445,5 @@
 	   (cond (= combiner max) Double/NEGATIVE_INFINITY
 		 (= combiner min) Double/POSITIVE_INFINITY
 		 :else            (throw (IllegalArgumentException.))))))))))
+
+ )

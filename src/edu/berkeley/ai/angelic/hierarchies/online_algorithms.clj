@@ -18,7 +18,10 @@
 ;; TODO: handle g-cost...
 (defn- make-initial-ahlrta-alt-node [env initial-node ref-choice-fn cache? graph? memory high-level-hla-set]
   (let [initial-node (assoc initial-node :hierarchy (assoc (:hierarchy initial-node) :problem-instance env)) 
-	node (alts/alt-node ::AHLRTAALTPlanNode (hla-default-valuation-type initial-node) nil
+	node (alts/alt-node ::AHLRTAALTPlanNode 
+			    (hla-default-optimistic-valuation-type initial-node)
+			    (hla-default-pessimistic-valuation-type initial-node)
+			    nil
 			    initial-node ref-choice-fn cache? graph?)]
     (assoc node :alt (assoc (:alt node) :memory memory :high-level-hla-set high-level-hla-set)
 	        :plan (assoc (:plan node) 
@@ -34,15 +37,15 @@
 		   :g-rew (+ (util/safe-get previous :g-rew)
 			     (if (contains? (util/safe-get alt :high-level-hla-set) (util/safe-get-in nxt [:hla :schema :name]))
 			         0
-			       (- (get-valuation-upper-bound (alts/optimistic-valuation nxt))
-				  (get-valuation-upper-bound (alts/optimistic-valuation previous))))))
+			       (- (valuation-max-reward (alts/optimistic-valuation nxt))
+				  (valuation-max-reward (alts/optimistic-valuation previous))))))
 	  prim?  (util/safe-get nxt :primitive?)
 	  states              (when prim? (explicit-valuation-map (alts/optimistic-valuation nxt)))
 	  [state rew-so-far]  (when prim? (util/assert-is (= 1 (count states))) (first states))
 	  rew-to-go           (when prim? (get (util/safe-get alt :memory) state))]
       (if rew-to-go
 	  (search/adjust-reward (alts/make-alt-plan-node (:class node) alt name nxt) (+ rew-so-far rew-to-go))  
-	(when (and (> (get-valuation-upper-bound (alts/optimistic-valuation nxt)) Double/NEGATIVE_INFINITY)
+	(when (and (> (valuation-max-reward (alts/optimistic-valuation nxt)) Double/NEGATIVE_INFINITY)
 		   (or (not (util/safe-get alt :graph?)) 
 		       (alts/graph-add-and-check! alt nxt (next actions) name)))
 	  (recur node nxt (next actions) alt name))))))
@@ -106,7 +109,10 @@
 ;; TODO: handle g-cost...
 (defn- make-initial-ahlrta2-alt-node [env initial-node ref-choice-fn cache? graph? ]
   (let [node
-	(alts/alt-node ::alts/ALTPlanNode (hla-default-valuation-type initial-node) nil
+	(alts/alt-node ::alts/ALTPlanNode 
+		       (hla-default-optimistic-valuation-type initial-node) 
+		       (hla-default-pessimistic-valuation-type initial-node) 
+		       nil
 		       (assoc initial-node :hierarchy (assoc (:hierarchy initial-node) :problem-instance env))
 		       ref-choice-fn cache? graph?)]
     (assoc node :plan (assoc (:plan node) 
@@ -139,8 +145,8 @@
 	      states                (when prim? (explicit-valuation-map (alts/optimistic-valuation node)))
 	      [state s-rew-so-far]  (when prim? (util/assert-is (= 1 (count states))) (first states))
 	      s-rew-to-go           (or (and prim? (get memory state)) Double/POSITIVE_INFINITY)
-	      step-rew           (- (get-valuation-upper-bound (alts/optimistic-valuation node))
-	  			  (get-valuation-upper-bound (alts/optimistic-valuation previous)))
+	      step-rew           (- (valuation-max-reward (alts/optimistic-valuation node))
+	  			  (valuation-max-reward (alts/optimistic-valuation previous)))
 	      prev-g-so-far      (util/safe-get previous :g-so-far)
 	      prev-min-f-to-go   (util/safe-get previous :min-f-to-go)
 	      min-f-to-go        (min (- prev-min-f-to-go step-rew) s-rew-to-go)

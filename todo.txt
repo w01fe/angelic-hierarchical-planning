@@ -1,10 +1,14 @@
-Need DNFClauseValuedValuations, check where DSVs are explicitly
-assumed . :(  
+Must check subsumption not broken after this, investigate 
+(subsumption now on all pred args).
+
+If doing fancy valuation tricks, much watch out for
+identitydescrpition, conditional, ...
 
 Might as well store provenance too, for regression ...
 ... and implement incremental progression/merging?
-
-Need way to regress through Act :(.
+ -- But problem with provenance is things may be OK even if 
+    valuation is out of date, in which case chain is invalid
+    ... . . . . ...?
 
 ALGs should have some mode for finding suboptimal plans.
 

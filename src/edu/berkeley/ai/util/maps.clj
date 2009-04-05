@@ -10,6 +10,10 @@
   [f & maps] (into {} (apply map f maps)))
      ;(reduce #(conj %1 %2) {} (apply map f maps)))
 
+
+(defn map-keys [f m]
+  (into {} (map (fn [[k v]] [(f k) v]) m)))
+
 (defn map-vals [f m]
   (into {} (map (fn [[k v]] [k (f v)]) m)))
 
@@ -51,6 +55,14 @@
   (let [ret (merge m1 m2)]
     (assert-is (= (count ret) (+ (count m1) (count m2))))
     ret))
+
+(defn merge-best [pred m & entry-seqs]
+  (reduce (fn [m [k v]] 
+	    (if-let [[ok ov] (find m k)]
+	        (if (pred v ov) (assoc m k v) m)
+	      (assoc m k v)))
+	  m (apply concat entry-seqs)))
+	      
 
 (defn assoc-cat "Like assoc but for maps to lists"
   [m k v]

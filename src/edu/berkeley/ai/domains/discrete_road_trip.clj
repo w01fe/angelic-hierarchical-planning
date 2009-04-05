@@ -4,7 +4,7 @@
            [edu.berkeley.ai.envs.states :as states]
            [edu.berkeley.ai.domains.strips :as strips]
 	   [edu.berkeley.ai.angelic :as angelic]
-	   [edu.berkeley.ai.angelic.dnf-simple-valuations :as dsv])
+	   [edu.berkeley.ai.angelic.dnf-valuations :as dv])
  )
 
 
@@ -151,15 +151,14 @@
 (defmethod angelic/ground-description ::DRTActDescription [desc var-map] desc)
   
 
-(defmethod angelic/progress-optimistic [::angelic/PessimalValuation ::DRTActDescription] [val desc]  val)
+(defmethod angelic/progress-valuation [::angelic/PessimalValuation ::DRTActDescription] [val desc]  val)
 
-(defmethod angelic/progress-optimistic [::dsv/DNFSimpleValuation ::DRTActDescription] [val desc]
+(defmethod angelic/progress-valuation [::dv/DNFValuation ::DRTActDescription] [val desc]
   (angelic/make-conditional-valuation 
    envs/*true-condition*
-   (+ (angelic/get-valuation-upper-bound val) ((:fn desc) (util/safe-get val :dnf)))))
+   (+ (angelic/get-valuation-max-reward val) 
+      ((:fn desc) (keys (util/safe-get val :clause-maps))))))
 
-(defmethod angelic/progress-pessimistic [::angelic/Valuation ::DRTActDescription] [val desc]
-  (throw (UnsupportedOperationException.)))
 
 
 

@@ -1,8 +1,7 @@
 (ns edu.berkeley.ai.angelic.hierarchies.abstract-lookahead-trees
   (:use edu.berkeley.ai.angelic edu.berkeley.ai.angelic.hierarchies)
   (:import [java.util HashMap Map$Entry HashSet])
-  (:require [edu.berkeley.ai.angelic.dnf-simple-valuations :as dsv]
-            [edu.berkeley.ai [util :as util] [envs :as envs] [search :as search]]))
+  (:require [edu.berkeley.ai [util :as util] [envs :as envs] [search :as search]]))
 
 
 
@@ -84,12 +83,11 @@
 
 
 (defn pessimistic-valuation [node]
-;  (println "lb")
   (let [s (:pessimistic-valuation ^node)]
     (or (util/sref-get s)
 	(util/sref-set! s 
 	  (do (util/sref-up! *pp-counter* inc)
-	      (progress-pessimistic 
+	      (progress-valuation 
 	       (do-restrict-valuation-alt (pessimistic-valuation (:previous node)) 
 					  (hla-hierarchical-preconditions (:hla node)))
 	       (hla-pessimistic-description (:hla node))))))))
@@ -100,7 +98,7 @@
     (or (util/sref-get s)
 	(util/sref-set! s 
 	  (do (util/sref-up! *op-counter* inc)
-	      (progress-optimistic 
+	      (progress-valuation 
 	       (do-restrict-valuation-alt (optimistic-valuation (:previous node))
 					  (hla-hierarchical-preconditions (:hla node)))
 	       (hla-optimistic-description (:hla node))))))))
@@ -144,10 +142,10 @@
     (loop [node (:plan node), cur nil, maxgap Double/NEGATIVE_INFINITY]
       (if-let [prev (:previous node)]
           (if (hla-primitive? (:hla node)) (recur prev cur (/ maxgap weight))
-            (let [opt      (- (get-valuation-upper-bound (optimistic-valuation node))
-			      (get-valuation-upper-bound (optimistic-valuation prev)))
-		  mypess   (get-valuation-lower-bound (pessimistic-valuation node))
-		  prevpess (get-valuation-lower-bound (pessimistic-valuation prev))
+            (let [opt      (- (valuation-max-reward (optimistic-valuation node))
+			      (valuation-max-reward (optimistic-valuation prev)))
+		  mypess   (valuation-max-reward (pessimistic-valuation node))
+		  prevpess (valuation-max-reward (pessimistic-valuation prev))
 		  pess     (if (> prevpess Double/NEGATIVE_INFINITY)
 			     (- mypess prevpess)
 			     Double/NEGATIVE_INFINITY)
@@ -173,8 +171,8 @@
 	 p 0]
     (if (nil? (:previous nd)) p
 	(let [prev (:previous nd)
-	      prev-upper (get-valuation-upper-bound (optimistic-valuation prev))
-	      prev-lower (get-valuation-lower-bound (pessimistic-valuation prev))
+	      prev-upper (valuation-max-reward (optimistic-valuation prev))
+	      prev-lower (valuation-max-reward (pessimistic-valuation prev))
 	      opt  (- upper prev-upper)
 	      pess (- lower prev-lower)
 	      act? (= 'act (first (hla-name (:hla nd))))]
@@ -193,8 +191,8 @@
 	   p 0]
       (if (nil? (:previous nd)) p
 	  (let [prev (:previous nd)
-		prev-upper (get-valuation-upper-bound (optimistic-valuation prev))
-		prev-lower (get-valuation-lower-bound (pessimistic-valuation prev))
+		prev-upper (valuation-max-reward (optimistic-valuation prev))
+		prev-lower (valuation-max-reward (pessimistic-valuation prev))
 		opt  (- upper prev-upper)
 		pess (- lower prev-lower)
 		act? (= 'act (first (hla-name (:hla nd))))]
@@ -207,21 +205,29 @@
 ;; Constructing initial nodes
 
 
-(defn make-alt-root-node [alt initial-valuation]
-  (make-alt-node :root nil initial-valuation initial-valuation))
+(defn make-alt-root-node [alt opt-val pess-val]
+  (make-alt-node :root nil opt-val pess-val))
 
 (defn make-initial-alt-node 
-  ([initial-node] (make-initial-alt-node initial-node true true))
-  ([initial-node ref-choice-fn] (make-initial-alt-node initial-node ref-choice-fn true true))
-  ([initial-node cache? graph?] (make-initial-alt-node initial-node first-choice-fn cache? graph?))
-  ([initial-node ref-choice-fn cache? graph?] (make-initial-alt-node (hla-default-valuation-type initial-node) {} 
-								     initial-node ref-choice-fn cache? graph?))
-  ([initial-node subsumption-info ref-choice-fn cache? graph?] (make-initial-alt-node (hla-default-valuation-type initial-node) 
-								     subsumption-info initial-node ref-choice-fn cache? graph?))
-;  ([valuation-class initial-node] (make-initial-alt-node valuation-class initial-node true true))
+  ([initial-node] 
+     (make-initial-alt-node initial-node true true))
+  ([initial-node ref-choice-fn] 
+     (make-initial-alt-node initial-node ref-choice-fn true true))
+  ([initial-node cache? graph?] 
+     (make-initial-alt-node initial-node first-choice-fn cache? graph?))
+  ([initial-node ref-choice-fn cache? graph?] 
+     (make-initial-alt-node initial-node {} ref-choice-fn cache? graph?))
+  ([initial-node subsumption-info ref-choice-fn cache? graph?] 
+     (make-initial-alt-node 
+      (hla-default-optimistic-valuation-type initial-node)
+      (hla-default-pessimistic-valuation-type initial-node)
+      subsumption-info initial-node ref-choice-fn cache? graph?))
   ([valuation-class subsumption-info initial-node ref-choice-fn cache? graph?]
-     (make-initial-alt-node ::ALTPlanNode valuation-class subsumption-info initial-node ref-choice-fn cache? graph?))
- ([node-type valuation-class subsumption-info initial-node ref-choice-fn cache? graph?]
+     (make-initial-alt-node valuation-class valuation-class subsumption-info initial-node ref-choice-fn cache? graph?))
+  ([opt-valuation-class pess-valuation-class subsumption-info initial-node ref-choice-fn cache? graph?]
+
+     (make-initial-alt-node ::ALTPlanNode opt-valuation-class pess-valuation-class subsumption-info initial-node ref-choice-fn cache? graph?))
+ ([node-type opt-valuation-class pess-valuation-class subsumption-info initial-node ref-choice-fn cache? graph?]
 ;  (util/assert-is (empty? subsumption-info)) ;; Taken out for now. TODO
   (util/assert-is (contains? #{true false :full :old} graph?))
   (let [initial-plan (list initial-node) ;(if (seq? initial-node) initial-node (list initial-node))
@@ -230,7 +236,9 @@
 	name ((:node-counter ^alt))]
     (.add #^HashSet (:live-set ^alt) name)
     (loop [actions initial-plan
-	   previous (make-alt-root-node alt (state->valuation valuation-class (envs/get-initial-state env)))]
+	   previous (make-alt-root-node alt 
+		     (state->valuation opt-valuation-class (envs/get-initial-state env))
+		     (state->valuation pess-valuation-class (envs/get-initial-state env)))]
       (if (empty? actions)
           (make-alt-plan-node node-type alt name previous)
 	(recur (next actions)
@@ -246,30 +254,43 @@
 
 ; Right now, subsumption only good for ignoring irrelevant predicates.
 ; Return true if keep, false if prune.
+; Note, even strictly better subsumption checking can make things worse...
+
+; Return true if keep, false if prune.
 (defn graph-add-and-check! [alt node rest-plan name]
   (util/assert-is (:graph? alt))
   (let [#^HashMap graph-map (util/safe-get ^alt :graph-map)
 	#^HashSet live-set  (util/safe-get ^alt :live-set)
 	subsumption-info    (util/safe-get alt :subsumption-info)
-	opt-val    (optimistic-valuation node)
-	[opt-states] (get-valuation-states opt-val subsumption-info)
-	opt-rew    (get-valuation-upper-bound opt-val)
-	[graph-rew graph-node]  (or (.get graph-map [opt-states rest-plan]) *dummy-pair-alt*)]
-;	(when (not (or (> opt-rew graph-rew) (and (= opt-rew graph-rew) (contains? ancestor-set graph-node))))
-;	  (println "pruning!" name ancestor-set graph-node graph-rew opt-rew (contains? ancestor-set graph-node)))
-    (when (or (and (= (:graph? alt) :old) (not (.contains live-set graph-node)))
-	      (> opt-rew graph-rew)
-	      (and (not (.contains live-set graph-node))
-		   (= opt-rew graph-rew)))
-      (let [pess-val    (pessimistic-valuation node)
-	    pess-rew    (get-valuation-lower-bound pess-val)
-	    [pess-states] (get-valuation-states pess-val subsumption-info)
-	    pair        [pess-states rest-plan]
-	    [graph-rew graph-node] (or (.get graph-map pair) *dummy-pair-alt*)]
-	(when (>= pess-rew graph-rew)
-	  (.put graph-map pair [pess-rew name])))
+	opt-val             (optimistic-valuation node)
+	[opt-states opt-si] (get-valuation-states opt-val subsumption-info)
+	graph-tuples        (.get graph-map [opt-states rest-plan])]
+    (when (every?
+	   (fn [[graph-si graph-node]]
+	     (or (and (= (:graph? alt) :old) (not (.contains live-set graph-node)))
+		 (not (valuation-subsumes? graph-si opt-si subsumption-info))
+		 (and (not (.contains live-set graph-node))
+		      (valuation-equal? graph-si opt-si subsumption-info))))
+	   graph-tuples)
+     ; (println (class (get-valuation-states (pessimistic-valuation node) subsumption-info)))
+      (let [pess-val              (pessimistic-valuation node)]
+	(when (> (get-valuation-max-reward pess-val) Double/NEGATIVE_INFINITY)
+	  (let [[pess-states pess-si] (get-valuation-states pess-val subsumption-info)
+		pair                  [pess-states rest-plan]
+		graph-tuples          (.get graph-map pair)]
+	    ;(println "cb " [pess-rew pess-states pess-si] graph-tuples)
+;	    (println "cb " (count graph-tuples))
+	    (when (every?
+		   (fn [[graph-si graph-node]]
+		     (not (valuation-subsumes? graph-si pess-si subsumption-info)))
+		   graph-tuples)
+	      (.put graph-map pair
+		(cons [pess-si name]
+		      (filter
+		       (fn [[graph-si graph-node]]
+			 (not (valuation-subsumes? pess-si graph-si subsumption-info)))
+		       graph-tuples)))))))
       true)))
-
 
 
 	       
@@ -312,7 +333,7 @@
 	s (:lower-reward-bound ^node)]
     (or (util/sref-get s)
 	(util/sref-set! s 
-	  (get-valuation-lower-bound (do-restrict-valuation-alt (pessimistic-valuation node) (:goal alt)))))))
+	  (valuation-max-reward (do-restrict-valuation-alt (pessimistic-valuation node) (:goal alt)))))))
 
 (defmethod search/upper-reward-bound ::ALTPlanNode [node] 
   (let [alt (:alt node)
@@ -320,7 +341,7 @@
 	s (:upper-reward-bound ^node)]
     (or (util/sref-get s)
 	(util/sref-set! s 
-          (get-valuation-upper-bound (do-restrict-valuation-alt (optimistic-valuation node) (:goal alt)))))))
+          (valuation-max-reward (do-restrict-valuation-alt (optimistic-valuation node) (:goal alt)))))))
 
 (defmethod search/reward-so-far ::ALTPlanNode [node] 0)
 
@@ -329,7 +350,7 @@
   (if (empty? actions) 
     (make-alt-plan-node (:class node) alt name previous )
     (let [[nxt cache?] (get-alt-node alt (first actions) previous)]
-      (if (and (> (get-valuation-upper-bound (optimistic-valuation nxt)) Double/NEGATIVE_INFINITY)
+      (if (and (> (valuation-max-reward (optimistic-valuation nxt)) Double/NEGATIVE_INFINITY)
 	       (or (next actions) (not cache?)) ; Eliminate duplicates.
 	       (or (not (:graph? alt)) 
 		   (graph-add-and-check! alt nxt (next actions) name)))
@@ -380,7 +401,7 @@
     (when (util/safe-get node :primitive?)
       (let [act-seq (remove #(= % :noop)
 		      (map (comp hla-primitive :hla) (next (reverse (util/iterate-while :previous node))))) 
-	    upper (get-valuation-upper-bound (optimistic-valuation node))] 
+	    upper (valuation-max-reward (optimistic-valuation node))] 
 	[act-seq upper]))))
 
 (defmethod search/extract-optimal-solution ::ALTPlanNode [node] 
@@ -390,8 +411,8 @@
 
 (defn fancy-node-str [node] 
   (util/str-join " " 
-    (map (fn [n] [(hla-name (:hla n)) [(get-valuation-lower-bound (pessimistic-valuation n))
-				       (get-valuation-upper-bound (optimistic-valuation n))]])
+    (map (fn [n] [(hla-name (:hla n)) [(valuation-max-reward (pessimistic-valuation n))
+				       (valuation-max-reward (optimistic-valuation n))]])
 	 (next (reverse (util/iterate-while :previous (:plan node)))))))
 
 (defmethod search/node-str ::ALTPlanNode [node] (fancy-node-str node))
@@ -419,16 +440,13 @@
   (if (nil? (:previous plan))
       state-seq
     (recur (:previous plan)
-	   (cons 
-	    (extract-a-state 
-	     (sub-intersect-valuations 
-	      (pessimistic-valuation (:previous plan))
-	      (restrict-valuation 
-	       (regress-pessimistic
-		(state->valuation ::dsv/DNFSimpleValuation (first state-seq))
-		(hla-pessimistic-description (:hla plan)))
-	       (hla-hierarchical-preconditions (:hla plan)))))						       
-	    state-seq))))    
+	   (cons
+	    (first 
+	     (regress-state (first state-seq)
+			    (pessimistic-valuation       (:previous plan))
+			    (hla-pessimistic-description (:hla plan))
+			    (pessimistic-valuation       plan)))
+	    state-seq))))
 
 (defn decompose-plan
   "Take a node corresponding to a pessimistically succeeding plan, and return a 
@@ -437,10 +455,11 @@
   [node]
   (util/assert-is (> (search/lower-reward-bound node) Double/NEGATIVE_INFINITY))
   (let [env       (hla-environment (:hla (:plan node)))
-	state-seq (extract-state-seq (:plan node) [(extract-a-state 
+	state-seq (extract-state-seq (:plan node) [(first 
+						    (valuation-max-reward-state
 						    (restrict-valuation 
 						     (pessimistic-valuation (:plan node))
-						     (envs/get-goal env)))])
+						     (envs/get-goal env))))])
 	alt       (util/safe-get node :alt)]
   ;  (println "decomposing " (search/node-str node) " on \n" (util/str-join "\n\n" (map #(envs/state-str env %) state-seq)))
     (util/assert-is (= (first state-seq) (envs/get-initial-state env)))
@@ -604,48 +623,32 @@
 
 (comment ; Version with subsumption, didn't help, so taken out for now.
 
-; Note, even strictly better subsumption checking can make things worse...
 
-; Return true if keep, false if prune.
+
+
+; Old version, no subsumption
 (defn graph-add-and-check! [alt node rest-plan name]
   (util/assert-is (:graph? alt))
   (let [#^HashMap graph-map (util/safe-get ^alt :graph-map)
 	#^HashSet live-set  (util/safe-get ^alt :live-set)
 	subsumption-info    (util/safe-get alt :subsumption-info)
-	opt-val             (optimistic-valuation node)
-	[opt-states opt-si] (get-valuation-states opt-val subsumption-info)
-	opt-rew             (get-valuation-upper-bound opt-val)
-	graph-tuples        (.get graph-map [opt-states rest-plan])]
-;    (println "ca " [opt-rew opt-states opt-si] graph-tuples)
-   ; (println "ca " (count graph-tuples))
-    (when (every?
-	   (fn [[graph-rew graph-si graph-node]]
-	     (or (and (= (:graph? alt) :old) (not (.contains live-set graph-node)))
-		 (not (valuation-subsumes? graph-si opt-si subsumption-info))
-		 (> opt-rew graph-rew)
-		 (and (not (.contains live-set graph-node))
-		      (= opt-rew graph-rew))))
-	   graph-tuples)
-     ; (println (class (get-valuation-states (pessimistic-valuation node) subsumption-info)))
-      (let [pess-val              (pessimistic-valuation node)
-	    pess-rew              (get-valuation-lower-bound pess-val)]
-	(when (> pess-rew Double/NEGATIVE_INFINITY)
-	  (let [[pess-states pess-si] (get-valuation-states pess-val subsumption-info)
-		pair                  [pess-states rest-plan]
-		graph-tuples          (.get graph-map pair)]
-	    ;(println "cb " [pess-rew pess-states pess-si] graph-tuples)
-;	    (println "cb " (count graph-tuples))
-	    (when (every?
-		   (fn [[graph-rew graph-si graph-node]]
-		     (or (not (valuation-subsumes? graph-si pess-si subsumption-info))
-			 (> pess-rew graph-rew)))
-		   graph-tuples)
-	      (.put graph-map pair
-		(cons [pess-rew pess-si name]
-		      (filter
-		       (fn [[graph-rew graph-si graph-node]]
-			 (or (not (valuation-subsumes? pess-si graph-si subsumption-info))
-			     (> graph-rew pess-rew)))
-		       graph-tuples)))))))
+	opt-val    (optimistic-valuation node)
+	[opt-states] (get-valuation-states opt-val subsumption-info)
+	opt-rew    (valuation-max-reward opt-val)
+	[graph-rew graph-node]  (or (.get graph-map [opt-states rest-plan]) *dummy-pair-alt*)]
+;	(when (not (or (> opt-rew graph-rew) (and (= opt-rew graph-rew) (contains? ancestor-set graph-node))))
+;	  (println "pruning!" name ancestor-set graph-node graph-rew opt-rew (contains? ancestor-set graph-node)))
+    (when (or (and (= (:graph? alt) :old) (not (.contains live-set graph-node)))
+	      (> opt-rew graph-rew)
+	      (and (not (.contains live-set graph-node))
+		   (= opt-rew graph-rew)))
+      (let [pess-val    (pessimistic-valuation node)
+	    pess-rew    (valuation-max-reward pess-val)
+	    [pess-states] (get-valuation-states pess-val subsumption-info)
+	    pair        [pess-states rest-plan]
+	    [graph-rew graph-node] (or (.get graph-map pair) *dummy-pair-alt*)]
+	(when (>= pess-rew graph-rew)
+	  (.put graph-map pair [pess-rew name])))
       true)))
+
 )

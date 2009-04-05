@@ -30,7 +30,7 @@
 (defn make-flat-act-optimistic-description [goal upper-reward-fn]
   {:class ::FlatActOptimisticDescription :goal goal :upper-reward-fn upper-reward-fn})
 
-(defmethod progress-optimistic [:edu.berkeley.ai.angelic/Valuation ::FlatActOptimisticDescription] [val desc]
+(defmethod progress-valuation [:edu.berkeley.ai.angelic/Valuation ::FlatActOptimisticDescription] [val desc]
   (let [state-map (explicit-valuation-map val)]
     (util/assert-is (= (count state-map) 1))
     (let [[prev-state prev-reward] (first state-map)]
@@ -38,9 +38,6 @@
        (:goal desc)
        (+ prev-reward ((:upper-reward-fn desc) prev-state))))))
    
-(defmethod progress-pessimistic [:edu.berkeley.ai.angelic/Valuation ::FlatActOptimisticDescription] [val desc]
-  (throw (UnsupportedOperationException.)))
-
 
 
 (defmethod instantiate-hierarchy ::FlatHierarchySchema [hierarchy instance]
@@ -49,7 +46,11 @@
    (make-flat-act-optimistic-description (envs/get-goal instance) (:upper-reward-fn hierarchy))
    (envs/get-action-space instance)))
 
-(defmethod hla-default-valuation-type ::FlatActHLA [hla] :edu.berkeley.ai.angelic/ExplicitValuation)
+(defmethod hla-default-optimistic-valuation-type ::FlatActHLA [hla] 
+  :edu.berkeley.ai.angelic/ExplicitValuation)
+
+(defmethod hla-default-pessimistic-valuation-type ::FlatActHLA [hla] 
+  :edu.berkeley.ai.angelic/ExplicitValuation)
 
 (defmethod hla-primitive? ::FlatPrimitiveHLA [hla] true)
 (defmethod hla-primitive ::FlatPrimitiveHLA [hla] (:action hla))

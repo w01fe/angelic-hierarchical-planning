@@ -26,7 +26,10 @@
   hla-environment :class)
 
 (defmulti #^{:doc "Get the default valuation type associated with this HLA"}
-  hla-default-valuation-type :class)
+  hla-default-optimistic-valuation-type :class)
+
+(defmulti #^{:doc "Get the default valuation type associated with this HLA"}
+  hla-default-pessimistic-valuation-type :class)
 
 (defmulti #^{:doc "Is the HLA primitive or noop?."} 
   hla-primitive? :class)

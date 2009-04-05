@@ -8,7 +8,7 @@
 
 (def *default-graphviz-dir* "/tmp/")
 
-(defn walk-graph [root node-name-fn child-map-fn #^HashSet visited]
+(defn- walk-graph [root node-name-fn child-map-fn #^HashSet visited]
   (let [node-name (node-name-fn root)]
     (when-not (.contains visited node-name)
       (.add visited node-name)
@@ -37,9 +37,11 @@
 
 (defn graphviz-dag [& args] (show-pdf-page (prln (apply write-graphviz-dag args))))
 
-	  
-
-    
+; http://www.graphviz.org/Documentation.php	  
+; http://www.graphviz.org/doc/info/lang.html
+; http://www.graphviz.org/doc/info/attrs.html#dd:orientation
+  
+; http://www.dynagraph.org/documents/dynagraph.html  
 
   
   

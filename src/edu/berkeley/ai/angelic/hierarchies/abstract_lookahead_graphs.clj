@@ -2,7 +2,7 @@
   (:use edu.berkeley.ai.angelic edu.berkeley.ai.angelic.hierarchies)
   (:require [edu.berkeley.ai [util :as util] [envs :as envs] [search :as search]]))
 
-
+(comment 
 
 ;; Abstract lookahead graphs, which include merge nodes.
 
@@ -40,6 +40,12 @@
 
 ;; TODO: a way to implement extract-a-solution (or refine potentially suboptimal things...)
 
+; TODO TODO: kill off dead-end fragments.  Just don't return them.
+ ; (better than making next-map have weak val refs).
+
+;; TODO: graph minimization somehow? (current method may end up with duplicates, i.e. 
+  ; ae, be, ad, cd.
+
 (defstruct abstract-lookahead-graph :class :env :goal)
 (defn- make-alg [env]
   (struct abstract-lookahead-graph ::AbstractLookaheadGraph env (search/get-goal env)))
@@ -67,11 +73,11 @@
 (derive ::ALGRootNode ::ALGMergeNode)
 (defstruct alg-merge-node :class :previous-set :next-map)
 
-(defn make-alg-root-node [initial-valuation] 
+(defn make-alg-root-node [opt-val pess-val] 
   (let [n (add-valuation-metadata
 	   (struct alt-merge-node ::ALGRootNode (ref #{}) (ref {})))]
-    (util/sref-set! (:optimistic-valuation ^n) initial-valuation)
-    (util/sref-set! (:pessimistic-valuation ^n) initial-valuation)
+    (util/sref-set! (:optimistic-valuation ^n) opt-val)
+    (util/sref-set! (:pessimistic-valuation ^n) pess-val)(hla-default-valuation-type initial-node) 
     n))
 
 
@@ -171,13 +177,15 @@
 	next-map     (util/sref-get next-map-ref)]
     (get next-map key)))
 
+; Ensure each plan has a new final node, at least - makes other things easier, hurts graphiness
+; TODO: figure out how to improve? 
 (defn- make-action-node-seq [prev-node actions]
-  (if (empty? actions)
-      prev-node
-    (if-let [nxt (get-child prev-node (first actions))]
-        (recur nxt (rest actions))
-      (recur (make-alg-action-node (first actions) prev-node)
-	     (next actions)))))
+  (util/assert-is (not (empty? actions)))
+  (if-let [singleton (util/singleton actions)]
+      (make-alg-action-node singleton prev-node)
+    (recur (or (get-child prev-node (first actions))
+	       (make-alg-action-node (first actions) prev-node))
+	   (next actions))))
 
 
     
@@ -216,13 +224,13 @@
 
 
 (defmethod compute-optimistic-valuation ::ALGActionNode [node]
-  (progress-optimistic 
+  (progress-valuation 
    (restrict-valuation (optimistic-valuation (util/sref-get! (:previous node)))
 		       (hla-hierarchical-preconditions (:hla node)))
    (hla-optimistic-description (:hla node))))
 
 (defmethod compute-pessimistic-valuation ::ALGActionNode [node]
-  (progress-pessimistic 
+  (progress-valuation 
    (do-restrict-valuation-alt (pessimistic-valuation (util/sref-get! (:previous node)))
 			      (hla-hierarchical-preconditions (:hla node)))
    (hla-pessimistic-description (:hla node))))
@@ -252,7 +260,6 @@
        (when-let [nxt (get-child pre-node (first hlas))]
 	 (recur nxt post-next (next hlas))))))
       
-
 (defn replace-node-with-refinements! "Returns final node of refinements" [node hla-seqs]
   (util/assert-is (= ::ALGActionNode (:class node)))
   (let [[pre-node post-next-map] (cut-action-node node)
@@ -352,14 +359,19 @@
 
 (defn make-initial-alg-node  
   ([initial-node]
-     (make-initial-alt-node (hla-default-valuation-type initial-node) initial-node))
-  ([valuation-class initial-node]
+     (make-initial-alt-node 
+      (hla-default-optimistic-valuation-type initial-node) 
+      (hla-default-pessimistic-valuation-type initial-node)
+      initial-node))
+  ([opt-valuation-class pess-valuation-class initial-node]
      (let [initial-plan (list initial-node) 
 	   env (hla-environment (first initial-plan)), 
 	   alg (make-alg env)]
        (make-alg-final-node alg
          (make-action-node-seq 
-	  (make-alg-root-node (state->valuation valuation-class (envs/get-initial-state env)))
+	  (make-alg-root-node 
+	   (state->valuation opt-valuation-class (envs/get-initial-state env))
+	   (state->valuation pess-valuation-class (envs/get-initial-state env)))
 	  initial-plan)))))
 
 (defn alg-node [& args] (apply make-initial-alg-node args))
@@ -380,10 +392,10 @@
   (throw (UnsupportedOperationException.)))
 
 (defmethod search/upper-reward-bound ::ALGFinalNode [node] 
-  (get-valuation-upper-bound (optimistic-valuation node)))
+  (get-valuation-max-reward (optimistic-valuation node)))
 
 (defmethod search/lower-reward-bound ::ALGFinalNode [node] 
-  (get-valuation-lower-bound (pessimistic-valuation node)))
+  (get-valuation-max-reward (pessimistic-valuation node)))
 
 (defmethod search/reward-so-far ::ALGFinalNode [node] 0)
 
@@ -422,78 +434,6 @@
 
 
 
-
-
-(comment
-(defn get-alt-node [alt hla previous-node] "Returns [node cached?]"
-  (let [#^HashMap cache (when (util/safe-get alt :cache?) (util/safe-get ^previous-node :cache))]
-    (or (when-let [n (and cache (.get cache hla))] [n true])
-	(let [ret (make-alt-node hla previous-node nil nil)]
-	  (when cache (.put cache hla ret))
-	  [ret false]))))
-
-
-
-;; Internal methods
-
-(defn do-restrict-valuation-alt [x y]
-  (restrict-valuation x y))
-
-;; Constructing initial nodes
-
-
-
-
-
-
-;;; For ICAPS07 algorithm, and perhaps other uses
-
-(defn state->condition [state instance]
-  (let [all-atoms (util/to-set (util/safe-get (envs/get-state-space instance) :vars))]
-    (envs/make-conjunctive-condition state (util/difference all-atoms state))))
-
-(defn extract-state-seq [plan state-seq]
-  (if (nil? (:previous plan))
-      state-seq
-    (recur (:previous plan)
-	   (cons 
-	    (extract-a-state 
-	     (sub-intersect-valuations 
-	      (pessimistic-valuation (:previous plan))
-	      (restrict-valuation 
-	       (regress-pessimistic
-		(state->valuation ::dsv/DNFSimpleValuation (first state-seq))
-		(hla-pessimistic-description (:hla plan)))
-	       (hla-hierarchical-preconditions (:hla plan)))))						       
-	    state-seq))))    
-
-(defn decompose-plan
-  "Take a node corresponding to a pessimistically succeeding plan, and return a 
-   sequence of fresh nodes corresponding to the subproblem of finding a primitive refinement of that
-   particular action."
-  [node]
-  (util/assert-is (> (search/lower-reward-bound node) Double/NEGATIVE_INFINITY))
-  (let [env       (hla-environment (:hla (:plan node)))
-	state-seq (extract-state-seq (:plan node) [(extract-a-state 
-						    (restrict-valuation 
-						     (pessimistic-valuation (:plan node))
-						     (envs/get-goal env)))])
-	alt       (util/safe-get node :alt)]
-  ;  (println "decomposing " (search/node-str node) " on \n" (util/str-join "\n\n" (map #(envs/state-str env %) state-seq)))
-    (util/assert-is (= (first state-seq) (envs/get-initial-state env)))
-    (util/assert-is (envs/satisfies-condition? (last state-seq) (envs/get-goal env)))
-    (map 
-     (fn [[s s2] a] 
-       (make-initial-alt-node 
-	(edu.berkeley.ai.angelic.hierarchies.strips-hierarchies/sub-environment-hla 
-	 (:hla a) s (state->condition s2 env))
-	(util/safe-get alt :subsumption-info)
-	(util/safe-get alt :ref-choice-fn)
-	(util/safe-get alt :cache?)
-	(util/safe-get alt :graph?)))
-     (partition 2 1 state-seq)
-     (rest (reverse (util/iterate-while :previous (:plan node)))))))
-
-
-
 )
+
+
