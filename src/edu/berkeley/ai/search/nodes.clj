@@ -97,6 +97,7 @@
   ([node] (interactive-search node (queues/make-tree-search-pq) #(- (upper-reward-bound %))))
   ([node pq priority-fn]
   (queues/pq-add! pq node (priority-fn node))
+  (let [n-skip (util/sref 0)]
   (loop []
     (when-not (queues/pq-empty? pq)
       (let [[next p] (queues/pq-remove-min-with-cost! pq)
@@ -110,7 +111,11 @@
                         (util/str-join "\n                     " (map #(str (reward-bounds %) " " 
 									(node-str %)) refs)) "\n"))
 	(or sol
-	(when (loop []
+	(when (or (when (> (util/sref-get n-skip) 0)
+		    (util/sref-up! n-skip dec)
+		    (queues/pq-add-all! pq (map (fn [i] [i (priority-fn i)]) refs))
+		    true)
+	       (loop []
 		(print "\n(d)rop, (n)ext, (s)ave, (q)uit, (r)eroot, go (#), (expr ... *n)? ")
 		(flush)
 		(let [result (read)]
@@ -122,13 +127,15 @@
 			(= result 's) (do (def *n next) (recur))
 			(= result 'q) false
 			(integer? result) (do (queues/pq-add-all! pq (map (fn [i] [i (priority-fn i)]) refs))
-					      (dotimes [_ (dec result)]
-						(let [next (queues/pq-remove-min! pq)]
-						  (when-not (dead-end? next)
-						    (queues/pq-add-all! pq (map (fn [i] [i (priority-fn i)]) (immediate-refinements next))))))
+					      (util/sref-set! n-skip (dec result))
 					      true)
-			:else          (do (print (binding [*n next] (eval result)) "\n") (recur)))))
-	  (recur))))))))
+;(dotimes [_ (dec result)]
+;						(let [next (queues/pq-remove-min! pq)]
+;						  (when-not (dead-end? next)
+;						    (queues/pq-add-all! pq (map (fn [i] [i (priority-fn i)]) (immediate-refinements next))))))
+;					      true)
+			:else          (do (print (binding [*n next] (eval result)) "\n") (recur))))))
+	  (recur)))))))))
 
 
 (defn primitive-refinements 

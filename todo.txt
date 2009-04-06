@@ -6,6 +6,8 @@ Fancier PDF display ?
 
 Check what happens with no refinements
 
+TODO: cut things out of graph!!
+
 If doing fancy valuation tricks, much watch out for
 identitydescrpition, conditional, ...
 

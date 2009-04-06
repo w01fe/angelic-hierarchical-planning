@@ -48,6 +48,8 @@
 
 ; TODO: enforce consistency, and add assertions back to backwards-pass.
 
+; TODO: cache best predecessor.
+
 (defstruct abstract-lookahead-graph :class :env :goal :pess-val-type)
 (defn- make-alg [env pess-val-type]
   (struct abstract-lookahead-graph ::AbstractLookaheadGraph env (envs/get-goal env) pess-val-type))
@@ -113,8 +115,8 @@
 
 (defmulti alg-node-name :class)
 (defmethod alg-node-name ::ALGRootNode [node] "ROOT")
-(defmethod alg-node-name ::ALGActionNode [node] (str (hla-name (:hla node)) "-" (System/identityHashCode node)))
-(defmethod alg-node-name ::ALGMergeNode [node]  (str "Merge-" (System/identityHashCode node)))
+(defmethod alg-node-name ::ALGActionNode [node] (hla-name (:hla node))) ;;(str (hla-name (:hla node)) "-" (System/identityHashCode node)))
+(defmethod alg-node-name ::ALGMergeNode [node]  "Merge");(str "Merge-" (System/identityHashCode node)))
 
 
 ;;; Mutating relationships
@@ -177,8 +179,8 @@
     [prev next-map]))
 
 (defn- splice-nexts [new-node next-map]
-  (println "SN" (:class new-node))
-  (println "SN" (:class new-node) (count (alg-node-parents new-node)) (count (alg-node-children new-node)))
+;  (println "SN" (:class new-node))
+;  (println "SN" (:class new-node) (count (alg-node-parents new-node)) (count (alg-node-children new-node)))
   (let [new-merge?  (isa? (:class new-node) ::ALGMergeNode)
 	post-merge  (get next-map nil)]
 ;    (println new-merge? (when post-merge true))
@@ -485,15 +487,25 @@
   "TODO: identify source of node, etc."
   (graphviz/graphviz 
    (find-alg-root node)
-   alg-node-name
-   (fn [n] (util/sref-get (:next-map n)))))
+   identity
+   (fn [n] [(valuation-max-reward (alg-pessimistic-valuation n))
+	    (valuation-max-reward (alg-optimistic-valuation n))])
+   (fn [n] 
+     (for [nxt (vals (util/sref-get (:next-map n)))]
+       [(alg-node-name nxt)
+	nxt]))))
    
 (defn graphviz-alg2 [node]
   "TODO: identify source of node, etc."
   (graphviz/write-graphviz "/tmp/alg.pdf"
    (find-alg-root node)
-   alg-node-name
-   (fn [n] (util/sref-get (:next-map n))))
+   identity
+   (fn [n] [(valuation-max-reward (alg-pessimistic-valuation n))
+	    (valuation-max-reward (alg-optimistic-valuation n))])
+   (fn [n] 
+     (for [nxt (vals (util/sref-get (:next-map n)))]
+       [(alg-node-name nxt)
+	nxt])))
   (util/sh "open" "-a" "Skim" "/tmp/alg.pdf"))
 
   
