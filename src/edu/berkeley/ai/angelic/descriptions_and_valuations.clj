@@ -338,6 +338,18 @@
 (defmethod union-valuations [::Valuation ::Valuation] [v1 v2]
   {:class ::UnionValuation :components [v1 v2]})
 
+(defmethod union-valuations [::UnionValuation ::Valuation] [v1 v2]
+  {:class ::UnionValuation :components (cons v2 (:components v1))})
+
+(defmethod union-valuations [::Valuation ::UnionValuation] [v1 v2]
+  {:class ::UnionValuation :components (cons v1 (:components v2))})
+
+(prefer-method union-valuations [::PessimalValuation ::Valuation] [::Valuation ::UnionValuation])
+(prefer-method union-valuations [::Valuation ::PessimalValuation] [::UnionValuation ::Valuation])
+
+(defmethod union-valuations [::UnionValuation ::UnionValuation] [v1 v2]
+  {:class ::UnionValuation :components (concat (:components v2) (:components v1))})
+
 (defmethod valuation-state-reward ::UnionValuation [v state]
   (reduce max (map #(valuation-state-reward % state) (:components v))))
 

@@ -236,11 +236,20 @@
 
 (defmethod angelic/progress-valuation [::angelic/PessimalValuation ::WarehouseActDescription] [val desc]  val)
 
+(comment ; old version; incorrect for non-simple DNF! -- speed up?
 (defmethod angelic/progress-valuation [::dv/DNFValuation ::WarehouseActDescription] [val desc]
   (angelic/make-conditional-valuation 
    envs/*true-condition*
    (+ (angelic/valuation-max-reward val) 
       ((:fn desc) (keys (util/safe-get val :clause-map))))))
+)
+
+(defmethod angelic/progress-valuation [::dv/DNFValuation ::WarehouseActDescription] [val desc]
+  (angelic/make-conditional-valuation 
+   envs/*true-condition*
+   (apply max
+     (for [[clause rew] (util/safe-get val :clause-map)]
+       (+ rew ((:fn desc) [clause]))))))
 
 (defmethod angelic/progress-clause ::WarehouseActDescription [[clause rew] desc]
   [[(with-meta 
@@ -249,6 +258,7 @@
     (+ rew ((:fn desc) [clause]))]])
 
 
+(comment 
 (defmethod angelic/progress-valuation [::angelic/ConditionalValuation ::WarehouseActDescription] [val desc] 
   (util/assert-is (and (empty? (envs/get-positive-conjuncts (:condition val)))
 		       (empty? (envs/get-negative-conjuncts (:condition val)))))
@@ -256,7 +266,7 @@
 
 (defmethod angelic/regress-state [::angelic/ConditionalValuation ::WarehouseActDescription ::angelic/ConditionalValuation] [state pre-val desc post-val]
   [state 0])
-
+ )
 
 
 

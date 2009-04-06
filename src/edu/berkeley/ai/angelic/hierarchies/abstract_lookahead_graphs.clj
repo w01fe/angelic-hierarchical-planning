@@ -54,6 +54,9 @@
 
 ; TODO: Can't actually maintain no-forking invariant in general ??
 
+; TODO: Incremental HLA refinement?
+
+
 (defstruct abstract-lookahead-graph :class :env :goal :pess-val-type)
 (defn- make-alg [env pess-val-type]
   (struct abstract-lookahead-graph ::AbstractLookaheadGraph env (envs/get-goal env) pess-val-type))
@@ -334,15 +337,16 @@
   (fn [node next-state reward max-gap max-gap-node alg] (:class node)))
 
 (defmethod simple-backwards-pass ::ALGRootNode [node next-state reward max-gap max-gap-node alg]
-  (println "SBP Root" (alg-node-name node) next-state reward max-gap)
+;  (println "SBP Root" (alg-node-name node) next-state reward max-gap)
   (util/assert-is (or (Double/isNaN reward) (= reward 0)))
 ;  (when (or (Double/isNaN reward) (>= reward 0))
     (util/assert-is (= (valuation-state-reward (alg-optimistic-valuation node) next-state) 0))
     (or max-gap-node []))
 
 (defmethod simple-backwards-pass ::ALGActionNode [node next-state reward max-gap max-gap-node alg]
-  (println "SBP Action" (alg-node-name node) next-state reward max-gap)
+  (util/timeout)
   (let [val-reward (valuation-state-reward (alg-optimistic-valuation node) next-state)]
+;  (println "SBP Action" (alg-node-name node) next-state reward val-reward max-gap (:class (alg-optimistic-valuation node)) (:class (alg-optimistic-valuation (util/sref-get (:previous node)))))
 ;    (util/assert-is (<= val-reward reward))
     (when (> val-reward reward)
       (util/print-debug 3 "Warning: inconsistency at " (alg-node-name node) val-reward reward))
@@ -353,6 +357,7 @@
 					   (alg-optimistic-valuation prev-node)
 					   (hla-optimistic-description (:hla node))
 					   (alg-optimistic-valuation node))]
+;	(println "Regress to " regress-pair)
 	(if (nil? regress-pair) 
 	    (do (invalidate-valuations node) nil)
 	  (let [[prev-state opt-step-reward] regress-pair
@@ -376,9 +381,11 @@
 	    :else (do (invalidate-valuations node)
 		      (recur node next-state reward max-gap max-gap-node alg)))))))))
     
+(def *ov* )
 (defmethod simple-backwards-pass ::ALGMergeNode [node next-state reward max-gap max-gap-node alg]
- (println "SBP Merge" (alg-node-name node) next-state reward max-gap)
   (let [val-reward (valuation-state-reward (alg-optimistic-valuation node) next-state)]
+;    (println "SBP Merge" (alg-node-name node) next-state reward val-reward max-gap)
+;    (def *ov* (alg-optimistic-valuation node))
 ;    (util/assert-is (<= val-reward reward))
     (when (> val-reward reward)
       (util/print-debug 3 "Warning: inconsistency at " (alg-node-name node) val-reward reward))
@@ -396,7 +403,7 @@
     (or (util/sref-get pass-cache)
 	(loop []
 	  (when-let [[state rew] (valuation-max-reward-state (alg-optimistic-valuation node))]
-	    (println "Driving " state rew)
+;	    (println "Driving " state rew)
 	    (or (util/sref-set! pass-cache (simple-backwards-pass (:plan node) state rew 0 nil alg))
 		(do  (invalidate-valuations node)
 		     (recur))))))))
@@ -454,14 +461,19 @@
   (let [bp (drive-simple-backwards-pass node)]
 ;    (println "IR " (class bp))
     (when bp
-      (util/assert-is (isa? (:class bp) ::ALGActionNode))
+      (if (not (isa? (:class bp) ::ALGActionNode))
+	(do (println "Warning: trying to refine optimal node")
+	    nil)
+       (do
+;      (def *n* node)
+;      (util/assert-is (isa? (:class bp) ::ALGActionNode) "Nothing to refine %s" (print-str (map hla-name bp)))
       (util/print-debug 3 "Refining at " (alg-node-name bp))
       (util/sref-up! search/*ref-counter* inc)
       (let [refs (hla-immediate-refinements (:hla bp) (alg-optimistic-valuation (util/sref-get (:previous bp))))
 	    final (replace-node-with-refinements! bp refs)]
 	(util/print-debug 3  "Got refinements " (for [r refs] (map hla-name r)))
 	[(make-alg-final-node (:alg node)
-	  (if (empty? (util/sref-get (:next-map final))) final (:plan node)))]))))
+	  (if (empty? (util/sref-get (:next-map final))) final (:plan node)))]))))))
 
 
 (defmethod search/primitive-refinement ::ALGFinalNode [node]

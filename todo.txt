@@ -1,3 +1,25 @@
+Fix optimistic descriptions (heuristics) for DRT, NCStrips (with cost
+params -- must account for in regression!)
+
+New graph formulation for ALG
+hierarchical preconditions -> bhaskara  (lots more spurious states).
+
+Now, there are a number of other improvements possible, which will result in an algorithm that looks more like a depth-first implementation of a best-first search.
+
+- Cache best child
+
+ - Going backwards, keep track of the reward of the second-best path. 
+
+ - After refining a node, instead of returning directly to the root, progress forward along the optimal state sequence.  If at any point the progressed valuation assigns the regressed state a reward corresponding to a plan at least as good as the second-best path, call backwards-pass starting at this node.
+
+ - At the other end, cache the max-gap for the current state sequence going forward from the root.  If, during a backwards pass, you hit the cached state sequence and the current max-gap is > the cached one, stop going backwards and refine right away.
+
+ - Incremental progression/merging.  It should be possible to progress only "diffs" going forward, since usually only small changes will have been made to the valuations.  This will probably be very important if the valuations get very large.  Similar indexing may allow more efficiently finding the best precursor (for OR-nodes) and the best regressed state (for AND-nodes).
+
+- Incremental expansion.
+
+- How can we make use of pessimistic descriptions??
+
 Split-set for ALG
 
 Pessimistic for ALG.
