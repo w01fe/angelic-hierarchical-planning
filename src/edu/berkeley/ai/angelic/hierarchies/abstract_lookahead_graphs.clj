@@ -1,8 +1,8 @@
 (ns edu.berkeley.ai.angelic.hierarchies.abstract-lookahead-graphs
   (:use edu.berkeley.ai.angelic edu.berkeley.ai.angelic.hierarchies)
-  (:require [edu.berkeley.ai [util :as util] [envs :as envs] [search :as search]]))
+  (:require [edu.berkeley.ai [util :as util] [envs :as envs] [search :as search]]
+	    [edu.berkeley.ai.util.graphviz :as graphviz]))
 
-(comment 
 
 ;; Abstract lookahead graphs, which include merge nodes.
 
@@ -46,9 +46,9 @@
 ;; TODO: graph minimization somehow? (current method may end up with duplicates, i.e. 
   ; ae, be, ad, cd.
 
-(defstruct abstract-lookahead-graph :class :env :goal)
-(defn- make-alg [env]
-  (struct abstract-lookahead-graph ::AbstractLookaheadGraph env (search/get-goal env)))
+(defstruct abstract-lookahead-graph :class :env :goal :pess-val-type)
+(defn- make-alg [env pess-val-type]
+  (struct abstract-lookahead-graph ::AbstractLookaheadGraph env (envs/get-goal env) pess-val-type))
 
 
 
@@ -66,7 +66,7 @@
 (defn make-alg-action-node [hla previous-node] 
   (add-child! previous-node
    (add-valuation-metadata
-    (struct alt-action-node ::ALGActionNode hla (ref previous-node) (ref {})))))
+    (struct alg-action-node ::ALGActionNode hla (util/sref previous-node) (util/sref {})))))
 
 
 (derive ::ALGMergeNode ::ALGInternalNode)
@@ -75,21 +75,21 @@
 
 (defn make-alg-root-node [opt-val pess-val] 
   (let [n (add-valuation-metadata
-	   (struct alt-merge-node ::ALGRootNode (ref #{}) (ref {})))]
+	   (struct alg-merge-node ::ALGRootNode (util/sref #{}) (util/sref {})))]
     (util/sref-set! (:optimistic-valuation ^n) opt-val)
-    (util/sref-set! (:pessimistic-valuation ^n) pess-val)(hla-default-valuation-type initial-node) 
+    (util/sref-set! (:pessimistic-valuation ^n) pess-val) 
     n))
 
 
 (defn make-alg-merge-node [previous-set]
   (let [n (add-valuation-metadata
-	   (struct alt-action-node ::ALGMergeNode (ref (util/to-set previous-node)) (ref {})))]
+	   (struct alg-merge-node ::ALGMergeNode (util/sref (util/to-set previous-set)) (util/sref {})))]
     (doseq [prev previous-set] (add-child! prev n))
     n))
 
 
 (derive ::ALGFinalNode ::search/Node)
-(defstruct alg-final-node :alg :plan :pass-cache)
+(defstruct alg-final-node :class :alg :plan :pass-cache)
 (defn make-alg-final-node [alg plan]
   (add-valuation-metadata
    (struct alg-final-node ::ALGFinalNode alg plan (util/sref nil))))
@@ -97,6 +97,23 @@
 
 
 ;;; Internal node methods.
+
+
+(defn alg-node-children [node] (util/sref-get (:next-map node)))
+
+(defmulti alg-node-parents :class)
+(defmethod alg-node-parents ::ALGRootNode [node] nil)
+(defmethod alg-node-parents ::ALGMergeNode [node] (util/sref-get (:previous-set node)))
+(defmethod alg-node-parents ::ALGActionNode [node] [(util/sref-get (:previous node))])
+
+(defn find-alg-root [final-node]
+  (last (util/iterate-while #(first (alg-node-parents %)) (:plan final-node))))
+
+(defmulti alg-node-name :class)
+(defmethod alg-node-name ::ALGRootNode [node] "ROOT")
+(defmethod alg-node-name ::ALGActionNode [node] (str (hla-name (:hla node)) "-" (System/identityHashCode node)))
+(defmethod alg-node-name ::ALGMergeNode [node]  (str "Merge-" (System/identityHashCode node)))
+
 
 ;;; Mutating relationships
 
@@ -158,8 +175,11 @@
     [prev next-map]))
 
 (defn- splice-nexts [new-node next-map]
+  (println "SN" (:class new-node))
+  (println "SN" (:class new-node) (count (alg-node-parents new-node)) (count (alg-node-children new-node)))
   (let [new-merge?  (isa? (:class new-node) ::ALGMergeNode)
 	post-merge  (get next-map nil)]
+;    (println new-merge? (when post-merge true))
     (if (and new-merge? post-merge) ; Prevent sequence of two merges
         (let [merged-nodes (util/sref-get (:previous-set new-node))]
 	  (doseq [node merged-nodes]
@@ -212,42 +232,42 @@
 
 
 
-(declare optimistic-valuation pessimistic-valuation)
-(defmulti compute-optimistic-valuation :class)
-(defmulti compute-pessimistic-valuation :class)
+(declare alg-optimistic-valuation alg-pessimistic-valuation)
+(defmulti compute-alg-optimistic-valuation :class)
+(defmulti compute-alg-pessimistic-valuation :class)
 
-(defmethod compute-optimistic-valuation ::ALGRootNode [node]
-  (throw (UnsupportedOperationException)))
+(defmethod compute-alg-optimistic-valuation ::ALGRootNode [node]
+  (throw (UnsupportedOperationException.)))
 
-(defmethod compute-pessimistic-valuation ::ALGRootNode [node]
-  (throw (UnsupportedOperationException)))
+(defmethod compute-alg-pessimistic-valuation ::ALGRootNode [node]
+  (throw (UnsupportedOperationException.)))
 
 
-(defmethod compute-optimistic-valuation ::ALGActionNode [node]
+(defmethod compute-alg-optimistic-valuation ::ALGActionNode [node]
   (progress-valuation 
-   (restrict-valuation (optimistic-valuation (util/sref-get! (:previous node)))
+   (restrict-valuation (alg-optimistic-valuation (util/sref-get (:previous node)))
 		       (hla-hierarchical-preconditions (:hla node)))
    (hla-optimistic-description (:hla node))))
 
-(defmethod compute-pessimistic-valuation ::ALGActionNode [node]
+(defmethod compute-alg-pessimistic-valuation ::ALGActionNode [node]
   (progress-valuation 
-   (do-restrict-valuation-alt (pessimistic-valuation (util/sref-get! (:previous node)))
-			      (hla-hierarchical-preconditions (:hla node)))
+   (restrict-valuation (alg-pessimistic-valuation (util/sref-get (:previous node)))
+		       (hla-hierarchical-preconditions (:hla node)))
    (hla-pessimistic-description (:hla node))))
 
 
-(defmethod compute-optimistic-valuation ::ALGMergeNode [node]
-  (reduce union-valuations (map optimistic-valuation (util/sref-get! (:previous-set node)))))
+(defmethod compute-alg-optimistic-valuation ::ALGMergeNode [node]
+  (reduce union-valuations (map alg-optimistic-valuation (util/sref-get (:previous-set node)))))
 
-(defmethod compute-pessimistic-valuation ::ALGMergeNode [node]
-  (reduce union-valuations (map pessimistic-valuation (util/sref-get! (:previous-set node)))))
+(defmethod compute-alg-pessimistic-valuation ::ALGMergeNode [node]
+  (reduce union-valuations (map alg-pessimistic-valuation (util/sref-get (:previous-set node)))))
 
 
-(defmethod compute-optimistic-valuation ::ALGFinalNode [node]
-  (restrict-valuation (optimistic-valuation (:plan node)) (:goal (:alg node))))
+(defmethod compute-alg-optimistic-valuation ::ALGFinalNode [node]
+  (restrict-valuation (alg-optimistic-valuation (:plan node)) (:goal (:alg node))))
 
-(defmethod compute-pessimistic-valuation ::ALGFinalNode [node]
-  (restrict-valuation (pessimistic-valuation (:plan node)) (:goal (:alg node))))
+(defmethod compute-alg-pessimistic-valuation ::ALGFinalNode [node]
+  (restrict-valuation (alg-pessimistic-valuation (:plan node)) (:goal (:alg node))))
 
   
 
@@ -273,19 +293,19 @@
 
 ; helpers for caching progression results
 
-(defn optimistic-valuation [node]
+(defn alg-optimistic-valuation [node]
   (let [s (:optimistic-valuation ^node)]
     (or (util/sref-get s)
 	(util/sref-set! s 
 	  (do (util/sref-up! *op-counter* inc)
-	      (compute-optimistic-valuation node))))))
+	      (compute-alg-optimistic-valuation node))))))
 
-(defn pessimistic-valuation [node]
+(defn alg-pessimistic-valuation [node]
   (let [s (:pessimistic-valuation ^node)]
     (or (util/sref-get s)
 	(util/sref-set! s 
 	  (do (util/sref-up! *pp-counter* inc)
-	      (compute-pessimistic-valuation node))))))
+	      (compute-alg-pessimistic-valuation node))))))
 
 
 (defn invalidate-valuations [node]
@@ -300,57 +320,67 @@
   "Simple-backwards-pass takes [node next-state reward max-gap max-gap-node],
    and returns either a node to refine, an optimal primitive refinement, or 
    nil (indicating that no plan exists to next-state that achieves reward (>)= reward"
-  (fn [node next-state reward max-gap max-gap-node] (:class node)))
+  (fn [node next-state reward max-gap max-gap-node alg] (:class node)))
 
-(defmethod simple-backwards-pass ::ALGRootNode [node next-state reward max-gap max-gap-node]
-  (util/assert-is (= reward 0))
-  (util/assert-is (= (valuation-state-reward (optimistic-valuation node) next-state) 0))
-  max-gap-node)
+(defmethod simple-backwards-pass ::ALGRootNode [node next-state reward max-gap max-gap-node alg]
+;  (println "SBP Root" (alg-node-name node) next-state reward max-gap)
+  (util/assert-is (or (Double/isNaN reward) (= reward 0)))
+  (util/assert-is (= (valuation-state-reward (alg-optimistic-valuation node) next-state) 0))
+  (or max-gap-node []))
 
-(defmethod simple-backwards-pass ::ALGActionNode [node next-state reward max-gap max-gap-node]
-  (let [val-reward (valuation-state-reward (optimistic-valuation node) next-state)]
+(defmethod simple-backwards-pass ::ALGActionNode [node next-state reward max-gap max-gap-node alg]
+;  (println "SBP Action" (alg-node-name node) next-state reward max-gap)
+  (let [val-reward (valuation-state-reward (alg-optimistic-valuation node) next-state)]
     (util/assert-is (<= val-reward reward))
     (when (= val-reward reward)
       (let [prev-node (util/sref-get (:previous node))
-	    [prev-state opt-step-reward] (regress-optimistic-state  (optimistic-valuation prev-node)
-					                            (optimistic-valuation node) 
-								    (hla-optimistic-description (:hla node))
-								    next-state)
-	    [prev-s2   pess-step-reward] (regress-pessimistic-state (state->valuation prev-state)
-								    (pessimistic-valuation node)
-								    (hla-pessimistic-description (:hla node))
-								    next-state)
+	    [prev-state opt-step-reward] (util/make-safe
+					  (regress-state  
+					   next-state
+					   (alg-optimistic-valuation prev-node)
+					   (hla-optimistic-description (:hla node))
+					   (alg-optimistic-valuation node)))
+	    [prev-s2   pess-step-reward] (or
+					  (regress-state 
+					   next-state
+					   (state->valuation (:pess-val-type alg) prev-state)
+					   (hla-pessimistic-description (:hla node))
+					   (state->valuation (:pess-val-type alg) next-state))
+					  [prev-state Double/NEGATIVE_INFINITY])
 	    prev-reward (- reward opt-step-reward)
 	    gap         (- opt-step-reward pess-step-reward)
 	    [prev-gap prev-gap-node] (if (and (>= gap max-gap) (not (hla-primitive? (:hla node))))
 				         [gap node]
-				       [max-gap max-gap-node])]
+				       [max-gap max-gap-node])
+	    rec (simple-backwards-pass prev-node prev-state prev-reward prev-gap prev-gap-node alg)]
 	(util/assert-is (= prev-s2 prev-state))
-	(or (simple-backwards-pass prev-node prev-state prev-reward prev-gap prev-gap-node)
-	    (do (invalidate-valuations node)
-		(recur node next-state reward max-gap max-gap-node)))))))
+;	(println "SBP gap " (alg-node-name node) gap (class rec))
+	(cond (isa? (:class rec) ::ALGInternalNode) rec
+	      rec                                  (conj rec (:hla node))
+	      :else (do (invalidate-valuations node)
+			(recur node next-state reward max-gap max-gap-node alg)))))))
 	
-(defmethod simple-backwards-pass ::ALGMergeNode [node next-state reward max-gap max-gap-node]
-  (let [val-reward (valuation-state-reward (optimistic-valuation node) next-state)]
+(defmethod simple-backwards-pass ::ALGMergeNode [node next-state reward max-gap max-gap-node alg]
+;  (println "SBP Merge" (alg-node-name node) next-state reward max-gap)
+  (let [val-reward (valuation-state-reward (alg-optimistic-valuation node) next-state)]
     (util/assert-is (<= val-reward reward))
     (when (= val-reward reward)
       (or (when-first [prev-node
-		       (filter #(= reward (valuation-state-reward (optimistic-valuation %)))
+		       (filter #(= reward (valuation-state-reward (alg-optimistic-valuation %) next-state))
 			       (util/sref-get (:previous-set node)))]
-	    (simple-backwards-pass prev-node next-state reward max-gap max-gap-node))
+	    (simple-backwards-pass prev-node next-state reward max-gap max-gap-node alg))
 	  (do (invalidate-valuations node)
-	      (recur node next-state reward max-gap max-gap-node))))))
+	      (recur node next-state reward max-gap max-gap-node alg))))))
 
 (defn drive-simple-backwards-pass [node]
-  (let [pass-cache (:pass-cache node)]
+  (let [alg (:alg node)
+	pass-cache (:pass-cache node)]
     (or (util/sref-get pass-cache)
 	(loop []
-	  (let [opt-val (optimistic-valuation node)]
-	    (when (> (upper-reward-bound opt-val) Double/NEGATIVE_INFINITY)
-	      (let [[state rew] (extract-a-best-state opt-val)]
-		(or (util/sref-set! pass-cache (simple-backwards-pass (:plan node) state rew 0 nil))
-		    (and (invalidate-valuations node)
-			 (recur))))))))))
+	  (when-let [[state rew] (valuation-max-reward-state (alg-optimistic-valuation node))]
+	    (or (util/sref-set! pass-cache (simple-backwards-pass (:plan node) state rew 0 nil alg))
+		(and (invalidate-valuations node)
+		     (recur))))))))
 
 ;TODO:  Functions needed: valuation-state-reward, regress-optimistic-state, regress-pessimistic-state, state->valuation, extract-a-best-state.  
 
@@ -359,14 +389,14 @@
 
 (defn make-initial-alg-node  
   ([initial-node]
-     (make-initial-alt-node 
+     (make-initial-alg-node 
       (hla-default-optimistic-valuation-type initial-node) 
       (hla-default-pessimistic-valuation-type initial-node)
       initial-node))
   ([opt-valuation-class pess-valuation-class initial-node]
      (let [initial-plan (list initial-node) 
 	   env (hla-environment (first initial-plan)), 
-	   alg (make-alg env)]
+	   alg (make-alg env pess-valuation-class)]
        (make-alg-final-node alg
          (make-action-node-seq 
 	  (make-alg-root-node 
@@ -392,30 +422,36 @@
   (throw (UnsupportedOperationException.)))
 
 (defmethod search/upper-reward-bound ::ALGFinalNode [node] 
-  (get-valuation-max-reward (optimistic-valuation node)))
+  (valuation-max-reward (alg-optimistic-valuation node)))
 
 (defmethod search/lower-reward-bound ::ALGFinalNode [node] 
-  (get-valuation-max-reward (pessimistic-valuation node)))
+  (valuation-max-reward (alg-pessimistic-valuation node)))
 
 (defmethod search/reward-so-far ::ALGFinalNode [node] 0)
 
 (defmethod search/immediate-refinements ::ALGFinalNode [node] 
   (util/timeout)
+;  (println "IR " (System/identityHashCode node))
   (let [bp (drive-simple-backwards-pass node)]
+;    (println "IR " (class bp))
     (when bp
       (util/assert-is (isa? (:class bp) ::ALGActionNode))
+      (util/print-debug 3 "Refining at " (alg-node-name bp))
       (util/sref-up! search/*ref-counter* inc)
-      (let [final
-	    (replace-node-with-refinements! bp
-	     (hla-immediate-refinements (:hla bp) (optimistic-valuation (util/sref-get (:previous bp)))))]
-	(make-alg-final-node (:alg node)
-	  (if (empty? (util/sref-get (:next-map final))) final (:plan node)))))))
+      (let [refs (hla-immediate-refinements (:hla bp) (alg-optimistic-valuation (util/sref-get (:previous bp))))
+	    final (replace-node-with-refinements! bp refs)]
+	(util/print-debug 3  "Got refinements " (for [r refs] (map hla-name r)))
+	[(make-alg-final-node (:alg node)
+	  (if (empty? (util/sref-get (:next-map final))) final (:plan node)))]))))
 
 
 (defmethod search/primitive-refinement ::ALGFinalNode [node]
+;  (println "PR " (System/identityHashCode node))
   (let [bp (drive-simple-backwards-pass node)]
+;    (println "PR " (class bp))
     (when (and bp (not (isa? (:class bp) ::ALGActionNode)))
-      bp)))
+      [(remove #(= % :noop) (map hla-primitive bp))
+       (search/upper-reward-bound node)])))
 
 (defmethod search/extract-optimal-solution ::ALGFinalNode [node] 
   (search/primitive-refinement node))
@@ -434,6 +470,25 @@
 
 
 
-)
+(defn graphviz-alg [node]
+  "TODO: identify source of node, etc."
+  (graphviz/graphviz 
+   (find-alg-root node)
+   alg-node-name
+   (fn [n] (util/sref-get (:next-map n)))))
+   
+(defn graphviz-alg2 [node]
+  "TODO: identify source of node, etc."
+  (graphviz/write-graphviz "/tmp/alg.pdf"
+   (find-alg-root node)
+   alg-node-name
+   (fn [n] (util/sref-get (:next-map n))))
+  (util/sh "open" "-a" "Skim" "/tmp/alg.pdf"))
+
+  
+(comment 
+  (a-star-search (alg-node (get-hierarchy *nav-switch-hierarchy* (constant-predicate-simplify (make-nav-switch-strips-env 3 3 [[1 1]] [2 0] true [0 2])))))
+  )
+
 
 

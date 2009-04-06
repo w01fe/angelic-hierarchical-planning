@@ -75,8 +75,9 @@
 
 
 (derive ::WarehouseActDescription ::angelic/PropositionalDescription)
-(defstruct warehouse-act-description :class :fn)
-(defn make-warehouse-act-description [fn] (struct warehouse-act-description ::WarehouseActDescription fn))
+(defstruct warehouse-act-description :class :fn :all-dnf)
+(defn make-warehouse-act-description [fn all-dnf] 
+  (struct warehouse-act-description ::WarehouseActDescription fn all-dnf))
 
 
 (import '[java.util HashSet HashMap])
@@ -222,7 +223,9 @@
       (make-warehouse-act-description
        (if (empty? floating-chains)
 	   (make-matching-based-heuristic table-pos-map (map butlast chains))
-	 (make-simpler-heuristic table-pos-map floating-chains))))))
+	 (make-simpler-heuristic table-pos-map floating-chains))
+       (into {} (map #(vector % :unknown) (util/safe-get instance :all-atoms)))
+	 ))))
 ;      (println table-pos-map floating-chains))))
 	  
 
@@ -236,6 +239,12 @@
    envs/*true-condition*
    (+ (angelic/valuation-max-reward val) 
       ((:fn desc) (keys (util/safe-get val :clause-map))))))
+
+(defmethod angelic/progress-clause ::WarehouseActDescription [[clause rew] desc]
+  [[(with-meta 
+     (:all-dnf desc)
+     {:pre-clause clause})
+    (+ rew ((:fn desc) [clause]))]])
 
 
 

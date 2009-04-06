@@ -104,8 +104,8 @@
 
 
 (derive ::DRTActDescription ::angelic/PropositionalDescription)
-(defstruct drt-act-description :class :fn)
-(defn make-drt-act-description [fn] (struct drt-act-description ::DRTActDescription fn))
+(defstruct drt-act-description :class :fn :all-dnf)
+(defn make-drt-act-description [fn all-dnf] (struct drt-act-description ::DRTActDescription fn all-dnf))
 
 
 (import '[java.util HashSet])
@@ -145,7 +145,9 @@
 		 [mst dist]         (graphs/minimum-spanning-tree sub-sp-graph)]
 	     (- 0 
 		(* dist *drt-drive-cost*)
-		(* cheapest-gas (max 0 (- dist (- (first gas) (first unpaid)))))))))))))
+		(* cheapest-gas (max 0 (- dist (- (first gas) (first unpaid)))))))))
+       (into {} (map #(vector % :unknown) (util/safe-get instance :all-atoms)))
+))))
 	  
 
 (defmethod angelic/ground-description ::DRTActDescription [desc var-map] desc)
@@ -159,6 +161,11 @@
    (+ (angelic/valuation-max-reward val) 
       ((:fn desc) (keys (util/safe-get val :clause-map))))))
 
+(defmethod angelic/progress-clause ::DRTActDescription [[clause rew] desc]
+  [[(with-meta 
+     (:all-dnf desc)
+     {:pre-clause clause})
+    (+ rew ((:fn desc) [clause]))]])
 
 
 

@@ -101,14 +101,15 @@
     (when-not (queues/pq-empty? pq)
       (let [[next p] (queues/pq-remove-min-with-cost! pq)
 	    dead-end (dead-end? next)
-	    refs (when-not dead-end (immediate-refinements next))]
+	    sol      (extract-a-solution next)
+	    refs (when-not (or dead-end sol) (immediate-refinements next))]
 	(print "\n\n" (node-str next) p (reward-bounds next))
-	(if dead-end 
-	    (print " is a dead end.")
-	  (print " has refinements \n                    " 
+	(cond dead-end     (print " is a dead end.")
+	      sol          (print " is a solution.")
+	  :else (print " has refinements \n                    " 
                         (util/str-join "\n                     " (map #(str (reward-bounds %) " " 
 									(node-str %)) refs)) "\n"))
-	(or (extract-a-solution next)
+	(or sol
 	(when (loop []
 		(print "\n(d)rop, (n)ext, (s)ave, (q)uit, (r)eroot, go (#), (expr ... *n)? ")
 		(flush)

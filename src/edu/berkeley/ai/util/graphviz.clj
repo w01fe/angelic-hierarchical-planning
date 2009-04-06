@@ -19,11 +19,11 @@
 		 (cons (str (double-quote node-name) " -> " (double-quote (node-name-fn child)) ";\n")
 		       (walk-graph child node-name-fn child-map-fn visited))))))))
 
-(defn write-graphviz-dag 
+(defn write-graphviz
 ;  ([root node-name-fn child-map-fn] 
-;     (write-graphviz-dag root node-name-fn child-map-fn true))
+;     (write-graphviz root node-name-fn child-map-fn true))
   ([root node-name-fn child-map-fn] 
-     (write-graphviz-dag  (fresh-random-filename *default-graphviz-dir* ".dot") root node-name-fn child-map-fn))
+     (write-graphviz  (fresh-random-filename *default-graphviz-dir* ".dot") root node-name-fn child-map-fn))
   ([filename root node-name-fn child-map-fn]
      (let [pdf-file (str (file-stem filename) ".pdf")]
        (spit filename
@@ -35,7 +35,7 @@
        (sh "dot" "-Tpdf" "-o" pdf-file filename)
        pdf-file)))
 
-(defn graphviz-dag [& args] (show-pdf-page (prln (apply write-graphviz-dag args))))
+(defn graphviz [& args] (show-pdf-page (prln (apply write-graphviz args))))
 
 ; http://www.graphviz.org/Documentation.php	  
 ; http://www.graphviz.org/doc/info/lang.html

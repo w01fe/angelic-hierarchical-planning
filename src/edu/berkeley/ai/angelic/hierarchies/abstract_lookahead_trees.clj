@@ -441,11 +441,12 @@
       state-seq
     (recur (:previous plan)
 	   (cons
-	    (util/make-safe
-	     (regress-state (first state-seq)
-			   (pessimistic-valuation       (:previous plan))
-			   (hla-pessimistic-description (:hla plan))
-			   (pessimistic-valuation       plan)))
+	    (first
+	     (util/make-safe
+	      (regress-state (first state-seq)
+			     (pessimistic-valuation       (:previous plan))
+			     (hla-pessimistic-description (:hla plan))
+			     (pessimistic-valuation       plan))))
 	    state-seq))))
 
 (defn decompose-plan
@@ -455,11 +456,10 @@
   [node]
   (util/assert-is (> (search/lower-reward-bound node) Double/NEGATIVE_INFINITY))
   (let [env       (hla-environment (:hla (:plan node)))
-	state-seq (map first
-		       (extract-state-seq (:plan node) [(valuation-max-reward-state
+	state-seq (extract-state-seq (:plan node) [(first (valuation-max-reward-state
 						    (restrict-valuation 
 						     (pessimistic-valuation (:plan node))
-						     (envs/get-goal env)))]))
+						     (envs/get-goal env))))])
 	alt       (util/safe-get node :alt)]
   ;  (println "decomposing " (search/node-str node) " on \n" (util/str-join "\n\n" (map #(envs/state-str env %) state-seq)))
     (util/assert-is (= (first state-seq) (envs/get-initial-state env)))

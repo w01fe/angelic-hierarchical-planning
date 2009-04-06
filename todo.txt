@@ -1,5 +1,10 @@
-Must check subsumption not broken after this, investigate 
-(subsumption now on all pred args).
+Split-set for ALG
+
+Pessimistic for ALG.
+
+Fancier PDF display ?
+
+Choice is f'd in graph
 
 If doing fancy valuation tricks, much watch out for
 identitydescrpition, conditional, ...

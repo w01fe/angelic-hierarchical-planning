@@ -173,8 +173,8 @@
 		 (filter state (map key unk-atoms))))))
 
 ;; TODO: make more efficient?
-(defmethod regress-state [::DNFValuation :edu.berkeley.ai.angelic/PropositionalDescription ::DNFValuation] 
-  [[state _] pre-val desc post-val]
+(defmethod regress-state [::DNFValuation :edu.berkeley.ai.angelic/PropositionalDescription :edu.berkeley.ai.angelic/Valuation] 
+  [state pre-val desc post-val]
   (let [candidate-pairs
 	  (for [clause-pair (:clause-map pre-val),
 		[result-clause result-rew] (progress-clause clause-pair desc)
@@ -182,8 +182,8 @@
 	    [(util/safe-get ^result-clause :pre-clause) result-rew (second clause-pair)])]
     (when (seq candidate-pairs)
 ;      (println candidate-pairs)
-      (let [[clause _ rew] (util/first-maximal-element second candidate-pairs)]
-	[(matching-clause-state clause state) rew]))))
+      (let [[clause post-rew pre-rew] (util/first-maximal-element second candidate-pairs)]
+	[(matching-clause-state clause state) (- post-rew pre-rew)]))))
 	      
   
 

@@ -86,10 +86,10 @@
   (fn [val desc] [(:class val) (:class desc)]))
 
 (defmulti regress-state
-  "Take a [state rew], initial valuation, description, and final valuation (presumably but not
+  "Take a state, initial valuation, description, and final valuation (presumably but not
    necessarily produced by (progress-valuation preval desc)), where state is consistent with 
-   postval, and return a [pre-state rew] with maximal reward where pre-state is consistent
-   with preval, and reward is its corresponding reward.  Returns nil if no such state is found."
+   postval, and return a [pre-state step-rew] with maximal reward where pre-state is consistent
+   with preval, and step-rew is its corresponding step reward.  Returns nil if no such state is found."
   (fn [state-rew preval desc postval] [(:class preval) (:class desc) (:class postval)]))
 
 
@@ -201,8 +201,8 @@
 (defmethod progress-valuation   [::Valuation ::IdentityDescription] [val desc] val)
 (defmethod instantiate-description-schema ::IdentityDescription [desc instance]  desc)
 (defmethod ground-description             ::IdentityDescription [desc var-map]  desc)
-(defmethod regress-state   [::Valuation ::IdentityDescription ::Valuation] [state-rew pre-val desc post-val]
-  state-rew)
+(defmethod regress-state   [::Valuation ::IdentityDescription ::Valuation] [state pre-val desc post-val]
+  [state 0])
   
 
 
@@ -257,6 +257,10 @@
 
 (defmethod progress-valuation [::PessimalValuation ::Description]  [val desc] val)
 
+(defmethod regress-state [::Valuation ::PessimalDescription ::Valuation] [state pre-val desc post-val]
+  nil)
+
+
 (prefer-method progress-valuation [::Valuation ::IdentityDescription] [::ExplicitValuation ::Description])
 (prefer-method progress-valuation [::PessimalValuation ::Description] [::Valuation ::ExplicitDescription])
 (prefer-method progress-valuation [::PessimalValuation ::Description] [::Valuation ::IdentityDescription])
@@ -282,7 +286,7 @@
 ;;; Conditional and optimal valuations and descriptions
 
 (defstruct conditional-valuation :class :condition :max-reward)
-(derive ::ConditionValuation ::Valuation)
+(derive ::ConditionalValuation ::Valuation)
 
 (defn make-conditional-valuation 
   [condition max-reward]
@@ -295,8 +299,17 @@
   ([max-reward] (make-conditional-valuation envs/*true-condition* max-reward)))
 
 
+(defmethod valuation-state-reward ::ConditionalValuation [v state]
+  (if (envs/satisfies-condition? state (:condition v))
+      (:max-reward v)
+    Double/NEGATIVE_INFINITY))
+
 (defmethod valuation-max-reward ::ConditionalValuation [val] 
   (:max-reward val))
+
+(defmethod valuation-max-reward-state ::ConditionalValuation [val] 
+  [(util/to-set (envs/get-positive-conjuncts (:condition val)))
+   (:max-reward val)])
 
 (defmethod restrict-valuation [::ConditionalValuation :edu.berkeley.ai.envs/Condition] 
   [val cond]
@@ -309,8 +322,31 @@
 (defmethod get-valuation-states ::ConditionalValuation [val subsumption-map] [(gensym) nil])
 
 
-; TODO: union here?  Regress?
+; Union valuation
 
+(derive ::UnionValuation ::Valuation)
+(defmethod union-valuations [::Valuation ::Valuation] [v1 v2]
+  {:class ::UnionValuation :components [v1 v2]})
+
+(defmethod valuation-state-reward ::UnionValuation [v state]
+  (reduce max (map #(valuation-state-reward % state) (:components v))))
+
+(defmethod valuation-max-reward ::UnionValuation [v]
+  (reduce max (map valuation-max-reward (:components v))))
+
+(defmethod valuation-max-reward-state ::UnionValuation [v]
+  (util/first-maximal-element second (map valuation-max-reward-state (:components v))))
+
+(defmethod restrict-valuation [::UnionValuation :edu.berkeley.ai.envs/Condition] [v c]
+  (let [comps (remove #(identical? % *pessimal-valuation*) 
+		      (map #(restrict-valuation % c) (:components v)))]
+    (cond (empty? comps) *pessimal-valuation*
+	  (util/singleton? comps) (first comps)
+	  :else (assoc v :components comps))))
+
+(defmethod empty-valuation? ::UnionValuation [v] (every? empty-valuation? (:components v)))
+
+; Conditional description
 
 (defstruct conditional-description :class :condition :max-reward)
 (derive ::ConditionalDescription ::Description)
@@ -331,6 +367,10 @@
    (:condition desc) 
    (+ (:max-reward desc)
       (valuation-max-reward val))))
+
+(defmethod regress-state [::Valuation ::ConditionalDescription ::Valuation] [state pre-val desc post-val]
+  [(first (valuation-max-reward-state pre-val))
+   (:max-reward desc)])
 
 
 (defmethod parse-description :opt [desc domain params]
