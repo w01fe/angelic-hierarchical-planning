@@ -4,7 +4,7 @@
            [edu.berkeley.ai.domains.strips :as strips]
 	   [edu.berkeley.ai.domains.warehouse :as warehouse]
 	   [edu.berkeley.ai.search.algorithms.textbook :as textbook]
-	   [edu.berkeley.ai.angelic [dnf-simple-valuations :as dnf-simple-valuations]
+	   [edu.berkeley.ai.angelic [dnf-valuations :as dv]
 	                            [hierarchies :as hierarchies]]
 	   [edu.berkeley.ai.angelic.hierarchies [strips-hierarchies :as strips-hierarchies] [abstract-lookahead-trees :as alts] [offline-algorithms :as algs]]
 	   )

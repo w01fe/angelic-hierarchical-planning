@@ -152,9 +152,6 @@
 
 
 
-(defn- clause-includes-state? [clause state]
-  (and (every? #(contains? clause %) state)
-       (every? (fn [atom tv] (when (= tv :true) (not (contains? state atom)))) clause)))
 
 (defmethod valuation-state-reward ::DNFValuation [v state]
   (let [ordered-clauses (reverse (sort-by val (:clause-map v)))
@@ -177,14 +174,15 @@
 
 ;; TODO: make more efficient?
 (defmethod regress-state [::DNFValuation :edu.berkeley.ai.angelic/PropositionalDescription ::DNFValuation] 
-  [state pre-val desc post-val]
+  [[state _] pre-val desc post-val]
   (let [candidate-pairs
 	  (for [clause-pair (:clause-map pre-val),
 		[result-clause result-rew] (progress-clause clause-pair desc)
 		:when (clause-includes-state? result-clause state)]
-	    [(util/safe-get ^result-clause :pre-clause) result-rew])]
+	    [(util/safe-get ^result-clause :pre-clause) result-rew (second clause-pair)])]
     (when (seq candidate-pairs)
-      (let [[clause rew] (first (util/first-maximal-element second candidate-pairs))]
+;      (println candidate-pairs)
+      (let [[clause _ rew] (util/first-maximal-element second candidate-pairs)]
 	[(matching-clause-state clause state) rew]))))
 	      
   

@@ -12,12 +12,14 @@
      `(when-not ~form
 	(throw (Exception. (str (format ~format-str ~@args) 
 				": Got " '~form " as " (cons '~(first form) (list ~@(next form)))))))))
-
+(def *bad-form* (atom nil))
 (defmacro make-safe 
   ([x] `(make-safe ~x ""))
   ([x format-str & args]
      `(let [x# ~x]
-	(when-not x# (throw (Exception. (str (format ~format-str ~@args) 
+	(when-not x# 
+	  (swap! *bad-form* (constantly (list ~@x)))
+	  (throw (Exception. (str (format ~format-str ~@args) 
 					     ": False/nil " x# " from " '~x " as " (cons '~(first x) (list ~@(next x)))))))
 	x#)))
 

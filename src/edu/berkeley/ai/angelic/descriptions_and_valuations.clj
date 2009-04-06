@@ -86,11 +86,11 @@
   (fn [val desc] [(:class val) (:class desc)]))
 
 (defmulti regress-state
-  "Take a state, initial valuation, description, and final valuation (presumably but not
+  "Take a [state rew], initial valuation, description, and final valuation (presumably but not
    necessarily produced by (progress-valuation preval desc)), where state is consistent with 
    postval, and return a [pre-state rew] with maximal reward where pre-state is consistent
    with preval, and reward is its corresponding reward.  Returns nil if no such state is found."
-  (fn [state preval desc postval] [(:class preval) (:class desc) (:class postval)]))
+  (fn [state-rew preval desc postval] [(:class preval) (:class desc) (:class postval)]))
 
 
 
@@ -152,6 +152,10 @@
 	(.put m pred-name (cons pred (.get m pred-name)))))
     [true-map poss-map]))
 
+(defn clause-includes-state? [clause state]
+  (and (every? #(contains? clause %) state)
+       (every? (fn [[atom tv]] (not (and (= tv :true) (not (contains? state atom))))) clause)))
+
 
 (defmulti valuation->pred-maps 
   "Compute the a seq of [true poss] maps from pred-name ==> (possibly-)true atom"
@@ -197,6 +201,10 @@
 (defmethod progress-valuation   [::Valuation ::IdentityDescription] [val desc] val)
 (defmethod instantiate-description-schema ::IdentityDescription [desc instance]  desc)
 (defmethod ground-description             ::IdentityDescription [desc var-map]  desc)
+(defmethod regress-state   [::Valuation ::IdentityDescription ::Valuation] [state-rew pre-val desc post-val]
+  state-rew)
+  
+
 
 
 
@@ -251,6 +259,7 @@
 
 (prefer-method progress-valuation [::Valuation ::IdentityDescription] [::ExplicitValuation ::Description])
 (prefer-method progress-valuation [::PessimalValuation ::Description] [::Valuation ::ExplicitDescription])
+(prefer-method progress-valuation [::PessimalValuation ::Description] [::Valuation ::IdentityDescription])
 
 ;;; Pessimal valuations and descriptions
 
