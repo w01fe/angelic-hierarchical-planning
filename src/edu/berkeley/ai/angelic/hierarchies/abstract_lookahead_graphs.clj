@@ -50,6 +50,10 @@
 
 ; TODO: cache best predecessor.
 
+;; Note duplicate elimination may look like it's not working, but it's preserving preconds.
+
+; TODO: Can't actually maintain no-forking invariant in general ??
+
 (defstruct abstract-lookahead-graph :class :env :goal :pess-val-type)
 (defn- make-alg [env pess-val-type]
   (struct abstract-lookahead-graph ::AbstractLookaheadGraph env (envs/get-goal env) pess-val-type))
@@ -204,6 +208,7 @@
 ; Ensure each plan has a new final node, at least - makes other things easier, hurts graphiness
 ; TODO: figure out how to improve? 
 (defn- make-action-node-seq [prev-node actions]
+;  (println (map hla-name actions))
   (util/assert-is (not (empty? actions)))
   (if-let [singleton (util/singleton actions)]
       (make-alg-action-node singleton prev-node)
@@ -329,14 +334,14 @@
   (fn [node next-state reward max-gap max-gap-node alg] (:class node)))
 
 (defmethod simple-backwards-pass ::ALGRootNode [node next-state reward max-gap max-gap-node alg]
-;  (println "SBP Root" (alg-node-name node) next-state reward max-gap)
+  (println "SBP Root" (alg-node-name node) next-state reward max-gap)
   (util/assert-is (or (Double/isNaN reward) (= reward 0)))
 ;  (when (or (Double/isNaN reward) (>= reward 0))
     (util/assert-is (= (valuation-state-reward (alg-optimistic-valuation node) next-state) 0))
     (or max-gap-node []))
 
 (defmethod simple-backwards-pass ::ALGActionNode [node next-state reward max-gap max-gap-node alg]
-;  (println "SBP Action" (alg-node-name node) next-state reward max-gap)
+  (println "SBP Action" (alg-node-name node) next-state reward max-gap)
   (let [val-reward (valuation-state-reward (alg-optimistic-valuation node) next-state)]
 ;    (util/assert-is (<= val-reward reward))
     (when (> val-reward reward)
@@ -372,14 +377,14 @@
 		      (recur node next-state reward max-gap max-gap-node alg)))))))))
     
 (defmethod simple-backwards-pass ::ALGMergeNode [node next-state reward max-gap max-gap-node alg]
- ; (println "SBP Merge" (alg-node-name node) next-state reward max-gap)
+ (println "SBP Merge" (alg-node-name node) next-state reward max-gap)
   (let [val-reward (valuation-state-reward (alg-optimistic-valuation node) next-state)]
 ;    (util/assert-is (<= val-reward reward))
     (when (> val-reward reward)
       (util/print-debug 3 "Warning: inconsistency at " (alg-node-name node) val-reward reward))
     (when (>= val-reward reward)
       (or (when-first [prev-node
-		       (filter #(= reward (valuation-state-reward (alg-optimistic-valuation %) next-state))
+		       (filter #(>= (valuation-state-reward (alg-optimistic-valuation %) next-state) reward)
 			       (util/sref-get (:previous-set node)))]
 	    (simple-backwards-pass prev-node next-state reward max-gap max-gap-node alg))
 	  (do (invalidate-valuations node)
@@ -391,8 +396,9 @@
     (or (util/sref-get pass-cache)
 	(loop []
 	  (when-let [[state rew] (valuation-max-reward-state (alg-optimistic-valuation node))]
+	    (println "Driving " state rew)
 	    (or (util/sref-set! pass-cache (simple-backwards-pass (:plan node) state rew 0 nil alg))
-		(and (invalidate-valuations node)
+		(do  (invalidate-valuations node)
 		     (recur))))))))
 
 ;TODO:  Functions needed: valuation-state-reward, regress-optimistic-state, regress-pessimistic-state, state->valuation, extract-a-best-state.  

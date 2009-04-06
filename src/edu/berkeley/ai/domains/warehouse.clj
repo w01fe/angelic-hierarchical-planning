@@ -63,6 +63,8 @@
 
 (def *warehouse-hierarchy-unguided* (util/path-local "warehouse_icaps08_unguided.hierarchy"))
 (def *warehouse-hierarchy*          (util/path-local "warehouse_icaps08.hierarchy"))
+(def *warehouse-hierarchy-decomposed* (util/path-local "warehouse_decomposed.hierarchy"))
+(def *warehouse-hierarchy-decomposed-unguided* (util/path-local "warehouse_decomposed_unguided.hierarchy"))
 
 
 ; Act description used in hierarchy
@@ -247,7 +249,13 @@
     (+ rew ((:fn desc) [clause]))]])
 
 
+(defmethod angelic/progress-valuation [::angelic/ConditionalValuation ::WarehouseActDescription] [val desc] 
+  (util/assert-is (and (empty? (envs/get-positive-conjuncts (:condition val)))
+		       (empty? (envs/get-negative-conjuncts (:condition val)))))
+  val)
 
+(defmethod angelic/regress-state [::angelic/ConditionalValuation ::WarehouseActDescription ::angelic/ConditionalValuation] [state pre-val desc post-val]
+  [state 0])
 
 
 
