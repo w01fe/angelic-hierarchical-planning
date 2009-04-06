@@ -239,6 +239,10 @@
   (make-explicit-valuation- 
    (util/merge-best > (:state-map v1) (:state-map v2))))
 
+(defmethod union-valuations [::PessimalValuation ::Valuation] [v1 v2] v2)
+(defmethod union-valuations [::Valuation ::PessimalValuation] [v1 v2] v1)
+(defmethod union-valuations [::PessimalValuation ::PessimalValuation] [v1 v2] v1)
+
 
 
 (defstruct explicit-description :class :action-space)
@@ -258,6 +262,12 @@
 (defmethod progress-valuation [::PessimalValuation ::Description]  [val desc] val)
 
 (defmethod regress-state [::Valuation ::PessimalDescription ::Valuation] [state pre-val desc post-val]
+  nil)
+
+(defmethod regress-state [::PessimalValuation ::Description ::Valuation] [state pre-val desc post-val]
+  nil)
+
+(defmethod regress-state [::PessimalValuation ::PessimalDescription ::Valuation] [state pre-val desc post-val]
   nil)
 
 

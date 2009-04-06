@@ -4,7 +4,7 @@ Pessimistic for ALG.
 
 Fancier PDF display ?
 
-Choice is f'd in graph
+Check what happens with no refinements
 
 If doing fancy valuation tricks, much watch out for
 identitydescrpition, conditional, ...

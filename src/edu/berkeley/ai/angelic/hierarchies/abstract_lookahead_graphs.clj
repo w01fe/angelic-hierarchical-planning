@@ -46,6 +46,8 @@
 ;; TODO: graph minimization somehow? (current method may end up with duplicates, i.e. 
   ; ae, be, ad, cd.
 
+; TODO: enforce consistency, and add assertions back to backwards-pass.
+
 (defstruct abstract-lookahead-graph :class :env :goal :pess-val-type)
 (defn- make-alg [env pess-val-type]
   (struct abstract-lookahead-graph ::AbstractLookaheadGraph env (envs/get-goal env) pess-val-type))
@@ -282,11 +284,13 @@
       
 (defn replace-node-with-refinements! "Returns final node of refinements" [node hla-seqs]
   (util/assert-is (= ::ALGActionNode (:class node)))
+  (if (empty? hla-seqs)  ; TODO: cut out path here...
+    (do (util/sref-set! (:optimistic-valuation ^node) *pessimal-valuation*) node)
   (let [[pre-node post-next-map] (cut-action-node node)
 	hla-seqs (remove #(redundant-hla-seq? pre-node post-next-map %) hla-seqs)]
     (if (empty? hla-seqs) pre-node
       (let [final-nodes    (doall (map #(make-action-node-seq pre-node %) hla-seqs))]
-	(splice-nexts (or (util/singleton final-nodes) (make-alg-merge-node final-nodes)) post-next-map)))))
+	(splice-nexts (or (util/singleton final-nodes) (make-alg-merge-node final-nodes)) post-next-map))))))
 
   
 
@@ -325,46 +329,53 @@
 (defmethod simple-backwards-pass ::ALGRootNode [node next-state reward max-gap max-gap-node alg]
 ;  (println "SBP Root" (alg-node-name node) next-state reward max-gap)
   (util/assert-is (or (Double/isNaN reward) (= reward 0)))
-  (util/assert-is (= (valuation-state-reward (alg-optimistic-valuation node) next-state) 0))
-  (or max-gap-node []))
+;  (when (or (Double/isNaN reward) (>= reward 0))
+    (util/assert-is (= (valuation-state-reward (alg-optimistic-valuation node) next-state) 0))
+    (or max-gap-node []))
 
 (defmethod simple-backwards-pass ::ALGActionNode [node next-state reward max-gap max-gap-node alg]
 ;  (println "SBP Action" (alg-node-name node) next-state reward max-gap)
   (let [val-reward (valuation-state-reward (alg-optimistic-valuation node) next-state)]
-    (util/assert-is (<= val-reward reward))
-    (when (= val-reward reward)
+;    (util/assert-is (<= val-reward reward))
+    (when (> val-reward reward)
+      (util/print-debug 3 "Warning: inconsistency at " (alg-node-name node) val-reward reward))
+    (when (>= val-reward reward)
       (let [prev-node (util/sref-get (:previous node))
-	    [prev-state opt-step-reward] (util/make-safe
-					  (regress-state  
+	    regress-pair (regress-state  
 					   next-state
 					   (alg-optimistic-valuation prev-node)
 					   (hla-optimistic-description (:hla node))
-					   (alg-optimistic-valuation node)))
-	    [prev-s2   pess-step-reward] (or
-					  (regress-state 
-					   next-state
-					   (state->valuation (:pess-val-type alg) prev-state)
-					   (hla-pessimistic-description (:hla node))
-					   (state->valuation (:pess-val-type alg) next-state))
-					  [prev-state Double/NEGATIVE_INFINITY])
-	    prev-reward (- reward opt-step-reward)
-	    gap         (- opt-step-reward pess-step-reward)
-	    [prev-gap prev-gap-node] (if (and (>= gap max-gap) (not (hla-primitive? (:hla node))))
-				         [gap node]
-				       [max-gap max-gap-node])
-	    rec (simple-backwards-pass prev-node prev-state prev-reward prev-gap prev-gap-node alg)]
-	(util/assert-is (= prev-s2 prev-state))
-;	(println "SBP gap " (alg-node-name node) gap (class rec))
-	(cond (isa? (:class rec) ::ALGInternalNode) rec
-	      rec                                  (conj rec (:hla node))
-	      :else (do (invalidate-valuations node)
-			(recur node next-state reward max-gap max-gap-node alg)))))))
-	
+					   (alg-optimistic-valuation node))]
+	(if (nil? regress-pair) 
+	    (do (invalidate-valuations node) nil)
+	  (let [[prev-state opt-step-reward] regress-pair
+		[prev-s2   pess-step-reward] (or
+					      (regress-state 
+					       next-state
+					       (state->valuation (:pess-val-type alg) prev-state)
+					       (hla-pessimistic-description (:hla node))
+					       (state->valuation (:pess-val-type alg) next-state))
+					      [prev-state Double/NEGATIVE_INFINITY])
+		prev-reward (- (max val-reward reward) opt-step-reward)
+		gap         (- opt-step-reward pess-step-reward)
+		[prev-gap prev-gap-node] (if (and (>= gap max-gap) (not (hla-primitive? (:hla node))))
+					   [gap node]
+					   [max-gap max-gap-node])
+		rec (simple-backwards-pass prev-node prev-state prev-reward prev-gap prev-gap-node alg)]
+	    (util/assert-is (= prev-s2 prev-state))
+					;	(println "SBP gap " (alg-node-name node) gap (class rec))
+	    (cond (isa? (:class rec) ::ALGInternalNode) rec
+	    rec                                  (conj rec (:hla node))
+	    :else (do (invalidate-valuations node)
+		      (recur node next-state reward max-gap max-gap-node alg)))))))))
+    
 (defmethod simple-backwards-pass ::ALGMergeNode [node next-state reward max-gap max-gap-node alg]
-;  (println "SBP Merge" (alg-node-name node) next-state reward max-gap)
+ ; (println "SBP Merge" (alg-node-name node) next-state reward max-gap)
   (let [val-reward (valuation-state-reward (alg-optimistic-valuation node) next-state)]
-    (util/assert-is (<= val-reward reward))
-    (when (= val-reward reward)
+;    (util/assert-is (<= val-reward reward))
+    (when (> val-reward reward)
+      (util/print-debug 3 "Warning: inconsistency at " (alg-node-name node) val-reward reward))
+    (when (>= val-reward reward)
       (or (when-first [prev-node
 		       (filter #(= reward (valuation-state-reward (alg-optimistic-valuation %) next-state))
 			       (util/sref-get (:previous-set node)))]
@@ -488,6 +499,8 @@
   
 (comment 
   (a-star-search (alg-node (get-hierarchy *nav-switch-hierarchy* (constant-predicate-simplify (make-nav-switch-strips-env 3 3 [[1 1]] [2 0] true [0 2])))))
+
+(binding [*debug-level* 3] (interactive-search (alg-node (get-hierarchy *warehouse-hierarchy* (constant-predicate-simplify (make-warehouse-strips-env 3 4 [1 2] false {0 '[b a] 2 '[c]} nil ['[a b c]]))))))
   )
 
 

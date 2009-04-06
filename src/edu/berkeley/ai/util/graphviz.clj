@@ -37,6 +37,9 @@
 
 (defn graphviz [& args] (show-pdf-page (prln (apply write-graphviz args))))
 
+
+; (graphviz 0 str (fn [i] (into {} (for [j (range (inc i) (min 10 (+ i 3)))] [j j]))))
+
 ; http://www.graphviz.org/Documentation.php	  
 ; http://www.graphviz.org/doc/info/lang.html
 ; http://www.graphviz.org/doc/info/attrs.html#dd:orientation
