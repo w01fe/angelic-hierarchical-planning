@@ -67,7 +67,7 @@ always go down.  Can only affect some subest of progressed results.
 By decreasing reward by x for decreased by x, or by anything for
 killed state.)
 
-
+; Smarter way to compare vectors of rewards in subsumption ...
 
 
 Ideas on probabilistic descriptions, synthesis, starting with flat

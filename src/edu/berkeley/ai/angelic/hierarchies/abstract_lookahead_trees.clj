@@ -265,6 +265,7 @@
 	opt-val             (optimistic-valuation node)
 	[opt-states opt-si] (get-valuation-states opt-val subsumption-info)
 	graph-tuples        (.get graph-map [opt-states rest-plan])]
+;   (println (count graph-tuples) (:graph? alt) (:class opt-val))
     (when (every?
 	   (fn [[graph-si graph-node]]
 	     (or (and (= (:graph? alt) :old) (not (.contains live-set graph-node)))
@@ -272,6 +273,7 @@
 		 (and (not (.contains live-set graph-node))
 		      (valuation-equals? graph-si opt-si subsumption-info))))
 	   graph-tuples)
+    ;  (println " Survived" opt-si graph-tuples (map #(.contains live-set (second %)) graph-tuples))
      ; (println (class (get-valuation-states (pessimistic-valuation node) subsumption-info)))
       (let [pess-val              (pessimistic-valuation node)]
 	(when (> (valuation-max-reward pess-val) Double/NEGATIVE_INFINITY)
@@ -282,13 +284,15 @@
 ;	    (println "cb " (count graph-tuples))
 	    (when (every?
 		   (fn [[graph-si graph-node]]
-		     (not (valuation-subsumes? graph-si pess-si subsumption-info)))
+		     (or (not (valuation-subsumes? graph-si pess-si subsumption-info))
+			 (and (not (.contains live-set graph-node)) ; Important that live subsumes dead.
+			      (valuation-equals? graph-si pess-si subsumption-info))))
 		   graph-tuples)
 	      (.put graph-map pair
 		(cons [pess-si name]
-		      (filter
+		      (remove
 		       (fn [[graph-si graph-node]]
-			 (not (valuation-subsumes? pess-si graph-si subsumption-info)))
+			 (valuation-subsumes? pess-si graph-si subsumption-info))
 		       graph-tuples)))))))
       true)))
 
