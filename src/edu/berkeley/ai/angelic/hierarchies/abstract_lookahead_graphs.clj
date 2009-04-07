@@ -9,13 +9,11 @@
 ; Subsumption is more difficult here, since there's no "rest" of plan to worry about.
 ; Just ignore it for now, and ignore pessimistic descriptions too.  
 
-; JGraph for visualizaton?
+; We extract state sequenes going backwards since we need to make consistent choices at or-nodes (merges)
 
 ; Should cache by default.
 
 ; Like ALT, you should not throw out plans or bad things may happen.
-
-; Do we cache refined nodes or not ?  Seems too tricky.
 
 ; Nodes have ref to successors, ref to pred / set of preds.  
 ; Need backwards connections for searching (main), 
@@ -28,9 +26,6 @@
 ; don't follow when creating.  
 
 ; Don't create OR-nodes for single-refinement.
-
-; To support node methods, must always be ready with state seq? 
-
 
 ; To simplify things, action nodes either have map of action children (if any), or single merge child
 ; Merge must have action children (if any or final).
@@ -55,6 +50,8 @@
 ; TODO: Can't actually maintain no-forking invariant in general ??
 
 ; TODO: Incremental HLA refinement?
+
+; TODO: if we keep hierarchical structure, we can sometimes save by using the higher-level descriptions that are removed right now.
 
 
 (defstruct abstract-lookahead-graph :class :env :goal :pess-val-type)

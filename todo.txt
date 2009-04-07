@@ -1,12 +1,51 @@
-Fix optimistic descriptions (heuristics) for DRT, NCStrips (with cost
-params -- must account for in regression!)
+;;;;;;;;;;;;;;;; Implement
 
-New graph formulation for ALG
-hierarchical preconditions -> bhaskara  (lots more spurious states).
+ New graph formulation for ALG
+  - Can't maintain no-forking invariant in general?  
+  TODO: graph minimization somehow? (current method may end up with duplicates, i.e. 
+  ae, be, ad, cd.
+  - Simplest: one merge per HLA, period?  Mandates forking, but do we
+ care?  Seems not.  
 
-Now, there are a number of other improvements possible, which will result in an algorithm that looks more like a depth-first implementation of a best-first search.
+ 
+- Alternative view of whole ALG business: coarse-to-fine DP on optimistic clause,
+  rest-plan pairs? 
+   - Each [opt-clause, rest-plan] pair has optimistic cost bound
+   -  (even eliminate rest-plan constraint, if we don't care about
+  this...?)
+   - Multiple clauses produced --> split
+   - Refined versions are known to be (or can be forced to be)
+  subsumed.  i.e., once you join a node, you don't leave, just get
+  demoted.
+   - each valuation, rest-plan pair has graph of subsumed valuations,
+  each has predecessors falling off of it. -- each is cost bound +
+  action edge back to another part.  (pessimistic allowed too).    
+   - Steps back can be at varying levels. (if we want).
+   - Special handling of end -- sort of.  final node just tracks (goal clause, nil),   
+   - Search is exactly like SBP, but instead of merge nodes, we have
+  to check all subsumed clauses for best.  If each node stores the
+  best vals (opt+pess) of all children, this is easy.
 
-- Cache best child
+  Auto-merging above and beyond what's given.  (based on same opt-sets &
+set of plans to go.  Store with each node, minimal rep. of plan-to-go??)
+  ; subsumed by above proposal -- maybe ?
+
+  ALGs should have some mode for finding suboptimal plans.
+ - Is there a simple Weighted A*/AHSS-like algorithm for ALGs, and what does it look like? Specifically, it seems like extracting optimistic state sequences may be the wrong thing to do here (instead, bias things to include more pessimistic states in the sequences?).
+ TODO: a way to implement extract-a-solution (or refine potentially suboptimal things...)
+
+  Split-set for ALG
+
+  If we make things look worse in early part of the graph, we have to
+touch *everything* to fix it.  Partial way around this by keeping
+track of "delta"?
+
+
+;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;; Minor
+
+ - Enforce consistency, add assertions back to sbp
+
+ - Cache best child
 
  - Going backwards, keep track of the reward of the second-best path. 
 
@@ -14,24 +53,51 @@ Now, there are a number of other improvements possible, which will result in an 
 
  - At the other end, cache the max-gap for the current state sequence going forward from the root.  If, during a backwards pass, you hit the cached state sequence and the current max-gap is > the cached one, stop going backwards and refine right away.
 
+ - Eliminating bad plans from ALG sections
+    - Bad suffixes with splitting
+    - Dead plan sections (-Inf opt or no refinements)
+   - Dominated sections ??
+    - Ancestor-dominated sections ? ?
+TODO TODO: kill off dead-end fragments.  Just don't return them.
+  (better than making next-map have weak val refs).
+
+
+
+
+;;;;;;;;;;;;;;;; Think About
+
+ Incremental expansion.
+
+ How to use pessimistic descriptions in ALG
+
+hierarchical preconditions -> bhaskara  (lots more spurious states).
+
+- What's the relationship, if any, between optimal ALG search and
+  algorithms like AO*?  
+
+  If we keep hierarchical structure, we can sometimes save by
+  using the higher-level descriptions that are removed right now.
+
+
+;;;;;;;;;;;;;;;; General TODO
+
+Fix optimistic descriptions (heuristics) for DRT, NCStrips (with cost
+params -- must account for in regression!)
+
+;;;;;;;;;;;;;;;;; Progression/subsumption efficiency
+
  - Incremental progression/merging.  It should be possible to progress only "diffs" going forward, since usually only small changes will have been made to the valuations.  This will probably be very important if the valuations get very large.  Similar indexing may allow more efficiently finding the best precursor (for OR-nodes) and the best regressed state (for AND-nodes).
 
-- Incremental expansion.
+Incremental progression v.2. (only progress best clauses first...) -- could
+allow more merging without degenerating to symbolic BFS.
 
-- How can we make use of pessimistic descriptions??
+Clauses record provenance.  Assume optimsitic consistency.  rewards
+always go down.  Can only affect some subest of progressed results.
+By decreasing reward by x for decreased by x, or by anything for
+killed state.
 
-Split-set for ALG
-
-Pessimistic for ALG.
-
-Fancier PDF display ?
-
-Check what happens with no refinements
-
-TODO: cut things out of graph!!
-
-If doing fancy valuation tricks, much watch out for
-identitydescrpition, conditional, ...
+(If doing fancy valuation tricks, much watch out for
+identitydescrpition, conditional, ...)
 
 Might as well store provenance too, for regression ...
 ... and implement incremental progression/merging?
@@ -39,36 +105,19 @@ Might as well store provenance too, for regression ...
     valuation is out of date, in which case chain is invalid
     ... . . . . ...?
 
-ALGs should have some mode for finding suboptimal plans.
-
-Understanding decomposed planning.
-
-OR-nodes must store: 
-	  four optimistic valuations
-          two pessimistic valuations
-	  two states
-          Final progressed 
-
-who picks states ?
-
-Why did we need states in the first place?
- Could refine HLA with biggest gap,
- Best option already known. 
- - Need it to make consistent "best" choices at OR-nodes.
-
-We can get away with regressing only states, not sets.
-Question: when a val changes, how can we repair optimal path????
-
-Formulate as ALT with two types of nodes: progress node and merge
-node.
-
-(Clauses record provenance.  Assume optimsitic consistency.  rewards
-always go down.  Can only affect some subest of progressed results.
-By decreasing reward by x for decreased by x, or by anything for
-killed state.)
-
 ; Smarter way to compare vectors of rewards in subsumption ...
 
+
+
+
+
+
+---------------------------------------------------------
+
+
+Later
+
+Fancier PDF display ?
 
 Ideas on probabilistic descriptions, synthesis, starting with flat
 hierarchy, learning descriptions, macros, hierarchies bottom up.
