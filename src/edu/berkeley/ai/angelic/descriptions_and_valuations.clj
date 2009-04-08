@@ -156,10 +156,48 @@
   (and (every? #(contains? clause %) state)
        (every? (fn [[atom tv]] (not (and (= tv :true) (not (contains? state atom))))) clause)))
 
+(defn minimal-clause-state [clause]
+  (set (map key (filter (fn [p] (= (val p) :true)) clause))))
+
+(defn state->clause [state]
+ (util/map-map #(vector % :true) state))
+
+(defn clause-subsumes? [c1 c2]
+  (and (every? (fn [[atom tv]] 
+		 (if (= tv :true) 
+		     (= (get c2 atom) :true)
+		   true))
+	       c1)
+       (every? (fn [[atom tv]]
+		 (if (= tv :true)
+		     (contains? c1 atom)
+		   (= (get c1 atom) :unknown)))
+	       c2)))
+
 
 (defmulti valuation->pred-maps 
   "Compute the a seq of [true poss] maps from pred-name ==> (possibly-)true atom"
   :class)
+
+(defmulti valuation-clause-map 
+  "Return a mapping from conjunctive clauses to rewards."
+  :class)
+
+(defmethod restrict-valuation       [::DNFValuation ] [val con]
+
+(defn restrict-clause [clause condition]
+  (util/assert-is (= (:class condition) :edu.berkeley.ai.envs/ConjunctiveCondition))
+  (let [pos (envs/get-positive-conjuncts con)
+	neg (envs/get-negative-conjuncts con)]
+    (when-let [after-pos
+	       (loop [pos pos clause clause]
+		 (cond (empty? pos)                   clause
+		       (contains? clause (first pos)) (recur (next pos) (assoc clause (first pos) :true))
+		       :else nil))]
+      (loop [neg neg clause after-pos]
+	(cond (empty? neg)                       clause
+	      (= :true (get clause (first neg))) nil
+	      :else  (recur (next neg) (dissoc clause (first neg))))))))
 
 ;;; Descriptions only
 
@@ -175,12 +213,14 @@
 ;;; Both 
 
 (defmulti progress-clause          
-  "Progress this [clause rew] pair through description, returning a new clause->rew map.
-   Each result clause should have a :pre-clause metadata, which is the corresponding 
-   precondition-restricted version of the initial clause. " 
+  "Progress this [clause rew] pair through description, returning a new clause->rew map."
+;   Each result clause should have a :pre-clause metadata, which is the corresponding 
+;   precondition-restricted version of the initial clause. " 
   (fn [clause desc] (:class desc)))
 
-
+(defmulti regress-clause-state          
+  "rerogress this state through desc, returning a [clause step-rew] pair." 
+  (fn [state pre-clause desc post-clause] (:class desc)))
 
 
 
@@ -205,6 +245,19 @@
   [state 0])
   
 
+;;; Finish description
+
+(derive ::FinishDescription ::Description)
+(def *finish-descriptiption {:class ::FinishDescription})
+(def *finish-state*  #{[gensym "goal"]})
+(def *finish-clause* (state->clause *finish-state*))
+(defmethod instantiate-description-schema ::FinishDescription [desc instance]  desc)
+(defmethod ground-description             ::FinishDescription [desc var-map]  desc)
+(defmethod progress-clause       ::FinishDescription [clause desc]
+  {*finish-clause* 0})
+(defmethod regress-clause-state  ::FinishDescription [state pre-clause desc post-clause]
+  (util/assert-is (identical? post-clause *finish-clause*))
+  [(minimal-clause-state pre-clause) 0])
 
 
 

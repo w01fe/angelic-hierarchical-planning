@@ -28,6 +28,9 @@
 (def *noop-strips-hla-schema* 
      (make-strips-hla-schema (gensym "noop") nil nil nil nil *identity-description* *identity-description* :noop))
 
+(def *finish-strips-hla-schema* 
+     (make-strips-hla-schema (gensym "finish") nil nil nil nil *finish-description* *finish-description* :noop))
+
 ; TODO: double check about removing precs from NCSTRIPS for primitives.
 ; TODO: some more general way to do this (without focusing on ncstrips)
 (defn- make-strips-primitive-hla-schema [types objects predicates action]
@@ -150,7 +153,8 @@
   (util/match [[[:multiple (:hla ~@hlas)]] contents]
     {:class ::StripsHierarchySchema, :hlas
      (check-hla-schemata (:types domain) (:guaranteed-objs domain) (:predicates domain) (:action-schemata domain)
-			 (cons *noop-strips-hla-schema* (map #(parse-strips-hla-schema % domain) hlas)))}))
+			 (concat [*noop-strips-hla-schema* *finish-strips-hla-schema*]
+				 (map #(parse-strips-hla-schema % domain) hlas)))}))
 
 (defn make-flat-act-optimistic-description-schema [upper-reward-fn]
   {:class ::FlatActOptimisticDescriptionSchema :upper-reward-fn upper-reward-fn})
@@ -173,7 +177,7 @@
   {:class ::StripsHierarchySchema
    :hlas 
      (util/map-map #(vector (:name %) %) 
-       (cons *noop-strips-hla-schema*
+       (concat [*noop-strips-hla-schema* *finish-strips-hla-schema*]
 	(cons
 	  (make-strips-hla-schema
 	   'act nil nil nil
@@ -394,6 +398,10 @@
 			 (repeat envs/*true-condition*)))))))))
 
 
+(defmethod hla-finish-hla ::StripsHLA [hla]
+  (let [hierarchy        (:hierarchy hla)
+	problem-instance (:problem-instance hierarchy)]
+    (make-strips-hla hierarchy *finish-strips-hla-schema* nil (get-goal problem-instance) :noop)))
 
 ;; Used by AHLRTA
 

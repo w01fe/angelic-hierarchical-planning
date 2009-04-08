@@ -51,6 +51,9 @@
 
 (defmulti hla-pessimistic-description    :class)
 
+(defmulti hla-finish-hla "Get an hla of this type that restricts to goal then leads to *finish-clause*" :class)
+
+
 (defn get-hierarchy [file env]
   (instantiate-hierarchy 
    (parse-hierarchy file (envs/get-domain env))

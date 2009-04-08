@@ -34,7 +34,7 @@
 
   
 (defmethod map->valuation     ::DNFValuation [type m]
-  (make-dnf-valuation type (util/map-keys (fn [s] (util/map-map #(vector % :true) s)) m)))
+  (make-dnf-valuation type (util/map-keys state->clause m)))
 
 
 (defn- clause-instantiations [clause]
@@ -54,26 +54,13 @@
       (map #(vector % bound) (clause-instantiations clause)))))
 
 
-(defn- restrict-clause [clause pos neg]
-  (when-let [after-pos
-	     (loop [pos pos clause clause]
-	       (cond (empty? pos)                   clause
-		     (contains? clause (first pos)) (recur (next pos) (assoc clause (first pos) :true))
-		     :else nil))]
-    (loop [neg neg clause after-pos]
-      (cond (empty? neg)                       clause
-	    (= :true (get clause (first neg))) nil
-	    :else  (recur (next neg) (dissoc clause (first neg)))))))
-
 (defmethod restrict-valuation       [::DNFValuation :edu.berkeley.ai.envs/ConjunctiveCondition] [val con]
-  (let [pos (envs/get-positive-conjuncts con)
-	neg (envs/get-negative-conjuncts con)]
-    (make-dnf-valuation (:class val)
-     (util/merge-best > {}
-       (for [[clause bound] (:clause-map val)
-	     :let [restricted (restrict-clause clause pos neg)]
-	     :when restricted]
-	 [restricted bound])))))
+  (make-dnf-valuation (:class val)
+    (util/merge-best > {}
+      (for [[clause bound] (:clause-map val)
+	    :let [restricted (restrict-clause clause con)]
+	    :when restricted]
+	[restricted bound]))))
 
 
 (defmethod union-valuations         [::DNFValuation ::DNFValuation] [val1 val2]
@@ -82,9 +69,6 @@
 
 (defmethod empty-valuation?         ::DNFValuation [v] 
   false)
-
-(defn- minimal-clause-state [clause]
-  (set (map key (filter (fn [p] (= (val p) :true)) clause))))
 
 (defmethod valuation-max-reward-state ::DNFValuation [v]
   (let [[clause rew] (util/first-maximal-element val (:clause-map v))]

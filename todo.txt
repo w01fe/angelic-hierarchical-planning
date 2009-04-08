@@ -1,5 +1,11 @@
 ;;;;;;;;;;;;;;;; Implement
 
+Fix optimistic descriptions (heuristics) for DRT, NCStrips (with cost
+params -- must account for in regression!)
+  - Include new methods, etc.
+
+Fix :pre-clause assumption in graph.
+
  New graph formulation for ALG
   - Can't maintain no-forking invariant in general?  
   TODO: graph minimization somehow? (current method may end up with duplicates, i.e. 
@@ -25,6 +31,7 @@
    - Search is exactly like SBP, but instead of merge nodes, we have
   to check all subsumed clauses for best.  If each node stores the
   best vals (opt+pess) of all children, this is easy.
+   - If 
 
   Auto-merging above and beyond what's given.  (based on same opt-sets &
 set of plans to go.  Store with each node, minimal rep. of plan-to-go??)
@@ -81,8 +88,6 @@ hierarchical preconditions -> bhaskara  (lots more spurious states).
 
 ;;;;;;;;;;;;;;;; General TODO
 
-Fix optimistic descriptions (heuristics) for DRT, NCStrips (with cost
-params -- must account for in regression!)
 
 ;;;;;;;;;;;;;;;;; Progression/subsumption efficiency
 
