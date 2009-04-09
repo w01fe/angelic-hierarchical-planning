@@ -53,10 +53,17 @@
 
 ; TODO: if we keep hierarchical structure, we can sometimes save by using the higher-level descriptions that are removed right now.
 
+; What's the problem with forking?
 
-(defstruct abstract-lookahead-graph :class :env :goal :pess-val-type)
-(defn- make-alg [env pess-val-type]
-  (struct abstract-lookahead-graph ::AbstractLookaheadGraph env (envs/get-goal env) pess-val-type))
+; Take parameters 
+  ; type of graph to build
+  ; search strategy to use (incl. valuation tricks)?
+  ; subsumption improvement strategy (merge-opt, pess, ...)
+
+
+(defstruct abstract-lookahead-graph :class :env :goal)
+(defn- make-alg [env]
+  (struct abstract-lookahead-graph ::AbstractLookaheadGraph env (envs/get-goal env)))
 
 
 
@@ -107,7 +114,7 @@
 ;;; Internal node methods.
 
 
-(defn alg-node-children [node] (util/sref-get (:next-map node)))
+; Helpers for (mostly) debugging and visualizing
 
 (defmulti alg-node-parents :class)
 (defmethod alg-node-parents ::ALGRootNode [node] nil)
@@ -122,8 +129,13 @@
 (defmethod alg-node-name ::ALGActionNode [node] (hla-name (:hla node))) ;;(str (hla-name (:hla node)) "-" (System/identityHashCode node)))
 (defmethod alg-node-name ::ALGMergeNode [node]  "Merge");(str "Merge-" (System/identityHashCode node)))
 
+(defn- get-child [node key]
+  (let [next-map-ref (util/safe-get node :next-map)
+	next-map     (util/sref-get next-map-ref)]
+    (get next-map key)))
 
-;;; Mutating relationships
+
+; Helpers for modifying graph structure
 
 (defn- add-child! [node child]
   (let [next-map-ref (util/safe-get node :next-map)
@@ -200,10 +212,6 @@
 	  new-node))))
 
 
-(defn- get-child [node key]
-  (let [next-map-ref (util/safe-get node :next-map)
-	next-map     (util/sref-get next-map-ref)]
-    (get next-map key)))
 
 ; Ensure each plan has a new final node, at least - makes other things easier, hurts graphiness
 ; TODO: figure out how to improve? 
@@ -240,6 +248,28 @@
     (util/sref-set! prev-ref (into (disj prev-set old-prev) new-prevs))))
 
 
+
+(defn redundant-hla-seq? "Is hlas already an allowed action seq that connects pre-node to post-node?"
+  [pre-node post-next hlas]
+  (if (empty? hlas) 
+      (when (= (util/sref-get (:next-map pre-node)) post-next) (println "Redundant") true)
+    (if-let [nxt (get-child pre-node nil)]
+         (recur nxt post-next hlas)
+       (when-let [nxt (get-child pre-node (first hlas))]
+	 (recur nxt post-next (next hlas))))))
+      
+(defn replace-node-with-refinements! "Returns final node of refinements" [node hla-seqs]
+  (util/assert-is (= ::ALGActionNode (:class node)))
+  (if (empty? hla-seqs)  ; TODO: cut out path here...
+    (do (util/sref-set! (:optimistic-valuation ^node) *pessimal-valuation*) node)
+  (let [[pre-node post-next-map] (cut-action-node node)
+	hla-seqs (remove #(redundant-hla-seq? pre-node post-next-map %) hla-seqs)]
+    (if (empty? hla-seqs) pre-node
+      (let [final-nodes    (doall (map #(make-action-node-seq pre-node %) hla-seqs))]
+	(splice-nexts (or (util/singleton final-nodes) (make-alg-merge-node final-nodes)) post-next-map))))))
+
+
+;;; Computing valuations, etc.
 
 (declare alg-optimistic-valuation alg-pessimistic-valuation)
 (defmulti compute-alg-optimistic-valuation :class)
@@ -278,32 +308,7 @@
 (defmethod compute-alg-pessimistic-valuation ::ALGFinalNode [node]
   (restrict-valuation (alg-pessimistic-valuation (:plan node)) (:goal (:alg node))))
 
-  
-
-(defn redundant-hla-seq? "Is hlas already an allowed action seq that connects pre-node to post-node?"
-  [pre-node post-next hlas]
-  (if (empty? hlas) 
-      (when (= (util/sref-get (:next-map pre-node)) post-next) (println "Redundant") true)
-    (if-let [nxt (get-child pre-node nil)]
-         (recur nxt post-next hlas)
-       (when-let [nxt (get-child pre-node (first hlas))]
-	 (recur nxt post-next (next hlas))))))
-      
-(defn replace-node-with-refinements! "Returns final node of refinements" [node hla-seqs]
-  (util/assert-is (= ::ALGActionNode (:class node)))
-  (if (empty? hla-seqs)  ; TODO: cut out path here...
-    (do (util/sref-set! (:optimistic-valuation ^node) *pessimal-valuation*) node)
-  (let [[pre-node post-next-map] (cut-action-node node)
-	hla-seqs (remove #(redundant-hla-seq? pre-node post-next-map %) hla-seqs)]
-    (if (empty? hla-seqs) pre-node
-      (let [final-nodes    (doall (map #(make-action-node-seq pre-node %) hla-seqs))]
-	(splice-nexts (or (util/singleton final-nodes) (make-alg-merge-node final-nodes)) post-next-map))))))
-
-  
-
-
-; helpers for caching progression results
-
+ 
 (defn alg-optimistic-valuation [node]
   (let [s (:optimistic-valuation ^node)]
     (or (util/sref-get s)
@@ -323,6 +328,8 @@
   (util/sref-set! (:optimistic-valuation ^node) nil)
   (util/sref-set! (:pessimistic-valuation ^node) nil)
   nil)
+
+
 
 
 ;; Simple backwards-pass
@@ -359,11 +366,11 @@
 	    (do (invalidate-valuations node) nil)
 	  (let [[prev-state opt-step-reward] regress-pair
 		[prev-s2   pess-step-reward] (or
-					      (regress-state 
+					      (regress-clause-state 
 					       next-state
-					       (state->valuation (:pess-val-type alg) prev-state)
+					       (state->clause prev-state)
 					       (hla-pessimistic-description (:hla node))
-					       (state->valuation (:pess-val-type alg) next-state))
+					       nil)
 					      [prev-state Double/NEGATIVE_INFINITY])
 		prev-reward (- (max val-reward reward) opt-step-reward)
 		gap         (- opt-step-reward pess-step-reward)
@@ -378,7 +385,7 @@
 	    :else (do (invalidate-valuations node)
 		      (recur node next-state reward max-gap max-gap-node alg)))))))))
     
-(def *ov* )
+;(def *ov* )
 (defmethod simple-backwards-pass ::ALGMergeNode [node next-state reward max-gap max-gap-node alg]
   (let [val-reward (valuation-state-reward (alg-optimistic-valuation node) next-state)]
 ;    (println "SBP Merge" (alg-node-name node) next-state reward val-reward max-gap)
@@ -419,7 +426,7 @@
   ([opt-valuation-class pess-valuation-class initial-node]
      (let [initial-plan (list initial-node) 
 	   env (hla-environment (first initial-plan)), 
-	   alg (make-alg env pess-valuation-class)]
+	   alg (make-alg env)]
        (make-alg-final-node alg
          (make-action-node-seq 
 	  (make-alg-root-node 

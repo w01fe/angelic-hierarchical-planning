@@ -1,8 +1,6 @@
 ;;;;;;;;;;;;;;;; Implement
 
-Fix optimistic descriptions (heuristics) for DRT, NCStrips (with cost
-params -- must account for in regression!)
-  - Include new methods, etc.
+Better to regress partial clauses ...
 
 Fix :pre-clause assumption in graph.
 
@@ -14,25 +12,6 @@ Fix :pre-clause assumption in graph.
  care?  Seems not.  
 
  
-- Alternative view of whole ALG business: coarse-to-fine DP on optimistic clause,
-  rest-plan pairs? 
-   - Each [opt-clause, rest-plan] pair has optimistic cost bound
-   -  (even eliminate rest-plan constraint, if we don't care about
-  this...?)
-   - Multiple clauses produced --> split
-   - Refined versions are known to be (or can be forced to be)
-  subsumed.  i.e., once you join a node, you don't leave, just get
-  demoted.
-   - each valuation, rest-plan pair has graph of subsumed valuations,
-  each has predecessors falling off of it. -- each is cost bound +
-  action edge back to another part.  (pessimistic allowed too).    
-   - Steps back can be at varying levels. (if we want).
-   - Special handling of end -- sort of.  final node just tracks (goal clause, nil),   
-   - Search is exactly like SBP, but instead of merge nodes, we have
-  to check all subsumed clauses for best.  If each node stores the
-  best vals (opt+pess) of all children, this is easy.
-   - If 
-
   Auto-merging above and beyond what's given.  (based on same opt-sets &
 set of plans to go.  Store with each node, minimal rep. of plan-to-go??)
   ; subsumed by above proposal -- maybe ?

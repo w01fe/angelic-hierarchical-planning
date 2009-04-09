@@ -51,13 +51,53 @@
   ; what if we do get a better reward, from a different outcome clause?  Do we really care? 
   ; This is optimistic, that's not allowed! Well, it is, but not in *that* way ?
 
+; Pessimistic give you: license to cut off all in-edges with worse bounds! 
+ ; Right now, all may eventually be refined just in case.
+  ; Problem: may follow different tracks than opt ! 
+   ; Could possibly handle them elegantly in subsumption version ?  ? ??? ?
+   ; Without, what options do we have?  
+   ; One is to do full pessimistic progression each time we refine, cache the bounds.
+    ; Try this first, see what happens ? 
+
+; Alternative question: how much of state-space picture can be integrated into ALG ? 
+ ; Can keep cache of (opt-clause, rest-plan) pairs ...
+ ; or even (opt-val, rest-plan) pairs ...
+   ; Edges are connections between these.
+   ; ...
+
+; Reasoning in clauses is hard. 
+  ; What if nodes are (valuation-states, rest-plan) pairs? 
+  ; Hmmm.  Need to keep track of internal subsumption relationships.
+    ; Edges are back to simple edges.
+    ; Subsumption no longer a real issue.
+      ; Actually ... stil is ... but less, since it's obvious.
+    ; Obvious what to do with pessimistic descriptions.
+    ; Most reasoning is same as in current simplified clause-graph.
+      ; (but re-progression and regression are more expensive.)
+    ; Can we avoid re-progressing every time we refine though ?
+      ; now, subsumption edges are given, like I thought for clause-graph.
+        ; Finding home for state, however .... super-expensive ? 
+         ; (no more than usual ? )
+
+; Another interesting possibility (?) - fully state-space view. 
+ ; Explicit valuations --> no subsumption necessary.  (?)
+ ; (i..e, still work on clauses, but store stuff on states, for which it's easy to hash.)
+  ; In particular, still ... ?
+ 
+
+; Simplest: just perma-merge nodes with same valuation in ALG?    
+
+; Call Bhaskara tomorrow to chat.    
+
 (derive ::CGRootNode ::CGNode)
 
 (defstruct cg-node :class :clause :plan-suffix :max-in-reward 
+	   :last-ref
 	   :max-sub-reward :sub-node-map :pre-edges :post-edges)
 
 (defn- make-cg-node [clause plan-suffix]
-  (struct cg-node ::CGNode clause plan-suffix (util/sref Double/NEGATIVE_INFINITY) 
+  (struct cg-node ::CGNode clause plan-suffix (util/sref Double/NEGATIVE_INFINITY)
+	  (util/sref nil) ;Double/POSITIVE_INFINITY)
 	  :later :later ;(util/sref Double/NEGATIVE_INFINITY) (util/sref {}) 
 	  (util/sref {}) (util/sref {})))
  ; pre-edges is map from edge to step-cost (avoid expensive hashing)
@@ -65,6 +105,7 @@
 
 (defn- make-cg-root-node [clause plan-suffix]
   (struct cg-node ::CGRootNode clause plan-suffix (util/sref 0)
+	  (util/sref 0)
 	  :root :root :root (util/sref {})))
 
 
@@ -244,7 +285,6 @@
   (util/assert-is (clause-includes-state? (:clause node) next-state))
   (or max-gap-node []))
 
-
 (defmethod simple-cg-backwards-pass ::CGNode [node next-state rest-reward target-reward max-gap max-gap-node]
   (util/timeout)
 ;  (util/assert-is (>= (+ (util/sref-get (:max-in-reward node)) rest-reward) target-reward))
@@ -260,7 +300,8 @@
 	    rec                  (simple-cg-backwards-pass prev-node prev-state (+ opt-rew rest-reward)
 							   target-reward (max gap max-gap)
 							   (if (and (>= gap max-gap) (not (hla-primitive? (:hla edge))))
-							     [:refine edge (:plan-suffix node)] max-gap-node))]
+							     [:refine edge (:plan-suffix node) node best-reward] 
+							      max-gap-node))]
 	(cond (= (first rec) :refine) rec
 	      rec                     (conj rec (:hla edge))
 	      :else                   (do (util/sref-set! (:in-reward edge) 
@@ -280,6 +321,15 @@
 		  (= (first bp) :refine)
 		    (do (util/print-debug 2 "refining " (:clause (:source-node (nth bp 1))) 
 				 (map hla-name (cons (:hla (nth bp 1)) (nth bp 2))))
+			(let [after-node (nth bp 3) ; TODO: remove
+			      in-reward (nth bp 4)
+			      last-ref-ref (:last-ref after-node)]
+			  (when (nil? (util/sref-get last-ref-ref))
+			    (util/sref-set! last-ref-ref in-reward))
+			  (when (<= in-reward (util/sref-get last-ref-ref))
+			    (println "REDO" (util/sref-get last-ref-ref) in-reward (hla-name (:hla (nth bp 1))))
+			    (util/sref-set! last-ref-ref in-reward)
+			    ))
 			(util/sref-up! search/*ref-counter* inc)
 		        (refine-cg-edge! (:node-map cg) (nth bp 1) (nth bp 2))
 			(recur))
