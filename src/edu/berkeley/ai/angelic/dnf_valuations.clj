@@ -146,8 +146,9 @@
 
 
 (defmethod progress-valuation [::DNFValuation :edu.berkeley.ai.angelic/PropositionalDescription] [v desc]
+;  (println (:clause-map v) (:class desc) (progress-clause (ffirst (:clause-map v)) desc))
   (make-dnf-valuation (:class v)
-    (apply util/merge-best > {}
+    (util/merge-best > {}
 	   (for [[clause rew] (:clause-map v),
 		 [next-clause step-rew] (progress-clause clause desc)]
 	     [next-clause (+ rew step-rew)]))))

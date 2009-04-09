@@ -59,7 +59,9 @@
 (defn- make-cg-node [clause plan-suffix]
   (struct cg-node ::CGNode clause plan-suffix (util/sref Double/NEGATIVE_INFINITY) 
 	  :later :later ;(util/sref Double/NEGATIVE_INFINITY) (util/sref {}) 
-	  (util/sref #{}) (util/sref {})))
+	  (util/sref {}) (util/sref {})))
+ ; pre-edges is map from edge to step-cost (avoid expensive hashing)
+ ; post-edges is map from hla to edge.
 
 (defn- make-cg-root-node [clause plan-suffix]
   (struct cg-node ::CGRootNode clause plan-suffix (util/sref 0)
@@ -95,15 +97,15 @@
 
 ;;; Helper functions
 
-(defn- connect-cg-node [#^HashMap node-map edge clause plan-suffix]
+(defn- connect-cg-node [#^HashMap node-map edge step-rew clause plan-suffix]
   (let [pair [clause plan-suffix]
 	node (or (.get node-map pair)
 		 (let [n (make-cg-node clause plan-suffix)]
 		   (.put node-map pair n)
 		   n))
 	pre-edges-ref (:pre-edges node)]
-    (util/assert-is (not (contains? (util/sref-get pre-edges-ref) edge)))
-    (util/sref-up! pre-edges-ref conj edge)
+;    (util/assert-is (not (contains? (util/sref-get pre-edges-ref) edge)))
+    (util/sref-up! pre-edges-ref assoc edge step-rew)
     node))
 
 (defn- get-cg-node [#^HashMap node-map clause plan-suffix]
@@ -120,9 +122,10 @@
   [node-map node plan-suffix]
   (let [edge (get-outgoing-edge node (first plan-suffix))
 	reward (util/sref-get (:max-in-reward node))]
-    ;(println "Adding edge " (map hla-name plan-suffix) " in-rew " reward)
+    (util/print-debug 3  "Adding edge " (map hla-name plan-suffix) " in-rew " reward)
     (concat
      (when (> reward (util/sref-get (:in-reward edge)))
+       (when (not (empty? (util/sref-get (:suffix-set edge)))) (println "crap!" (map hla-name plan-suffix) (util/sref-get (:in-reward edge)) reward))
        (util/sref-set! (:in-reward edge) reward)
        (doall
          (for [[clause step-rew] (:clause-map edge)
@@ -138,18 +141,24 @@
        (doall 
 	(for [[clause step-rew] (:clause-map edge)
 	      :let [tot-rew (+ reward step-rew)
-		    next-node (connect-cg-node node-map edge clause (next plan-suffix))
+		    next-node (connect-cg-node node-map edge step-rew clause (next plan-suffix))
 		    next-rew  (util/sref-get (:max-in-reward next-node))]
 	      :when (> tot-rew next-rew)]
 	  (do (util/sref-set! (:max-in-reward next-node) tot-rew)
 	      next-node)))))))
 	 
+(import '[java.util IdentityHashMap])
 
 (defn add-plan! [node-map root-node plan-suffix]
   (loop [nodes [root-node] plan-suffix (seq plan-suffix)]
     (when (and (seq nodes) plan-suffix)
       (recur 
-       (distinct (doall (mapcat #(add-edge! node-map % plan-suffix) nodes)))
+       (let [m (IdentityHashMap.)]
+	 (doseq [node nodes,
+		 nxt  (add-edge! node-map node plan-suffix)]
+	   (.put m nxt true))
+	 (seq (.keySet m)))
+;       (distinct (doall (mapcat #(add-edge! node-map % plan-suffix) nodes)))
        (next plan-suffix)))))
 
 (defn refine-cg-edge! [node-map edge suffix]
@@ -158,8 +167,8 @@
   (doseq [[clause rew] (:clause-map edge)]
     (let [node      (get-cg-node node-map clause suffix)
 	  pre-edges (:pre-edges node)]
-      (util/assert-is (contains? (util/sref-get pre-edges) edge))
-      (util/sref-up! pre-edges disj edge)))
+;      (util/assert-is (contains? (util/sref-get pre-edges) edge))
+      (util/sref-up! pre-edges dissoc edge)))
   (let [source-node (:source-node edge)
 	clause      (:clause source-node)
 	refs        (hla-immediate-refinements (:hla edge) (dv/make-dnf-valuation ::dv/DNFValuation {clause 0}))]
@@ -173,13 +182,31 @@
   (let [pair
 	(util/first-maximal-element second
 	  (cons [:dummy Double/NEGATIVE_INFINITY]
-		(for [edge (util/sref-get (:pre-edges node))]
+		(for [[edge step-rew] (util/sref-get (:pre-edges node))]
 		  [edge 
 		   (+ (util/sref-get      (:in-reward edge))
-		      (util/safe-get (:clause-map edge) (:clause node)))])))]
+		      ;(util/safe-get (:clause-map edge) (:clause node))
+		      step-rew)])))]
     (util/sref-set! (:max-in-reward node) (second pair))
     pair))
 
+
+(comment ; Version without pessimistic, results in always refining first.
+(defn cg-edge-regress-state [edge final-clause state]
+  "Returns state opt-rew pess-rew"
+  (util/print-debug 4 "regress " (:restricted-clause edge) (:clause-map edge) (:class (:opt-desc edge)) final-clause state)
+  (let [[final-clause rew]    (util/make-safe (find (:clause-map edge) final-clause))
+	[prev-state opt-rew]  (regress-clause-state
+			       state
+			       (:restricted-clause edge)
+			       (:opt-desc edge)
+			       [final-clause rew])]
+    (util/print-debug 4 "got " prev-state)
+    [prev-state opt-rew opt-rew]))
+ )
+
+
+;(comment ; real version
 (defn cg-edge-regress-state [edge final-clause state]
   "Returns state opt-rew pess-rew"
   (util/print-debug 4 "regress " (:restricted-clause edge) (:clause-map edge) (:class (:opt-desc edge)) final-clause state)
@@ -198,10 +225,10 @@
 				nil)
 			       [prev-state Double/NEGATIVE_INFINITY])]
     (util/assert-is (>= opt-rew rew))
-    (util/assert-is (= pess-state prev-state))
+;    (util/assert-is (= pess-state prev-state))
     (util/print-debug 4 "got " prev-state)
     [prev-state opt-rew pess-rew])) 
-
+ ;)
   
 
 ;;; Searching
@@ -253,6 +280,7 @@
 		  (= (first bp) :refine)
 		    (do (util/print-debug 2 "refining " (:clause (:source-node (nth bp 1))) 
 				 (map hla-name (cons (:hla (nth bp 1)) (nth bp 2))))
+			(util/sref-up! search/*ref-counter* inc)
 		        (refine-cg-edge! (:node-map cg) (nth bp 1) (nth bp 2))
 			(recur))
 		  :else 
