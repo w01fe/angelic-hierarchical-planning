@@ -347,17 +347,30 @@
 	   [(with-meta (into after-eff (map #(vector % :unknown) unks)) {:pre-clause after-pre})
 	    (- ((util/safe-get effect :cost-fn) pred-maps max))]))))))
 
-(defmethod progress-clause ::NCStripsDescription [[clause rew] desc]
+(defmethod progress-clause ::NCStripsDescription [clause desc]
   (util/merge-best > {}
     (for [effect (:effects desc)
 	  :let   [result (progress-effect-clause effect clause)]
 	  :when result]
-      (let [[next-clause step-rew] result]
-	[next-clause (+ step-rew rew)]))))
-      
+	result)))
+     
+(defmethod regress-clause-state ::NCStripsDescription [state pre-clause desc post-clause-pair]
+  (if-let [[post-clause step-rew] post-clause-pair]
+      [(minimal-clause-state (util/safe-get ^post-clause :pre-clause)) step-rew]
+    (let [candidate-pairs 
+	  (for [[post-clause step-rew] (progress-clause pre-clause desc)
+		:when (clause-includes-state? post-clause state)]
+	    [post-clause step-rew])]
+      (when (seq candidate-pairs)
+	(let [[post-clause step-rew] (util/first-maximal-element second candidate-pairs)]
+	  [(matching-clause-state (util/safe-get ^post-clause :pre-clause) state) step-rew]))))) 
 
+; You could try to extract the best state going backwards. 
+ ; But, you may have a better (i.e., worse) bound than you thought (when there are cost-params).
+ ; For now, just return any state and lie about the bound.
+; Shit.  we may be unable to extract 
 
-
+;; TODO next: regressing dnf valuations.
 
 
 

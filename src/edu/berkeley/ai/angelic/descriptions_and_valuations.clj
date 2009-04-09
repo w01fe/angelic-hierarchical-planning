@@ -159,6 +159,11 @@
 (defn minimal-clause-state [clause]
   (set (map key (filter (fn [p] (= (val p) :true)) clause))))
 
+(defn matching-clause-state [clause state]
+  (let [[true-atoms unk-atoms] (util/separate (fn [p] (= (val p) :true)) clause)]
+    (set (concat (map key true-atoms)
+		 (filter state (map key unk-atoms))))))
+
 (defn state->clause [state]
  (util/map-map #(vector % :true) state))
 
@@ -183,12 +188,10 @@
   "Return a mapping from conjunctive clauses to rewards."
   :class)
 
-(defmethod restrict-valuation       [::DNFValuation ] [val con]
-
 (defn restrict-clause [clause condition]
-  (util/assert-is (= (:class condition) :edu.berkeley.ai.envs/ConjunctiveCondition))
-  (let [pos (envs/get-positive-conjuncts con)
-	neg (envs/get-negative-conjuncts con)]
+  (util/assert-is (isa? (:class condition) :edu.berkeley.ai.envs/ConjunctiveCondition))
+  (let [pos (envs/get-positive-conjuncts condition)
+	neg (envs/get-negative-conjuncts condition)]
     (when-let [after-pos
 	       (loop [pos pos clause clause]
 		 (cond (empty? pos)                   clause
@@ -213,14 +216,16 @@
 ;;; Both 
 
 (defmulti progress-clause          
-  "Progress this [clause rew] pair through description, returning a new clause->rew map."
-;   Each result clause should have a :pre-clause metadata, which is the corresponding 
-;   precondition-restricted version of the initial clause. " 
+  "Progress this clause pair through description, returning a new clause->rew map.  Implementers may choose to add metadata to resulting clauses, to 
+improve efficiency of regression."
   (fn [clause desc] (:class desc)))
 
 (defmulti regress-clause-state          
-  "rerogress this state through desc, returning a [clause step-rew] pair." 
-  (fn [state pre-clause desc post-clause] (:class desc)))
+  "rerogress this state through desc, returning a [state step-rew] pair.
+   post-clause-rew is optional, but may speed things up; if provided, it must 
+   be a [clause rew] resulting from progress-clause on pre-clause desc, and must
+   have state as a model." 
+  (fn [state pre-clause desc post-clause-rew] (:class desc)))
 
 
 
@@ -243,20 +248,23 @@
 (defmethod ground-description             ::IdentityDescription [desc var-map]  desc)
 (defmethod regress-state   [::Valuation ::IdentityDescription ::Valuation] [state pre-val desc post-val]
   [state 0])
-  
+(defmethod progress-clause       ::IdentityDescription [clause desc]
+  {clause 0})
+(defmethod regress-clause-state  ::IdentityDescription [state pre-clause desc post-clause-rew]
+  [state 0])
 
 ;;; Finish description
 
 (derive ::FinishDescription ::Description)
-(def *finish-descriptiption {:class ::FinishDescription})
-(def *finish-state*  #{[gensym "goal"]})
+(def *finish-description* {:class ::FinishDescription})
+(def *finish-state*  #{[(gensym "goal")]})
 (def *finish-clause* (state->clause *finish-state*))
 (defmethod instantiate-description-schema ::FinishDescription [desc instance]  desc)
 (defmethod ground-description             ::FinishDescription [desc var-map]  desc)
 (defmethod progress-clause       ::FinishDescription [clause desc]
   {*finish-clause* 0})
-(defmethod regress-clause-state  ::FinishDescription [state pre-clause desc post-clause]
-  (util/assert-is (identical? post-clause *finish-clause*))
+(defmethod regress-clause-state  ::FinishDescription [state pre-clause desc post-clause-rew]
+  (util/assert-is (= state *finish-state*))
   [(minimal-clause-state pre-clause) 0])
 
 
@@ -323,6 +331,7 @@
 (defmethod regress-state [::PessimalValuation ::PessimalDescription ::Valuation] [state pre-val desc post-val]
   nil)
 
+(defmethod regress-clause-state ::PessimalDescription [state pre-clause desc post-clause-rew] nil)
 
 (prefer-method progress-valuation [::Valuation ::IdentityDescription] [::ExplicitValuation ::Description])
 (prefer-method progress-valuation [::PessimalValuation ::Description] [::Valuation ::ExplicitDescription])
@@ -443,10 +452,16 @@
    (+ (:max-reward desc)
       (valuation-max-reward val))))
 
+(defmethod progress-clause  ::ConditionalDescription [clause desc]
+  {(util/safe-get desc :condition-dnf) 
+   (util/safe-get desc :max-reward)})
+
 (defmethod regress-state [::Valuation ::ConditionalDescription ::Valuation] [state pre-val desc post-val]
   [(first (valuation-max-reward-state pre-val))
    (:max-reward desc)])
 
+(defmethod regress-clause-state ::ConditionalDescription [state pre-clause desc post-clause-rew] 
+  [(minimal-clause-state pre-clause) (:max-reward desc)])
 
 (defmethod parse-description :opt [desc domain params]
   (util/assert-is (<= (count desc) 2))
@@ -454,12 +469,22 @@
       (make-optimal-description)
     (make-optimal-description (second desc))))
 
-(defmethod instantiate-description-schema ::ConditionalDescription [desc instance] desc)
+(defmethod instantiate-description-schema ::ConditionalDescription [desc instance] 
+;  (println "inst!")
+  (let [condition (:condition desc)
+	pos       (envs/get-positive-conjuncts condition)
+	neg       (envs/get-negative-conjuncts condition)]
+    (assoc desc
+      :condition-dnf 
+        (into 
+	 (apply dissoc 
+		(util/map-map #(vector % :unknown) (util/safe-get instance :all-atoms))
+		neg)
+	 (map #(vector % :true) pos)))))
 
 (defmethod ground-description ::ConditionalDescription [desc var-map]
-  (make-conditional-description 
-   (envs/ground-propositional-condition (util/safe-get desc :condition) var-map)
-   (util/safe-get desc :max-reward)))
+  (assoc desc 
+    :condition (envs/ground-propositional-condition (util/safe-get desc :condition) var-map)))
 
 
 

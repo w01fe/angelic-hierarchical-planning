@@ -147,28 +147,25 @@
 
 (defmethod progress-valuation [::DNFValuation :edu.berkeley.ai.angelic/PropositionalDescription] [v desc]
   (make-dnf-valuation (:class v)
-    (apply util/merge-best > {} 
-	   (map #(progress-clause % desc) (:clause-map v)))))
+    (apply util/merge-best > {}
+	   (for [[clause rew] (:clause-map v),
+		 [next-clause step-rew] (progress-clause clause desc)]
+	     [next-clause (+ rew step-rew)]))))
 
 
-(defn- matching-clause-state [clause state]
-  (let [[true-atoms unk-atoms] (util/separate (fn [p] (= (val p) :true)) clause)]
-    (set (concat (map key true-atoms)
-		 (filter state (map key unk-atoms))))))
 
 ;; TODO: make more efficient?
 (defmethod regress-state [::DNFValuation :edu.berkeley.ai.angelic/PropositionalDescription :edu.berkeley.ai.angelic/Valuation] 
   [state pre-val desc post-val]
   (let [candidate-pairs
-	  (for [clause-pair (:clause-map pre-val),
-		[result-clause result-rew] (progress-clause clause-pair desc)
+	  (for [[clause rew]             (:clause-map pre-val),
+		[result-clause step-rew] (progress-clause clause desc)
 		:when (clause-includes-state? result-clause state)]
-	    [(util/safe-get ^result-clause :pre-clause) result-rew (second clause-pair)])]
+	    [rew step-rew clause result-clause])]
     (when (seq candidate-pairs)
-;      (println candidate-pairs)
-      (let [[clause post-rew pre-rew] (util/first-maximal-element second candidate-pairs)]
-	[(matching-clause-state clause state) (- post-rew pre-rew)]))))
-	      
+      (let [[rew step-rew source-clause result-clause] 
+	    (util/first-maximal-element #(+ (first %) (second %)) candidate-pairs)]
+	(regress-clause-state state source-clause desc [result-clause step-rew])))))	      
   
 
 

@@ -251,11 +251,17 @@
      (for [[clause rew] (util/safe-get val :clause-map)]
        (+ rew ((:fn desc) [clause]))))))
 
-(defmethod angelic/progress-clause ::WarehouseActDescription [[clause rew] desc]
-  [[(with-meta 
-     (:all-dnf desc)
-     {:pre-clause clause})
-    (+ rew ((:fn desc) [clause]))]])
+(defmethod angelic/progress-clause ::WarehouseActDescription [clause desc]
+  {(with-meta 
+    (:all-dnf desc)
+    {:pre-clause clause})
+   ((:fn desc) [clause])})
+
+(defmethod angelic/regress-clause-state ::WarehouseActDescription [state pre-clause desc post-clause-pair]
+  (if-let [[post-clause step-rew] post-clause-pair]
+      [(angelic/minimal-clause-state pre-clause) step-rew]
+    [(angelic/minimal-clause-state pre-clause)
+     ((:fn desc) [pre-clause])]))
 
 
 (comment 

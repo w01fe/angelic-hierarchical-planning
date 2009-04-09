@@ -308,6 +308,7 @@
 	new-hla-map    (util/map-vals 
 			#(instantiate-strips-hla-schema % instance old-hla-map trans-objects const-pred-map)
 			old-hla-map)]
+;    (println "AA " (ground-description (:optimistic-schema (get new-hla-map root-hla-name)) nil))
     (make-strips-hla 
      (struct strips-hierarchy ::StripsHierarchy new-hla-map instance old-hla-map)
      (util/safe-get new-hla-map root-hla-name)
@@ -401,7 +402,7 @@
 (defmethod hla-finish-hla ::StripsHLA [hla]
   (let [hierarchy        (:hierarchy hla)
 	problem-instance (:problem-instance hierarchy)]
-    (make-strips-hla hierarchy *finish-strips-hla-schema* nil (get-goal problem-instance) :noop)))
+    (make-strips-hla hierarchy *finish-strips-hla-schema* nil (envs/get-goal problem-instance) :noop)))
 
 ;; Used by AHLRTA
 

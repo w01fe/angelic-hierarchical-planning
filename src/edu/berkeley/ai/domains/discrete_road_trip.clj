@@ -161,12 +161,17 @@
    (+ (angelic/valuation-max-reward val) 
       ((:fn desc) (keys (util/safe-get val :clause-map))))))
 
-(defmethod angelic/progress-clause ::DRTActDescription [[clause rew] desc]
+(defmethod angelic/progress-clause ::DRTActDescription [clause desc]
   [[(with-meta 
      (:all-dnf desc)
      {:pre-clause clause})
-    (+ rew ((:fn desc) [clause]))]])
+    ((:fn desc) [clause])]])
 
+(defmethod angelic/regress-clause-state ::DRTActDescription [state pre-clause desc post-clause-pair]
+  (if-let [[post-clause step-rew] post-clause-pair]
+      [(angelic/minimal-clause-state pre-clause) step-rew]
+    [(angelic/minimal-clause-state pre-clause)
+     ((:fn desc) [pre-clause])]))
 
 
 
