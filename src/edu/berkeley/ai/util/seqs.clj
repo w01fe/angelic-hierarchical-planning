@@ -210,6 +210,9 @@
 (defn singleton [c]
   (when (singleton? c) (first c)))
 
+(defn safe-singleton [c]
+  (assert-is (singleton? c))
+  (first c))
 
 
 

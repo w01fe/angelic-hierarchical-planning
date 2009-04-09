@@ -296,3 +296,18 @@
 
 
 
+; Weak reference sequence -- eventually, do in Java? 
+
+(import '[java.lang.ref WeakReference] '[java.util ArrayList])
+
+(defn make-weak-ref-seq 
+  ([] (make-weak-ref-seq []))
+  ([s] (ArrayList. (map #(WeakReference. %) s))))
+
+(defn weak-ref-seq-add! [#^ArrayList s x]
+  (.add s (WeakReference. x)))
+
+(defn weak-ref-seq [#^ArrayList s]
+  (filter identity (map #(.get #^WeakReference %) (seq s))))
+
+

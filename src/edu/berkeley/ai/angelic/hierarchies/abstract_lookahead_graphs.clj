@@ -77,6 +77,7 @@
 
 (derive ::ALGActionNode ::ALGInternalNode)
 (defstruct alg-action-node :class :hla :previous :next-map)
+; next-map is a map from hlas to (mutable) weak-ref-seq objects.
 
 (defn make-alg-action-node [hla previous-node] 
   (add-child! previous-node
@@ -129,33 +130,37 @@
 (defmethod alg-node-name ::ALGActionNode [node] (hla-name (:hla node))) ;;(str (hla-name (:hla node)) "-" (System/identityHashCode node)))
 (defmethod alg-node-name ::ALGMergeNode [node]  "Merge");(str "Merge-" (System/identityHashCode node)))
 
-(defn- get-child [node key]
-  (let [next-map-ref (util/safe-get node :next-map)
-	next-map     (util/sref-get next-map-ref)]
-    (get next-map key)))
 
+; Helpers for working with and modifying graph structure
 
-; Helpers for modifying graph structure
+(defn- get-children 
+  ([node]
+     (apply concat
+       (for [k (keys (util/sref-get (util/safe-get node :next-map)))]
+	 (get-children node k))))
+  ([node key]
+     (let [next-map-ref (util/safe-get node :next-map)
+	   next-map     (util/sref-get next-map-ref)]
+       (when-let [wrs (get next-map key)]
+	 (util/weak-ref-seq wrs)))))
 
 (defn- add-child! [node child]
   (let [next-map-ref (util/safe-get node :next-map)
 	next-map     (util/sref-get next-map-ref)
-	key          (:hla child)]
-    (util/assert-is (not (contains? next-map key)))
+	key          (:hla child)
+	old-wrs      (get next-map key)
+	wrs          (or old-wrs
+			 (let [wrs (util/make-weak-ref-seq)]
+			   (util/sref-set! next-map-ref (assoc next-map key wrs))
+			   wrs))]
+    (util/assert-is (nil? old-wrs))
     (when-not key 
       (util/assert-is (= (:class node) ::ALGActionNode))
       (util/assert-is (empty? next-map)))
     (when (and key (= (:class node) ::ALGActionNode))
       (util/assert-is (not (contains? next-map nil))))
-    (util/sref-set! next-map-ref (assoc next-map key child))
+    (util/weak-ref-seq-add! wrs child)
     child))
-
-(defn- remove-child! [node child]
-  (let [next-map-ref (util/safe-get node :next-map)
-	next-map     (util/sref-get next-map-ref)
-	key          (:hla child)]
-    (util/assert-is (contains? next-map key))
-    (util/sref-set! next-map-ref (dissoc next-map key))))
 
 
 (defmulti add-previous! (fn [node new-prev] (:class node)))
@@ -187,18 +192,15 @@
 
 (defn- cut-action-node [node]
   (util/assert-is (isa? (:class node) ::ALGActionNode))
-  (let [prev     (util/sref-get (:previous node)),
-	next-map (util/sref-get (:next-map node))]
-    (remove-child! prev node)
-    (doseq [nxt (vals next-map)] 
-      (remove-previous! nxt node))
-    [prev next-map]))
+  (doseq [nxt (get-children node)] 
+    (remove-previous! nxt node))
+  [(util/sref-get (:previous node)) (util/sref-get (:next-map node))])
 
 (defn- splice-nexts [new-node next-map]
 ;  (println "SN" (:class new-node))
 ;  (println "SN" (:class new-node) (count (alg-node-parents new-node)) (count (alg-node-children new-node)))
   (let [new-merge?  (isa? (:class new-node) ::ALGMergeNode)
-	post-merge  (get next-map nil)]
+	post-merge  (first (util/weak-ref-seq (get next-map nil)))]  ; TODO
 ;    (println new-merge? (when post-merge true))
     (if (and new-merge? post-merge) ; Prevent sequence of two merges
         (let [merged-nodes (util/sref-get (:previous-set new-node))]
@@ -207,7 +209,7 @@
 	    (add-previous!  post-merge node))
 	  post-merge)
       (do (util/sref-set! (:next-map new-node) next-map)
-	  (doseq [nxt (vals next-map)]
+	  (doseq [nxt (get-children new-node)]
 	    (add-previous! nxt new-node))
 	  new-node))))
 
@@ -220,7 +222,7 @@
   (util/assert-is (not (empty? actions)))
   (if-let [singleton (util/singleton actions)]
       (make-alg-action-node singleton prev-node)
-    (recur (or (get-child prev-node (first actions))
+    (recur (or (first (get-children prev-node (first actions))) ;; TODO: wrong with multiple children?
 	       (make-alg-action-node (first actions) prev-node))
 	   (next actions))))
 
@@ -249,21 +251,21 @@
 
 
 
-(defn redundant-hla-seq? "Is hlas already an allowed action seq that connects pre-node to post-node?"
-  [pre-node post-next hlas]
-  (if (empty? hlas) 
-      (when (= (util/sref-get (:next-map pre-node)) post-next) (println "Redundant") true)
-    (if-let [nxt (get-child pre-node nil)]
-         (recur nxt post-next hlas)
-       (when-let [nxt (get-child pre-node (first hlas))]
-	 (recur nxt post-next (next hlas))))))
+;(defn redundant-hla-seq? "Is hlas already an allowed action seq that connects pre-node to post-node?"
+;  [pre-node post-next hlas]
+;  (if (empty? hlas) 
+;      (when (= (util/sref-get (:next-map pre-node)) post-next) (println "Redundant") true)
+;    (if-let [nxt (first (get-children pre-node nil))] ;; TODO: wrong with multi children.
+;         (recur nxt post-next hlas)
+;       (when-let [nxt (first (get-children pre-node (first hlas)))] ;TODO
+;	 (recur nxt post-next (next hlas))))))
       
 (defn replace-node-with-refinements! "Returns final node of refinements" [node hla-seqs]
   (util/assert-is (= ::ALGActionNode (:class node)))
   (if (empty? hla-seqs)  ; TODO: cut out path here...
     (do (util/sref-set! (:optimistic-valuation ^node) *pessimal-valuation*) node)
-  (let [[pre-node post-next-map] (cut-action-node node)
-	hla-seqs (remove #(redundant-hla-seq? pre-node post-next-map %) hla-seqs)]
+  (let [[pre-node post-next-map] (cut-action-node node)]
+;	hla-seqs hla-seqs(remove #(redundant-hla-seq? pre-node post-next-map %) hla-seqs)]
     (if (empty? hla-seqs) pre-node
       (let [final-nodes    (doall (map #(make-action-node-seq pre-node %) hla-seqs))]
 	(splice-nexts (or (util/singleton final-nodes) (make-alg-merge-node final-nodes)) post-next-map))))))
@@ -477,7 +479,7 @@
 	    final (replace-node-with-refinements! bp refs)]
 	(util/print-debug 3  "Got refinements " (for [r refs] (map hla-name r)))
 	[(make-alg-final-node (:alg node)
-	  (if (empty? (util/sref-get (:next-map final))) final (:plan node)))]))))))
+	  (if (empty? (get-children final)) final (:plan node)))]))))))
 
 
 (defmethod search/primitive-refinement ::ALGFinalNode [node]
@@ -507,25 +509,27 @@
 
 (defn graphviz-alg [node]
   "TODO: identify source of node, etc."
+  (dotimes [_ 5] (util/force-gc))
   (graphviz/graphviz 
    (find-alg-root node)
    identity
    (fn [n] [(valuation-max-reward (alg-pessimistic-valuation n))
 	    (valuation-max-reward (alg-optimistic-valuation n))])
    (fn [n] 
-     (for [nxt (vals (util/sref-get (:next-map n)))]
+     (for [nxt (get-children n)]
        [(alg-node-name nxt)
 	nxt]))))
    
 (defn graphviz-alg2 [node]
   "TODO: identify source of node, etc."
+  (dotimes [_ 5] (util/force-gc))
   (graphviz/write-graphviz "/tmp/alg.pdf"
    (find-alg-root node)
    identity
    (fn [n] [(valuation-max-reward (alg-pessimistic-valuation n))
 	    (valuation-max-reward (alg-optimistic-valuation n))])
    (fn [n] 
-     (for [nxt (vals (util/sref-get (:next-map n)))]
+     (for [nxt (get-children n)]
        [(alg-node-name nxt)
 	nxt])))
   (util/sh "open" "-a" "Skim" "/tmp/alg.pdf"))
