@@ -1,17 +1,6 @@
 ;;;;;;;;;;;;;;;; Implement
 
-Better to regress partial clauses ...
 
-Fix :pre-clause assumption in graph.
-
- New graph formulation for ALG
-  - Can't maintain no-forking invariant in general?  
-  TODO: graph minimization somehow? (current method may end up with duplicates, i.e. 
-  ae, be, ad, cd.
-  - Simplest: one merge per HLA, period?  Mandates forking, but do we
- care?  Seems not.  
-
- 
   Auto-merging above and beyond what's given.  (based on same opt-sets &
 set of plans to go.  Store with each node, minimal rep. of plan-to-go??)
   ; subsumed by above proposal -- maybe ?
@@ -92,6 +81,7 @@ Might as well store provenance too, for regression ...
 ; Smarter way to compare vectors of rewards in subsumption ...
 
 
+Better to regress partial clauses ...
 
 
 

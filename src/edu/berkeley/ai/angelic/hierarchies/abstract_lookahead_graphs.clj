@@ -60,10 +60,12 @@
   ; search strategy to use (incl. valuation tricks)?
   ; subsumption improvement strategy (merge-opt, pess, ...)
 
+; When you split, you have to be careful, or you could find suboptimal solutions ...
+ ; solution; generate new search node every time you increase the cost bound.
 
-(defstruct abstract-lookahead-graph :class :env :goal)
-(defn- make-alg [env]
-  (struct abstract-lookahead-graph ::AbstractLookaheadGraph env (envs/get-goal env)))
+(defstruct abstract-lookahead-graph :class :env :goal :split-set)
+(defn- make-alg [env split-set]
+  (struct abstract-lookahead-graph ::AbstractLookaheadGraph env (envs/get-goal env) split-set))
 
 
 
@@ -153,12 +155,12 @@
 			 (let [wrs (util/make-weak-ref-seq)]
 			   (util/sref-set! next-map-ref (assoc next-map key wrs))
 			   wrs))]
-    (util/assert-is (nil? old-wrs))
-    (when-not key 
-      (util/assert-is (= (:class node) ::ALGActionNode))
-      (util/assert-is (empty? next-map)))
-    (when (and key (= (:class node) ::ALGActionNode))
-      (util/assert-is (not (contains? next-map nil))))
+;    (util/assert-is (nil? old-wrs))
+;    (when-not key 
+;      (util/assert-is (= (:class node) ::ALGActionNode))
+;      (util/assert-is (empty? next-map)))
+;    (when (and key (= (:class node) ::ALGActionNode))
+;      (util/assert-is (not (contains? next-map nil))))
     (util/weak-ref-seq-add! wrs child)
     child))
 
@@ -196,6 +198,16 @@
     (remove-previous! nxt node))
   [(util/sref-get (:previous node)) (util/sref-get (:next-map node))])
 
+
+(defn- splice-nexts [new-node next-map]
+;  (println "SN" (:class new-node))
+;  (println "SN" (:class new-node) (count (alg-node-parents new-node)) (count (alg-node-children new-node)))
+  (do (util/sref-set! (:next-map new-node) next-map)
+      (doseq [nxt (get-children new-node)]
+	(add-previous! nxt new-node))
+      new-node))
+
+(comment ; old version, merged everything - slows things down.
 (defn- splice-nexts [new-node next-map]
 ;  (println "SN" (:class new-node))
 ;  (println "SN" (:class new-node) (count (alg-node-parents new-node)) (count (alg-node-children new-node)))
@@ -212,7 +224,7 @@
 	  (doseq [nxt (get-children new-node)]
 	    (add-previous! nxt new-node))
 	  new-node))))
-
+  )
 
 
 ; Ensure each plan has a new final node, at least - makes other things easier, hurts graphiness
@@ -226,49 +238,7 @@
 	       (make-alg-action-node (first actions) prev-node))
 	   (next actions))))
 
-
-    
-
-(defmulti replace-previous! (fn [node old-prev new-prev] (:class node)))
-
-(defmethod replace-previous! ::ALGActionNode [node old-prev new-prev]
-  (let [prev-ref (:previous node)]
-    (util/assert-is (identical? (util/sref-get prev-ref) old-prev))
-    (util/sref-set! prev-ref new-prev)))
-
-(defmethod replace-previous! ::ALGMergeNode [node old-prev new-prev]
-  (let [prev-ref (:previous-set node)
-	prev-set (util/sref-get prev-ref)]
-    (util/assert-is (contains? prev-set old-prev))
-    (util/sref-set! prev-ref (conj (disj prev-set old-prev) new-prev))))
-
-(defn replace-previouses! [node old-prev new-prevs]
-  (util/assert-is (= (:class node) ::ALGMergeNode))
- (let [prev-ref (:previous-set node)
-	prev-set (util/sref-get prev-ref)]
-    (util/assert-is (contains? prev-set old-prev))
-    (util/sref-set! prev-ref (into (disj prev-set old-prev) new-prevs))))
-
-
-
-;(defn redundant-hla-seq? "Is hlas already an allowed action seq that connects pre-node to post-node?"
-;  [pre-node post-next hlas]
-;  (if (empty? hlas) 
-;      (when (= (util/sref-get (:next-map pre-node)) post-next) (println "Redundant") true)
-;    (if-let [nxt (first (get-children pre-node nil))] ;; TODO: wrong with multi children.
-;         (recur nxt post-next hlas)
-;       (when-let [nxt (first (get-children pre-node (first hlas)))] ;TODO
-;	 (recur nxt post-next (next hlas))))))
       
-(defn replace-node-with-refinements! "Returns final node of refinements" [node hla-seqs]
-  (util/assert-is (= ::ALGActionNode (:class node)))
-  (if (empty? hla-seqs)  ; TODO: cut out path here...
-    (do (util/sref-set! (:optimistic-valuation ^node) *pessimal-valuation*) node)
-  (let [[pre-node post-next-map] (cut-action-node node)]
-;	hla-seqs hla-seqs(remove #(redundant-hla-seq? pre-node post-next-map %) hla-seqs)]
-    (if (empty? hla-seqs) pre-node
-      (let [final-nodes    (doall (map #(make-action-node-seq pre-node %) hla-seqs))]
-	(splice-nexts (or (util/singleton final-nodes) (make-alg-merge-node final-nodes)) post-next-map))))))
 
 
 ;;; Computing valuations, etc.
@@ -285,23 +255,36 @@
 
 
 (defmethod compute-alg-optimistic-valuation ::ALGActionNode [node]
-  (progress-valuation 
-   (restrict-valuation (alg-optimistic-valuation (util/sref-get (:previous node)))
-		       (hla-hierarchical-preconditions (:hla node)))
-   (hla-optimistic-description (:hla node))))
+  (let [previous (util/sref-get (:previous node))]
+    (if (nil? previous)
+        *pessimal-valuation*
+      (progress-valuation 
+       (restrict-valuation (alg-optimistic-valuation previous)
+			   (hla-hierarchical-preconditions (:hla node)))
+       (hla-optimistic-description (:hla node))))))
 
 (defmethod compute-alg-pessimistic-valuation ::ALGActionNode [node]
-  (progress-valuation 
-   (restrict-valuation (alg-pessimistic-valuation (util/sref-get (:previous node)))
-		       (hla-hierarchical-preconditions (:hla node)))
-   (hla-pessimistic-description (:hla node))))
+  (let [previous (util/sref-get (:previous node))]
+    (if (nil? previous)
+        *pessimal-valuation*
+      (progress-valuation 
+       (restrict-valuation (alg-pessimistic-valuation previous)
+			   (hla-hierarchical-preconditions (:hla node)))
+       (hla-pessimistic-description (:hla node))))))
 
 
 (defmethod compute-alg-optimistic-valuation ::ALGMergeNode [node]
-  (reduce union-valuations (map alg-optimistic-valuation (util/sref-get (:previous-set node)))))
+  (let [previous-set (util/sref-get (:previous-set node))
+	pruned-set   (reduce (fn [s e] (if (empty-valuation? (alg-optimistic-valuation e)) (disj s e) s))
+			     previous-set previous-set)]
+    (util/sref-set! (:previous-set node) pruned-set)
+    (if (empty? pruned-set) *pessimal-valuation*
+      (reduce union-valuations (map alg-optimistic-valuation pruned-set)))))
 
 (defmethod compute-alg-pessimistic-valuation ::ALGMergeNode [node]
-  (reduce union-valuations (map alg-pessimistic-valuation (util/sref-get (:previous-set node)))))
+  (let [previous-set (util/sref-get (:previous-set node))]
+    (if (empty? previous-set) *pessimal-valuation*
+      (reduce union-valuations (map alg-pessimistic-valuation previous-set)))))
 
 
 (defmethod compute-alg-optimistic-valuation ::ALGFinalNode [node]
@@ -407,12 +390,12 @@
   (let [alg (:alg node)
 	pass-cache (:pass-cache node)]
     (or (util/sref-get pass-cache)
-	(loop []
-	  (when-let [[state rew] (valuation-max-reward-state (alg-optimistic-valuation node))]
-;	    (println "Driving " state rew)
-	    (or (util/sref-set! pass-cache (simple-backwards-pass (:plan node) state rew 0 nil alg))
-		(do  (invalidate-valuations node)
-		     (recur))))))))
+	(util/sref-set! pass-cache
+	  (or
+	    (when-let [[state rew] (valuation-max-reward-state (alg-optimistic-valuation node))]
+	      (or (simple-backwards-pass (:plan node) state rew 0 nil alg)
+		  (do (invalidate-valuations node) nil)))
+	    :fail)))))
 
 ;TODO:  Functions needed: valuation-state-reward, regress-optimistic-state, regress-pessimistic-state, state->valuation, extract-a-best-state.  
 
@@ -421,14 +404,16 @@
 
 (defn make-initial-alg-node  
   ([initial-node]
+     (make-initial-alg-node initial-node #{}))
+  ([initial-node split-set]
      (make-initial-alg-node 
       (hla-default-optimistic-valuation-type initial-node) 
       (hla-default-pessimistic-valuation-type initial-node)
-      initial-node))
-  ([opt-valuation-class pess-valuation-class initial-node]
+      initial-node split-set))
+  ([opt-valuation-class pess-valuation-class initial-node split-set]
      (let [initial-plan (list initial-node) 
 	   env (hla-environment (first initial-plan)), 
-	   alg (make-alg env)]
+	   alg (make-alg env split-set)]
        (make-alg-final-node alg
          (make-action-node-seq 
 	  (make-alg-root-node 
@@ -465,28 +450,37 @@
   (util/timeout)
 ;  (println "IR " (System/identityHashCode node))
   (let [bp (drive-simple-backwards-pass node)]
-;    (println "IR " (class bp))
-    (when bp
-      (if (not (isa? (:class bp) ::ALGActionNode))
-	(do (println "Warning: trying to refine optimal node")
-	    nil)
-       (do
-;      (def *n* node)
-;      (util/assert-is (isa? (:class bp) ::ALGActionNode) "Nothing to refine %s" (print-str (map hla-name bp)))
-      (util/print-debug 3 "Refining at " (alg-node-name bp))
-      (util/sref-up! search/*ref-counter* inc)
-      (let [refs (hla-immediate-refinements (:hla bp) (alg-optimistic-valuation (util/sref-get (:previous bp))))
-	    final (replace-node-with-refinements! bp refs)]
-	(util/print-debug 3  "Got refinements " (for [r refs] (map hla-name r)))
-	[(make-alg-final-node (:alg node)
-	  (if (empty? (get-children final)) final (:plan node)))]))))))
+    (util/assert-is (identity bp))
+    (cond (= bp :fail)
+ 	    (when (> (valuation-max-reward (alg-optimistic-valuation node)) Double/NEGATIVE_INFINITY)
+	      [(make-alg-final-node (:alg node) (:plan node))])
+	  (not (isa? (:class bp) ::ALGActionNode))
+	    (do (println "Warning: trying to refine optimal node")
+		nil)
+	  :else 
+	    (let [hla    (:hla bp)
+		  split? (contains? (util/safe-get-in node [:alg :split-set]) (first (hla-name hla)))
+		  final? (empty? (get-children bp))
+		  refs   (hla-immediate-refinements (:hla bp) (alg-optimistic-valuation (util/sref-get (:previous bp))))
+		  [pre-node post-next-map] (cut-action-node bp)
+		  final-nodes (doall (map #(make-action-node-seq pre-node %) refs))]
+	      (when split? (util/assert-is (identity final?)))
+	      (util/print-debug 3 "Refining at " (alg-node-name bp) ";\nGot refinements " (for [r refs] (map hla-name r)))
+	      (util/sref-up! search/*ref-counter* inc)
+	      (if split? 
+		  (map #(make-alg-final-node (:alg node) %) final-nodes)
+		(when (not (and final? (empty? final-nodes)))
+		  (let [spliced (splice-nexts (or (util/singleton final-nodes) (make-alg-merge-node final-nodes)) 
+					      post-next-map)]
+		    [(make-alg-final-node (:alg node) (if final? spliced (:plan node)))])))))))
 
 
 (defmethod search/primitive-refinement ::ALGFinalNode [node]
 ;  (println "PR " (System/identityHashCode node))
   (let [bp (drive-simple-backwards-pass node)]
+    (util/assert-is (identity bp))
 ;    (println "PR " (class bp))
-    (when (and bp (not (isa? (:class bp) ::ALGActionNode)))
+    (when (and (not (= bp :fail)) (not (isa? (:class bp) ::ALGActionNode)))
       [(remove #(= % :noop) (map hla-primitive bp))
        (search/upper-reward-bound node)])))
 
@@ -543,3 +537,40 @@
 
 
 
+
+
+
+
+(comment
+
+(defmulti replace-previous! (fn [node old-prev new-prev] (:class node)))
+
+(defmethod replace-previous! ::ALGActionNode [node old-prev new-prev]
+  (let [prev-ref (:previous node)]
+    (util/assert-is (identical? (util/sref-get prev-ref) old-prev))
+    (util/sref-set! prev-ref new-prev)))
+
+(defmethod replace-previous! ::ALGMergeNode [node old-prev new-prev]
+  (let [prev-ref (:previous-set node)
+	prev-set (util/sref-get prev-ref)]
+    (util/assert-is (contains? prev-set old-prev))
+    (util/sref-set! prev-ref (conj (disj prev-set old-prev) new-prev))))
+
+(defn replace-previouses! [node old-prev new-prevs]
+  (util/assert-is (= (:class node) ::ALGMergeNode))
+ (let [prev-ref (:previous-set node)
+	prev-set (util/sref-get prev-ref)]
+    (util/assert-is (contains? prev-set old-prev))
+    (util/sref-set! prev-ref (into (disj prev-set old-prev) new-prevs))))
+
+
+
+;(defn redundant-hla-seq? "Is hlas already an allowed action seq that connects pre-node to post-node?"
+;  [pre-node post-next hlas]
+;  (if (empty? hlas) 
+;      (when (= (util/sref-get (:next-map pre-node)) post-next) (println "Redundant") true)
+;    (if-let [nxt (first (get-children pre-node nil))] ;; TODO: wrong with multi children.
+;         (recur nxt post-next hlas)
+;       (when-let [nxt (first (get-children pre-node (first hlas)))] ;TODO
+;	 (recur nxt post-next (next hlas))))))
+)
