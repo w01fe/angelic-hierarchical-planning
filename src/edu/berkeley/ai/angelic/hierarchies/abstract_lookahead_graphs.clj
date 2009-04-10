@@ -225,6 +225,7 @@
 
 
 (defmethod compute-alg-optimistic-valuation ::ALGActionNode opt-action [node]
+;  (println "Progress action " (hla-name (:hla node)))
   (let [previous (util/sref-get (:previous node))]
     (if (nil? previous)
         *pessimal-valuation*
@@ -244,12 +245,16 @@
 
 
 (defmethod compute-alg-optimistic-valuation ::ALGMergeNode opt-merge [node]
+;  (println "Progress merge ")
   (let [previous-set (util/sref-get (:previous-set node))
 	pruned-set   (reduce (fn [s e] (if (empty-valuation? (alg-optimistic-valuation e)) (disj s e) s))
 			     previous-set previous-set)]
     (util/sref-set! (:previous-set node) pruned-set)
     (if (empty? pruned-set) *pessimal-valuation*
-      (reduce union-valuations (map alg-optimistic-valuation pruned-set)))))
+      (reduce union-valuations 
+	      (for [n pruned-set]
+		(add-clause-metadata (alg-optimistic-valuation n) {:source-node n}))))))
+	      ;(map alg-optimistic-valuation pruned-set)))))
 
 (defmethod compute-alg-pessimistic-valuation ::ALGMergeNode pess-merge [node]
   (let [previous-set (util/sref-get (:previous-set node))]
@@ -286,24 +291,44 @@
 
 
 
-
 ;; Simple backwards-pass
 
 (defmulti simple-backwards-pass
   "Simple-backwards-pass takes [node next-state reward max-gap max-gap-node],
    and returns either a node to refine, an optimal primitive refinement, or 
    nil (indicating that no plan exists to next-state that achieves reward (>)= reward"
-  (fn [node next-state reward max-gap max-gap-node alg] (:class node)))
+  (fn [node next-state next-clause reward max-gap max-gap-node alg] (:class node)))
 
-(defmethod simple-backwards-pass ::ALGRootNode sbp-root [node next-state reward max-gap max-gap-node alg]
+(defmethod simple-backwards-pass ::ALGRootNode sbp-root [node next-state next-clause reward max-gap max-gap-node alg]
 ;  (println "SBP Root" (alg-node-name node) next-state reward max-gap)
   (util/assert-is (or (Double/isNaN reward) (= reward 0)))
 ;  (when (or (Double/isNaN reward) (>= reward 0))
     (util/assert-is (= (valuation-state-reward (alg-optimistic-valuation node) next-state) 0))
     (or max-gap-node []))
 
-(defmethod simple-backwards-pass ::ALGActionNode sbp-action [node next-state reward max-gap max-gap-node alg]
+(defmethod simple-backwards-pass ::ALGActionNode sbp-action [node next-state next-clause reward max-gap max-gap-node alg]
   (util/timeout)
+ ;   (when next-clause (util/assert-is (clause-includes-state? next-clause next-state)))
+  (let [prev-node (util/sref-get (:previous node))
+	prev-val (alg-optimistic-valuation prev-node)]
+    (let [[prev-state step-reward pre-reward prev-clause]
+	  (or (regress-state-hinted next-state prev-val (hla-optimistic-description (:hla node)) 
+				    (alg-optimistic-valuation node) next-clause)
+	      [:dummy Double/NEGATIVE_INFINITY Double/NEGATIVE_INFINITY])]
+      (if (>= (+ pre-reward step-reward) reward)
+	  (let [rec (simple-backwards-pass prev-node prev-state prev-clause pre-reward 0 
+					   (if (hla-primitive? (:hla node)) max-gap-node node) alg)]
+	    (cond (isa? (:class rec) ::ALGInternalNode) 
+		    rec
+		  rec   
+		    (conj rec (:hla node))
+		  :else                            
+		    (recur node next-state nil reward max-gap max-gap-node alg)))
+	(invalidate-valuations node)))))
+
+
+(comment
+
   (let [val-reward (valuation-state-reward (alg-optimistic-valuation node) next-state)]
 ;  (println "SBP Action" (alg-node-name node) next-state reward val-reward max-gap (:class (alg-optimistic-valuation node)) (:class (alg-optimistic-valuation (util/sref-get (:previous node)))))
 ;    (util/assert-is (<= val-reward reward))
@@ -311,8 +336,7 @@
       (util/print-debug 3 "Warning: inconsistency at " (alg-node-name node) val-reward reward))
     (when (>= val-reward reward)
       (let [prev-node (util/sref-get (:previous node))
-	    regress-pair (regress-state  
-					   next-state
+	    regress-pair (regress-state    next-state
 					   (alg-optimistic-valuation prev-node)
 					   (hla-optimistic-description (:hla node))
 					   (alg-optimistic-valuation node))]
@@ -320,28 +344,59 @@
 	(if (nil? regress-pair) 
 	    (do (invalidate-valuations node) nil)
 	  (let [[prev-state opt-step-reward] regress-pair
-		[prev-s2   pess-step-reward] (or
-					      (regress-clause-state 
-					       next-state
-					       (state->clause prev-state)
-					       (hla-pessimistic-description (:hla node))
-					       nil)
-					      [prev-state Double/NEGATIVE_INFINITY])
+		[prev-s2   pess-step-reward] (or [prev-state opt-step-reward]) ;; TODO: put back
+					     ; (regress-clause-state 
+					     ;  next-state
+					     ;  (state->clause prev-state)
+					     ;  (hla-pessimistic-description (:hla node))
+					     ;  nil)
+					     ; [prev-state Double/NEGATIVE_INFINITY])
 		prev-reward (- (max val-reward reward) opt-step-reward)
 		gap         (- opt-step-reward pess-step-reward)
 		[prev-gap prev-gap-node] (if (and (>= gap max-gap) (not (hla-primitive? (:hla node))))
 					   [gap node]
 					   [max-gap max-gap-node])
-		rec (simple-backwards-pass prev-node prev-state prev-reward prev-gap prev-gap-node alg)]
-	    (util/assert-is (= prev-s2 prev-state))
-					;	(println "SBP gap " (alg-node-name node) gap (class rec))
+		rec (simple-backwards-pass prev-node prev-state nil prev-reward prev-gap prev-gap-node alg)]
+	    ;(util/assert-is (= prev-s2 prev-state))
+	;	(println "SBP gap " (alg-node-name node) gap (class rec))
 	    (cond (isa? (:class rec) ::ALGInternalNode) rec
 	    rec                                  (conj rec (:hla node))
 	    :else (do (invalidate-valuations node)
-		      (recur node next-state reward max-gap max-gap-node alg)))))))))
+		      (recur node next-state next-clause reward max-gap max-gap-node alg)))))))))
     
 ;(def *ov* )
-(defmethod simple-backwards-pass ::ALGMergeNode sbp-merge [node next-state reward max-gap max-gap-node alg]
+(defmethod simple-backwards-pass ::ALGMergeNode sbp-merge [node next-state next-clause reward max-gap max-gap-node alg]
+;  (println "SBP-merge")
+ ; (when next-clause (util/assert-is (clause-includes-state? next-clause next-state)))
+  (if next-clause
+      (or 
+        (when-let [prev-node (get ^next-clause :source-node)]
+	  (when (contains? (util/sref-get (:previous-set node)) prev-node)
+	    (when-let [[clause val-reward] (valuation-clause-reward (alg-optimistic-valuation prev-node) next-clause)]
+	      (when (>= val-reward reward); (println "GO")
+;		(print ",")
+		(simple-backwards-pass prev-node next-state clause reward max-gap max-gap-node alg)))))
+	(recur node next-state nil reward max-gap max-gap-node alg))
+    (loop [good-preds
+	       (seq (filter identity
+		     (for [prev-node (util/sref-get (:previous-set node))]
+		       (let [prev-val (alg-optimistic-valuation prev-node)]
+			 (if (isa? (:class prev-val) :edu.berkeley.ai.angelic/PropositionalValuation)
+			     (when-let [[prev-clause prev-rew] (valuation-state-clause-reward prev-val next-state)]
+			       (when (>= prev-rew reward)
+				 [prev-node prev-clause prev-rew]))
+			   (let [prev-rew (valuation-state-reward prev-val next-state)]
+			     (when (>= prev-rew reward)
+			       [prev-node nil prev-rew])))))))]
+      (if good-preds 
+	  (let [[prev-node prev-clause prev-rew] (first good-preds)]
+	    (or (simple-backwards-pass prev-node next-state prev-clause reward max-gap max-gap-node alg)
+		(recur (next good-preds))))
+	(invalidate-valuations node)))))
+		      
+     
+(comment	
+
   (let [val-reward (valuation-state-reward (alg-optimistic-valuation node) next-state)]
 ;    (println "SBP Merge" (alg-node-name node) next-state reward val-reward max-gap)
 ;    (def *ov* (alg-optimistic-valuation node))
@@ -352,18 +407,26 @@
       (or (when-first [prev-node
 		       (filter #(>= (valuation-state-reward (alg-optimistic-valuation %) next-state) reward)
 			       (util/sref-get (:previous-set node)))]
-	    (simple-backwards-pass prev-node next-state reward max-gap max-gap-node alg))
+	    (simple-backwards-pass prev-node next-state nil reward max-gap max-gap-node alg))
 	  (do (invalidate-valuations node)
-	      (recur node next-state reward max-gap max-gap-node alg))))))
+	      (recur node next-state next-clause reward max-gap max-gap-node alg)))))
+  )
+
+(defn get-max-reward-state-and-clause [v]
+  (if (isa? (:class v) :edu.berkeley.ai.angelic/PropositionalValuation)
+      (when-let [[clause rew] (valuation-max-reward-clause v)]
+	[(minimal-clause-state clause) rew clause])
+    (valuation-max-reward-state v)))
 
 (defn drive-simple-backwards-pass [node]
+;  (println "\n\n\n DRIVE")
   (let [alg (:alg node)
 	pass-cache (:pass-cache node)]
     (or (util/sref-get pass-cache)
 	(util/sref-set! pass-cache
 	  (or
-	    (when-let [[state rew] (valuation-max-reward-state (alg-optimistic-valuation node))]
-	      (or (simple-backwards-pass (:plan node) state rew 0 nil alg)
+	    (when-let [[state rew clause] (get-max-reward-state-and-clause (alg-optimistic-valuation node))]
+	      (or (simple-backwards-pass (:plan node) state clause rew 0 nil alg)
 		  (do (invalidate-valuations node) nil)))
 	    :fail)))))
 

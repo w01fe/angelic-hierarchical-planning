@@ -88,7 +88,7 @@
 (defmulti regress-state
   "Take a state, initial valuation, description, and final valuation (presumably but not
    necessarily produced by (progress-valuation preval desc)), where state is consistent with 
-   postval, and return a [pre-state step-rew] with maximal reward where pre-state is consistent
+   postval, and return a [pre-state step-rew pre-rew optional-pre-clause] with maximal reward where pre-state is consistent
    with preval, and step-rew is its corresponding step reward.  Returns nil if no such state is found."
   (fn [state-rew preval desc postval] [(:class preval) (:class desc) (:class postval)]))
 
@@ -160,6 +160,7 @@
   (set (map key (filter (fn [p] (= (val p) :true)) clause))))
 
 (defn matching-clause-state [clause state]
+;  (util/assert-is (clause-includes-state? clause state)) ;; TODO: remove!!
   (let [[true-atoms unk-atoms] (util/separate (fn [p] (= (val p) :true)) clause)]
     (set (concat (map key true-atoms)
 		 (filter state (map key unk-atoms))))))
@@ -187,6 +188,22 @@
 (defmulti valuation-clause-map 
   "Return a mapping from conjunctive clauses to rewards."
   :class)
+
+(defmulti valuation-max-reward-clause
+  "Get [clause rew], where clause has the max reward."
+  :class)
+
+(defmulti valuation-clause-reward
+  "Get the [clause rew] pair for clause, or return nil."
+  (fn [v c] (:class v)))
+
+(defmulti valuation-state-clause-reward
+  "Get the best [clause rew] pair for state, or return nil."
+  (fn [v s] (:class v)))
+
+(defmulti add-clause-metadata 
+  "Add the provided mappings to metadata of all clauses in this valuation."
+  (fn [v m] (:class v)))
 
 (defn restrict-clause [clause condition]
   (util/assert-is (isa? (:class condition) :edu.berkeley.ai.envs/ConjunctiveCondition))
@@ -221,14 +238,23 @@ improve efficiency of regression."
   (fn [clause desc] (:class desc)))
 
 (defmulti regress-clause-state          
-  "rerogress this state through desc, returning a [state step-rew] pair.
+  "rerogress this state through desc, returning a [state step-rew optional-pre-clause] pair.
    post-clause-rew is optional, but may speed things up; if provided, it must 
    be a [clause rew] resulting from progress-clause on pre-clause desc, and must
    have state as a model." 
   (fn [state pre-clause desc post-clause-rew] (:class desc)))
 
 
+(defmulti regress-state-hinted
+  "Take a state, initial valuation, description, and final valuation (presumably but not
+   necessarily produced by (progress-valuation preval desc)), and optional final clause, where state is consistent with 
+   postval and clause, and return a [pre-state step-rew pre-rew optional-pre-clause] with maximal reward where pre-state is consistent
+   with preval, and step-rew is its corresponding step reward.  Returns nil if no such state is found."
+  (fn [state preval desc postval clause] [(:class preval) (:class desc) (:class postval)]))
 
+(defmethod regress-state-hinted :default regress-state-hinted-default [state pre-val desc post-val clause]
+  (when-let [[pre-state step-rew] (regress-state state pre-val desc post-val)]
+    [pre-state step-rew (valuation-state-reward pre-val pre-state) nil]))
 
 
 
@@ -248,6 +274,11 @@ improve efficiency of regression."
 (defmethod ground-description             ::IdentityDescription [desc var-map]  desc)
 (defmethod regress-state   [::Valuation ::IdentityDescription ::Valuation] [state pre-val desc post-val]
   [state 0])
+(defmethod regress-state-hinted [::Valuation ::IdentityDescription ::Valuation] regress-state-hinted-identity [state pre-val desc post-val clause]
+  (if-let [[pre-clause pre-rew] (valuation-clause-reward pre-val clause)]
+      [state 0 pre-rew pre-clause]
+    [state 0 (valuation-state-reward pre-val state)]))
+
 (defmethod progress-clause       ::IdentityDescription [clause desc]
   {clause 0})
 (defmethod regress-clause-state  ::IdentityDescription [state pre-clause desc post-clause-rew]
@@ -459,6 +490,13 @@ improve efficiency of regression."
 (defmethod regress-state [::Valuation ::ConditionalDescription ::Valuation] [state pre-val desc post-val]
   [(first (valuation-max-reward-state pre-val))
    (:max-reward desc)])
+
+(defmethod regress-state-hinted [::Valuation ::ConditionalDescription ::Valuation] regress-state-hinted-conditional [state pre-val desc post-val clause]
+  (if (isa? (:class pre-val) ::PropositionalValuation)
+      (when-let [[pre-clause pre-rew] (valuation-max-reward-clause pre-val)]
+	[(minimal-clause-state pre-clause) (:max-reward desc) pre-rew pre-clause])
+    (when-let [[pre-state pre-rew] (valuation-max-reward-state pre-val)]
+      [pre-state (:max-reward desc) pre-rew])))
 
 (defmethod regress-clause-state ::ConditionalDescription [state pre-clause desc post-clause-rew] 
   [(minimal-clause-state pre-clause) (:max-reward desc)])

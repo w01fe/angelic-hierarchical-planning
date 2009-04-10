@@ -271,7 +271,7 @@
   val)
 
 (defmethod angelic/regress-state [::angelic/ConditionalValuation ::WarehouseActDescription ::angelic/ConditionalValuation] [state pre-val desc post-val]
-  [state 0])
+  [state 0 (valuation-max-reward pre-val)])
  )
 
 

@@ -1,6 +1,8 @@
 ;;;;;;;;;;;;;;;; Implement
 
 
+Remove check from matching-clause-state
+
   Auto-merging above and beyond what's given.  (based on same opt-sets &
 set of plans to go.  Store with each node, minimal rep. of plan-to-go??)
 

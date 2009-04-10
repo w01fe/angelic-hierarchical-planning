@@ -56,10 +56,11 @@
     (assert-is (= (count ret) (+ (count m1) (count m2))))
     ret))
 
+; TODO: make more efficient ?
 (defn merge-best [pred m & entry-seqs]
   (reduce (fn [m [k v]] 
 	    (if-let [[ok ov] (find m k)]
-	        (if (pred v ov) (assoc m k v) m)
+	        (if (pred v ov) (assoc (dissoc m ok) k v) m)
 	      (assoc m k v)))
 	  m (apply concat entry-seqs)))
 	      

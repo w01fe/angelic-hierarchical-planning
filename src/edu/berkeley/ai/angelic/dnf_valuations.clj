@@ -77,6 +77,16 @@
 (defmethod valuation-max-reward ::DNFValuation valuation-max-reward-dnf [val] 
   (apply max (vals (:clause-map val))))
 
+(defmethod valuation-max-reward-clause ::DNFValuation valuation-max-reward-clause-dnf [v]
+  (util/first-maximal-element val (:clause-map v)))
+
+(defmethod valuation-clause-reward ::DNFValuation valuation-clause-reward-dnf [v c]
+  (find (:clause-map v) c))
+
+(defmethod valuation-state-clause-reward ::DNFValuation valuation-state-clause-reward [v s]
+  (let [ordered-clauses (reverse (sort-by val (:clause-map v)))]
+    (first (filter #(clause-includes-state? (key %) s) ordered-clauses))))
+  
 
 
 ;; For now, a valid subsumption map maps predicates to clojure predicates.
@@ -168,6 +178,36 @@
 	    (util/first-maximal-element #(+ (first %) (second %)) candidate-pairs)]
 	(regress-clause-state state source-clause desc [result-clause step-rew])))))	      
   
+
+;; TODO: a bit hacky.
+(defmethod regress-state-hinted [::DNFValuation :edu.berkeley.ai.angelic/PropositionalDescription :edu.berkeley.ai.angelic/Valuation] regress-state-hinted-dnf
+  [state pre-val desc post-val clause]
+  (or (when clause 
+	(when-let [prev-clause  (get ^clause :src-clause)]
+	  (when-let [pre-clause (get ^clause :pre-clause)]
+	    (when-let [step-rew  (get ^clause :step-rew)]
+	      (when-let [[prev-clause2 prev-rew] (valuation-clause-reward pre-val prev-clause)]
+		(when (identical? prev-clause prev-clause2)  
+;		  (print ".")
+		 ; (def *stupid* [[state pre-val desc post-val clause] prev-clause pre-clause step-rew prev-clause2 prev-rew])
+		  [(matching-clause-state pre-clause state) step-rew prev-rew prev-clause]))))))
+      (let [candidate-pairs
+	    (for [[clause rew]             (:clause-map pre-val),
+		  [result-clause step-rew] (progress-clause clause desc)
+		  :when (clause-includes-state? result-clause state)]
+	      [rew step-rew clause result-clause])]
+	(when (seq candidate-pairs)
+	  (let [[rew step-rew source-clause result-clause] 
+		(util/first-maximal-element #(+ (first %) (second %)) candidate-pairs)]
+	    (let [[pre-state step-rew] (regress-clause-state state source-clause desc [result-clause step-rew])]
+	      [pre-state step-rew rew source-clause]))))))	      
+
+
+
+(defmethod add-clause-metadata ::DNFValuation add-clause-metadata-dnf [v m]
+  (assoc v :clause-map
+    (reduce (fn [cm [k v]] (assoc cm (vary-meta k merge m) v)) {} (:clause-map v))))
+;    (reduce (fn [cm [k v]] (assoc cm (vary-meta k merge m) v)) (:clause-map v) (:clause-map v))))
 
 
 

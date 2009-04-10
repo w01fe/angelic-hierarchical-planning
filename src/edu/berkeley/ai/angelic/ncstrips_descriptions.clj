@@ -343,9 +343,11 @@
 		[padds pdels] (apply map concat [(util/safe-get effect :possible-adds) (util/safe-get effect :possible-deletes)]
 				      (map #(% pred-maps) (util/safe-get effect :possible-effect-fns)))
  		unks          (concat (filter #(nil?    (after-eff %)) padds)
-				      (filter #(= :true (after-eff %)) pdels))]
-	   [(with-meta (into after-eff (map #(vector % :unknown) unks)) {:pre-clause after-pre})
-	    (- ((util/safe-get effect :cost-fn) pred-maps max))]))))))
+				      (filter #(= :true (after-eff %)) pdels))
+		step-rew      (- ((util/safe-get effect :cost-fn) pred-maps max)) ]
+	   [(with-meta (into after-eff (map #(vector % :unknown) unks)) 
+		       {:src-clause clause :pre-clause after-pre :step-rew step-rew})
+	    step-rew]))))))
 
 (defmethod progress-clause ::NCStripsDescription progress-clause-ncstrips [clause desc]
   (util/merge-best > {}
@@ -356,14 +358,14 @@
      
 (defmethod regress-clause-state ::NCStripsDescription regress-clause-state-ncstrips [state pre-clause desc post-clause-pair]
   (if-let [[post-clause step-rew] post-clause-pair]
-      [(minimal-clause-state (util/safe-get ^post-clause :pre-clause)) step-rew]
+      [(matching-clause-state (util/safe-get ^post-clause :pre-clause) state) step-rew]
     (let [candidate-pairs 
 	  (for [[post-clause step-rew] (progress-clause pre-clause desc)
 		:when (clause-includes-state? post-clause state)]
 	    [post-clause step-rew])]
       (when (seq candidate-pairs)
 	(let [[post-clause step-rew] (util/first-maximal-element second candidate-pairs)]
-	  [(matching-clause-state (util/safe-get ^post-clause :pre-clause) state) step-rew]))))) 
+	  [(matching-clause-state (util/safe-get ^post-clause :pre-clause) state) step-rew pre-clause]))))) 
 
 ; You could try to extract the best state going backwards. 
  ; But, you may have a better (i.e., worse) bound than you thought (when there are cost-params).
