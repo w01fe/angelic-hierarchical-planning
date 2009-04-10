@@ -3,22 +3,18 @@
 
   Auto-merging above and beyond what's given.  (based on same opt-sets &
 set of plans to go.  Store with each node, minimal rep. of plan-to-go??)
-  ; subsumed by above proposal -- maybe ?
 
   ALGs should have some mode for finding suboptimal plans.
  - Is there a simple Weighted A*/AHSS-like algorithm for ALGs, and what does it look like? Specifically, it seems like extracting optimistic state sequences may be the wrong thing to do here (instead, bias things to include more pessimistic states in the sequences?).
  TODO: a way to implement extract-a-solution (or refine potentially suboptimal things...)
 
-  Split-set for ALG
-
-  If we make things look worse in early part of the graph, we have to
+ If we make things look worse in early part of the graph, we have to
 touch *everything* to fix it.  Partial way around this by keeping
 track of "delta"?
 
 
 ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;; Minor
 
- - Enforce consistency, add assertions back to sbp
 
  - Cache best child
 
@@ -29,14 +25,8 @@ track of "delta"?
  - At the other end, cache the max-gap for the current state sequence going forward from the root.  If, during a backwards pass, you hit the cached state sequence and the current max-gap is > the cached one, stop going backwards and refine right away.
 
  - Eliminating bad plans from ALG sections
-    - Bad suffixes with splitting
-    - Dead plan sections (-Inf opt or no refinements)
-   - Dominated sections ??
+    - Dominated sections ??
     - Ancestor-dominated sections ? ?
-TODO TODO: kill off dead-end fragments.  Just don't return them.
-  (better than making next-map have weak val refs).
-
-
 
 
 ;;;;;;;;;;;;;;;; Think About
@@ -50,8 +40,9 @@ hierarchical preconditions -> bhaskara  (lots more spurious states).
 - What's the relationship, if any, between optimal ALG search and
   algorithms like AO*?  
 
-  If we keep hierarchical structure, we can sometimes save by
-  using the higher-level descriptions that are removed right now.
+ - Enforce consistency, add assertions back to sbp - difficult for
+   non-simple valuations.
+   - Option is to keep hierarchical structure, re-progress ... ?
 
 
 ;;;;;;;;;;;;;;;; General TODO

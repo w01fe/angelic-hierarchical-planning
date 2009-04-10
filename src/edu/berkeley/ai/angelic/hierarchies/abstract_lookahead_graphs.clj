@@ -11,49 +11,19 @@
 
 ; We extract state sequenes going backwards since we need to make consistent choices at or-nodes (merges)
 
-; Should cache by default.
-
 ; Like ALT, you should not throw out plans or bad things may happen.
-
-; Nodes have ref to successors, ref to pred / set of preds.  
-; Need backwards connections for searching (main), 
-; forwards connections can be cache as before.
-; Previous needs to be a reference type
-
-; At some point, collapse Merge-nodes?  Theres a tradeoff...
-
-; To avoid creating duplicate plans, should follow OR-nodes when checking for duplicates,
-; don't follow when creating.  
-
-; Don't create OR-nodes for single-refinement.
-
-; To simplify things, action nodes either have map of action children (if any), or single merge child
-; Merge must have action children (if any or final).
 
 ;;; Abstract lookahead graphs, Search/Nodes, and internal nodes.
 ; nil is key for merge.
 
 ;; TODO: a way to implement extract-a-solution (or refine potentially suboptimal things...)
 
-; TODO TODO: kill off dead-end fragments.  Just don't return them.
- ; (better than making next-map have weak val refs).
-
-;; TODO: graph minimization somehow? (current method may end up with duplicates, i.e. 
-  ; ae, be, ad, cd.
-
-; TODO: enforce consistency, and add assertions back to backwards-pass.
-
 ; TODO: cache best predecessor.
 
 ;; Note duplicate elimination may look like it's not working, but it's preserving preconds.
 
-; TODO: Can't actually maintain no-forking invariant in general ??
-
 ; TODO: Incremental HLA refinement?
 
-; TODO: if we keep hierarchical structure, we can sometimes save by using the higher-level descriptions that are removed right now.
-
-; What's the problem with forking?
 
 ; Take parameters 
   ; type of graph to build
@@ -254,7 +224,7 @@
   (throw (UnsupportedOperationException.)))
 
 
-(defmethod compute-alg-optimistic-valuation ::ALGActionNode [node]
+(defmethod compute-alg-optimistic-valuation ::ALGActionNode opt-action [node]
   (let [previous (util/sref-get (:previous node))]
     (if (nil? previous)
         *pessimal-valuation*
@@ -263,7 +233,7 @@
 			   (hla-hierarchical-preconditions (:hla node)))
        (hla-optimistic-description (:hla node))))))
 
-(defmethod compute-alg-pessimistic-valuation ::ALGActionNode [node]
+(defmethod compute-alg-pessimistic-valuation ::ALGActionNode pess-action [node]
   (let [previous (util/sref-get (:previous node))]
     (if (nil? previous)
         *pessimal-valuation*
@@ -273,7 +243,7 @@
        (hla-pessimistic-description (:hla node))))))
 
 
-(defmethod compute-alg-optimistic-valuation ::ALGMergeNode [node]
+(defmethod compute-alg-optimistic-valuation ::ALGMergeNode opt-merge [node]
   (let [previous-set (util/sref-get (:previous-set node))
 	pruned-set   (reduce (fn [s e] (if (empty-valuation? (alg-optimistic-valuation e)) (disj s e) s))
 			     previous-set previous-set)]
@@ -281,16 +251,16 @@
     (if (empty? pruned-set) *pessimal-valuation*
       (reduce union-valuations (map alg-optimistic-valuation pruned-set)))))
 
-(defmethod compute-alg-pessimistic-valuation ::ALGMergeNode [node]
+(defmethod compute-alg-pessimistic-valuation ::ALGMergeNode pess-merge [node]
   (let [previous-set (util/sref-get (:previous-set node))]
     (if (empty? previous-set) *pessimal-valuation*
       (reduce union-valuations (map alg-pessimistic-valuation previous-set)))))
 
 
-(defmethod compute-alg-optimistic-valuation ::ALGFinalNode [node]
+(defmethod compute-alg-optimistic-valuation ::ALGFinalNode opt-final [node]
   (restrict-valuation (alg-optimistic-valuation (:plan node)) (:goal (:alg node))))
 
-(defmethod compute-alg-pessimistic-valuation ::ALGFinalNode [node]
+(defmethod compute-alg-pessimistic-valuation ::ALGFinalNode pess-final [node]
   (restrict-valuation (alg-pessimistic-valuation (:plan node)) (:goal (:alg node))))
 
  
@@ -325,14 +295,14 @@
    nil (indicating that no plan exists to next-state that achieves reward (>)= reward"
   (fn [node next-state reward max-gap max-gap-node alg] (:class node)))
 
-(defmethod simple-backwards-pass ::ALGRootNode [node next-state reward max-gap max-gap-node alg]
+(defmethod simple-backwards-pass ::ALGRootNode sbp-root [node next-state reward max-gap max-gap-node alg]
 ;  (println "SBP Root" (alg-node-name node) next-state reward max-gap)
   (util/assert-is (or (Double/isNaN reward) (= reward 0)))
 ;  (when (or (Double/isNaN reward) (>= reward 0))
     (util/assert-is (= (valuation-state-reward (alg-optimistic-valuation node) next-state) 0))
     (or max-gap-node []))
 
-(defmethod simple-backwards-pass ::ALGActionNode [node next-state reward max-gap max-gap-node alg]
+(defmethod simple-backwards-pass ::ALGActionNode sbp-action [node next-state reward max-gap max-gap-node alg]
   (util/timeout)
   (let [val-reward (valuation-state-reward (alg-optimistic-valuation node) next-state)]
 ;  (println "SBP Action" (alg-node-name node) next-state reward val-reward max-gap (:class (alg-optimistic-valuation node)) (:class (alg-optimistic-valuation (util/sref-get (:previous node)))))
@@ -371,7 +341,7 @@
 		      (recur node next-state reward max-gap max-gap-node alg)))))))))
     
 ;(def *ov* )
-(defmethod simple-backwards-pass ::ALGMergeNode [node next-state reward max-gap max-gap-node alg]
+(defmethod simple-backwards-pass ::ALGMergeNode sbp-merge [node next-state reward max-gap max-gap-node alg]
   (let [val-reward (valuation-state-reward (alg-optimistic-valuation node) next-state)]
 ;    (println "SBP Merge" (alg-node-name node) next-state reward val-reward max-gap)
 ;    (def *ov* (alg-optimistic-valuation node))

@@ -412,16 +412,16 @@ improve efficiency of regression."
 (defmethod union-valuations [::UnionValuation ::UnionValuation] [v1 v2]
   {:class ::UnionValuation :components (concat (:components v2) (:components v1))})
 
-(defmethod valuation-state-reward ::UnionValuation [v state]
+(defmethod valuation-state-reward ::UnionValuation valuation-state-reward-union [v state]
   (reduce max (map #(valuation-state-reward % state) (:components v))))
 
-(defmethod valuation-max-reward ::UnionValuation [v]
+(defmethod valuation-max-reward ::UnionValuation valuation-max-reward-union [v]
   (reduce max (map valuation-max-reward (:components v))))
 
-(defmethod valuation-max-reward-state ::UnionValuation [v]
+(defmethod valuation-max-reward-state ::UnionValuation valuation-max-reward-state-union [v]
   (util/first-maximal-element second (map valuation-max-reward-state (:components v))))
 
-(defmethod restrict-valuation [::UnionValuation :edu.berkeley.ai.envs/Condition] [v c]
+(defmethod restrict-valuation [::UnionValuation :edu.berkeley.ai.envs/Condition] restrict-valuation-union [v c]
   (let [comps (remove #(identical? % *pessimal-valuation*) 
 		      (map #(restrict-valuation % c) (:components v)))]
     (cond (empty? comps) *pessimal-valuation*

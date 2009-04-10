@@ -54,7 +54,7 @@
       (map #(vector % bound) (clause-instantiations clause)))))
 
 
-(defmethod restrict-valuation       [::DNFValuation :edu.berkeley.ai.envs/ConjunctiveCondition] [val con]
+(defmethod restrict-valuation       [::DNFValuation :edu.berkeley.ai.envs/ConjunctiveCondition] restrict-valuation-dnf [val con]
   (make-dnf-valuation (:class val)
     (util/merge-best > {}
       (for [[clause bound] (:clause-map val)
@@ -63,18 +63,18 @@
 	[restricted bound]))))
 
 
-(defmethod union-valuations         [::DNFValuation ::DNFValuation] [val1 val2]
+(defmethod union-valuations         [::DNFValuation ::DNFValuation] union-valuations-dnf [val1 val2]
   (util/assert-is (= (:class val1) (:class val2)))
   (make-dnf-valuation (:class val1) (util/merge-best > (:clause-map val1) (:clause-map val2))))
 
 (defmethod empty-valuation?         ::DNFValuation [v] 
   false)
 
-(defmethod valuation-max-reward-state ::DNFValuation [v]
+(defmethod valuation-max-reward-state ::DNFValuation valuation-max-reward-state-dnf [v]
   (let [[clause rew] (util/first-maximal-element val (:clause-map v))]
     [(minimal-clause-state clause) rew]))
 
-(defmethod valuation-max-reward ::DNFValuation [val] 
+(defmethod valuation-max-reward ::DNFValuation valuation-max-reward-dnf [val] 
   (apply max (vals (:clause-map val))))
 
 
@@ -100,7 +100,7 @@
 	      (recur (next atoms) reduced-clause sub-map)))))))
 
 
-(defmethod get-valuation-states     ::DNFValuation [v subsumption-map]
+(defmethod get-valuation-states     ::DNFValuation get-valuation-states-dnf [v subsumption-map]
   (let [subsumption-preds (util/keyset subsumption-map)
 	ordered-pairs     (sort-by #(hash (key %)) (:clause-map v))
 	subs-pairs        (map #(extract-clause-subsumption-preds (key %) subsumption-preds) ordered-pairs)]
@@ -109,7 +109,7 @@
       
 
 ;; TODO: slow slow slow?
-(defmethod valuation-subsumes?     [::DNFValuationSI ::DNFValuationSI] [val1 val2 subsumption-map]
+(defmethod valuation-subsumes?     [::DNFValuationSI ::DNFValuationSI] valuation-subsumes?-dnf [val1 val2 subsumption-map]
   (and (every? identity (map >= (:rews val1) (:rews val2)))
        (every? identity 
 	      (map (fn [sub1 sub2]
@@ -118,7 +118,7 @@
 			     subsumption-map))
 		   (:sub-maps val1) (:sub-maps val2)))))
 
-(defmethod valuation-equals?     [::DNFValuationSI ::DNFValuationSI] [val1 val2 subsumption-map]
+(defmethod valuation-equals?     [::DNFValuationSI ::DNFValuationSI] valuation-equals?-dnf [val1 val2 subsumption-map]
   (and (= (:rews val1) (:rews val2))
        (every? identity 
 	      (map (fn [sub1 sub2]
@@ -131,13 +131,13 @@
 
 
 
-(defmethod valuation->pred-maps ::DNFValuation [val]
+(defmethod valuation->pred-maps ::DNFValuation valuation->pred-maps-dnf [val]
   (map clause->pred-maps (keys (:clause-map val))))
 
 
 
 
-(defmethod valuation-state-reward ::DNFValuation [v state]
+(defmethod valuation-state-reward ::DNFValuation valuation-state-reward-dnf [v state]
   (let [ordered-clauses (reverse (sort-by val (:clause-map v)))
         good-clauses (filter #(clause-includes-state? (key %) state) ordered-clauses)]
     (if (empty? good-clauses) 
@@ -145,7 +145,7 @@
       (val (first good-clauses)))))
 
 
-(defmethod progress-valuation [::DNFValuation :edu.berkeley.ai.angelic/PropositionalDescription] [v desc]
+(defmethod progress-valuation [::DNFValuation :edu.berkeley.ai.angelic/PropositionalDescription] progress-valuation-dnf [v desc]
 ;  (println (:clause-map v) (:class desc) (progress-clause (ffirst (:clause-map v)) desc))
   (make-dnf-valuation (:class v)
     (util/merge-best > {}
@@ -157,7 +157,7 @@
 
 ;; TODO: make more efficient?
 (defmethod regress-state [::DNFValuation :edu.berkeley.ai.angelic/PropositionalDescription :edu.berkeley.ai.angelic/Valuation] 
-  [state pre-val desc post-val]
+  regress-state-dnf [state pre-val desc post-val]
   (let [candidate-pairs
 	  (for [[clause rew]             (:clause-map pre-val),
 		[result-clause step-rew] (progress-clause clause desc)

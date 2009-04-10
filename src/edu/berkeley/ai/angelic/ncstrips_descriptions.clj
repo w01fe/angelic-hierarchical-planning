@@ -347,14 +347,14 @@
 	   [(with-meta (into after-eff (map #(vector % :unknown) unks)) {:pre-clause after-pre})
 	    (- ((util/safe-get effect :cost-fn) pred-maps max))]))))))
 
-(defmethod progress-clause ::NCStripsDescription [clause desc]
+(defmethod progress-clause ::NCStripsDescription progress-clause-ncstrips [clause desc]
   (util/merge-best > {}
     (for [effect (:effects desc)
 	  :let   [result (progress-effect-clause effect clause)]
 	  :when result]
 	result)))
      
-(defmethod regress-clause-state ::NCStripsDescription [state pre-clause desc post-clause-pair]
+(defmethod regress-clause-state ::NCStripsDescription regress-clause-state-ncstrips [state pre-clause desc post-clause-pair]
   (if-let [[post-clause step-rew] post-clause-pair]
       [(minimal-clause-state (util/safe-get ^post-clause :pre-clause)) step-rew]
     (let [candidate-pairs 
