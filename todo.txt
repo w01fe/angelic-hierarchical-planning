@@ -12,6 +12,9 @@ plan-to-go??)
     - Full forward-minimization is now possible.  Just merge next-maps
 
 
+- When we auto-merge, how do we deal with duplicate plans?
+  - Even if none, may arise when we start refining ...
+
   ALGs should have some mode for finding suboptimal plans.
  - Is there a simple Weighted A*/AHSS-like algorithm for ALGs, and what does it look like? Specifically, it seems like extracting optimistic state sequences may be the wrong thing to do here (instead, bias things to include more pessimistic states in the sequences?).
  TODO: a way to implement extract-a-solution (or refine potentially suboptimal things...)
