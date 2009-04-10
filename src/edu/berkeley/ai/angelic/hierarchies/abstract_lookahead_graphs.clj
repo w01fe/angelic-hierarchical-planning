@@ -33,9 +33,10 @@
 ; When you split, you have to be careful, or you could find suboptimal solutions ...
  ; solution; generate new search node every time you increase the cost bound.
 
-(defstruct abstract-lookahead-graph :class :env :goal :split-set)
-(defn- make-alg [env split-set]
-  (struct abstract-lookahead-graph ::AbstractLookaheadGraph env (envs/get-goal env) split-set))
+
+(defstruct abstract-lookahead-graph :class :env :goal :split-set :refine-gap? :minimize? :auto-merge?)
+(defn- make-alg [env split-set refine-gap? minimize? auto-merge?]
+  (struct abstract-lookahead-graph ::AbstractLookaheadGraph env (envs/get-goal env) split-set refine-gap? minimize? auto-merge?))
 
 
 
@@ -169,13 +170,36 @@
   [(util/sref-get (:previous node)) (util/sref-get (:next-map node))])
 
 
-(defn- splice-nexts [new-node next-map]
-;  (println "SN" (:class new-node))
+(defn- splice-nexts [new-node next-map minimize?]
 ;  (println "SN" (:class new-node) (count (alg-node-parents new-node)) (count (alg-node-children new-node)))
-  (do (util/sref-set! (:next-map new-node) next-map)
-      (doseq [nxt (get-children new-node)]
-	(add-previous! nxt new-node))
-      new-node))
+  (condp = minimize?
+         false
+	   (do (util/assert-is (empty? (util/sref-get (:next-map new-node))))
+	       (util/sref-set! (:next-map new-node) next-map)
+	       (doseq [child (get-children new-node)]
+		 (add-previous! child new-node)))
+	 :forward
+	   (doseq [child-wrs  (vals next-map)
+		   child      (util/weak-ref-seq child-wrs)]
+	     (add-child! new-node child)
+	     (add-previous! child new-node))
+	 :full
+	   (doseq [[k child-wrs] next-map]
+	     (let [new-children (util/weak-ref-seq child-wrs)
+		   old-children (get-children new-node k)]
+	       (util/assert-is (<= (count old-children) 1))
+	       (util/assert-is (<= (count new-children) 1))
+	       (if (empty? old-children)
+		   (doseq [new-child new-children]
+		     (add-child! new-node new-child)
+		     (add-previous! new-child new-node))
+		 (when (not (empty? new-children)) (println "Splice")
+		   (doseq [new-child new-children]
+		     (doseq [nxt (get-children new-child)]
+		       (remove-previous! nxt new-child))
+		     (splice-nexts (first old-children) (util/sref-get (:next-map new-child)) minimize?)))))))
+  new-node)
+
 
 (comment ; old version, merged everything - slows things down.
 (defn- splice-nexts [new-node next-map]
@@ -199,8 +223,16 @@
 
 ; Ensure each plan has a new final node, at least - makes other things easier, hurts graphiness
 ; TODO: figure out how to improve? 
-(defn- make-action-node-seq [prev-node actions]
+(defn- make-action-node-seq [prev-node actions minimize?]
 ;  (println (map hla-name actions))
+  (if (empty? actions) 
+      prev-node
+    (recur (or (and minimize? (first (get-children prev-node (first actions)))) ;; TODO: wrong with multiple children?
+	       (make-alg-action-node (first actions) prev-node))
+	   (next actions)
+	   minimize?)))
+
+(comment
   (util/assert-is (not (empty? actions)))
   (if-let [singleton (util/singleton actions)]
       (make-alg-action-node singleton prev-node)
@@ -316,8 +348,24 @@
 				    (alg-optimistic-valuation node) next-clause)
 	      [:dummy Double/NEGATIVE_INFINITY Double/NEGATIVE_INFINITY])]
       (if (>= (+ pre-reward step-reward) reward)
-	  (let [rec (simple-backwards-pass prev-node prev-state prev-clause pre-reward 0 
-					   (if (hla-primitive? (:hla node)) max-gap-node node) alg)]
+	  (let [refine-gap? (util/safe-get alg :refine-gap?)
+		[next-gap next-gap-node] 
+                  (if refine-gap?
+		      (let [[_ pess-step-reward] 
+			      (or (regress-clause-state
+				   next-state
+				   (state->clause prev-state)
+				   (hla-pessimistic-description (:hla node))
+				   nil)
+				  [prev-state Double/NEGATIVE_INFINITY])
+			    gap (- step-reward pess-step-reward)]
+			(if (and (>= gap max-gap) (not (hla-primitive? (:hla node))))
+			    [gap node]
+			  [max-gap max-gap-node]))
+		    (if (not (hla-primitive? (:hla node))) 
+		        [0 node]
+		      [0 max-gap-node]))
+		rec (simple-backwards-pass prev-node prev-state prev-clause pre-reward next-gap next-gap-node alg)]
 	    (cond (isa? (:class rec) ::ALGInternalNode) 
 		    rec
 		  rec   
@@ -327,44 +375,7 @@
 	(invalidate-valuations node)))))
 
 
-(comment
-
-  (let [val-reward (valuation-state-reward (alg-optimistic-valuation node) next-state)]
-;  (println "SBP Action" (alg-node-name node) next-state reward val-reward max-gap (:class (alg-optimistic-valuation node)) (:class (alg-optimistic-valuation (util/sref-get (:previous node)))))
-;    (util/assert-is (<= val-reward reward))
-    (when (> val-reward reward)
-      (util/print-debug 3 "Warning: inconsistency at " (alg-node-name node) val-reward reward))
-    (when (>= val-reward reward)
-      (let [prev-node (util/sref-get (:previous node))
-	    regress-pair (regress-state    next-state
-					   (alg-optimistic-valuation prev-node)
-					   (hla-optimistic-description (:hla node))
-					   (alg-optimistic-valuation node))]
-;	(println "Regress to " regress-pair)
-	(if (nil? regress-pair) 
-	    (do (invalidate-valuations node) nil)
-	  (let [[prev-state opt-step-reward] regress-pair
-		[prev-s2   pess-step-reward] (or [prev-state opt-step-reward]) ;; TODO: put back
-					     ; (regress-clause-state 
-					     ;  next-state
-					     ;  (state->clause prev-state)
-					     ;  (hla-pessimistic-description (:hla node))
-					     ;  nil)
-					     ; [prev-state Double/NEGATIVE_INFINITY])
-		prev-reward (- (max val-reward reward) opt-step-reward)
-		gap         (- opt-step-reward pess-step-reward)
-		[prev-gap prev-gap-node] (if (and (>= gap max-gap) (not (hla-primitive? (:hla node))))
-					   [gap node]
-					   [max-gap max-gap-node])
-		rec (simple-backwards-pass prev-node prev-state nil prev-reward prev-gap prev-gap-node alg)]
-	    ;(util/assert-is (= prev-s2 prev-state))
-	;	(println "SBP gap " (alg-node-name node) gap (class rec))
-	    (cond (isa? (:class rec) ::ALGInternalNode) rec
-	    rec                                  (conj rec (:hla node))
-	    :else (do (invalidate-valuations node)
-		      (recur node next-state next-clause reward max-gap max-gap-node alg)))))))))
-    
-;(def *ov* )
+   
 (defmethod simple-backwards-pass ::ALGMergeNode sbp-merge [node next-state next-clause reward max-gap max-gap-node alg]
 ;  (println "SBP-merge")
  ; (when next-clause (util/assert-is (clause-includes-state? next-clause next-state)))
@@ -395,23 +406,6 @@
 	(invalidate-valuations node)))))
 		      
      
-(comment	
-
-  (let [val-reward (valuation-state-reward (alg-optimistic-valuation node) next-state)]
-;    (println "SBP Merge" (alg-node-name node) next-state reward val-reward max-gap)
-;    (def *ov* (alg-optimistic-valuation node))
-;    (util/assert-is (<= val-reward reward))
-    (when (> val-reward reward)
-      (util/print-debug 3 "Warning: inconsistency at " (alg-node-name node) val-reward reward))
-    (when (>= val-reward reward)
-      (or (when-first [prev-node
-		       (filter #(>= (valuation-state-reward (alg-optimistic-valuation %) next-state) reward)
-			       (util/sref-get (:previous-set node)))]
-	    (simple-backwards-pass prev-node next-state nil reward max-gap max-gap-node alg))
-	  (do (invalidate-valuations node)
-	      (recur node next-state next-clause reward max-gap max-gap-node alg)))))
-  )
-
 (defn get-max-reward-state-and-clause [v]
   (if (isa? (:class v) :edu.berkeley.ai.angelic/PropositionalValuation)
       (when-let [[clause rew] (valuation-max-reward-clause v)]
@@ -436,23 +430,31 @@
 ;;; Constructing initial ALG nodes
 
 (defn make-initial-alg-node  
+  "Make an initial ALG node.  
+     split-set is a set of HLA names to split on (rather than merge, the default).
+     refine-gap? controls whether the opt-pess gap is used to pick what to refine, or if the first HLA is refined.
+     minimize? causes the ALG to attempt to share prefixes as much as possible, or not at all.
+     auto-merge? causes the graph to merge nodes which have, or have ever had, the same optimistic sets."
   ([initial-node]
-     (make-initial-alg-node initial-node #{}))
-  ([initial-node split-set]
+     (make-initial-alg-node initial-node #{} false true true))
+  ([initial-node split-set refine-gap? minimize? auto-merge?]
      (make-initial-alg-node 
       (hla-default-optimistic-valuation-type initial-node) 
       (hla-default-pessimistic-valuation-type initial-node)
-      initial-node split-set))
-  ([opt-valuation-class pess-valuation-class initial-node split-set]
+      initial-node split-set  refine-gap? minimize? auto-merge?))
+  ([opt-valuation-class pess-valuation-class initial-node split-set refine-gap? minimize? auto-merge?]
+     (util/assert-is (contains? '#{true false :careless} auto-merge?))
+     (util/assert-is (contains? '#{false :forward :full} minimize?))
      (let [initial-plan (list initial-node) 
 	   env (hla-environment (first initial-plan)), 
-	   alg (make-alg env split-set)]
+	   alg (make-alg env split-set refine-gap? minimize? auto-merge?)]
        (make-alg-final-node alg
          (make-action-node-seq 
 	  (make-alg-root-node 
 	   (state->valuation opt-valuation-class (envs/get-initial-state env))
 	   (state->valuation pess-valuation-class (envs/get-initial-state env)))
-	  initial-plan)))))
+	  initial-plan
+	  false)))))
 
 (defn alg-node [& args] (apply make-initial-alg-node args))
 
@@ -482,30 +484,32 @@
 (defmethod search/immediate-refinements ::ALGFinalNode [node] 
   (util/timeout)
 ;  (println "IR " (System/identityHashCode node))
-  (let [bp (drive-simple-backwards-pass node)]
+  (let [bp (drive-simple-backwards-pass node)
+	alg (:alg node)]
     (util/assert-is (identity bp))
     (cond (= bp :fail)
  	    (when (> (valuation-max-reward (alg-optimistic-valuation node)) Double/NEGATIVE_INFINITY)
-	      [(make-alg-final-node (:alg node) (:plan node))])
+	      [(make-alg-final-node alg (:plan node))])
 	  (not (isa? (:class bp) ::ALGActionNode))
 	    (do (println "Warning: trying to refine optimal node")
 		nil)
 	  :else 
-	    (let [hla    (:hla bp)
+	    (let [minimize? (util/safe-get alg :minimize?)
+		  hla    (:hla bp)
 		  split? (contains? (util/safe-get-in node [:alg :split-set]) (first (hla-name hla)))
 		  final? (empty? (get-children bp))
 		  refs   (hla-immediate-refinements (:hla bp) (alg-optimistic-valuation (util/sref-get (:previous bp))))
 		  [pre-node post-next-map] (cut-action-node bp)
-		  final-nodes (doall (map #(make-action-node-seq pre-node %) refs))]
+		  final-nodes (doall (map #(make-action-node-seq pre-node % minimize?) refs))]
 	      (when split? (util/assert-is (identity final?)))
 	      (util/print-debug 3 "Refining at " (alg-node-name bp) ";\nGot refinements " (for [r refs] (map hla-name r)))
 	      (util/sref-up! search/*ref-counter* inc)
 	      (if split? 
-		  (map #(make-alg-final-node (:alg node) %) final-nodes)
+		  (map #(make-alg-final-node alg %) final-nodes)
 		(when (not (and final? (empty? final-nodes)))
 		  (let [spliced (splice-nexts (or (util/singleton final-nodes) (make-alg-merge-node final-nodes)) 
-					      post-next-map)]
-		    [(make-alg-final-node (:alg node) (if final? spliced (:plan node)))])))))))
+					      post-next-map minimize?)]
+		    [(make-alg-final-node alg (if final? spliced (:plan node)))])))))))
 
 
 (defmethod search/primitive-refinement ::ALGFinalNode [node]

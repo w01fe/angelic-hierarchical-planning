@@ -1,10 +1,16 @@
 ;;;;;;;;;;;;;;;; Implement
 
 
-Remove check from matching-clause-state
-
   Auto-merging above and beyond what's given.  (based on same opt-sets &
-set of plans to go.  Store with each node, minimal rep. of plan-to-go??)
+set of plans to go.  Store with each node, minimal rep. of
+plan-to-go??)
+ - How do we find this?  In WW and NS, "Strips-top-level" is always
+ fair?  sort-of  
+ - Option to turn off suffixes.
+ - Try for more structure sharing
+   - Merge remaining plans when we merge.  (?)  
+    - Full forward-minimization is now possible.  Just merge next-maps
+
 
   ALGs should have some mode for finding suboptimal plans.
  - Is there a simple Weighted A*/AHSS-like algorithm for ALGs, and what does it look like? Specifically, it seems like extracting optimistic state sequences may be the wrong thing to do here (instead, bias things to include more pessimistic states in the sequences?).
