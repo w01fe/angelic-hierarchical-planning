@@ -298,6 +298,7 @@
 
 ; Weak reference sequence -- eventually, do in Java? 
 
+(comment ; Just use WeakHashMap, .put x true, keys.
 (import '[java.lang.ref WeakReference] '[java.util ArrayList])
 
 (defn make-weak-ref-seq 
@@ -309,5 +310,5 @@
 
 (defn weak-ref-seq [#^ArrayList s]
   (filter identity (map #(.get #^WeakReference %) (seq s))))
-
+ )
 

@@ -1,5 +1,5 @@
 (ns edu.berkeley.ai.angelic.hierarchies.abstract-lookahead-graphs
-  (:import [java.util HashMap HashSet])
+  (:import [java.util HashMap WeakHashMap])
   (:use edu.berkeley.ai.angelic edu.berkeley.ai.angelic.hierarchies)
   (:require [edu.berkeley.ai [util :as util] [envs :as envs] [search :as search]]
 	    [edu.berkeley.ai.util.graphviz :as graphviz]))
@@ -29,6 +29,24 @@
    ; as long as we keep the *best* plans, we're OK, but we have to be careful about 
     ; when we refine. etc, etc.  
 
+; TODO: designated 
+
+; Cycles cannot be eliminated based solely on optimistic descriptions.  Only pessimistic.  Can only merge into DAG.  
+
+; TODO: figure out how to detect cycles
+; TODO: figure out how to handle subsumption.
+; TODO: do something about multiple merge chains ? 
+
+; Handling subsumption:
+  ; Each node has a pointer to it's auto-merge node, or nil if none.
+  ; Auto-merge keeps a set of nodes it includes. (?)
+  ; When we have a hit, if it is or points to an auto-merge, we just check for cycles and join.
+  ; If it's not, we check for cycles, then create an auto-merge, then join.
+
+; Ideally, also keep track of subsumption relationships we find.  Subsumption may be screwed up by auto-merge, however.  
+
+; Without, just keep track of best pessimistic sub-info.  If we're subsumed, we quit.
+
 (defstruct abstract-lookahead-graph :class :env :goal :split-set :refine-gap? :minimize? :auto-merge?)
 (defn- make-alg [env split-set refine-gap? minimize? auto-merge?]
   (with-meta 
@@ -49,7 +67,7 @@
 
 (derive ::ALGActionNode ::ALGInternalNode)
 (defstruct alg-action-node :class :hla :rest-hlas :previous :next-map)
-; next-map is a map from hlas to (mutable) weak-ref-seq objects.
+; next-map is a map from hlas to WeakHashMap (used as set of next nodes)..
 
 (defn make-alg-action-node [hla rest-hlas previous-node] 
   (add-child! previous-node
@@ -68,10 +86,10 @@
     (util/sref-set! (:pessimistic-valuation ^n) pess-val) 
     n))
 
-
-(defn make-alg-merge-node [previous-set rest-hlas]
+(derive ::ALGAutoMergeNode ::ALGMergeNode)
+(defn make-alg-merge-node [class previous-set rest-hlas]
   (let [n (add-valuation-metadata
-	   (struct alg-merge-node ::ALGMergeNode rest-hlas (util/sref (util/to-set previous-set)) (util/sref {})))]
+	   (struct alg-merge-node class rest-hlas (util/sref (util/to-set previous-set)) (util/sref {})))]
     (doseq [prev previous-set] (add-child! prev n))
     n))
 
@@ -101,6 +119,7 @@
 (defmethod alg-node-name ::ALGRootNode [node] "ROOT")
 (defmethod alg-node-name ::ALGActionNode [node] (hla-name (:hla node))) ;;(str (hla-name (:hla node)) "-" (System/identityHashCode node)))
 (defmethod alg-node-name ::ALGMergeNode [node]  "Merge");(str "Merge-" (System/identityHashCode node)))
+(defmethod alg-node-name ::ALGAutoMergeNode [node]  "AutoMerge");(str "Merge-" (System/identityHashCode node)))
 
 
 ; Helpers for working with and modifying graph structure
@@ -113,20 +132,29 @@
   ([node key]
      (let [next-map-ref (util/safe-get node :next-map)
 	   next-map     (util/sref-get next-map-ref)]
-       (when-let [wrs (get next-map key)]
-	 (util/weak-ref-seq wrs)))))
+       (when-let [#^WeakHashMap m (get next-map key)]
+	 (keys m)))))
+
+(defn- alg-node-key [node]
+  [(:hla node) (:rest-hlas node)])
 
 (defn- add-child! [node child]
   (let [next-map-ref (util/safe-get node :next-map)
 	next-map     (util/sref-get next-map-ref)
-	key          (:hla child)
+	key          (alg-node-key child)
 	old-wrs      (get next-map key)
-	wrs          (or old-wrs
-			 (let [wrs (util/make-weak-ref-seq)]
+	#^WeakHashMap wrs 
+	               (or old-wrs
+			 (let [wrs (WeakHashMap.)]
 			   (util/sref-set! next-map-ref (assoc next-map key wrs))
 			   wrs))]
-    (util/weak-ref-seq-add! wrs child)
+    (.put wrs child true)
     child))
+
+(defn- remove-child! [node child]
+  (let [#^WeakHashMap m (util/safe-get (util/sref-get (:next-map node)) (alg-node-key child))]
+    (assert (.containsKey m child))
+    (.remove m child)))
 
 
 (defmulti add-previous! (fn [node new-prev] (:class node)))
@@ -146,46 +174,55 @@
 
 (defmethod remove-previous! ::ALGActionNode [node old-prev]
   (let [prev-ref (:previous node)]
-    (util/assert-is (identical? (util/sref-get prev-ref) old-prev))
+    (assert (identical? (util/sref-get prev-ref) old-prev))
     (util/sref-set! prev-ref nil)))
 
 (defmethod remove-previous! ::ALGMergeNode [node old-prev]
   (let [prev-ref (:previous-set node)
 	prev-set (util/sref-get prev-ref)]
-    (util/assert-is (contains? prev-set old-prev))
+    (assert (contains? prev-set old-prev))
     (util/sref-set! prev-ref (disj prev-set old-prev))))
+
+(defn- connect! [node child]
+  (add-previous! child node)
+  (add-child! node child))
+
+(defn- disconnect! [node child]
+  (remove-previous! child node)
+  (remove-child! node child))
 
 
 (defn- cut-action-node [node]
   (util/assert-is (isa? (:class node) ::ALGActionNode))
   (doseq [nxt (get-children node)] 
     (remove-previous! nxt node))
-  [(util/sref-get (:previous node)) (util/sref-get (:next-map node))])
+  (let [ret [(util/sref-get (:previous node)) (util/sref-get (:next-map node))]]
+    (util/sref-set! (:next-map node) {})
+    (disconnect! (util/sref-get (:previous node)) node)
+    ret))
 
 
 (defn- splice-nexts [new-node next-map minimize?]
 ;  (println "SN" (:class new-node) (count (alg-node-parents new-node)) (count (alg-node-children new-node)))
   (condp = minimize?
          false
-	   (do (util/assert-is (empty? (util/sref-get (:next-map new-node))))
+	   (do (assert (empty? (util/sref-get (:next-map new-node))))
 	       (util/sref-set! (:next-map new-node) next-map)
 	       (doseq [child (get-children new-node)]
 		 (add-previous! child new-node)))
 	 :forward
-	   (doseq [child-wrs  (vals next-map)
-		   child      (util/weak-ref-seq child-wrs)]
-	     (add-child! new-node child)
-	     (add-previous! child new-node))
+	   (doseq [#^WeakHashMap child-wrs  (vals next-map)
+		   child                    (keys child-wrs)]
+	     (connect! new-node child))
 	 :full
-	   (doseq [[k child-wrs] next-map]
-	     (let [new-children (util/weak-ref-seq child-wrs)
+	   (doseq [[k #^WeakHashMap child-wrs] next-map]
+	     (let [new-children (keys child-wrs)
 		   old-children (get-children new-node k)]
 	       (util/assert-is (<= (count old-children) 1))
 	       (util/assert-is (<= (count new-children) 1))
 	       (if (empty? old-children)
 		   (doseq [new-child new-children]
-		     (add-child! new-node new-child)
-		     (add-previous! new-child new-node))
+		     (connect! new-node new-child))
 		 (when (not (empty? new-children)) (println "Splice")
 		   (doseq [new-child new-children]
 		     (doseq [nxt (get-children new-child)]
@@ -216,7 +253,7 @@
 
 ; Ensure each plan has a new final node, at least - makes other things easier, hurts graphiness
 ; TODO: figure out how to improve? 
-(defn- make-action-node-seq [prev-node actions rest-actions sloppy? minimize?]
+(defn- make-action-node-seq [prev-node actions rest-actions track-actions? minimize?]
 ;  (println (map hla-name actions))
   (if (empty? actions) 
       prev-node
@@ -224,9 +261,9 @@
 		    (when-let [n (first (get-children prev-node (first actions)))]
 		      ;(println "reuse") 
 		      n)) ;; TODO: wrong with multiple children?
-	       (make-alg-action-node (first actions) (if sloppy? nil (concat (next actions) rest-actions)) prev-node))
+	       (make-alg-action-node (first actions) (when track-actions? (concat (next actions) rest-actions)) prev-node))
 	   (next actions)
-	   rest-actions sloppy? minimize?)))
+	   rest-actions track-actions? minimize?)))
 
 (comment
   (util/assert-is (not (empty? actions)))
@@ -242,23 +279,23 @@
 ;;; Computing valuations, etc.
 
 (declare alg-optimistic-valuation alg-pessimistic-valuation)
-(defmulti compute-alg-optimistic-valuation (fn [alg node] (:class node)))
+(defmulti compute-alg-optimistic-valuation (fn [alg node post-set] (:class node)))
 (defmulti compute-alg-pessimistic-valuation (fn [alg node] (:class node)))
 
-(defmethod compute-alg-optimistic-valuation ::ALGRootNode [alg node]
+(defmethod compute-alg-optimistic-valuation ::ALGRootNode [alg node post-set]
   (throw (UnsupportedOperationException.)))
 
 (defmethod compute-alg-pessimistic-valuation ::ALGRootNode [alg node]
   (throw (UnsupportedOperationException.)))
 
 
-(defmethod compute-alg-optimistic-valuation ::ALGActionNode opt-action [alg node]
+(defmethod compute-alg-optimistic-valuation ::ALGActionNode opt-action [alg node post-set]
 ;  (println "Progress action " (hla-name (:hla node)))
   (let [previous (util/sref-get (:previous node))]
     (if (nil? previous)
         *pessimal-valuation*
       (progress-valuation 
-       (restrict-valuation (alg-optimistic-valuation alg previous)
+       (restrict-valuation (alg-optimistic-valuation alg previous post-set)
 			   (hla-hierarchical-preconditions (:hla node)))
        (hla-optimistic-description (:hla node))))))
 
@@ -272,16 +309,19 @@
        (hla-pessimistic-description (:hla node))))))
 
 
-(defmethod compute-alg-optimistic-valuation ::ALGMergeNode opt-merge [alg node]
+(defmethod compute-alg-optimistic-valuation ::ALGMergeNode opt-merge [alg node post-set]
 ;  (println "Progress merge ")
   (let [previous-set (util/sref-get (:previous-set node))
-	pruned-set   (reduce (fn [s e] (if (empty-valuation? (alg-optimistic-valuation alg e)) (disj s e) s))
-			     previous-set previous-set)]
-    (util/sref-set! (:previous-set node) pruned-set)
-    (if (empty? pruned-set) *pessimal-valuation*
-      (reduce union-valuations 
-	      (for [n pruned-set]
-		(add-clause-metadata (alg-optimistic-valuation alg n) {:source-node n}))))))
+	vals (for [e previous-set
+		   :let [val (alg-optimistic-valuation alg e post-set)]
+		   :when (if (empty-valuation? val)
+			     (do (disconnect! e node) nil)
+			   true)]
+	       (add-clause-metadata val {:source-node e}))]
+    (if (empty? vals) *pessimal-valuation*
+      (reduce union-valuations vals))))
+;	      (for [n pruned-set]
+;		(add-clause-metadata (alg-optimistic-valuation alg n post-set) {:source-node n}))))))
 	      ;(map alg-optimistic-valuation pruned-set)))))
 
 (defmethod compute-alg-pessimistic-valuation ::ALGMergeNode pess-merge [alg node]
@@ -290,37 +330,76 @@
       (reduce union-valuations (map #(alg-pessimistic-valuation alg %) previous-set)))))
 
 
-(defmethod compute-alg-optimistic-valuation ::ALGFinalNode opt-final [alg node]
-  (restrict-valuation (alg-optimistic-valuation alg (:plan node)) (:goal (:alg node))))
+(defmethod compute-alg-optimistic-valuation ::ALGFinalNode opt-final [alg node post-set]
+  (restrict-valuation (alg-optimistic-valuation alg (:plan node) post-set) (:goal (:alg node))))
 
 (defmethod compute-alg-pessimistic-valuation ::ALGFinalNode pess-final [alg node]
   (restrict-valuation (alg-pessimistic-valuation alg (:plan node)) (:goal (:alg node))))
 
-
+(declare invalidate-valuations)
 (defn handle-graph [alg node]
   (let [#^HashMap graph-map (util/safe-get ^alg :graph-map)
 	opt-val             (util/sref-get (:optimistic-valuation ^node))
 	[opt-states _]      (get-valuation-states opt-val {})
 	rest-hlas           (util/safe-get node :rest-hlas)
 	key-pair            [opt-states rest-hlas]]
-    (if-let [#^HashSet s (.get graph-map key-pair)]
-        (when (not (.contains s node))
-	  (print ".")
-	  (.add s node))
-      (.put graph-map key-pair (HashSet. #{node})))))
+    (if-let [[#^WeakHashMap s m-ref] (.get graph-map key-pair)]
+        (when (not (.containsKey s node))
+	  (println "\n\nMerge\n\n" (:class node) (when (:hla node) (hla-name (:hla node))) (map hla-name (:rest-hlas node)) (if (util/sref-get m-ref) "merged" "new") (count s) (map :class (keys s)))
+	  (if (and (nil? (util/sref-get m-ref))
+		   (isa? (:class (first (keys s))) ::ALGActionNode)
+		   (= nil (util/sref-get (:previous (first (keys s))))))
+	    (do (println "dead node")
+		(.clear s)
+		(.put s node true))
+	    (do
+	  (when (nil? (util/sref-get m-ref))
+	    (util/assert-is (= (.size s) 1))
+	    (let [other-node (first (keys s))
+		  other-next-ref (:next-map other-node)
+		  other-next-map (util/sref-get other-next-ref)]
+	      (doseq [nxt (get-children other-node)] 
+		(remove-previous! nxt other-node))
+	      (util/sref-set! other-next-ref {})
+	      (let [new-merge (make-alg-merge-node ::ALGAutoMergeNode [other-node] rest-hlas)]
+		(util/sref-set! (:next-map new-merge) other-next-map)
+		(doseq [nxt (get-children new-merge)] 
+		  (add-previous! nxt new-merge))
+		(.put s new-merge true)
+		(util/sref-set! m-ref new-merge))))
+	  (.put s node true)
+	  (let [merge (util/sref-get m-ref)
+		next-map-ref (:next-map node)
+		next-map     (util/sref-get next-map-ref)]
+	    (invalidate-valuations merge)
+	    (doseq [nxt (get-children node)] 
+	      (remove-previous! nxt node))
+	    (util/sref-set! next-map-ref {})
+	    (connect! node merge)
+	    (splice-nexts merge next-map (or (util/safe-get alg :minimize?) :forward)))))) ;; TODO ???
+      (.put graph-map key-pair [(WeakHashMap. {node true}) (util/sref nil)])))) 
+;				(util/sref (when (isa? (:class node) ::ALGMergeNode) node))]))))
 
 
-(defn alg-optimistic-valuation [alg node]
-  (let [s (:optimistic-valuation ^node)]
-    (or (util/sref-get s)
-	(do
-	  (util/sref-up! *op-counter* inc)
-	  (util/sref-set! s (compute-alg-optimistic-valuation alg node))
-	  (when (and (:auto-merge? alg) (not (isa? (:class node) ::ALGFinalNode)))
-	    (handle-graph alg node))
-	  (util/sref-get s)))))
+(defn alg-optimistic-valuation 
+  ([alg node] (alg-optimistic-valuation alg node #{}))
+  ([alg node post-set]
+     (if (contains? post-set node)
+         (do (println "Killing cycle!") *pessimal-valuation*)
+       (let [s (:optimistic-valuation ^node)]
+;	 (when (nil? s) (clojure.inspector/inspect-tree node))
+	 (or (util/sref-get s)
+	     (do
+	       (util/sref-up! *op-counter* inc)
+	       (util/sref-set! s (compute-alg-optimistic-valuation alg node (conj post-set node)))
+	       (when (and (:auto-merge? alg) (not (isa? (:class node) ::ALGFinalNode)))
+		 (handle-graph alg node))
+	       (util/sref-get s)))))))
 
 (defn alg-pessimistic-valuation [alg node]
+  *pessimal-valuation*) ; TODO
+
+(comment
   (let [s (:pessimistic-valuation ^node)]
     (or (util/sref-get s)
 	(util/sref-set! s 
@@ -344,13 +423,14 @@
   (fn [node next-state next-clause reward max-gap max-gap-node alg] (:class node)))
 
 (defmethod simple-backwards-pass ::ALGRootNode sbp-root [node next-state next-clause reward max-gap max-gap-node alg]
-;  (println "SBP Root" (alg-node-name node) next-state reward max-gap)
+  (println "SBP Root" );(alg-node-name node) next-state reward max-gap)
   (util/assert-is (or (Double/isNaN reward) (= reward 0)))
 ;  (when (or (Double/isNaN reward) (>= reward 0))
     (util/assert-is (= (valuation-state-reward (alg-optimistic-valuation alg node) next-state) 0))
     (or max-gap-node []))
 
 (defmethod simple-backwards-pass ::ALGActionNode sbp-action [node next-state next-clause reward max-gap max-gap-node alg]
+  (println "SBP Action" (map hla-name (cons (:hla node) (:rest-hlas node))));(alg-node-name node) next-state reward max-gap)
   (util/timeout)
  ;   (when next-clause (util/assert-is (clause-includes-state? next-clause next-state)))
   (let [prev-node (util/sref-get (:previous node))
@@ -389,7 +469,7 @@
 
    
 (defmethod simple-backwards-pass ::ALGMergeNode sbp-merge [node next-state next-clause reward max-gap max-gap-node alg]
-;  (println "SBP-merge")
+  (println "SBP Merge" (map hla-name (:rest-hlas node)));(alg-node-name node) next-state reward max-gap)
  ; (when next-clause (util/assert-is (clause-includes-state? next-clause next-state)))
   (if next-clause
       (or 
@@ -425,7 +505,7 @@
     (valuation-max-reward-state v)))
 
 (defn drive-simple-backwards-pass [node]
-;  (println "\n\n\n DRIVE")
+  (println "\n\n\n DRIVE")
   (let [alg (:alg node)
 	pass-cache (:pass-cache node)]
     (or (util/sref-get pass-cache)
@@ -459,15 +539,16 @@
      (util/assert-is (contains? '#{false :forward :full} minimize?))
      (let [initial-plan (list initial-node) 
 	   env (hla-environment (first initial-plan)), 
-	   alg (make-alg env split-set refine-gap? minimize? auto-merge?)]
+	   alg (make-alg env split-set refine-gap? minimize? auto-merge?)
+	   init-opt (state->valuation opt-valuation-class (envs/get-initial-state env))]
        (make-alg-final-node alg
          (make-action-node-seq 
 	  (make-alg-root-node
 	   initial-plan
-	   (state->valuation opt-valuation-class (envs/get-initial-state env))
+	   init-opt 
 	   (state->valuation pess-valuation-class (envs/get-initial-state env)))
 	  initial-plan
-	  nil (= auto-merge? :sloppy) false)))))
+	  nil (= auto-merge? true) false)))))
 
 (defn alg-node [& args] (apply make-initial-alg-node args))
 
@@ -509,14 +590,14 @@
 	  :else 
 	    (let [minimize? (util/safe-get alg :minimize?)
 		  auto-merge? (util/safe-get alg :auto-merge?)
-		  merge-sloppy? (= auto-merge? :sloppy)
+		  merge-full? (= auto-merge? true)
 		  hla       (:hla bp)
 		  rest-hlas (util/safe-get bp :rest-hlas)
 		  split? (contains? (util/safe-get-in node [:alg :split-set]) (first (hla-name hla)))
 		  final? (empty? (get-children bp))
 		  refs   (hla-immediate-refinements (:hla bp) (alg-optimistic-valuation alg (util/sref-get (:previous bp))))
 		  [pre-node post-next-map] (cut-action-node bp)
-		  final-nodes (doall (map #(make-action-node-seq pre-node % rest-hlas merge-sloppy? minimize?) refs))]
+		  final-nodes (doall (map #(make-action-node-seq pre-node % rest-hlas merge-full? minimize?) refs))]
 	      (when split? (util/assert-is (identity final?)))
 	      (util/print-debug 3 "Refining at " (alg-node-name bp) ";\nGot refinements " (for [r refs] (map hla-name r)))
 	      (util/sref-up! search/*ref-counter* inc)
@@ -524,7 +605,7 @@
 		  (map #(make-alg-final-node alg %) final-nodes)
 		(when (not (and final? (empty? final-nodes)))
 		  (let [spliced (splice-nexts (or (util/singleton final-nodes) 
-						  (make-alg-merge-node final-nodes rest-hlas)) 
+						  (make-alg-merge-node ::ALGMergeNode final-nodes rest-hlas)) 
 					      post-next-map minimize?)]
 		    [(make-alg-final-node alg (if final? spliced (:plan node)))])))))))
 
@@ -584,6 +665,9 @@
 
   
 (comment 
+
+(do (reset-ref-counter) [(time (second (a-star-search (alg-node (get-hierarchy *nav-switch-hierarchy* (constant-predicate-simplify (make-nav-switch-strips-env 20 20 [[3 7] [12 18] [16 2]] [19 0] true [0 19]))) '#{act go} false false true)))) (sref-get *ref-counter*)])
+
   (a-star-search (alg-node (get-hierarchy *nav-switch-hierarchy* (constant-predicate-simplify (make-nav-switch-strips-env 3 3 [[1 1]] [2 0] true [0 2])))))
 
 (binding [*debug-level* 3] (interactive-search (alg-node (get-hierarchy *warehouse-hierarchy* (constant-predicate-simplify (make-warehouse-strips-env 3 4 [1 2] false {0 '[b a] 2 '[c]} nil ['[a b c]]))))))
