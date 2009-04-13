@@ -11,16 +11,31 @@
 ; Just ignore it for now, and ignore pessimistic descriptions too.  
 
 ; We extract state sequenes going backwards since we need to make consistent choices at or-nodes (merges)
+ ; If we didn't ... could certainly end up refining forever (if step reward).
+; If total reward ... under certain cycle-free constraints, and other conditions (best non-prim), would eventaully converge.
+
+; So, for suboptimal search, ...
+ ;Still need to extract state seq. going backwards.
+ ; Analogue of WA*:
+  ; Progress WA* function.  
+  ; That's hardly feasible? 
+  ; Committing is pretty easy. 
+  ; When searching, would like slop factor. (change behavior at merge nodes?)
 
 ; Like ALT, you should not throw out plans or bad things may happen.
+
+; Would also like improved search algorithm.  
 
 ; When you split, you have to be careful, or you could find suboptimal solutions ...
  ; solution; generate new search node every time you increase the cost bound.
 
-;; TODO: a way to implement extract-a-solution (or refine potentially suboptimal things...)
+; All at once here: 
+  ;  Real merging
+  ;  Pruning
+  ;  Suboptimal search. 
 
-; Take parameters 
-  ;TODO:  search strategy to use (incl. valuation tricks)?
+
+;; TODO: a way to implement extract-a-solution (or refine potentially suboptimal things...)
 
 ; TOOD: what do we do when we merge?
   ; We can't merge when we're in the middle of a pass, or we may end up orphaned
@@ -29,31 +44,36 @@
    ; as long as we keep the *best* plans, we're OK, but we have to be careful about 
     ; when we refine. etc, etc.  
 
-; TODO: designated 
-
 ; Cycles cannot be eliminated based solely on optimistic descriptions.  Only pessimistic.  Can only merge into DAG.  
-
-; TODO: figure out how to detect cycles
-; TODO: figure out how to handle subsumption.
-; TODO: do something about multiple merge chains ? 
 
 ; Handling subsumption:
   ; Each node has a pointer to it's auto-merge node, or nil if none.
   ; Auto-merge keeps a set of nodes it includes. (?)
   ; When we have a hit, if it is or points to an auto-merge, we just check for cycles and join.
   ; If it's not, we check for cycles, then create an auto-merge, then join.
+  ; This means there may be multiple unmerged nodes 
 
 ; Ideally, also keep track of subsumption relationships we find.  Subsumption may be screwed up by auto-merge, however.  
 
 ; Without, just keep track of best pessimistic sub-info.  If we're subsumed, we quit.
 
-(defstruct abstract-lookahead-graph :class :env :goal :split-set :refine-gap? :minimize? :auto-merge?)
-(defn- make-alg [env split-set refine-gap? minimize? auto-merge?]
+; So, maybe we do allow cycles ... just not within merge clusters? 
+ ; But then progression becomes a fixed-point calculation.  BLA.
+  
+
+; Can there be two possible merge options?  Yes.  Which do we take?  the earliest seems reasonable.  
+
+
+
+(defstruct abstract-lookahead-graph :class :env :goal :split-set 
+	   :refine-gap? :minimize? :auto-merge? :prune? :smart-search? :consistent-search? :suboptimal-weight)
+(defn- make-alg [env split-set refine-gap? minimize? auto-merge? prune? smart-search? consistent-search? suboptimal-weight]
   (with-meta 
-   (struct abstract-lookahead-graph ::AbstractLookaheadGraph env (envs/get-goal env) split-set refine-gap? minimize? auto-merge?)
+   (struct abstract-lookahead-graph ::AbstractLookaheadGraph env (envs/get-goal env) split-set refine-gap? minimize? auto-merge? prune? smart-search? consistent-search? suboptimal-weight)
    {:graph-map (HashMap.)}
    ))
 ; graph-map maps [opt-states rest-hlas] pairs to
+; [canonical-node pess-si-seq]
 ; [constituent-node-set merge-node]
 
 
@@ -77,11 +97,11 @@
 
 (derive ::ALGMergeNode ::ALGInternalNode)
 (derive ::ALGRootNode ::ALGMergeNode)
-(defstruct alg-merge-node :class :rest-hlas :previous-set :next-map)
+(defstruct alg-merge-node :class :rest-hlas :previous-set :newest-previous :next-map)
 
 (defn make-alg-root-node [initial-plan opt-val pess-val] 
   (let [n (add-valuation-metadata
-	   (struct alg-merge-node ::ALGRootNode initial-plan (util/sref #{}) (util/sref {})))]
+	   (struct alg-merge-node ::ALGRootNode initial-plan (util/sref #{}) (util/sref nil) (util/sref {})))]
     (util/sref-set! (:optimistic-valuation ^n) opt-val)
     (util/sref-set! (:pessimistic-valuation ^n) pess-val) 
     n))
@@ -89,7 +109,7 @@
 (derive ::ALGAutoMergeNode ::ALGMergeNode)
 (defn make-alg-merge-node [class previous-set rest-hlas]
   (let [n (add-valuation-metadata
-	   (struct alg-merge-node class rest-hlas (util/sref (util/to-set previous-set)) (util/sref {})))]
+	   (struct alg-merge-node class rest-hlas (util/sref (util/to-set previous-set)) (util/sref nil) (util/sref {})))]
     (doseq [prev previous-set] (add-child! prev n))
     n))
 
@@ -167,6 +187,7 @@
 (defmethod add-previous! ::ALGMergeNode [node new-prev]
   (let [prev-ref (:previous-set node)
 	prev-set (util/sref-get prev-ref)]
+    (util/sref-set! (:newest-previous node) new-prev)
     (util/sref-set! prev-ref (conj prev-set new-prev))))
 
 
@@ -182,6 +203,13 @@
 	prev-set (util/sref-get prev-ref)]
     (assert (contains? prev-set old-prev))
     (util/sref-set! prev-ref (disj prev-set old-prev))))
+
+(defn alg-merge-node-previouses [alg node]
+  (if (util/safe-get alg :consistent-search?)
+    (let [np (util/sref-get (:newest-previous node))
+	  ap (util/sref-get (:previous-set node))]
+      (if np (cons np (disj ap np)) ap))
+   (util/sref-get (:previous-set node))))
 
 (defn- connect! [node child]
   (add-previous! child node)
@@ -279,23 +307,23 @@
 ;;; Computing valuations, etc.
 
 (declare alg-optimistic-valuation alg-pessimistic-valuation)
-(defmulti compute-alg-optimistic-valuation (fn [alg node post-set] (:class node)))
+(defmulti compute-alg-optimistic-valuation (fn [alg node] (:class node)))
 (defmulti compute-alg-pessimistic-valuation (fn [alg node] (:class node)))
 
-(defmethod compute-alg-optimistic-valuation ::ALGRootNode [alg node post-set]
+(defmethod compute-alg-optimistic-valuation ::ALGRootNode [alg node]
   (throw (UnsupportedOperationException.)))
 
 (defmethod compute-alg-pessimistic-valuation ::ALGRootNode [alg node]
   (throw (UnsupportedOperationException.)))
 
 
-(defmethod compute-alg-optimistic-valuation ::ALGActionNode opt-action [alg node post-set]
+(defmethod compute-alg-optimistic-valuation ::ALGActionNode opt-action [alg node]
 ;  (println "Progress action " (hla-name (:hla node)))
   (let [previous (util/sref-get (:previous node))]
     (if (nil? previous)
         *pessimal-valuation*
       (progress-valuation 
-       (restrict-valuation (alg-optimistic-valuation alg previous post-set)
+       (restrict-valuation (alg-optimistic-valuation alg previous)
 			   (hla-hierarchical-preconditions (:hla node)))
        (hla-optimistic-description (:hla node))))))
 
@@ -309,11 +337,10 @@
        (hla-pessimistic-description (:hla node))))))
 
 
-(defmethod compute-alg-optimistic-valuation ::ALGMergeNode opt-merge [alg node post-set]
+(defmethod compute-alg-optimistic-valuation ::ALGMergeNode opt-merge [alg node]
 ;  (println "Progress merge ")
-  (let [previous-set (util/sref-get (:previous-set node))
-	vals (for [e previous-set
-		   :let [val (alg-optimistic-valuation alg e post-set)]
+  (let [vals (for [e (alg-merge-node-previouses alg node)
+		   :let [val (alg-optimistic-valuation alg e)]
 		   :when (if (empty-valuation? val)
 			     (do (disconnect! e node) nil)
 			   true)]
@@ -321,7 +348,7 @@
     (if (empty? vals) *pessimal-valuation*
       (reduce union-valuations vals))))
 ;	      (for [n pruned-set]
-;		(add-clause-metadata (alg-optimistic-valuation alg n post-set) {:source-node n}))))))
+;		(add-clause-metadata (alg-optimistic-valuation alg n) {:source-node n}))))))
 	      ;(map alg-optimistic-valuation pruned-set)))))
 
 (defmethod compute-alg-pessimistic-valuation ::ALGMergeNode pess-merge [alg node]
@@ -330,8 +357,8 @@
       (reduce union-valuations (map #(alg-pessimistic-valuation alg %) previous-set)))))
 
 
-(defmethod compute-alg-optimistic-valuation ::ALGFinalNode opt-final [alg node post-set]
-  (restrict-valuation (alg-optimistic-valuation alg (:plan node) post-set) (:goal (:alg node))))
+(defmethod compute-alg-optimistic-valuation ::ALGFinalNode opt-final [alg node]
+  (restrict-valuation (alg-optimistic-valuation alg (:plan node)) (:goal (:alg node))))
 
 (defmethod compute-alg-pessimistic-valuation ::ALGFinalNode pess-final [alg node]
   (restrict-valuation (alg-pessimistic-valuation alg (:plan node)) (:goal (:alg node))))
@@ -382,24 +409,23 @@
 
 
 (defn alg-optimistic-valuation 
-  ([alg node] (alg-optimistic-valuation alg node #{}))
-  ([alg node post-set]
-     (if (contains? post-set node)
-         (do (println "Killing cycle!") *pessimal-valuation*)
+;  ([alg node] (alg-optimistic-valuation alg node #{}))
+  ([alg node]
+;     (if (contains? post-set node)
+;         (do (println "Killing cycle!") *pessimal-valuation*)
        (let [s (:optimistic-valuation ^node)]
 ;	 (when (nil? s) (clojure.inspector/inspect-tree node))
 	 (or (util/sref-get s)
 	     (do
 	       (util/sref-up! *op-counter* inc)
-	       (util/sref-set! s (compute-alg-optimistic-valuation alg node (conj post-set node)))
+	       (util/sref-set! s (compute-alg-optimistic-valuation alg node)) ; (conj post-set node)))
 	       (when (and (:auto-merge? alg) (not (isa? (:class node) ::ALGFinalNode)))
 		 (handle-graph alg node))
-	       (util/sref-get s)))))))
+	       (util/sref-get s))))))
 
 (defn alg-pessimistic-valuation [alg node]
-  *pessimal-valuation*) ; TODO
-
-(comment
+;  *pessimal-valuation*) ; TODO
+;(comment
   (let [s (:pessimistic-valuation ^node)]
     (or (util/sref-get s)
 	(util/sref-set! s 
@@ -423,14 +449,14 @@
   (fn [node next-state next-clause reward max-gap max-gap-node alg] (:class node)))
 
 (defmethod simple-backwards-pass ::ALGRootNode sbp-root [node next-state next-clause reward max-gap max-gap-node alg]
-  (println "SBP Root" );(alg-node-name node) next-state reward max-gap)
+;  (println "SBP Root" );(alg-node-name node) next-state reward max-gap)
   (util/assert-is (or (Double/isNaN reward) (= reward 0)))
 ;  (when (or (Double/isNaN reward) (>= reward 0))
     (util/assert-is (= (valuation-state-reward (alg-optimistic-valuation alg node) next-state) 0))
     (or max-gap-node []))
 
 (defmethod simple-backwards-pass ::ALGActionNode sbp-action [node next-state next-clause reward max-gap max-gap-node alg]
-  (println "SBP Action" (map hla-name (cons (:hla node) (:rest-hlas node))));(alg-node-name node) next-state reward max-gap)
+ ; (println "SBP Action" (map hla-name (cons (:hla node) (:rest-hlas node))));(alg-node-name node) next-state reward max-gap)
   (util/timeout)
  ;   (when next-clause (util/assert-is (clause-includes-state? next-clause next-state)))
   (let [prev-node (util/sref-get (:previous node))
@@ -458,8 +484,25 @@
 		        [0 node]
 		      [0 max-gap-node]))
 		rec (simple-backwards-pass prev-node prev-state prev-clause pre-reward next-gap next-gap-node alg)]
-	    (cond (isa? (:class rec) ::ALGInternalNode) 
-		    rec
+	    (cond (isa? (:class rec) ::ALGInternalNode)
+		    (if (not (and (util/safe-get alg :smart-search?) 
+				  (identical? rec node)
+				  (not (empty? (get-children node))))) 
+		        rec
+		      (let [minimize? (util/safe-get alg :minimize?)
+			    auto-merge? (util/safe-get alg :auto-merge?)
+			    merge-full? (= auto-merge? true)
+			    hla         (:hla rec)
+			    rest-hlas (util/safe-get rec :rest-hlas)
+			    refs   (hla-immediate-refinements hla (alg-optimistic-valuation alg (util/sref-get (:previous node))))
+			    [pre-node post-next-map] (cut-action-node node)
+			    final-nodes (doall (map #(make-action-node-seq pre-node % rest-hlas merge-full? minimize?) refs))]
+			(util/print-debug 3 "Internally Refining at " (alg-node-name node) ";\nGot refinements " (for [r refs] (map hla-name r)))
+			(util/sref-up! search/*ref-counter* inc)
+			(let [spliced (splice-nexts (or (util/singleton final-nodes) 
+							(make-alg-merge-node ::ALGMergeNode final-nodes rest-hlas)) 
+							post-next-map minimize?)]
+			  (simple-backwards-pass spliced next-state nil reward max-gap max-gap-node alg))))
 		  rec   
 		    (conj rec (:hla node))
 		  :else                            
@@ -469,20 +512,24 @@
 
    
 (defmethod simple-backwards-pass ::ALGMergeNode sbp-merge [node next-state next-clause reward max-gap max-gap-node alg]
-  (println "SBP Merge" (map hla-name (:rest-hlas node)));(alg-node-name node) next-state reward max-gap)
+ ; (println "SBP Merge" (map hla-name (:rest-hlas node)));(alg-node-name node) next-state reward max-gap)
  ; (when next-clause (util/assert-is (clause-includes-state? next-clause next-state)))
   (if next-clause
       (or 
         (when-let [prev-node (get ^next-clause :source-node)]
-	  (when (contains? (util/sref-get (:previous-set node)) prev-node)
+	  (when (and (contains? (util/sref-get (:previous-set node)) prev-node)
+		     (or (not (= :strict (util/safe-get alg :consistent-search?)))
+			 (let [np (util/sref-get (:newest-previous node))]
+;			   (util/assert-is (or (nil? np) (identical? np prev-node)))
+			   (or (nil? np) (identical? np prev-node)))))
 	    (when-let [[clause val-reward] (valuation-clause-reward (alg-optimistic-valuation alg prev-node) next-clause)]
 	      (when (>= val-reward reward); (println "GO")
-;		(print ",")
+	;	(print ",")
 		(simple-backwards-pass prev-node next-state clause reward max-gap max-gap-node alg)))))
 	(recur node next-state nil reward max-gap max-gap-node alg))
     (loop [good-preds
 	       (seq (filter identity
-		     (for [prev-node (util/sref-get (:previous-set node))]
+		     (for [prev-node (alg-merge-node-previouses alg node)]
 		       (let [prev-val (alg-optimistic-valuation alg prev-node)]
 			 (if (isa? (:class prev-val) :edu.berkeley.ai.angelic/PropositionalValuation)
 			     (when-let [[prev-clause prev-rew] (valuation-state-clause-reward prev-val next-state)]
@@ -505,7 +552,7 @@
     (valuation-max-reward-state v)))
 
 (defn drive-simple-backwards-pass [node]
-  (println "\n\n\n DRIVE")
+ ; (println "\n\n\n DRIVE")
   (let [alg (:alg node)
 	pass-cache (:pass-cache node)]
     (or (util/sref-get pass-cache)
@@ -516,7 +563,6 @@
 		  (do (invalidate-valuations node) nil)))
 	    :fail)))))
 
-;TODO:  Functions needed: valuation-state-reward, regress-optimistic-state, regress-pessimistic-state, state->valuation, extract-a-best-state.  
 
 
 ;;; Constructing initial ALG nodes
@@ -529,17 +575,19 @@
      auto-merge? causes the graph to merge nodes which have, or have ever had, the same optimistic sets."
   ([initial-node]
      (make-initial-alg-node initial-node #{} false true true))
-  ([initial-node split-set refine-gap? minimize? auto-merge?]
+  ([initial-node split-set refine-gap? minimize? auto-merge? prune? smart-search? consistent-search? suboptimal-weight]
      (make-initial-alg-node 
       (hla-default-optimistic-valuation-type initial-node) 
       (hla-default-pessimistic-valuation-type initial-node)
-      initial-node split-set  refine-gap? minimize? auto-merge?))
-  ([opt-valuation-class pess-valuation-class initial-node split-set refine-gap? minimize? auto-merge?]
+      initial-node split-set  refine-gap? minimize? auto-merge?  prune? smart-search? consistent-search? suboptimal-weight))
+  ([opt-valuation-class pess-valuation-class initial-node split-set refine-gap? minimize? auto-merge?  prune? smart-search? consistent-search? suboptimal-weight]
      (util/assert-is (contains? '#{true false :sloppy} auto-merge?))
      (util/assert-is (contains? '#{false :forward :full} minimize?))
+     (util/assert-is (contains? '#{false :local :global} prune?))
+     (util/assert-is (contains? '#{false :lazy :strict} consistent-search?))
      (let [initial-plan (list initial-node) 
 	   env (hla-environment (first initial-plan)), 
-	   alg (make-alg env split-set refine-gap? minimize? auto-merge?)
+	   alg (make-alg env split-set refine-gap? minimize? auto-merge? prune? smart-search? consistent-search? suboptimal-weight)
 	   init-opt (state->valuation opt-valuation-class (envs/get-initial-state env))]
        (make-alg-final-node alg
          (make-action-node-seq 

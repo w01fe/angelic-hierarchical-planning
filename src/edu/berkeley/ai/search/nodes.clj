@@ -83,7 +83,7 @@
 	  (recur pq priority-fn)
 	(do
 	  (queues/pq-add-all! pq (map (fn [i] [i (priority-fn i)]) (immediate-refinements next)))
-	  (lazy-seq (cons next (all-refinements- pq priority-fn))))))))
+	  (lazy-seq (cons next (lazy-seq (all-refinements- pq priority-fn)))))))))
 
 (defn all-refinements 
   "Returns a lazy seq of all refinements, refined using 
@@ -92,6 +92,8 @@
   (queues/pq-add! pq node (priority-fn node))
   (all-refinements- pq priority-fn))
 
+(def *n nil)
+(def *nn nil)
 ;; TODO: check goal
 (defn interactive-search 
   ([node] (interactive-search node (queues/make-tree-search-pq) #(- (upper-reward-bound %))))
@@ -116,7 +118,7 @@
 		    (queues/pq-add-all! pq (map (fn [i] [i (priority-fn i)]) refs))
 		    true)
 	       (loop []
-		(print "\n(d)rop, (n)ext, (s)ave, (q)uit, (r)eroot, go (#), (expr ... *n)? ")
+		(print "\n(d)rop, (n)ext, (s)ave, (q)uit, (r)eroot, go (#), (expr ... *n/*nn)? ")
 		(flush)
 		(let [result (read)]
 		  (cond (= result 'd) true
@@ -134,7 +136,8 @@
 ;						  (when-not (dead-end? next)
 ;						    (queues/pq-add-all! pq (map (fn [i] [i (priority-fn i)]) (immediate-refinements next))))))
 ;					      true)
-			:else          (do (print (binding [*n next] (eval result)) "\n") (recur))))))
+			:else          (do (print (binding [*n next *nn (first refs)] 
+						    (eval result)) "\n") (recur))))))
 	  (recur)))))))))
 
 

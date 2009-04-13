@@ -167,6 +167,11 @@
     (.insert heap item cost)
     :added))
 
+(defmethod pq-peek-min ::TreePriorityQueue [pq]
+  (let [#^FibonacciHeap heap (:heap pq)
+	#^com.bluemarsh.graphmaker.core.util.FibonacciHeap$Node n (.min heap)]
+    (.getKey n)))
+
 (defmethod pq-remove-min! ::TreePriorityQueue [pq]
   (let [#^FibonacciHeap heap (:heap pq)]
     (.removeMin heap)))

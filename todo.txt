@@ -1,5 +1,6 @@
 ;;;;;;;;;;;;;;;; Implement
 
+Clause-based subsumption for ALTs.
 
   Auto-merging above and beyond what's given.  (based on same opt-sets &
 set of plans to go.  Store with each node, minimal rep. of
@@ -27,17 +28,11 @@ track of "delta"?
 ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;; Minor
 
 
- - Cache best child
-
- - Going backwards, keep track of the reward of the second-best path. 
+- Going backwards, keep track of the reward of the second-best path. 
 
  - After refining a node, instead of returning directly to the root, progress forward along the optimal state sequence.  If at any point the progressed valuation assigns the regressed state a reward corresponding to a plan at least as good as the second-best path, call backwards-pass starting at this node.
 
  - At the other end, cache the max-gap for the current state sequence going forward from the root.  If, during a backwards pass, you hit the cached state sequence and the current max-gap is > the cached one, stop going backwards and refine right away.
-
- - Eliminating bad plans from ALG sections
-    - Dominated sections ??
-    - Ancestor-dominated sections ? ?
 
 
 ;;;;;;;;;;;;;;;; Think About

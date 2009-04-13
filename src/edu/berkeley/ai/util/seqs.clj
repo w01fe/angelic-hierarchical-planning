@@ -214,6 +214,9 @@
   (assert-is (singleton? c))
   (first c))
 
+;(defn find-first [p c]
+;  (when-first [x c]
+;     (if (p x) x (recur p (next c)))))
 
 
 ; (map (fn [[k v]] (list k (* (/ 6.0 10000) (count v)))) (categorize identity (take 10000 (repeatedly #(random-permutation '(1 2 3))))))
