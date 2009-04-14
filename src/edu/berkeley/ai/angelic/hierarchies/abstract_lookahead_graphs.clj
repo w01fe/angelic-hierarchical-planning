@@ -339,12 +339,36 @@
 
 (defmethod compute-alg-optimistic-valuation ::ALGMergeNode opt-merge [alg node]
 ;  (println "Progress merge ")
-  (let [vals (for [e (alg-merge-node-previouses alg node)
-		   :let [val (alg-optimistic-valuation alg e)]
-		   :when (if (empty-valuation? val)
-			     (do (disconnect! e node) nil)
-			   true)]
-	       (add-clause-metadata val {:source-node e}))]
+  (let [vals 
+	(if (= (util/safe-get alg :prune?) :local)
+	    (let [pess-val (alg-pessimistic-valuation alg node)]
+	      (for [e (alg-merge-node-previouses alg node)
+		    :let [val (alg-optimistic-valuation alg e)
+			  reduced-val
+			      (if (isa? (:class val) :edu.berkeley.ai.angelic.dnf-valuations/DNFValuation)
+				  (edu.berkeley.ai.angelic.dnf-valuations/make-dnf-valuation 
+				   (:class val)
+				   (into {} 
+				     (for [[clause v] (valuation-clause-map val)
+					   :let [pess-pair (find (valuation-clause-map pess-val) clause)]
+					   :when (or (empty? pess-pair)
+						  ;   (println pess-pair v (second pess-pair)
+					;		      (identical? e (:source-node ^(first pess-pair))))
+						     (> v (second pess-pair))
+						     (identical? e (:source-node ^(first pess-pair))))]
+				       [clause v])))
+				       
+				val)]
+		    :when (if (empty-valuation? reduced-val)
+			      (do (disconnect! e node) nil)
+			    true)]
+		(add-clause-metadata reduced-val {:source-node e})))
+	  (for [e (alg-merge-node-previouses alg node)
+		:let [val (alg-optimistic-valuation alg e)]
+		:when (if (empty-valuation? val)
+			  (do (disconnect! e node) nil)
+			true)]
+	    (add-clause-metadata val {:source-node e})))]
     (if (empty? vals) *pessimal-valuation*
       (reduce union-valuations vals))))
 ;	      (for [n pruned-set]
@@ -352,9 +376,13 @@
 	      ;(map alg-optimistic-valuation pruned-set)))))
 
 (defmethod compute-alg-pessimistic-valuation ::ALGMergeNode pess-merge [alg node]
-  (let [previous-set (util/sref-get (:previous-set node))]
-    (if (empty? previous-set) *pessimal-valuation*
-      (reduce union-valuations (map #(alg-pessimistic-valuation alg %) previous-set)))))
+  (let [previous-set (util/sref-get (:previous-set node))
+	vals (if (= (util/safe-get alg :prune?) :local)
+	         (map #(add-clause-metadata (alg-pessimistic-valuation alg %) {:source-node %}) previous-set)
+	       (map #(alg-pessimistic-valuation alg %) previous-set))]
+    (if (empty? vals) *pessimal-valuation*
+      (reduce union-valuations vals))))
+;      (reduce union-valuations (map #(alg-pessimistic-valuation alg %) previous-set)))))
 
 
 (defmethod compute-alg-optimistic-valuation ::ALGFinalNode opt-final [alg node]

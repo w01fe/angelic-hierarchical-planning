@@ -1,4 +1,4 @@
-(ns edu.berkeley.ai.domains.timing-warehouse
+(ns edu.berkeley.ai.scripts.timing-warehouse
  (:require [edu.berkeley.ai [util :as util] [envs :as envs] [search :as search] [angelic :as angelic]] 
            [edu.berkeley.ai.envs.states :as states]
            [edu.berkeley.ai.domains.strips :as strips]
@@ -89,6 +89,29 @@
     (time-ww env-v ["ahss" #(let [r (algs/ahss-search %)] (println (second r)) r)] node-v false))
   )
 
+
+; Redoing ICAPS 08 experiments
+
+(def *icaps-ww*
+     (map #(strips/constant-predicate-simplify
+	    (apply warehouse/make-warehouse-strips-env %))
+	 [[3 4 [2 3] true {0 '[a] 2 '[c baz]} nil '[[c a]]]
+	  [4 4 [2 3] true {0 '[a] 2 '[c baz]} nil '[[baz c a]]]
+	  [4 4 [2 3] true {0 '[a] 2 '[c baz]} nil '[[a baz c table3]]]
+	  [4 8 [2 4] true {0 '[a] 2 '[c baz]} nil '[[c baz table3]]]
+	  [4 8 [2 3] true {0 '[a] 2 '[c baz]} nil '[[a c table1]]]
+	  [4 6 [2 4] true {0 '[a] 2 '[c baz]} nil '[[c baz table3]]]]))
+
+(defn test-icaps-ww [i & alt-args]
+  (let [e (nth *icaps-ww* i)
+	d (angelic/ground-description (angelic/instantiate-description-schema (angelic/parse-description [:warehouse-act] nil nil) e) {})]
+    (doseq [[alg node]
+	    [[textbook/a-star-graph-search (search/ss-node e (fn [s] (angelic/valuation-max-reward (angelic/progress-valuation (angelic/state->valuation :edu.berkeley.ai.angelic.dnf-valuations/DNFValuation s) d))))]
+	     [algs/aha-star-search (apply alts/alt-node (strips-hierarchies/get-flat-strips-hierarchy e [:warehouse-act]) alt-args)]
+	     [algs/aha-star-search (apply alts/alt-node (hierarchies/get-hierarchy warehouse/*warehouse-hierarchy* e) alt-args)]]]
+      (search/reset-ref-counter)
+      (println [(time (second (alg node))) (util/sref-get search/*ref-counter*)]))))
+	  
 
 
 ; (interactive-search (tdf-node (get-hierarchy *warehouse-hierarchy-unguided* (constant-predicate-simplify (make-warehouse-strips-env 7 6 [0 2] true {0 '[b] 1 '[a] 2 '[c]  } nil ['[a b c table5]])))) (make-tree-search-pq) #(- (upper-reward-bound %)))

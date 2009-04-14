@@ -205,6 +205,8 @@
   "Add the provided mappings to metadata of all clauses in this valuation."
   (fn [v m] (:class v)))
 
+(defmethod add-clause-metadata :default [v m] v)
+
 (defn restrict-clause [clause condition]
   (util/assert-is (isa? (:class condition) :edu.berkeley.ai.envs/ConjunctiveCondition))
   (let [pos (envs/get-positive-conjuncts condition)

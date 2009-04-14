@@ -229,7 +229,7 @@
      (make-initial-alt-node ::ALTPlanNode opt-valuation-class pess-valuation-class subsumption-info initial-node ref-choice-fn cache? graph?))
  ([node-type opt-valuation-class pess-valuation-class subsumption-info initial-node ref-choice-fn cache? graph?]
 ;  (util/assert-is (empty? subsumption-info)) ;; Taken out for now. TODO
-  (util/assert-is (contains? #{true false :full :old} graph?))
+  (util/assert-is (contains? #{true false :full :bhaskara :icaps08} graph?))
   (let [initial-plan (list initial-node) ;(if (seq? initial-node) initial-node (list initial-node))
 	env (hla-environment (first initial-plan)), 
 	alt (make-alt cache? graph? (envs/get-goal env) ref-choice-fn subsumption-info)
@@ -268,9 +268,9 @@
 ;   (println (count graph-tuples) (:graph? alt) (:class opt-val))
     (when (every?
 	   (fn [[graph-si graph-node]]
-	     (or (and (= (:graph? alt) :old) (not (.contains live-set graph-node)))
+	     (or (and (= (:graph? alt) :icaps08) (not (.contains live-set graph-node)))
 		 (not (valuation-subsumes? graph-si opt-si subsumption-info))
-		 (and (not (.contains live-set graph-node))
+		 (and (or (= (:graph? alt) :bhaskara) (not (.contains live-set graph-node)))
 		      (valuation-equals? graph-si opt-si subsumption-info))))
 	   graph-tuples)
     ;  (println " Survived" opt-si graph-tuples (map #(.contains live-set (second %)) graph-tuples))
