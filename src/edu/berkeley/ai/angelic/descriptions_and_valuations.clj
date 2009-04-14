@@ -189,6 +189,10 @@
   "Return a mapping from conjunctive clauses to rewards."
   :class)
 
+(defmulti filter-valuation-clauses 
+  "Like filter, but on [clause rew] pairs."
+  (fn [f v] (:class v)))
+
 (defmulti valuation-max-reward-clause
   "Get [clause rew], where clause has the max reward."
   :class)
@@ -206,6 +210,8 @@
   (fn [v m] (:class v)))
 
 (defmethod add-clause-metadata :default [v m] v)
+
+(defmethod filter-valuation-clauses :default [f v] v)
 
 (defn restrict-clause [clause condition]
   (util/assert-is (isa? (:class condition) :edu.berkeley.ai.envs/ConjunctiveCondition))
@@ -337,6 +343,11 @@ improve efficiency of regression."
 (defmethod union-valuations [::Valuation ::PessimalValuation] [v1 v2] v1)
 (defmethod union-valuations [::PessimalValuation ::PessimalValuation] [v1 v2] v1)
 
+(defmethod valuation-clause-map ::PessimalValuation [val]
+  {})
+
+(defmethod valuation-clause-reward ::PessimalValuation [val c]
+  nil)
 
 
 (defstruct explicit-description :class :action-space)

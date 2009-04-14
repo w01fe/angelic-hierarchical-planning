@@ -86,6 +86,12 @@
 (defmethod valuation-clause-map ::DNFValuation valuation-clause-map-dnf [v]
   (:clause-map v))
 
+(defmethod filter-valuation-clauses ::DNFValuation filter-valuation-clauses-dnf [f v]
+  (let [clause-map (:clause-map v)]
+    (make-dnf-valuation (:class v)
+      (reduce (fn [m [c r]] (if (f c r) m (dissoc m c))) clause-map clause-map))))
+
+
 (defmethod valuation-state-clause-reward ::DNFValuation valuation-state-clause-reward [v s]
   (let [ordered-clauses (reverse (sort-by val (:clause-map v)))]
     (first (filter #(clause-includes-state? (key %) s) ordered-clauses))))

@@ -66,15 +66,17 @@
 
 
 (defstruct abstract-lookahead-graph :class :env :goal :split-set 
-	   :refine-gap? :minimize? :auto-merge? :prune? :smart-search? :consistent-search? :suboptimal-weight)
-(defn- make-alg [env split-set refine-gap? minimize? auto-merge? prune? smart-search? consistent-search? suboptimal-weight]
+	   :refine-gap? :minimize? :auto-merge? :prune? :sloppy? :smart-search? :consistent-search? :suboptimal-weight)
+(defn- make-alg [env split-set refine-gap? minimize? auto-merge? prune? sloppy? smart-search? consistent-search? suboptimal-weight]
   (with-meta 
-   (struct abstract-lookahead-graph ::AbstractLookaheadGraph env (envs/get-goal env) split-set refine-gap? minimize? auto-merge? prune? smart-search? consistent-search? suboptimal-weight)
-   {:graph-map (HashMap.)}
+   (struct abstract-lookahead-graph ::AbstractLookaheadGraph env (envs/get-goal env) split-set refine-gap? minimize? auto-merge? prune? sloppy? smart-search? consistent-search? suboptimal-weight)
+   {:merge-map (HashMap.)
+    :prune-map (HashMap.)}
    ))
 ; graph-map maps [opt-states rest-hlas] pairs to
 ; [canonical-node pess-si-seq]
-; [constituent-node-set merge-node]
+; [constituent-node-set merge-node]  ?
+; Prune-map maps [clause rest-hlas] pairs to rewards.
 
 
 (defn add-valuation-metadata [node]
@@ -281,7 +283,7 @@
 
 ; Ensure each plan has a new final node, at least - makes other things easier, hurts graphiness
 ; TODO: figure out how to improve? 
-(defn- make-action-node-seq [prev-node actions rest-actions track-actions? minimize?]
+(defn- make-action-node-seq [prev-node actions rest-hlas track-actions? minimize?]
 ;  (println (map hla-name actions))
   (if (empty? actions) 
       prev-node
@@ -289,9 +291,9 @@
 		    (when-let [n (first (get-children prev-node (first actions)))]
 		      ;(println "reuse") 
 		      n)) ;; TODO: wrong with multiple children?
-	       (make-alg-action-node (first actions) (when track-actions? (concat (next actions) rest-actions)) prev-node))
+	       (make-alg-action-node (first actions) (when track-actions? (concat (next actions) rest-hlas)) prev-node))
 	   (next actions)
-	   rest-actions track-actions? minimize?)))
+	   rest-hlas track-actions? minimize?)))
 
 (comment
   (util/assert-is (not (empty? actions)))
@@ -322,43 +324,55 @@
   (let [previous (util/sref-get (:previous node))]
     (if (nil? previous)
         *pessimal-valuation*
-      (progress-valuation 
-       (restrict-valuation (alg-optimistic-valuation alg previous)
-			   (hla-hierarchical-preconditions (:hla node)))
-       (hla-optimistic-description (:hla node))))))
+      (let [v 
+	    (progress-valuation 
+	     (restrict-valuation (alg-optimistic-valuation alg previous)
+				 (hla-hierarchical-preconditions (:hla node)))
+	     (hla-optimistic-description (:hla node)))]
+	(if (contains? #{:both :global} (util/safe-get alg :prune?))
+	    (let [#^HashMap prune-map (:prune-map ^alg)
+		  rest-hlas (:rest-hlas node)]
+	      (alg-pessimistic-valuation alg node)
+	      (filter-valuation-clauses 
+	       (fn [clause rew]
+		 (>= rew (or (.get prune-map [clause rest-hlas]) Double/NEGATIVE_INFINITY)))
+	       v))
+	  v)))))
 
 (defmethod compute-alg-pessimistic-valuation ::ALGActionNode pess-action [alg node]
   (let [previous (util/sref-get (:previous node))]
     (if (nil? previous)
         *pessimal-valuation*
-      (progress-valuation 
-       (restrict-valuation (alg-pessimistic-valuation alg previous)
-			   (hla-hierarchical-preconditions (:hla node)))
-       (hla-pessimistic-description (:hla node))))))
+      (let [v
+	    (progress-valuation 
+	     (restrict-valuation (alg-pessimistic-valuation alg previous)
+				 (hla-hierarchical-preconditions (:hla node)))
+	     (hla-pessimistic-description (:hla node)))]
+	(when (contains? #{:both :global} (util/safe-get alg :prune?))
+	  (doseq [[clause rew] (valuation-clause-map v)]
+	    (let [#^HashMap prune-map (:prune-map ^alg)
+		  pair    [clause (:rest-hlas node)]
+		  old-rew (or (.get prune-map pair) Double/NEGATIVE_INFINITY)]
+	      (when (> rew old-rew)
+		(.put prune-map pair rew)))))
+	v))))
 
 
 (defmethod compute-alg-optimistic-valuation ::ALGMergeNode opt-merge [alg node]
 ;  (println "Progress merge ")
   (let [vals 
-	(if (= (util/safe-get alg :prune?) :local)
+	(if (contains? #{:both :local} (util/safe-get alg :prune?))
 	    (let [pess-val (alg-pessimistic-valuation alg node)]
 	      (for [e (alg-merge-node-previouses alg node)
 		    :let [val (alg-optimistic-valuation alg e)
 			  reduced-val
-			      (if (isa? (:class val) :edu.berkeley.ai.angelic.dnf-valuations/DNFValuation)
-				  (edu.berkeley.ai.angelic.dnf-valuations/make-dnf-valuation 
-				   (:class val)
-				   (into {} 
-				     (for [[clause v] (valuation-clause-map val)
-					   :let [pess-pair (find (valuation-clause-map pess-val) clause)]
-					   :when (or (empty? pess-pair)
-						  ;   (println pess-pair v (second pess-pair)
-					;		      (identical? e (:source-node ^(first pess-pair))))
-						     (> v (second pess-pair))
-						     (identical? e (:source-node ^(first pess-pair))))]
-				       [clause v])))
-				       
-				val)]
+			      (filter-valuation-clauses
+			       (fn [clause rew]
+				 (let [pess-pair (find (valuation-clause-map pess-val) clause)]
+				    (or (empty? pess-pair)
+					(> rew (second pess-pair))
+					(identical? e (:source-node ^(first pess-pair))))))
+			       val)]
 		    :when (if (empty-valuation? reduced-val)
 			      (do (disconnect! e node) nil)
 			    true)]
@@ -371,13 +385,10 @@
 	    (add-clause-metadata val {:source-node e})))]
     (if (empty? vals) *pessimal-valuation*
       (reduce union-valuations vals))))
-;	      (for [n pruned-set]
-;		(add-clause-metadata (alg-optimistic-valuation alg n) {:source-node n}))))))
-	      ;(map alg-optimistic-valuation pruned-set)))))
 
 (defmethod compute-alg-pessimistic-valuation ::ALGMergeNode pess-merge [alg node]
   (let [previous-set (util/sref-get (:previous-set node))
-	vals (if (= (util/safe-get alg :prune?) :local)
+	vals (if (contains? #{:both :local} (util/safe-get alg :prune?))
 	         (map #(add-clause-metadata (alg-pessimistic-valuation alg %) {:source-node %}) previous-set)
 	       (map #(alg-pessimistic-valuation alg %) previous-set))]
     (if (empty? vals) *pessimal-valuation*
@@ -393,7 +404,7 @@
 
 (declare invalidate-valuations)
 (defn handle-graph [alg node]
-  (let [#^HashMap graph-map (util/safe-get ^alg :graph-map)
+  (let [#^HashMap graph-map (util/safe-get ^alg :merge-map)
 	opt-val             (util/sref-get (:optimistic-valuation ^node))
 	[opt-states _]      (get-valuation-states opt-val {})
 	rest-hlas           (util/safe-get node :rest-hlas)
@@ -519,12 +530,12 @@
 		        rec
 		      (let [minimize? (util/safe-get alg :minimize?)
 			    auto-merge? (util/safe-get alg :auto-merge?)
-			    merge-full? (= auto-merge? true)
+			    track-actions? (not (util/safe-get alg :sloppy?))
 			    hla         (:hla rec)
 			    rest-hlas (util/safe-get rec :rest-hlas)
 			    refs   (hla-immediate-refinements hla (alg-optimistic-valuation alg (util/sref-get (:previous node))))
 			    [pre-node post-next-map] (cut-action-node node)
-			    final-nodes (doall (map #(make-action-node-seq pre-node % rest-hlas merge-full? minimize?) refs))]
+			    final-nodes (doall (map #(make-action-node-seq pre-node % rest-hlas track-actions? minimize?) refs))]
 			(util/print-debug 3 "Internally Refining at " (alg-node-name node) ";\nGot refinements " (for [r refs] (map hla-name r)))
 			(util/sref-up! search/*ref-counter* inc)
 			(let [spliced (splice-nexts (or (util/singleton final-nodes) 
@@ -603,19 +614,19 @@
      auto-merge? causes the graph to merge nodes which have, or have ever had, the same optimistic sets."
   ([initial-node]
      (make-initial-alg-node initial-node #{} false true true))
-  ([initial-node split-set refine-gap? minimize? auto-merge? prune? smart-search? consistent-search? suboptimal-weight]
+  ([initial-node split-set refine-gap? minimize? auto-merge? prune? sloppy? smart-search? consistent-search? suboptimal-weight]
      (make-initial-alg-node 
       (hla-default-optimistic-valuation-type initial-node) 
       (hla-default-pessimistic-valuation-type initial-node)
-      initial-node split-set  refine-gap? minimize? auto-merge?  prune? smart-search? consistent-search? suboptimal-weight))
-  ([opt-valuation-class pess-valuation-class initial-node split-set refine-gap? minimize? auto-merge?  prune? smart-search? consistent-search? suboptimal-weight]
-     (util/assert-is (contains? '#{true false :sloppy} auto-merge?))
+      initial-node split-set  refine-gap? minimize? auto-merge?  prune? sloppy? smart-search? consistent-search? suboptimal-weight))
+  ([opt-valuation-class pess-valuation-class initial-node split-set refine-gap? minimize? auto-merge?  prune? sloppy? smart-search? consistent-search? suboptimal-weight]
+     (util/assert-is (contains? '#{true false} auto-merge?))
      (util/assert-is (contains? '#{false :forward :full} minimize?))
-     (util/assert-is (contains? '#{false :local :global} prune?))
+     (util/assert-is (contains? '#{false :local :global :both} prune?))
      (util/assert-is (contains? '#{false :lazy :strict} consistent-search?))
      (let [initial-plan (list initial-node) 
 	   env (hla-environment (first initial-plan)), 
-	   alg (make-alg env split-set refine-gap? minimize? auto-merge? prune? smart-search? consistent-search? suboptimal-weight)
+	   alg (make-alg env split-set refine-gap? minimize? auto-merge? prune? sloppy? smart-search? consistent-search? suboptimal-weight)
 	   init-opt (state->valuation opt-valuation-class (envs/get-initial-state env))]
        (make-alg-final-node alg
          (make-action-node-seq 
@@ -626,7 +637,7 @@
 	  initial-plan
 	  nil (= auto-merge? true) false)))))
 
-(defn alg-node [& args] (apply make-initial-alg-node args))
+(util/defalias alg-node make-initial-alg-node)
 
 
 
@@ -666,14 +677,14 @@
 	  :else 
 	    (let [minimize? (util/safe-get alg :minimize?)
 		  auto-merge? (util/safe-get alg :auto-merge?)
-		  merge-full? (= auto-merge? true)
+		  track-actions? (not (util/safe-get alg :sloppy?))
 		  hla       (:hla bp)
 		  rest-hlas (util/safe-get bp :rest-hlas)
 		  split? (contains? (util/safe-get-in node [:alg :split-set]) (first (hla-name hla)))
 		  final? (empty? (get-children bp))
 		  refs   (hla-immediate-refinements (:hla bp) (alg-optimistic-valuation alg (util/sref-get (:previous bp))))
 		  [pre-node post-next-map] (cut-action-node bp)
-		  final-nodes (doall (map #(make-action-node-seq pre-node % rest-hlas merge-full? minimize?) refs))]
+		  final-nodes (doall (map #(make-action-node-seq pre-node % rest-hlas track-actions? minimize?) refs))]
 	      (when split? (util/assert-is (identity final?)))
 	      (util/print-debug 3 "Refining at " (alg-node-name bp) ";\nGot refinements " (for [r refs] (map hla-name r)))
 	      (util/sref-up! search/*ref-counter* inc)
