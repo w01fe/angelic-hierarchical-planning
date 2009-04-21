@@ -195,8 +195,12 @@
 (defn get-flat-strips-hierarchy 
   ([env] (get-flat-strips-hierarchy env (constantly 0)))
   ([env act-desc-or-upper-reward-fn]
-   (instantiate-hierarchy 
-    (make-flat-strips-hierarchy-schema (envs/get-domain env) act-desc-or-upper-reward-fn) env)))
+   (util/safe-singleton (util/safe-singleton
+    (hla-immediate-refinements 
+     (instantiate-hierarchy 
+      (make-flat-strips-hierarchy-schema (envs/get-domain env) act-desc-or-upper-reward-fn) env)
+     (state->valuation :edu.berkeley.ai.angelic.dnf-valuations/DNFValuation
+		       (envs/get-initial-state env)))))))
 
 
 

@@ -8,18 +8,30 @@
 
 (def *default-graphviz-dir* "/tmp/")
 
+(defn- attribute-string [label-or-attribute-map]
+  (when label-or-attribute-map
+    (str "["
+	 (str-join "," 
+	   (map (fn [[k v]] (str (name k) "=" v))
+		(if (map? label-or-attribute-map) 
+		  label-or-attribute-map
+		  {:label (double-quote label-or-attribute-map)})))
+	 "]")))
+      
+
+
 (defn- walk-graph [root node-key-fn node-label-fn edge-child-pair-fn #^HashSet visited indexer]
   (let [node-key  (node-key-fn root)
-	node-name (node-label-fn root)]
+	node-map (node-label-fn root)]
 ;    (println node-name)
     (when-not (.contains visited node-key)
       (.add visited node-key)
       (apply str
-	     (indexer node-key) "[label=" (double-quote node-name) "]" ";\n"
+	     (indexer node-key) (attribute-string node-map) ";\n"
 	     (apply concat 
-	       (for [[edge-name child] (edge-child-pair-fn root)]
+	       (for [[edge-map child] (edge-child-pair-fn root)]
 		 (cons (str (indexer node-key) " -> " (indexer (node-key-fn child)) 
-			    (when edge-name (str " [label=" (double-quote edge-name) "]"))
+			    (attribute-string edge-map)
 			    ";\n")
 		       (walk-graph child node-key-fn node-label-fn edge-child-pair-fn visited indexer))))))))
 

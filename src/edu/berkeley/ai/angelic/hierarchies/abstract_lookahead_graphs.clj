@@ -31,7 +31,6 @@
 
 ; All at once here: 
   ;  Real merging
-  ;  Pruning
   ;  Suboptimal search. 
 
 
@@ -82,6 +81,7 @@
 (defn add-valuation-metadata [node]
   (with-meta node
    {:pessimistic-valuation (util/sref nil), 
+    :weighted-valuation (util/sref nil), 
     :optimistic-valuation (util/sref nil)}))	     
 
 
@@ -105,6 +105,7 @@
   (let [n (add-valuation-metadata
 	   (struct alg-merge-node ::ALGRootNode initial-plan (util/sref #{}) (util/sref nil) (util/sref {})))]
     (util/sref-set! (:optimistic-valuation ^n) opt-val)
+    (util/sref-set! (:weighted-valuation ^n) opt-val)
     (util/sref-set! (:pessimistic-valuation ^n) pess-val) 
     n))
 
@@ -308,11 +309,15 @@
 
 ;;; Computing valuations, etc.
 
-(declare alg-optimistic-valuation alg-pessimistic-valuation)
-(defmulti compute-alg-optimistic-valuation (fn [alg node] (:class node)))
+(declare alg-optimistic-valuation alg-pessimistic-valuation alg-weighted-valuation)
+(defmulti compute-alg-optimistic-valuation  (fn [alg node] (:class node)))
+(defmulti compute-alg-weighted-valuation    (fn [alg node] (:class node)))
 (defmulti compute-alg-pessimistic-valuation (fn [alg node] (:class node)))
 
-(defmethod compute-alg-optimistic-valuation ::ALGRootNode [alg node]
+(defmethod compute-alg-optimistic-valuation  ::ALGRootNode [alg node]
+  (throw (UnsupportedOperationException.)))
+
+(defmethod compute-alg-weighted-valuation    ::ALGRootNode [alg node]
   (throw (UnsupportedOperationException.)))
 
 (defmethod compute-alg-pessimistic-valuation ::ALGRootNode [alg node]
@@ -338,6 +343,23 @@
 		 (>= rew (or (.get prune-map [clause rest-hlas]) Double/NEGATIVE_INFINITY)))
 	       v))
 	  v)))))
+
+; Want to compute an approximation of (max (* opt-val weight) pess-val), 
+; where the two can leapfrog off each-others' values (but not states) at different steps.
+; Unfortunately, that's too hard (requires figuring out opt-pess-clause-correspondance)
+; so allow state-leapfrogging as well. 
+(defmethod compute-alg-weighted-valuation ::ALGActionNode wtd-action [alg node]
+  (let [previous (util/sref-get (:previous node))
+	weight   (util/safe-get alg :suboptimal-weight)]
+    (util/assert-is (> weight 1))
+    (if (nil? previous)
+        *pessimal-valuation*
+      (let [prev-val (restrict-valuation (alg-weighted-valuation alg previous)
+					 (hla-hierarchical-preconditions (:hla node)))]
+	(union-valuations 
+	 (progress-valuation prev-val (hla-pessimistic-description (:hla node)))
+	 (map-valuation-rewards #(* % weight) 
+	   (progress-valuation prev-val (hla-optimistic-description (:hla node)))))))))
 
 (defmethod compute-alg-pessimistic-valuation ::ALGActionNode pess-action [alg node]
   (let [previous (util/sref-get (:previous node))]
@@ -386,6 +408,14 @@
     (if (empty? vals) *pessimal-valuation*
       (reduce union-valuations vals))))
 
+
+(defmethod compute-alg-weighted-valuation    ::ALGMergeNode wtd-merge [alg node]
+  (let [previous-set (util/sref-get (:previous-set node))
+	vals   (map #(add-clause-metadata (alg-weighted-valuation alg %) {:source-node %}) previous-set)]
+    (if (empty? vals) *pessimal-valuation*
+      (reduce union-valuations vals))))
+
+
 (defmethod compute-alg-pessimistic-valuation ::ALGMergeNode pess-merge [alg node]
   (let [previous-set (util/sref-get (:previous-set node))
 	vals (if (contains? #{:both :local} (util/safe-get alg :prune?))
@@ -399,6 +429,9 @@
 (defmethod compute-alg-optimistic-valuation ::ALGFinalNode opt-final [alg node]
   (restrict-valuation (alg-optimistic-valuation alg (:plan node)) (:goal (:alg node))))
 
+(defmethod compute-alg-weighted-valuation ::ALGFinalNode opt-final [alg node]
+  (restrict-valuation (alg-weighted-valuation alg (:plan node)) (:goal (:alg node))))
+
 (defmethod compute-alg-pessimistic-valuation ::ALGFinalNode pess-final [alg node]
   (restrict-valuation (alg-pessimistic-valuation alg (:plan node)) (:goal (:alg node))))
 
@@ -411,8 +444,8 @@
 	key-pair            [opt-states rest-hlas]]
     (if-let [[#^WeakHashMap s m-ref] (.get graph-map key-pair)]
         (when (not (.containsKey s node))
-	  (println "\n\nMerge\n\n" (:class node) (when (:hla node) (hla-name (:hla node))) (map hla-name (:rest-hlas node)) (if (util/sref-get m-ref) "merged" "new") (count s) (map :class (keys s)))
-	  (if (and (nil? (util/sref-get m-ref))
+	  (println "\n\nMerge\n\n" (:class node) (:class opt-val) (when (:hla node) (hla-name (:hla node))) (map hla-name (:rest-hlas node)) (if (util/sref-get m-ref) "merged" "new") (count s) (map :class (keys s)))
+	  #_(if (and (nil? (util/sref-get m-ref))
 		   (isa? (:class (first (keys s))) ::ALGActionNode)
 		   (= nil (util/sref-get (:previous (first (keys s))))))
 	    (do (println "dead node")
@@ -453,7 +486,6 @@
 ;     (if (contains? post-set node)
 ;         (do (println "Killing cycle!") *pessimal-valuation*)
        (let [s (:optimistic-valuation ^node)]
-;	 (when (nil? s) (clojure.inspector/inspect-tree node))
 	 (or (util/sref-get s)
 	     (do
 	       (util/sref-up! *op-counter* inc)
@@ -462,18 +494,31 @@
 		 (handle-graph alg node))
 	       (util/sref-get s))))))
 
+(defn alg-weighted-valuation [alg node]
+  (let [s (:weighted-valuation ^node)]
+    (or (util/sref-get s)
+	(util/sref-set! s 
+	  (do (util/sref-up! *pp-counter* inc)
+	      (compute-alg-weighted-valuation alg node))))))
+
 (defn alg-pessimistic-valuation [alg node]
-;  *pessimal-valuation*) ; TODO
-;(comment
   (let [s (:pessimistic-valuation ^node)]
     (or (util/sref-get s)
 	(util/sref-set! s 
 	  (do (util/sref-up! *pp-counter* inc)
 	      (compute-alg-pessimistic-valuation alg node))))))
 
+(defn alg-search-valuation 
+  "Return the valuation to search with; either the optimistic or weighted, depending on context."
+  [alg node]
+  (if (util/safe-get alg :suboptimal-weight)
+      (alg-weighted-valuation alg node)
+    (alg-optimistic-valuation alg node)))
+
 
 (defn invalidate-valuations [node]
   (util/sref-set! (:optimistic-valuation ^node) nil)
+  (util/sref-set! (:weighted-valuation ^node) nil)
   (util/sref-set! (:pessimistic-valuation ^node) nil)
   nil)
 
@@ -491,31 +536,36 @@
 ;  (println "SBP Root" );(alg-node-name node) next-state reward max-gap)
   (util/assert-is (or (Double/isNaN reward) (= reward 0)))
 ;  (when (or (Double/isNaN reward) (>= reward 0))
-    (util/assert-is (= (valuation-state-reward (alg-optimistic-valuation alg node) next-state) 0))
+    (util/assert-is (= (valuation-state-reward (alg-search-valuation alg node) next-state) 0))
     (or max-gap-node []))
 
+
+(defn- state-to-state-reward [prev-state description next-state]
+  (second 
+   (or (regress-clause-state next-state	(state->clause prev-state) description nil)
+       [prev-state Double/NEGATIVE_INFINITY])))
+
+
+; TODO: how do we regress through weighted ???
 (defmethod simple-backwards-pass ::ALGActionNode sbp-action [node next-state next-clause reward max-gap max-gap-node alg]
  ; (println "SBP Action" (map hla-name (cons (:hla node) (:rest-hlas node))));(alg-node-name node) next-state reward max-gap)
   (util/timeout)
  ;   (when next-clause (util/assert-is (clause-includes-state? next-clause next-state)))
   (let [prev-node (util/sref-get (:previous node))
-	prev-val (alg-optimistic-valuation alg prev-node)]
+	prev-val (alg-search-valuation alg prev-node)]
     (let [[prev-state step-reward pre-reward prev-clause]
 	  (or (regress-state-hinted next-state prev-val (hla-optimistic-description (:hla node)) 
-				    (alg-optimistic-valuation alg node) next-clause)
+				    (alg-search-valuation alg node) next-clause)
 	      [:dummy Double/NEGATIVE_INFINITY Double/NEGATIVE_INFINITY])]
       (if (>= (+ pre-reward step-reward) reward)
 	  (let [refine-gap? (util/safe-get alg :refine-gap?)
 		[next-gap next-gap-node] 
                   (if refine-gap?
-		      (let [[_ pess-step-reward] 
-			      (or (regress-clause-state
-				   next-state
-				   (state->clause prev-state)
-				   (hla-pessimistic-description (:hla node))
-				   nil)
-				  [prev-state Double/NEGATIVE_INFINITY])
-			    gap (- step-reward pess-step-reward)]
+		      (let [pess-step-reward (state-to-state-reward prev-state (hla-pessimistic-description (:hla node)) next-state)
+			    opt-step-reward (if (util/safe-get alg :suboptimal-weight)
+					        (state-to-state-reward prev-state (hla-optimistic-description (:hla node)) next-state)
+					      step-reward)
+			    gap (- opt-step-reward pess-step-reward)]
 			(if (and (>= gap max-gap) (not (hla-primitive? (:hla node))))
 			    [gap node]
 			  [max-gap max-gap-node]))
@@ -561,7 +611,7 @@
 			 (let [np (util/sref-get (:newest-previous node))]
 ;			   (util/assert-is (or (nil? np) (identical? np prev-node)))
 			   (or (nil? np) (identical? np prev-node)))))
-	    (when-let [[clause val-reward] (valuation-clause-reward (alg-optimistic-valuation alg prev-node) next-clause)]
+	    (when-let [[clause val-reward] (valuation-clause-reward (alg-search-valuation alg prev-node) next-clause)]
 	      (when (>= val-reward reward); (println "GO")
 	;	(print ",")
 		(simple-backwards-pass prev-node next-state clause reward max-gap max-gap-node alg)))))
@@ -569,7 +619,7 @@
     (loop [good-preds
 	       (seq (filter identity
 		     (for [prev-node (alg-merge-node-previouses alg node)]
-		       (let [prev-val (alg-optimistic-valuation alg prev-node)]
+		       (let [prev-val (alg-search-valuation alg prev-node)]
 			 (if (isa? (:class prev-val) :edu.berkeley.ai.angelic/PropositionalValuation)
 			     (when-let [[prev-clause prev-rew] (valuation-state-clause-reward prev-val next-state)]
 			       (when (>= prev-rew reward)
@@ -597,7 +647,7 @@
     (or (util/sref-get pass-cache)
 	(util/sref-set! pass-cache
 	  (or
-	    (when-let [[state rew clause] (get-max-reward-state-and-clause (alg-optimistic-valuation alg node))]
+	    (when-let [[state rew clause] (get-max-reward-state-and-clause (alg-search-valuation alg node))]
 	      (or (simple-backwards-pass (:plan node) state clause rew 0 nil alg)
 		  (do (invalidate-valuations node) nil)))
 	    :fail)))))

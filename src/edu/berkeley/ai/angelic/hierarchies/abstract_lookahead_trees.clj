@@ -7,8 +7,7 @@
 
 ;; Abstract lookahead trees, with (optional) forward caching and graph stuff.
 
-; TODO: caching prevents garbage collection; should use Apache ReferenceMap with weak/soft values. 
-
+; TODO: caching prevents garbage collection; should use Apache ReferenceMap with weak/soft values 
 ; Note: behaves like plan "graph" when caching turned on.
 
 ; WARNING: can't reuse this (when graph?) or will end up with bad results... possible
@@ -65,7 +64,9 @@
 	       (and (util/safe-get previous-node :primitive?)
 		    (hla-primitive? hla)))) 
    {:pessimistic-valuation (util/sref pess-val), :optimistic-valuation (util/sref opt-val)
-    :lower-reward-bound (util/sref nil) :upper-reward-bound (util/sref nil) :cache (HashMap.)}))
+    :lower-reward-bound (util/sref nil) :upper-reward-bound (util/sref nil) 
+    :cache (HashMap.) :fate (util/sref nil)}))
+; Fate can be nil, :refined, :pruned; for visualizing only.
 
 (defn get-alt-node [alt hla previous-node] "Returns [node cached?]"
   (let [#^HashMap cache (when (util/safe-get alt :cache?) (util/safe-get ^previous-node :cache))]
@@ -208,6 +209,7 @@
 (defn make-alt-root-node [alt opt-val pess-val]
   (make-alt-node :root nil opt-val pess-val))
 
+(declare graph-add-and-check!)
 (defn make-initial-alt-node 
   ([initial-node] 
      (make-initial-alt-node initial-node true true))
@@ -229,16 +231,21 @@
      (make-initial-alt-node ::ALTPlanNode opt-valuation-class pess-valuation-class subsumption-info initial-node ref-choice-fn cache? graph?))
  ([node-type opt-valuation-class pess-valuation-class subsumption-info initial-node ref-choice-fn cache? graph?]
 ;  (util/assert-is (empty? subsumption-info)) ;; Taken out for now. TODO
-  (util/assert-is (contains? #{true false :full :bhaskara :icaps08} graph?))
+  (util/assert-is (contains? #{true false :full :bhaskara :icaps08 :sloppy} graph?))
   (let [initial-plan (list initial-node) ;(if (seq? initial-node) initial-node (list initial-node))
 	env (hla-environment (first initial-plan)), 
 	alt (make-alt cache? graph? (envs/get-goal env) ref-choice-fn subsumption-info)
+	dummy-name ((:node-counter ^alt))
+	root (make-alt-root-node alt 
+		     (state->valuation opt-valuation-class (envs/get-initial-state env))
+		     (state->valuation pess-valuation-class (envs/get-initial-state env)))
 	name ((:node-counter ^alt))]
+    (util/assert-is (graph-add-and-check! alt root initial-plan dummy-name)  )
+ ;   (println (:graph-map ^alt))
+    (.add #^HashSet (:live-set ^alt) dummy-name)
     (.add #^HashSet (:live-set ^alt) name)
     (loop [actions initial-plan
-	   previous (make-alt-root-node alt 
-		     (state->valuation opt-valuation-class (envs/get-initial-state env))
-		     (state->valuation pess-valuation-class (envs/get-initial-state env)))]
+	   previous root]
       (if (empty? actions)
           (make-alt-plan-node node-type alt name previous)
 	(recur (next actions)
@@ -266,16 +273,20 @@
 	[opt-states opt-si] (get-valuation-states opt-val subsumption-info)
 	graph-tuples        (.get graph-map [opt-states rest-plan])]
 ;   (println (count graph-tuples) (:graph? alt) (:class opt-val))
-    (when (every?
+    (if-let [[_ _ bad-node]
+	     (util/find-first
 	   (fn [[graph-si graph-node]]
-	     (or (and (= (:graph? alt) :icaps08) (not (.contains live-set graph-node)))
-		 (not (valuation-subsumes? graph-si opt-si subsumption-info))
-		 (and (or (= (:graph? alt) :bhaskara) (not (.contains live-set graph-node)))
-		      (valuation-equals? graph-si opt-si subsumption-info))))
-	   graph-tuples)
-    ;  (println " Survived" opt-si graph-tuples (map #(.contains live-set (second %)) graph-tuples))
+	     (not (or (and (= (:graph? alt) :icaps08) (not (.contains live-set graph-node)))
+		      (not (valuation-subsumes? graph-si opt-si subsumption-info))
+		      (and (not (= (:graph? alt) :sloppy))
+		           (or (= (:graph? alt) :bhaskara) (not (.contains live-set graph-node)))
+			   (valuation-equals? graph-si opt-si subsumption-info)))))
+	   graph-tuples)]
+        (do (util/sref-set! (:fate ^node) bad-node)
+	    false)
      ; (println (class (get-valuation-states (pessimistic-valuation node) subsumption-info)))
       (let [pess-val              (pessimistic-valuation node)]
+       ;(println " Survived" opt-si graph-tuples (map #(.contains live-set (second %)) graph-tuples))
 	(when (> (valuation-max-reward pess-val) Double/NEGATIVE_INFINITY)
 	  (let [[pess-states pess-si] (get-valuation-states pess-val subsumption-info)
 		pair                  [pess-states rest-plan]
@@ -289,12 +300,12 @@
 			      (valuation-equals? graph-si pess-si subsumption-info))))
 		   graph-tuples)
 	      (.put graph-map pair
-		(cons [pess-si name]
+		(cons [pess-si name node] ;; TODO: remove node.
 		      (remove
 		       (fn [[graph-si graph-node]]
 			 (valuation-subsumes? pess-si graph-si subsumption-info))
-		       graph-tuples)))))))
-      true)))
+		       graph-tuples))))))
+	true))))
 
 
 	       
@@ -354,7 +365,8 @@
   (if (empty? actions) 
     (make-alt-plan-node (:class node) alt name previous )
     (let [[nxt cache?] (get-alt-node alt (first actions) previous)]
-      (if (and (> (valuation-max-reward (optimistic-valuation nxt)) Double/NEGATIVE_INFINITY)
+      (if (and (or (> (valuation-max-reward (optimistic-valuation nxt)) Double/NEGATIVE_INFINITY)
+		   (and (util/sref-set! (:fate ^nxt) :dead) false))
 	       (or (next actions) (not cache?)) ; Eliminate duplicates.
 	       (or (not (:graph? alt)) 
 		   (graph-add-and-check! alt nxt (next actions) name)))
@@ -381,6 +393,7 @@
 	    before-actions (map :hla (next before-nodes))
 	    parent-name    (util/safe-get node :name)]
 	(when graph? (.remove #^HashSet (:live-set ^alt) parent-name))
+	(util/sref-set! (:fate ^ref-node) :refined)
 	(filter identity
 	 (for [ref (hla-immediate-refinements (:hla ref-node) (optimistic-valuation (:previous ref-node)))]
 	   (let [name         ((:node-counter ^alt))
@@ -481,6 +494,73 @@
      (rest (reverse (util/iterate-while :previous (:plan node)))))))
 
 
+(require '[edu.berkeley.ai.util.graphviz :as graphviz])
+(defn graphviz-alt [node]
+  "TODO: identify source of node, etc."
+  (graphviz/write-graphviz "/tmp/alt.pdf"
+   [(last (util/iterate-while :previous (:plan node))) false]
+   (fn [[n r]] n) ;(:name n))
+   (fn [[n r?]] 
+     (let [fate (util/sref-get (:fate ^n))]
+       {:label (util/double-quote [(valuation-max-reward (pessimistic-valuation n))
+				   (valuation-max-reward (optimistic-valuation n))])
+	:color (cond 
+		 r? "blue"
+		 (and fate (not (= :refined fate))) "red" 
+		 :else "black")}))
+   (fn [[n r?]] 
+     (let [parent-fate (util/sref-get (:fate ^n))]
+       (if (and parent-fate (not (= parent-fate :refined)) (not (= parent-fate :dead)))
+	   (do (assert (empty? (:cache ^n)))
+	       [[{:color "red"} [parent-fate false]]])
+     (for [[e n] (:cache ^n)]
+       (let [fate (util/sref-get (:fate ^n))]
+	 [{:label (util/double-quote (hla-name e)) 
+	   :color (if (= :refined fate) "blue" "black")}  
+	  [n (or r? (= :refined fate))]]))))))
+  (util/sh "open" "-a" "Skim" "/tmp/alt.pdf"))
+
+
+(defn graphviz-alt2 [nodes]
+  "TODO: identify source of node, etc."
+  (doseq [node nodes,
+	  n (util/iterate-while :previous (:plan node))]
+    (util/assert-is (contains? #{nil :live} (util/sref-get (:fate ^n))))
+    (util/sref-set! (:fate ^n) :live))
+  (graphviz/write-graphviz "/tmp/alt.pdf"
+   (last (util/iterate-while :previous (:plan (first nodes))))
+   identity
+   (fn [n] 
+     (if (isa? (:class n) ::ALTPlanNode)
+         {:label (util/double-quote [(search/lower-reward-bound n)
+				     (search/upper-reward-bound n)])
+	  :color "green"}
+       (let [fate (util/sref-get (:fate ^n))]
+	 {:label (util/double-quote [(valuation-max-reward (pessimistic-valuation n))
+				     (valuation-max-reward (optimistic-valuation n))])
+	  :color (cond 
+		   (= :live fate) "green"
+		   (and fate (not (= :refined fate))) "red" 
+		   :else "black")})))
+   (fn [n] 
+     (when-not (isa? (:class n) ::ALTPlanNode)
+     (let [parent-fate (util/sref-get (:fate ^n))]
+       (cond (and parent-fate (not (= parent-fate :refined)) (not (= parent-fate :dead)) (not (= parent-fate :live)))
+  	       (do (assert (empty? (:cache ^n)))
+		   [[{:color "red" :style "dotted"} parent-fate]])
+	     (and (= parent-fate :live) (empty? (:cache ^n)))
+	       (let [final (util/make-safe (util/find-first #(identical? (:plan %) n) nodes))]
+		 [[{:label (util/double-quote "[finish]") :color "green"} final]])
+	     :else
+	       (for [[e n] (:cache ^n)]
+		 (let [fate (util/sref-get (:fate ^n))]
+		   [{:label (util/double-quote (hla-name e)) 
+		     :color (condp = fate :refined "blue" :live "green" "black")}  
+		    n])))))))
+  (doseq [node nodes,
+	  n (util/iterate-while :previous (:plan node))]
+    (util/sref-set! (:fate ^n) nil))
+  (util/sh "open" "-a" "Skim" "/tmp/alt.pdf"))
 
 
 (comment

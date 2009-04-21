@@ -193,6 +193,10 @@
   "Like filter, but on [clause rew] pairs."
   (fn [f v] (:class v)))
 
+(defmulti map-valuation-rewards
+  "Transform valuation rewards with a unary function."
+  (fn [f v] (:class v)))
+
 (defmulti valuation-max-reward-clause
   "Get [clause rew], where clause has the max reward."
   :class)

@@ -1,10 +1,10 @@
-(ns edu.berkeley.ai.domains.timing-nav-switch
+(ns edu.berkeley.ai.scripts.timing-nav-switch
  (:require [edu.berkeley.ai [util :as util] [envs :as envs] [search :as search] [angelic :as angelic]] 
            [edu.berkeley.ai.envs.states :as states]
            [edu.berkeley.ai.domains.strips :as strips]
 	   [edu.berkeley.ai.domains.nav-switch :as nav-switch]
 	   [edu.berkeley.ai.search.algorithms.textbook :as textbook]
-	   [edu.berkeley.ai.angelic [dnf-simple-valuations :as dnf-simple-valuations]
+	   [edu.berkeley.ai.angelic [dnf-valuations :as dnf-valuations]
 	                            [hierarchies :as hierarchies]]
 	   [edu.berkeley.ai.angelic.hierarchies [strips-hierarchies :as strips-hierarchies]
 	                                        [abstract-lookahead-trees :as alts]
@@ -27,9 +27,9 @@
 
 (def *all-ns* [*small-ns* *med-ns* *big-ns*])
 
-(def *search-fns* [["aha-star" algs/aha-star-search true] ["ahss-search" algs/ahss-search false]])
+(util/defvar- *search-fns* [["aha-star" algs/aha-star-search true] ["ahss-search" algs/ahss-search false]])
 
-(def *node-fns* [;["strips" search/ss-node] 
+(util/defvar- *node-fns* [;["strips" search/ss-node] 
 		 ;["flat-strips" #(hierarchies/alt-node (strips-hierarchies/get-flat-strips-hierarchy %))]
 		 ;["unguided" #(hierarchies/alt-node (hierarchies/get-hierarchy warehouse/*warehouse-hierarchy-unguided* %))]
 ;		 ["unguided-alt-ff" #(alts/alt-node (hierarchies/get-hierarchy warehouse/*warehouse-hierarchy-unguided* %) false false)]
@@ -40,7 +40,7 @@
 		 ["guided-alt-tt" #(alts/alt-node (hierarchies/get-hierarchy nav-switch/*nav-switch-hierarchy* %) true :full)]
 		 ])
 
-(def *time-limit* 20)
+(util/defvar- *time-limit* 20)
 
 (defn- pad [thing len]
   (.substring (apply str thing (replicate len " ")) 0 len))
@@ -180,7 +180,7 @@
     (strips-hierarchies/make-flat-strips-hierarchy-schema 
      (nav-switch/make-nav-switch-strips-domain) (constantly 0))    
     (simplifier (apply nav-switch/make-nav-switch-strips-env *small-ns-args*))
-    ::dnf-simple-valuations/DNFSimpleValuation))
+    ::dnf-valuations/DNFValuation))
 
 (doseq [[name simplifier] *strips-hierarchy-simplifiers*]
   (time-and-check-hierarchical (format  "6x6 flat-strips-hierarchy, %s, 0 heuristic" name) 
@@ -188,7 +188,7 @@
     (strips-hierarchies/make-flat-strips-hierarchy-schema 
      (nav-switch/make-nav-switch-strips-domain) (constantly 0))    
     (simplifier (apply nav-switch/make-nav-switch-strips-env *big-ns-args*))
-    ::dnf-simple-valuations/DNFSimpleValuation ))
+    ::dnf-valuations/DNFValuation ))
 
   )
 ;;;; On to heuristics.
@@ -215,7 +215,7 @@
      (fn [state] (* -2 (+ (Math/abs (- (util/desymbolize (first (strips/get-strips-state-pred-val state 'atx)) 1) 0)) (Math/abs (- (util/desymbolize (first (strips/get-strips-state-pred-val state 'aty)) 1) (dec *huge-ns-size*))))))
      )    
     (simplifier (apply nav-switch/make-nav-switch-strips-env *huge-ns-args*))
-    ::dnf-simple-valuations/DNFSimpleValuation))
+    ::dnf-valuations/DNFValuation))
 
 
 (doseq [[name simplifier]  (take 3 *strips-hierarchy-simplifiers*)]
@@ -224,7 +224,7 @@
     (hierarchies/parse-hierarchy "/Users/jawolfe/Projects/angel/src/edu/berkeley/ai/domains/nav_switch2.hierarchy" 
      (nav-switch/make-nav-switch-strips-domain)) 
     (simplifier (apply nav-switch/make-nav-switch-strips-env *huge-ns-args*))
-    ::dnf-simple-valuations/DNFSimpleValuation))
+    ::dnf-valuations/DNFValuation))
  )
 
 ; (let [node (alt-node (get-hierarchy *nav-switch-hierarchy* (constant-predicate-simplify (make-nav-switch-strips-env 505 505 (prln (take 100 (repeatedly #(vector (rand-int 505) (rand-int 505))))) [504 0] true [0 504]))))] (time (filter #(= "flip" (.substring (name (first %)) 0 4)) (map :name (first (a-star-search node))))))

@@ -38,6 +38,8 @@
       ret
       (recur (conj ret (pq-remove-min-with-cost! pq))))))
 
+(defmulti pq-peek-pairs :class)
+
 
 (derive ::QueuePriorityQueue ::PriorityQueue)
 
@@ -190,6 +192,11 @@
   (let [#^FibonacciHeap heap (:heap pq)]
     (.size heap)))
 
+(defmethod pq-peek-pairs ::TreePriorityQueue [pq]
+  (let [#^FibonacciHeap heap (:heap pq)]
+    (for [#^com.bluemarsh.graphmaker.core.util.FibonacciHeap$Node node (.nodeList heap)]
+      [(.getData node) (.getKey node)])))
+  
 
 (derive ::SafeTreePriorityQueue ::TreePriorityQueue)
 

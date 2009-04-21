@@ -91,6 +91,9 @@
     (make-dnf-valuation (:class v)
       (reduce (fn [m [c r]] (if (f c r) m (dissoc m c))) clause-map clause-map))))
 
+(defmethod map-valuation-rewards ::DNFValuation map-valuation-rewards-dnf [f v]
+  (make-dnf-valuation (:class v) (util/map-vals f (:clause-map v))))
+
 
 (defmethod valuation-state-clause-reward ::DNFValuation valuation-state-clause-reward [v s]
   (let [ordered-clauses (reverse (sort-by val (:clause-map v)))]

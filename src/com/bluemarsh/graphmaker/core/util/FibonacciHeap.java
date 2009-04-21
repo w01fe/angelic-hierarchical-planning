@@ -22,6 +22,8 @@
  */
 package com.bluemarsh.graphmaker.core.util;
 
+import java.util.ArrayList;
+
 /**
  * This class implements a Fibonacci heap data structure. Much of the
  * code in this class is based on the algorithms in Chapter 21 of the
@@ -313,6 +315,12 @@ public class FibonacciHeap {
         return H;
     }
 
+	public ArrayList<Node> nodeList() {
+		ArrayList<Node> l = new ArrayList<Node>();
+		if (min != null) min.addToList(l);
+		return l;
+	}
+
     /**
      * Implements a node of the Fibonacci heap. It holds the information
      * necessary for maintaining the structure of the heap. It acts as
@@ -444,5 +452,14 @@ public class FibonacciHeap {
             // set mark false
             mark = false;
         }
+
+		public void addToList(ArrayList<Node> l) {
+			Node cur = this;
+			do {
+				l.add(cur);
+				if (cur.child != null) cur.child.addToList(l);
+				cur = cur.right;
+			} while (cur != this);
+		}
     }
 }
