@@ -8,10 +8,11 @@
 
 ;;; An auxillary data structure to hold cached features of env, heuristics.
 
-(defstruct state-space-search-space-struct :class :state-space :action-space :goal :lower-reward-fn :upper-reward-fn :env)
+(defstruct state-space-search-space-struct :class :state-space :action-space :goal :lower-reward-fn :upper-reward-fn :env :enforce-consistency?)
 
-(defn make-state-space-search-space- [state-space action-space goal lower-reward-fn upper-reward-fn env]
-  (struct state-space-search-space-struct ::StateSpaceSearchSpace state-space action-space goal lower-reward-fn upper-reward-fn env))
+(defn make-state-space-search-space- [state-space action-space goal lower-reward-fn upper-reward-fn env enforce-consistency?]
+  (util/assert-is (contains? #{true false :warn} enforce-consistency?))
+  (struct state-space-search-space-struct ::StateSpaceSearchSpace state-space action-space goal lower-reward-fn upper-reward-fn env enforce-consistency?))
 
 
 ;;; Main node data structure
@@ -20,8 +21,9 @@
 
 (defstruct state-space-node :class :search-space :state)
 
-(defn make-state-space-node [search-space state]
-  (struct state-space-node ::StateSpaceNode search-space state))
+(defn make-state-space-node [search-space state path-min]
+  (with-meta (struct state-space-node ::StateSpaceNode search-space state)
+	     {:path-min path-min}))
 
 
 ;;; Only methods to call here is:
@@ -32,7 +34,9 @@
   ([env upper-reward-fn] 
      (state-space-search-space env (constantly Double/NEGATIVE_INFINITY) upper-reward-fn))
   ([env lower-reward-fn upper-reward-fn]
-     (make-state-space-search-space- (envs/get-state-space env) (envs/get-action-space env) (envs/get-goal env) lower-reward-fn upper-reward-fn env)))
+     (state-space-search-space env lower-reward-fn upper-reward-fn true))
+  ([env lower-reward-fn upper-reward-fn enforce-consistency?]
+     (make-state-space-search-space- (envs/get-state-space env) (envs/get-action-space env) (envs/get-goal env) lower-reward-fn upper-reward-fn env enforce-consistency?)))
 
 (defn make-initial-state-space-node 
   ([env] 
@@ -40,9 +44,12 @@
   ([env upper-reward-fn] 
      (make-initial-state-space-node env (constantly Double/NEGATIVE_INFINITY) upper-reward-fn))
   ([env lower-reward-fn upper-reward-fn]
+     (make-initial-state-space-node env lower-reward-fn upper-reward-fn true))
+  ([env lower-reward-fn upper-reward-fn enforce-consistency?]
      (make-state-space-node 
-      (make-state-space-search-space- (envs/get-state-space env) (envs/get-action-space env) (envs/get-goal env) lower-reward-fn upper-reward-fn env)
-      (envs/get-initial-state env))))  
+      (make-state-space-search-space- (envs/get-state-space env) (envs/get-action-space env) (envs/get-goal env) lower-reward-fn upper-reward-fn env enforce-consistency?)
+      (envs/get-initial-state env)
+      Double/POSITIVE_INFINITY)))  
 
 (defn ss-node [& args] (apply make-initial-state-space-node args))
 
@@ -55,7 +62,15 @@
   (+ (:reward ^(:state node)) ((:lower-reward-fn (:search-space node)) (:state node))))
 
 (defmethod upper-reward-bound ::StateSpaceNode [node] 
-  (+ (:reward ^(:state node)) ((:upper-reward-fn (:search-space node)) (:state node))))
+  (let [rew (+ (:reward ^(:state node)) ((:upper-reward-fn (:search-space node)) (:state node)))
+	path-min (util/safe-get ^node :path-min)
+	consistency (util/safe-get-in node [:search-space :enforce-consistency?])]
+    (if consistency 
+      (if (< path-min rew)
+	  (do (when (= :warn consistency) (println "Warning: heuristic is inconsistent!"))
+	      path-min)
+	rew)
+      rew)))
 
 (defmethod reward-so-far ::StateSpaceNode [node] 
   (:reward ^(:state node)))
@@ -65,7 +80,7 @@
   (util/sref-up! *ref-counter* inc)
   (let [search-space (:search-space node)
 	state (:state node)]
-    (map #(make-state-space-node search-space %) 
+    (map #(make-state-space-node search-space % (min (util/safe-get ^node :path-min) (upper-reward-bound node))) 
 	 (envs/successor-states state (:action-space search-space)))))
 
 (defmethod primitive-refinement ::StateSpaceNode [node] 

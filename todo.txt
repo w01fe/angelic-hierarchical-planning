@@ -1,12 +1,13 @@
 ;;;;;;;;;;;;;;;; Implement
 
 ; To ALT pruning condition, add "prune weakly if primitive prefix." ?
+  
 
 ; Fix ALT in case of overlapping plans. (check up on this also.)
 
 ; Remove hack to ALT to show prettier graphs.
 
-; Add consistency enforcement, or A* graph search is incorrect. ?
+; Add consistency enforcement to ALT, or graph search is incorrect. ?
 
 ; Check on A*-graph/sloppy ALT discrepancies. (tiebreak upper-reward-bound?)
 

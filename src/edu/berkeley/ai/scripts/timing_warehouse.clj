@@ -100,15 +100,22 @@
 	  [4 4 [2 3] true {0 '[a] 2 '[c baz]} nil '[[a baz c table3]]]
 	  [4 8 [2 4] true {0 '[a] 2 '[c baz]} nil '[[c baz table3]]]
 	  [4 8 [2 3] true {0 '[a] 2 '[c baz]} nil '[[a c table1]]]
-	  [4 6 [2 4] true {0 '[a] 2 '[c baz]} nil '[[c baz table3]]]]))
+	  [4 6 [2 4] true {0 '[a] 2 '[c baz]} nil '[[c baz table3]]]
+	  ; my instances
+	  [2 2 [1 1] false {0 '[a]} nil ['[a table1]]]
+	  [3 3 [1 1] false {0 '[a] 2 '[b]} nil ['[b a]]]
+	  [3 4 [1 2] false {0 '[b a] 2 '[c]} nil ['[a b c]]]
+	  [4 4 [1 2] false {0 '[a] 2 '[c b]} nil ['[a c table1]]]
+	  [7 6 [0 2] true {0 '[b] 1 '[a] 2 '[c]  } nil ['[a b c table5]]]]))
+
 
 (defn test-icaps-ww [i & alt-args]
   (let [e (nth *icaps-ww* i)
 	d (angelic/ground-description (angelic/instantiate-description-schema (angelic/parse-description [:warehouse-act] nil nil) e) {})]
     (doseq [[alg node]
 	    [[textbook/a-star-graph-search (search/ss-node e (fn [s] (angelic/valuation-max-reward (angelic/progress-valuation (angelic/state->valuation :edu.berkeley.ai.angelic.dnf-valuations/DNFValuation s) d))))]
-	     [algs/aha-star-search (apply alts/alt-node (strips-hierarchies/get-flat-strips-hierarchy e [:warehouse-act]) alt-args)]
-	     [algs/aha-star-search (apply alts/alt-node (hierarchies/get-hierarchy warehouse/*warehouse-hierarchy* e) alt-args)]]]
+	   ;  [algs/aha-star-search (apply alts/alt-node (strips-hierarchies/get-flat-strips-hierarchy e [:warehouse-act]) alt-args)]
+	    #_ [algs/aha-star-search (apply alts/alt-node (hierarchies/get-hierarchy warehouse/*warehouse-hierarchy* e) alt-args)]]]
       (search/reset-ref-counter)
       (println [(time (second (alg node))) (util/sref-get search/*ref-counter*)]))))
 	  

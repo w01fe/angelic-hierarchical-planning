@@ -162,6 +162,20 @@
   (make-weighted-icaps-choice-fn 1))
 
 
+; Choose the first HLA with nonzero gap, or first HLA if no gap.
+(defn first-gap-choice-fn [node]
+  (loop [node (:plan node), cur nil, cur-gap? true]
+    (if-let [prev (:previous node)]
+      (if (hla-primitive? (:hla node)) (recur prev cur cur-gap?)
+	  (let [opt    (valuation-max-reward (optimistic-valuation node))
+		pess   (valuation-max-reward (pessimistic-valuation node))
+		gap?   (> opt pess)]
+	    (when gap? (util/assert-is (identity cur-gap?)))
+	    (if (and cur-gap? cur (not gap?)) 
+	        cur
+	      (recur prev node gap?))))
+      cur)))
+
 
 ; Sometimes this priority fn misguides us ... pessimistic desc. too pessimistic...
 (defn icaps-priority-fn [node]  
@@ -382,7 +396,7 @@
   (let [urb         (search/upper-reward-bound node)
 	alt         (util/safe-get node :alt)
 	graph?      (util/safe-get alt :graph?)
-	full-graph? (= graph? :full)
+	full-graph? (contains? #{:full :icaps08} graph?) ; (= graph? :full)
 	plan        (:plan node)
 	ref-node    ((util/safe-get alt :ref-choice-fn) node)]
     (when ref-node ;; If ref-fn is correct, == when not fully primitive
@@ -525,7 +539,7 @@
   "TODO: identify source of node, etc."
   (doseq [node nodes,
 	  n (util/iterate-while :previous (:plan node))]
-    (util/assert-is (contains? #{nil :live} (util/sref-get (:fate ^n))))
+    (assert (contains? #{nil :live} (util/sref-get (:fate ^n))))
     (util/sref-set! (:fate ^n) :live))
   (graphviz/write-graphviz "/tmp/alt.pdf"
    (last (util/iterate-while :previous (:plan (first nodes))))
@@ -560,7 +574,8 @@
   (doseq [node nodes,
 	  n (util/iterate-while :previous (:plan node))]
     (util/sref-set! (:fate ^n) nil))
-  (util/sh "open" "-a" "Skim" "/tmp/alt.pdf"))
+  (util/sh "open" "-a" "Skim" "/tmp/alt.pdf")
+  )
 
 
 (comment
