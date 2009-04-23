@@ -57,10 +57,14 @@
 (derive ::ALTPlanNode ::search/Node)
 (defstruct alt-plan-node :class :alt :name :plan)
 (defn make-alt-plan-node [class alt name plan]
+  (let [final-ref (:was-final? ^plan)]
+    (util/assert-is (not (util/sref-get final-ref)))
+    (util/sref-set! final-ref true))
   (struct alt-plan-node class alt name plan))
 
+; was-tight? tells whether some ancestor had equal opt + pess valuation-max-reward.
 (defstruct alt-action-node :hla :previous :primitive?)
-(defn make-alt-node [hla previous-node opt-val pess-val] 
+(defn make-alt-node [hla previous-node was-tight? opt-val pess-val] 
   (with-meta  
    (struct alt-action-node hla previous-node 
 	   (or (not previous-node) 
@@ -68,15 +72,16 @@
 		    (hla-primitive? hla)))) 
    {:pessimistic-valuation (util/sref pess-val), :optimistic-valuation (util/sref opt-val)
     :lower-reward-bound (util/sref nil) :upper-reward-bound (util/sref nil) 
-    :cache (HashMap.) :fate (util/sref nil)}))
+    :cache (HashMap.) :fate (util/sref nil)
+    :was-tight? was-tight? :was-final? (util/sref false)}))
 ; Fate can be nil, :refined, :pruned; for visualizing only.
 
-(defn get-alt-node [alt hla previous-node] "Returns [node cached?]"
+(defn get-alt-node [alt hla previous-node was-tight?] "Returns a cached node if available."
   (let [#^HashMap cache (when (util/safe-get alt :cache?) (util/safe-get ^previous-node :cache))]
-    (or (when-let [n (and cache (.get cache hla))] [n true])
-	(let [ret (make-alt-node hla previous-node nil nil)]
+    (or (and cache (.get cache hla))
+	(let [ret (make-alt-node hla previous-node was-tight? nil nil)]
 	  (when cache (.put cache hla ret))
-	  [ret false]))))
+	  ret))))
 
 
 
@@ -224,7 +229,7 @@
 
 
 (defn make-alt-root-node [alt opt-val pess-val]
-  (make-alt-node :root nil opt-val pess-val))
+  (make-alt-node :root nil false opt-val pess-val))
 
 (declare graph-add-and-check!)
 (defn make-initial-alt-node 
@@ -248,7 +253,7 @@
      (make-initial-alt-node ::ALTPlanNode opt-valuation-class pess-valuation-class subsumption-info initial-node ref-choice-fn cache? graph?))
  ([node-type opt-valuation-class pess-valuation-class subsumption-info initial-node ref-choice-fn cache? graph?]
 ;  (util/assert-is (empty? subsumption-info)) ;; Taken out for now. TODO
-  (util/assert-is (contains? #{true false :bhaskara :icaps08} graph?))
+  (util/assert-is (contains? #{true false :simple :bhaskara :icaps08} graph?))
   (let [initial-plan (list initial-node) ;(if (seq? initial-node) initial-node (list initial-node))
 	env (hla-environment (first initial-plan)), 
 	alt (make-alt cache? graph? (envs/get-goal env) ref-choice-fn subsumption-info)
@@ -265,7 +270,7 @@
       (if (empty? actions)
           (make-alt-plan-node node-type alt name previous)
 	(recur (next actions)
-	       (first (get-alt-node alt (first actions) previous))))))))
+	       (get-alt-node alt (first actions) previous false)))))))
 
 (defn alt-node [& args] (apply make-initial-alt-node args))
 
@@ -294,7 +299,9 @@
 	   (fn [[graph-si graph-node]]
 	     (not (or (and (= (:graph? alt) :icaps08) (not (.contains live-set graph-node)))
 		      (not (valuation-subsumes? graph-si opt-si subsumption-info))
-		      (and (or (= (:graph? alt) :bhaskara) (not (.contains live-set graph-node)))
+		      (and (or (= (:graph? alt) :bhaskara) 
+			       (and (= (:graph? alt) :simple) (not (.contains live-set graph-node)))
+			       (and (= (:graph? alt) true) (util/safe-get ^node :was-tight?) (not (.contains live-set graph-node))))
 			   (valuation-equals? graph-si opt-si subsumption-info)))))
 	   graph-tuples)]
         (do (util/sref-set! (:fate ^node) bad-node)
@@ -375,18 +382,18 @@
 
 (defmethod search/reward-so-far ::ALTPlanNode [node] 0)
 
-(defmulti construct-immediate-refinement (fn [node previous actions alt name] (:class node)))
-(defmethod construct-immediate-refinement ::ALTPlanNode [node previous actions alt name]
+(defmulti construct-immediate-refinement (fn [node previous actions alt name was-tight?] (:class node)))
+(defmethod construct-immediate-refinement ::ALTPlanNode [node previous actions alt name was-tight?]
   (if (empty? actions) 
-    (make-alt-plan-node (:class node) alt name previous )
-    (let [[nxt cache?] (get-alt-node alt (first actions) previous)]
+    (make-alt-plan-node (:class node) alt name previous)
+    (let [nxt (get-alt-node alt (first actions) previous was-tight?)]
       (if (and (or (> (valuation-max-reward (optimistic-valuation nxt)) Double/NEGATIVE_INFINITY)
 		   (and (util/sref-set! (:fate ^nxt) :dead) false))
-	       (or (next actions) (not cache?)) ; Eliminate duplicates.
+	       (or (next actions) (not (util/sref-get (:was-final? ^nxt)))) ; Eliminate duplicates.
 	       (or (not (:graph? alt)) 
 		   (graph-add-and-check! alt nxt (next actions) 
 					 name #_ (if (util/safe-get nxt  :primitive?) *always-live* name))))
-	  (recur node nxt (next actions) alt name)
+	  (recur node nxt (next actions) alt name was-tight?)
 	(util/print-debug 3 "Late prune at" (search/node-str {:class ::ALTPlanNode :plan nxt})
 			  ;(map println (map optimistic-valuation (util/iterate-while :previous nxt)))
 ;			  (optimistic-valuation (:previous (:previous nxt)))
@@ -402,7 +409,13 @@
 	ref-node    ((util/safe-get alt :ref-choice-fn) node)]
     (when ref-node ;; If ref-fn is correct, == when not fully primitive
    ;   (println "About to refine " (search/node-str node) " at " (hla-name (:hla ref-node)))
-      (let [after-actions  (map :hla (reverse (take-while #(not (identical? % ref-node)) 
+      (let [was-tight?  (and (= graph? true) 
+			 (or (util/safe-get ^ref-node :was-tight?)
+			     (> (valuation-max-reward (pessimistic-valuation ref-node)) 
+				Double/NEGATIVE_INFINITY)))
+			  ;   (= (valuation-max-reward (optimistic-valuation ref-node))
+			  ;	(valuation-max-reward (pessimistic-valuation ref-node)))))
+	    after-actions  (map :hla (reverse (take-while #(not (identical? % ref-node)) 
 							  (iterate :previous plan))))]
 	(when graph? (.remove #^HashSet (:live-set ^alt) (util/safe-get node :name)))
 	(util/sref-set! (:fate ^ref-node) :refined)
@@ -410,7 +423,7 @@
 	 (for [ref (hla-immediate-refinements (:hla ref-node) (optimistic-valuation (:previous ref-node)))]
 	   (let [name         ((:node-counter ^alt))]
   	     (util/print-debug 3 "\nConsidering refinement " (map hla-name ref) " at " (hla-name (:hla ref-node)))
-	     (when-let [nxt (construct-immediate-refinement node (:previous ref-node) (concat ref after-actions) alt name )]
+	     (when-let [nxt (construct-immediate-refinement node (:previous ref-node) (concat ref after-actions) alt name was-tight?)]
 	       (when graph? (.add #^HashSet (:live-set ^alt) name))
 ;		 (when (> (search/upper-reward-bound nxt) urb) 
 ;		   (util/sref-set! (:upper-reward-bound ^(:plan nxt)) urb)

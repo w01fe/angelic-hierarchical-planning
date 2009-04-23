@@ -48,6 +48,17 @@ D [-1 -1 ] R [-2 -2] Nav [-10 -2] GL [-11 -3] Nav [-13 -4] T [-14 -5] ..
 D [-1 -1 ] R [-2 -2] D [-3 -3] ... pruned by first plan.
 R [-1 -1 ] D [-2 -2] ... pruned by third plan.
 
+Note that this happens even if the first Nav is not tight, i.e. opt =
+-2.
+
+Contrast this with benign case.
+
+L [-1 -1] D [-2 -2] R [-3 -3] Act [-inf -5]
+D [-1 -1] Act [-inf -4]
+D [-1 -1] L [-2 -2]  Act [-inf -4]
+  should be pruned. 
+D L Act should be pruned
+
 ; Not even inconsistent? Hmmm.  This could be flat A*, ignoring
   everything after nav.  ****Except**** that Nav has pessimistic descriptions.
 
@@ -87,6 +98,10 @@ by (a descendent) of A.  This cannot happen in flat A*, since
   - Can improve, by not activating flag until we prune weakly on it.
    -  When this happens, activate flag on all earlier HLAs in plan.
       - And all descencents, ...  TOO difficult.
+
+- STILL not right.  Trigger is not exact description, it's correct
+  pessimistic bound.  Problem is, we don't know this ! ! ! ! But, it's
+  still OK :)
 
 Suppose we switch to clause-based pruning.  How does this change
 things?  Not much,
