@@ -276,7 +276,7 @@
     (cond (nil? n)             (do (.put m item (.insert heap item cost)) :added)
 	  (number? n)          (if (< cost n)
 				   (do (.put m item (.insert heap item cost)) :re-added)
-;				   (throw (IllegalArgumentException. "Heuristic inconsistency detected."))
+				   ;(throw (IllegalArgumentException. "Heuristic inconsistency detected."))
 				 :ignored)
 	  (let [#^com.bluemarsh.graphmaker.core.util.FibonacciHeap$Node n n] 
 		(< cost (.getKey n))) 

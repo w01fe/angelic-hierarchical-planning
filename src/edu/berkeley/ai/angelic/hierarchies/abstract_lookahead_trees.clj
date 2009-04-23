@@ -37,10 +37,11 @@
 ; U ... Nav      Put-R, now tight, pruned at nav from 2 steps above
 ; L ... Nav      Put-R, now tight, pruned at Put-R from 2 steps above
 
-; The soluton is to prune strictly on live nodes, and non-strictly on everything else.
+; The soluton is to prune strictly on live nodes and primitive prefixes, and non-strictly on everything else.
 ; This means we must maintain a live list, but no ancestor sets are needed.
 ; If you throw away a node without telling the ALT, all hell can break loose.
 
+; This behaves almost exactly like A* graph search with flat hierarchy, except that we test for repeated states only when we create a plan (worse, better --> worse survives).
 ;; ALTs, nodes, and plans
 
 (defstruct abstract-lookahead-tree :cache? :graph? :goal :ref-choice-fn :subsumption-info)
@@ -50,6 +51,8 @@
     {:graph-map (HashMap.)
      :live-set  (HashSet.)
      :node-counter (util/counter-from 0)}))
+
+(util/defvar- *always-live* -1)
 
 (derive ::ALTPlanNode ::search/Node)
 (defstruct alt-plan-node :class :alt :name :plan)
@@ -249,14 +252,13 @@
   (let [initial-plan (list initial-node) ;(if (seq? initial-node) initial-node (list initial-node))
 	env (hla-environment (first initial-plan)), 
 	alt (make-alt cache? graph? (envs/get-goal env) ref-choice-fn subsumption-info)
-	dummy-name ((:node-counter ^alt))
 	root (make-alt-root-node alt 
 		     (state->valuation opt-valuation-class (envs/get-initial-state env))
 		     (state->valuation pess-valuation-class (envs/get-initial-state env)))
 	name ((:node-counter ^alt))]
-    (util/assert-is (graph-add-and-check! alt root initial-plan dummy-name)  )
+    (util/assert-is (graph-add-and-check! alt root initial-plan *always-live*)  )
  ;   (println (:graph-map ^alt))
-    (.add #^HashSet (:live-set ^alt) dummy-name)
+    (.add #^HashSet (:live-set ^alt) *always-live*)
     (.add #^HashSet (:live-set ^alt) name)
     (loop [actions initial-plan
 	   previous root]
@@ -383,10 +385,11 @@
 		   (and (util/sref-set! (:fate ^nxt) :dead) false))
 	       (or (next actions) (not cache?)) ; Eliminate duplicates.
 	       (or (not (:graph? alt)) 
-		   (graph-add-and-check! alt nxt (next actions) name)))
+		   (graph-add-and-check! alt nxt (next actions) 
+					 name #_ (if (util/safe-get nxt  :primitive?) *always-live* name))))
 	  (recur node nxt (next actions) alt name)
 	(util/print-debug 3 "Late prune at" (search/node-str {:class ::ALTPlanNode :plan nxt})
-			  (map println (map optimistic-valuation (util/iterate-while :previous nxt)))
+			  ;(map println (map optimistic-valuation (util/iterate-while :previous nxt)))
 ;			  (optimistic-valuation (:previous (:previous nxt)))
 			  )))))
 
@@ -396,9 +399,11 @@
   (let [urb         (search/upper-reward-bound node)
 	alt         (util/safe-get node :alt)
 	graph?      (util/safe-get alt :graph?)
-	full-graph? (contains? #{:full :icaps08} graph?) ; (= graph? :full)
+	full-graph? ;(contains? #{:full :icaps08} graph?) 
+	            (= graph? :full)
 	plan        (:plan node)
 	ref-node    ((util/safe-get alt :ref-choice-fn) node)]
+    (util/assert-is (not full-graph?))
     (when ref-node ;; If ref-fn is correct, == when not fully primitive
    ;   (println "About to refine " (search/node-str node) " at " (hla-name (:hla ref-node)))
       (let [after-actions  (map :hla (reverse (take-while #(not (identical? % ref-node)) 
@@ -413,7 +418,7 @@
 	   (let [name         ((:node-counter ^alt))
 		 tail-actions (concat ref after-actions)
 		 all-actions  (concat before-actions tail-actions)]
-  	     (util/print-debug 3 "Considering refinement " (map hla-name ref) " at " (hla-name (:hla ref-node)))
+  	     (util/print-debug 3 "\nConsidering refinement " (map hla-name ref) " at " (hla-name (:hla ref-node)))
 	     (if (every? (fn [[node rest-plan]]    ; full graph prefix check
 			     (graph-add-and-check! alt node rest-plan name))
 			   (map vector before-nodes (iterate next all-actions)))
