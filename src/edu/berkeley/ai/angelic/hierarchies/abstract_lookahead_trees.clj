@@ -248,7 +248,7 @@
      (make-initial-alt-node ::ALTPlanNode opt-valuation-class pess-valuation-class subsumption-info initial-node ref-choice-fn cache? graph?))
  ([node-type opt-valuation-class pess-valuation-class subsumption-info initial-node ref-choice-fn cache? graph?]
 ;  (util/assert-is (empty? subsumption-info)) ;; Taken out for now. TODO
-  (util/assert-is (contains? #{true false :full :bhaskara :icaps08 :sloppy} graph?))
+  (util/assert-is (contains? #{true false :bhaskara :icaps08} graph?))
   (let [initial-plan (list initial-node) ;(if (seq? initial-node) initial-node (list initial-node))
 	env (hla-environment (first initial-plan)), 
 	alt (make-alt cache? graph? (envs/get-goal env) ref-choice-fn subsumption-info)
@@ -256,7 +256,7 @@
 		     (state->valuation opt-valuation-class (envs/get-initial-state env))
 		     (state->valuation pess-valuation-class (envs/get-initial-state env)))
 	name ((:node-counter ^alt))]
-    (util/assert-is (graph-add-and-check! alt root initial-plan *always-live*)  )
+    (when graph? (util/assert-is (graph-add-and-check! alt root initial-plan *always-live*)))
  ;   (println (:graph-map ^alt))
     (.add #^HashSet (:live-set ^alt) *always-live*)
     (.add #^HashSet (:live-set ^alt) name)
@@ -294,8 +294,7 @@
 	   (fn [[graph-si graph-node]]
 	     (not (or (and (= (:graph? alt) :icaps08) (not (.contains live-set graph-node)))
 		      (not (valuation-subsumes? graph-si opt-si subsumption-info))
-		      (and (not (= (:graph? alt) :sloppy))
-		           (or (= (:graph? alt) :bhaskara) (not (.contains live-set graph-node)))
+		      (and (or (= (:graph? alt) :bhaskara) (not (.contains live-set graph-node)))
 			   (valuation-equals? graph-si opt-si subsumption-info)))))
 	   graph-tuples)]
         (do (util/sref-set! (:fate ^node) bad-node)
@@ -399,37 +398,24 @@
   (let [urb         (search/upper-reward-bound node)
 	alt         (util/safe-get node :alt)
 	graph?      (util/safe-get alt :graph?)
-	full-graph? ;(contains? #{:full :icaps08} graph?) 
-	            (= graph? :full)
 	plan        (:plan node)
 	ref-node    ((util/safe-get alt :ref-choice-fn) node)]
-    (util/assert-is (not full-graph?))
     (when ref-node ;; If ref-fn is correct, == when not fully primitive
    ;   (println "About to refine " (search/node-str node) " at " (hla-name (:hla ref-node)))
       (let [after-actions  (map :hla (reverse (take-while #(not (identical? % ref-node)) 
-							  (iterate :previous plan))))
-	    before-nodes   (when full-graph? (reverse (util/iterate-while :previous plan)))
-	    before-actions (map :hla (next before-nodes))
-	    parent-name    (util/safe-get node :name)]
-	(when graph? (.remove #^HashSet (:live-set ^alt) parent-name))
+							  (iterate :previous plan))))]
+	(when graph? (.remove #^HashSet (:live-set ^alt) (util/safe-get node :name)))
 	(util/sref-set! (:fate ^ref-node) :refined)
 	(filter identity
 	 (for [ref (hla-immediate-refinements (:hla ref-node) (optimistic-valuation (:previous ref-node)))]
-	   (let [name         ((:node-counter ^alt))
-		 tail-actions (concat ref after-actions)
-		 all-actions  (concat before-actions tail-actions)]
+	   (let [name         ((:node-counter ^alt))]
   	     (util/print-debug 3 "\nConsidering refinement " (map hla-name ref) " at " (hla-name (:hla ref-node)))
-	     (if (every? (fn [[node rest-plan]]    ; full graph prefix check
-			     (graph-add-and-check! alt node rest-plan name))
-			   (map vector before-nodes (iterate next all-actions)))
-	       (when-let [nxt (construct-immediate-refinement node (:previous ref-node) tail-actions alt name )]
-		 (when graph? (.add #^HashSet (:live-set ^alt) name))
+	     (when-let [nxt (construct-immediate-refinement node (:previous ref-node) (concat ref after-actions) alt name )]
+	       (when graph? (.add #^HashSet (:live-set ^alt) name))
 ;		 (when (> (search/upper-reward-bound nxt) urb) 
 ;		   (util/sref-set! (:upper-reward-bound ^(:plan nxt)) urb)
 ;		   (println "Fixing Upper Inconcistency" urb (search/upper-reward-bound nxt)))
-		 nxt)
-	       (util/print-debug 3 "early prune")
-	       ))))))))
+	       nxt))))))))
 
 
 (defmethod search/primitive-refinement ::ALTPlanNode [node]

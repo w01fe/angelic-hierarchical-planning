@@ -251,7 +251,7 @@
 (util/deftest hierarchical-algorithms
    (doseq [[inst-n rew h env] [*ns-inst* *wh-inst*]
 	   cache?      [false true]
-	   graph?      [false true :full]
+	   graph?      [false true]
 	   [sf-n alg strict?] [["aha" aha-star-search true] ["ahss-inf" ahss-search false] ["ahss-=" #(ahss-search % rew) true]]]
      (util/testing (str inst-n " " cache? " " graph? " " sf-n)
 ;       (println inst-n cache? graph? sf-n)

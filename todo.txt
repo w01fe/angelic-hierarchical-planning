@@ -84,6 +84,12 @@ by (a descendent) of A.  This cannot happen in flat A*, since
     ; How do we interpret exact?   Upper-reward-bound of pess, opt are
     =.
    ; How do we interpret live?  Are pruned plans fair game?  NO.
+  - Can improve, by not activating flag until we prune weakly on it.
+   -  When this happens, activate flag on all earlier HLAs in plan.
+      - And all descencents, ...  TOO difficult.
+
+Suppose we switch to clause-based pruning.  How does this change
+things?  Not much,
   
 
 
