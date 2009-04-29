@@ -1,6 +1,23 @@
 ;;;;;;;;;;;;;;;; Implement
 
-; Improved Nav pessimistic description.
+; TODO: Improved Nav pessimistic description for WW
+
+; TODO TODO: :full graph is incorrect; we either need to turn off
+  duplicate plan elimination, or somehow merge ancestor sets. 
+
+; TODO TODO TODO: <= != < or =; graph-add-and-check! is incorrect, misses
+  pruning opps?   ? ? ?  Missed this because its onl a problem for
+  non-simple valuations.
+
+;; TODO: turn off caching when doing the full graph thing?  Or keep
+   track of "parent" pointers on a per-plan x node, not per-ALT-node basis
+
+; TODO: check for pruning on expansion, not storage -- otherwise, can
+  end up with no pruning at all (?) (two equivalent plans, each has
+  cost go up by 1 each time we refine)?  Possible, but unlikely.  
+
+;; TODO: put back finish!  Otherwise, with multiple goal states we may
+   do n times worse where n is # of goal states.
 
 ; Ideally, pruning condition should reduce to A* graph given
   consistency, flat strips hierarchy.
@@ -8,105 +25,16 @@
 
 ; Inconsistency of, e.g., WW heuristic can be a real problem.
 
-In flat-strips-land, a-star graph search corresponds to: 
- - Add and prune states only before the act.  
-  - If a plan is weakly dominated by another live one, prune.
-  - If a better plan is generated later, then the earlier never gets
-  pruned, and we get one set of extra refinements.  OK, at most
-  constant factor worse.  Could be fixed by double-check before
-  refining.  Or, even better, just move check to pre-refinement? 
-   - Main thing we will lose is early pruning.  
+; Current implemementatino of :full pruning is incorrect, since we
+  must merge ancestor sets when we re-generate a plan.  Might as well
+  turn off duplicate plan elimination in this setting ?
 
- -The other thing we miss is equivalent of "closed" set, where we can
-  effectively weakly prune on non-live things too.  We could do this
-  on primitive prefix-hla pairs.  (?)   Do we have the guarantee that
-  any (primitive prefix, state-set, HLA suffix) pair will represent
-  the optimal plan to state-set when following by HLA-suffix?    When
-  we expand this plan, we do, assuming consistency.    And before the,
-  it's live.  So, we're golden?    Hah, unless we're inconsistent.
-  And even if not.  Because another (equally good) plan may have 
- already made pessimistic claims about later states. 
+; TODO: ALT should only record weak pruning for cycle graph.
 
+; TODO: replacement policy should also be stricter-- always replace if
+  you're equal.  
 
-If we prune a plan strictly, it can be considered live forever !
- ; But not if we prune weakly on live plan.  
-
-What goes wrong with primitive prefix pruning?
- - Same as usual.
-
-Suppose we allow primitive prefixes to remain live when a plan
-survives.
-
-Idea: two plans.
-Second plan takes ownership of some primitive prefix, then gets pwned
-by first plan.
-First plan gets refined , gets pwned by this primitive prefix.
-
-R [-1 -1 ] Nav [-3 -3] GL [-4 -4] Nav [-6 -6] T [-7 -7] ..
-D [-1 -1 ] Nav [-10 -1] GL [-11 -2] Nav [-13 -4] T [-14 -5] ..
-D [-1 -1 ] R [-2 -2] Nav [-10 -2] GL [-11 -3] Nav [-13 -4] T [-14 -5] ..
-D [-1 -1 ] R [-2 -2] D [-3 -3] ... pruned by first plan.
-R [-1 -1 ] D [-2 -2] ... pruned by third plan.
-
-Note that this happens even if the first Nav is not tight, i.e. opt =
--2.
-
-Contrast this with benign case.
-
-L [-1 -1] D [-2 -2] R [-3 -3] Act [-inf -5]
-D [-1 -1] Act [-inf -4]
-D [-1 -1] L [-2 -2]  Act [-inf -4]
-  should be pruned. 
-D L Act should be pruned
-
-; Not even inconsistent? Hmmm.  This could be flat A*, ignoring
-  everything after nav.  ****Except**** that Nav has pessimistic descriptions.
-
-Basic pathology: prune a descendent of A by B, prune a descendent of B
-by (a descendent) of A.  This cannot happen in flat A*, since
- ; the first pruning must be on a complete state sequence.
- ; thus, refining the second plan will only produce new states, not
- covered by any descendents.  
-
-; One simple solution: associate with each plan, a set of plans pruned
-  by it.  Never prune a descendent of this plan on any ancestors of
-  pruned plans.  Or something like that.
-
-; Observation: this can only happen when we prune on the exact
-  description of a non-primitive HLA.  (!)
-  ; Solution: if we do this, remove ancestors from allowed pruning
-  set. (?).  Ancestors may be shared though.
- ; Solution: can prune weakly on *anything*, unless you're refining an
-  HLA with an exact description, in which case it must be live.  :)
-  (assumes consistency ... if you go exact --> inexact, you may screw
-  yourself.
-  Getting close though.  
-
-; Two ways to think about it.
-  - When we prune based on non-primitive sequence with exact
-  description, add ancestors to black-set of this sequence.
-    - Problem: black-sets may grow large, replacement policy, ...?
-  - When we expand an HLA with exact description,
-     only prune on live stuff.  Problem: say pessimistic drops
-    off on first refinement, now we're no longer exact.
-   - Is safe to store with all HLAs up to this point, :was-exact flag.
-    - May prevent some pruning on worse refinements ... but no worse
-    than currently.
-    ; How do we interpret exact?   Upper-reward-bound of pess, opt are
-    =.
-   ; How do we interpret live?  Are pruned plans fair game?  NO.
-  - Can improve, by not activating flag until we prune weakly on it.
-   -  When this happens, activate flag on all earlier HLAs in plan.
-      - And all descencents, ...  TOO difficult.
-
-- STILL not right.  Trigger is not exact description, it's correct
-  pessimistic bound.  Problem is, we don't know this ! ! ! ! But, it's
-  still OK :)
-
-Suppose we switch to clause-based pruning.  How does this change
-things?  Not much,
-  
-
+; Prefix check (????) 
 
 
 

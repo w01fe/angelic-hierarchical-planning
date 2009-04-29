@@ -14,34 +14,7 @@
  ; failure, or suboptimal plans...
 
 ; Graph map is metadata on ALT, maps from [state-set rest-plan] --> [pess-valuations]  (old: max-pess-reward).
-; Solution: do it all in node-immediate-refinements??
-; OK to prune if strictly dominated by ancestor (assuming consistency)
-  ; Or even weakly dominated by non-ancestor refined ?????
-   ; YES, if you take duplicate plans into account when defining ancestors.
-; If a plan dies a natural death, it's OK to keep its cruft around. 
 
-; SO, three options:
-; Don't skip duplicate plans
- ; Prune if strictly dominated by (direct) ancestor,
-   ; or weakly dominated by any other plan (refined or not).
-; Strengths: as much pruning as possible, multi-generated plans automatically pruned
-; Weaknesses: must keep track of ancestors, may multi-generate plans. Replacement policy? Always replace.
-;              fails if inconsistent ???
-
-; TODO: add consistency check?
-
-; OK, this is subtly wrong:
-; L ... Navigate Put-R guarantees costs for last 2
-; L ... Nav      Put-R guarantees costs for last 2
-; U ... Navigate Put-R guarantees costs for last 2
-; U ... Nav      Put-R, now tight, pruned at nav from 2 steps above
-; L ... Nav      Put-R, now tight, pruned at Put-R from 2 steps above
-
-; The soluton is to prune strictly on live nodes and primitive prefixes, and non-strictly on everything else.
-; This means we must maintain a live list, but no ancestor sets are needed.
-; If you throw away a node without telling the ALT, all hell can break loose.
-
-; This behaves almost exactly like A* graph search with flat hierarchy, except that we test for repeated states only when we create a plan (worse, better --> worse survives).
 ;; ALTs, nodes, and plans
 
 (defstruct abstract-lookahead-tree :cache? :graph? :goal :ref-choice-fn :subsumption-info)
@@ -50,17 +23,18 @@
     (struct abstract-lookahead-tree cache? graph? goal ref-choice-fn subsumption-info)
     {:graph-map (HashMap.)
      :live-set  (HashSet.)
+     :prune-map (HashMap.) ; map from node name to set of blacklist nodes not to prune from
      :node-counter (util/counter-from 0)}))
 
 (util/defvar- *always-live* -1)
 
 (derive ::ALTPlanNode ::search/Node)
-(defstruct alt-plan-node :class :alt :name :plan)
-(defn make-alt-plan-node [class alt name plan]
+(defstruct alt-plan-node :class :alt :name :plan :ancestor-set)
+(defn make-alt-plan-node [class alt name plan ancestor-set]
   (let [final-ref (:was-final? ^plan)]
     (util/assert-is (not (util/sref-get final-ref)))
     (util/sref-set! final-ref true))
-  (struct alt-plan-node class alt name plan))
+  (struct alt-plan-node class alt name plan ancestor-set))
 
 ; was-tight? tells whether some ancestor had equal opt + pess valuation-max-reward.
 (defstruct alt-action-node :hla :previous :primitive?)
@@ -73,7 +47,8 @@
    {:pessimistic-valuation (util/sref pess-val), :optimistic-valuation (util/sref opt-val)
     :lower-reward-bound (util/sref nil) :upper-reward-bound (util/sref nil) 
     :cache (HashMap.) :fate (util/sref nil)
-    :was-tight? was-tight? :was-final? (util/sref false)}))
+    :was-tight? was-tight? :was-final? (util/sref false)
+    }))
 ; Fate can be nil, :refined, :pruned; for visualizing only.
 
 (defn get-alt-node [alt hla previous-node was-tight?] "Returns a cached node if available."
@@ -253,7 +228,7 @@
      (make-initial-alt-node ::ALTPlanNode opt-valuation-class pess-valuation-class subsumption-info initial-node ref-choice-fn cache? graph?))
  ([node-type opt-valuation-class pess-valuation-class subsumption-info initial-node ref-choice-fn cache? graph?]
 ;  (util/assert-is (empty? subsumption-info)) ;; Taken out for now. TODO
-  (util/assert-is (contains? #{true false :simple :bhaskara :icaps08} graph?))
+  (util/assert-is (contains? #{true false :full :simple :bhaskara :icaps08} graph?))
   (let [initial-plan (list initial-node) ;(if (seq? initial-node) initial-node (list initial-node))
 	env (hla-environment (first initial-plan)), 
 	alt (make-alt cache? graph? (envs/get-goal env) ref-choice-fn subsumption-info)
@@ -261,14 +236,14 @@
 		     (state->valuation opt-valuation-class (envs/get-initial-state env))
 		     (state->valuation pess-valuation-class (envs/get-initial-state env)))
 	name ((:node-counter ^alt))]
-    (when graph? (util/assert-is (graph-add-and-check! alt root initial-plan *always-live*)))
+    (when graph? (util/assert-is (graph-add-and-check! alt root initial-plan *always-live* #{})))
  ;   (println (:graph-map ^alt))
     (.add #^HashSet (:live-set ^alt) *always-live*)
     (.add #^HashSet (:live-set ^alt) name)
     (loop [actions initial-plan
 	   previous root]
       (if (empty? actions)
-          (make-alt-plan-node node-type alt name previous)
+          (make-alt-plan-node node-type alt name previous #{})
 	(recur (next actions)
 	       (get-alt-node alt (first actions) previous false)))))))
 
@@ -285,26 +260,37 @@
 ; Note, even strictly better subsumption checking can make things worse...
 
 ; Return true if keep, false if prune.
-(defn graph-add-and-check! [alt node rest-plan name]
+(defn graph-add-and-check! [alt node rest-plan name ancestor-set]
   (util/assert-is (:graph? alt))
   (let [#^HashMap graph-map (util/safe-get ^alt :graph-map)
+	#^HashMap prune-map (util/safe-get ^alt :prune-map)
 	#^HashSet live-set  (util/safe-get ^alt :live-set)
 	subsumption-info    (util/safe-get alt :subsumption-info)
 	opt-val             (optimistic-valuation node)
 	[opt-states opt-si] (get-valuation-states opt-val subsumption-info)
 	graph-tuples        (.get graph-map [opt-states rest-plan])]
 ;   (println (count graph-tuples) (:graph? alt) (:class opt-val))
-    (if-let [[_ _ bad-node]
+    (if-let [[_ bad-name bad-node]
 	     (util/find-first
 	   (fn [[graph-si graph-node]]
 	     (not (or (and (= (:graph? alt) :icaps08) (not (.contains live-set graph-node)))
 		      (not (valuation-subsumes? graph-si opt-si subsumption-info))
 		      (and (or (= (:graph? alt) :bhaskara) 
 			       (and (= (:graph? alt) :simple) (not (.contains live-set graph-node)))
-			       (and (= (:graph? alt) true) (util/safe-get ^node :was-tight?) (not (.contains live-set graph-node))))
+			       (and (= (:graph? alt) true) (util/safe-get ^node :was-tight?) (not (.contains live-set graph-node)))
+			       (and (= (:graph? alt) :full)
+				    (util/safe-get ^node :was-tight?) 
+				    (not (.contains live-set graph-node))
+				    (some (fn [anc-name]
+					    (or (= anc-name graph-node)
+						(contains? (get prune-map anc-name #{}) graph-node)))
+					  ancestor-set)))
 			   (valuation-equals? graph-si opt-si subsumption-info)))))
 	   graph-tuples)]
         (do (util/sref-set! (:fate ^node) bad-node)
+	    (when (= (:graph? alt) :full) 
+	      (.put prune-map bad-name
+		    (util/union (get prune-map bad-name #{}) (conj ancestor-set name))))
 	    false)
      ; (println (class (get-valuation-states (pessimistic-valuation node) subsumption-info)))
       (let [pess-val              (pessimistic-valuation node)]
@@ -344,7 +330,7 @@
     (when (:graph? alt)
       (loop [node (:plan node), plan nil]
 	(when node
-	  (graph-add-and-check! alt node plan name)
+	  (graph-add-and-check! alt node plan name #{})
 	  (recur (:previous node) (cons (:hla node) plan)))))
     (.add live-set name)
 ;    (println "refs " (util/sref-get search/*ref-counter*))
@@ -382,18 +368,18 @@
 
 (defmethod search/reward-so-far ::ALTPlanNode [node] 0)
 
-(defmulti construct-immediate-refinement (fn [node previous actions alt name was-tight?] (:class node)))
-(defmethod construct-immediate-refinement ::ALTPlanNode [node previous actions alt name was-tight?]
+(defmulti construct-immediate-refinement (fn [node previous actions alt name was-tight? ancestor-set] (:class node)))
+(defmethod construct-immediate-refinement ::ALTPlanNode [node previous actions alt name was-tight? ancestor-set]
   (if (empty? actions) 
-    (make-alt-plan-node (:class node) alt name previous)
+    (make-alt-plan-node (:class node) alt name previous ancestor-set)
     (let [nxt (get-alt-node alt (first actions) previous was-tight?)]
       (if (and (or (> (valuation-max-reward (optimistic-valuation nxt)) Double/NEGATIVE_INFINITY)
 		   (and (util/sref-set! (:fate ^nxt) :dead) false))
 	       (or (next actions) (not (util/sref-get (:was-final? ^nxt)))) ; Eliminate duplicates.
 	       (or (not (:graph? alt)) 
 		   (graph-add-and-check! alt nxt (next actions) 
-					 name #_ (if (util/safe-get nxt  :primitive?) *always-live* name))))
-	  (recur node nxt (next actions) alt name was-tight?)
+					 name ancestor-set)))
+	  (recur node nxt (next actions) alt name was-tight? ancestor-set)
 	(util/print-debug 3 "Late prune at" (search/node-str {:class ::ALTPlanNode :plan nxt})
 			  ;(map println (map optimistic-valuation (util/iterate-while :previous nxt)))
 ;			  (optimistic-valuation (:previous (:previous nxt)))
@@ -409,7 +395,7 @@
 	ref-node    ((util/safe-get alt :ref-choice-fn) node)]
     (when ref-node ;; If ref-fn is correct, == when not fully primitive
    ;   (println "About to refine " (search/node-str node) " at " (hla-name (:hla ref-node)))
-      (let [was-tight?  (and (= graph? true) 
+      (let [was-tight?  (and (contains? #{true :full} graph?) 
 			 (or (util/safe-get ^ref-node :was-tight?)
 			     (> (valuation-max-reward (pessimistic-valuation ref-node)) 
 				Double/NEGATIVE_INFINITY)))
@@ -423,7 +409,7 @@
 	 (for [ref (hla-immediate-refinements (:hla ref-node) (optimistic-valuation (:previous ref-node)))]
 	   (let [name         ((:node-counter ^alt))]
   	     (util/print-debug 3 "\nConsidering refinement " (map hla-name ref) " at " (hla-name (:hla ref-node)))
-	     (when-let [nxt (construct-immediate-refinement node (:previous ref-node) (concat ref after-actions) alt name was-tight?)]
+	     (when-let [nxt (construct-immediate-refinement node (:previous ref-node) (concat ref after-actions) alt name was-tight? (conj (util/safe-get node :ancestor-set) (util/safe-get node :name)))]
 	       (when graph? (.add #^HashSet (:live-set ^alt) name))
 ;		 (when (> (search/upper-reward-bound nxt) urb) 
 ;		   (util/sref-set! (:upper-reward-bound ^(:plan nxt)) urb)
