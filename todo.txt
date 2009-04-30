@@ -1,6 +1,6 @@
 ;;;;;;;;;;;;;;;; Implement
 
-; TODO: Improved Nav pessimistic description for WW
+; TODO: add ncstrips tests
 
 ; TODO TODO: :full graph is incorrect; we either need to turn off
   duplicate plan elimination, or somehow merge ancestor sets. 

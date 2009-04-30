@@ -258,14 +258,27 @@
 	      (apply cost-fn (concat early-args (map #(util/safe-get final-map (second %)) args))))))))))
     
 
+(defn- const-simplify-prec [atoms const-pred-map pos?]
+  (loop [in (seq atoms) out []]
+    (if (nil? in) out
+      (if-let [cp (get const-pred-map (ffirst in))]
+	  (when (util/same-truth-value? pos? (contains? cp (first in)))
+	    (recur (next in) out))
+	(recur (next in) (conj out (first in)))))))
+	  
+
 ; TODO: this is still slow -- set accounts 10% of time! 
 ; TODO: is this definition of cost-expr sufficiently general?
 ; TODO: lazy eval cost somehow? (no set)?
 (defn- ground-ncstrips-effect-atoms [var-map effect hla-vars const-pred-map]
   (let [instantiator #(props/simplify-atom var-map %)]
-    (make-ncstrips-effect 
-     (map instantiator (util/safe-get effect :pos-preconditions))
-     (map instantiator (util/safe-get effect :neg-preconditions))
+    (when-let [pos-pre (const-simplify-prec (map instantiator (util/safe-get effect :pos-preconditions))
+					    const-pred-map true)]
+      (when-let [neg-pre (const-simplify-prec (map instantiator (util/safe-get effect :neg-preconditions))
+					      const-pred-map false)]
+	(make-ncstrips-effect 
+	 pos-pre
+	 neg-pre
      (map #(ground-ncstrips-csp % var-map const-pred-map) (util/safe-get effect :forall-preconditions))
      (map instantiator (util/safe-get effect :adds))
      (map instantiator (util/safe-get effect :deletes))
@@ -273,7 +286,7 @@
      (map instantiator (util/safe-get effect :possible-adds))
      (map instantiator (util/safe-get effect :possible-deletes))
      (map #(ground-ncstrips-csp % var-map nil) (util/safe-get effect :possible-forall-effects))
-     (ground-ncstrips-cost (util/safe-get effect :forall-cost) (util/safe-get effect :cost-fn) var-map hla-vars))))
+     (ground-ncstrips-cost (util/safe-get effect :forall-cost) (util/safe-get effect :cost-fn) var-map hla-vars))))))
 
 
 ; TODO: put back simplification?  Or provide ground-and-constant-simplify method?
@@ -284,8 +297,8 @@
 
 (defmethod ground-description ::NCStripsDescriptionSchema [schema var-map]
   (struct ncstrips-description ::NCStripsDescription
-;	  (filter identity 
-     (map #(ground-ncstrips-effect % var-map (:vars schema) (util/safe-get schema :const-pred-map)) (:effects schema))))
+   (filter identity 
+     (map #(ground-ncstrips-effect % var-map (:vars schema) (util/safe-get schema :const-pred-map)) (:effects schema)))))
 
   
 ; TODO: make more efficient  
@@ -352,7 +365,9 @@
 (defmethod progress-clause ::NCStripsDescription progress-clause-ncstrips [clause desc]
   (util/merge-best > {}
     (for [effect (:effects desc)
-	  :let   [result (progress-effect-clause effect clause)]
+	  :let   [result (progress-effect-clause effect clause)
+		;  _  (println clause effect result "\n\n\n\n\n\n\n")
+		  ]
 	  :when result]
 	result)))
      
