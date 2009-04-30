@@ -115,7 +115,8 @@
     (doseq [[alg node]
 	    [[textbook/a-star-graph-search (search/ss-node e (fn [s] (angelic/valuation-max-reward (angelic/progress-valuation (angelic/state->valuation :edu.berkeley.ai.angelic.dnf-valuations/DNFValuation s) d))))]
 	     [algs/aha-star-search (apply alts/alt-node (strips-hierarchies/get-flat-strips-hierarchy e [:warehouse-act]) alt-args)]
-	     [algs/aha-star-search (apply alts/alt-node (hierarchies/get-hierarchy warehouse/*warehouse-hierarchy* e) alt-args)]]]
+	     [algs/aha-star-search (apply alts/alt-node (hierarchies/get-hierarchy warehouse/*warehouse-hierarchy* e) alt-args)]
+	     [algs/aha-star-search (apply alts/alt-node (hierarchies/get-hierarchy warehouse/*warehouse-hierarchy-improved* e) alt-args)]]]
       (search/reset-ref-counter)
       (println [(time (second (alg node))) (util/sref-get search/*ref-counter*)]))))
 	  
