@@ -71,11 +71,7 @@
   (fn [val subsumption-map] (:class val)))
 
 (defmulti valuation-subsumes? 
-  "Does val1 subsume val2, given that they have identical get-valuation-states under subsumption-map?  Return :equal if equal, :strict, or false."
-  (fn [val1 val2 subsumption-map] [(:class val1) (:class val2)]))
-
-(defmulti valuation-equals? 
-  "Does val1 equal val2, given that they have identical get-valuation-states under subsumption-map?  Return :equal if equal, :strict, or false."
+  "Does val1 subsume val2, given that they have identical get-valuation-states under subsumption-map?  Return :strict if every state is assigned > value, :equal if equal, :weak if every state is >= and at least some state is equal (incl. equal), or false/nil."
   (fn [val1 val2 subsumption-map] [(:class val1) (:class val2)]))
 
 
@@ -121,10 +117,10 @@
      {:class ::VectorSubsumptionInfo :reward-seq (map val ordered-pairs)}]))
 
 (defmethod valuation-subsumes?     [::VectorSubsumptionInfo ::VectorSubsumptionInfo] [val1 val2 subsumption-map]
-  (every? identity (map >= (:reward-seq val1) (:reward-seq val2))))
+  (cond (every? identity (map > (:reward-seq val1) (:reward-seq val2)))  :strict
+	(= (:reward-seq val1) (:reward-seq val2))                        :equal
+	(every? identity (map >= (:reward-seq val1) (:reward-seq val2))) :weak))
 
-(defmethod valuation-equals?     [::VectorSubsumptionInfo ::VectorSubsumptionInfo] [val1 val2 subsumption-map]
-  (= (:reward-seq val1) (:reward-seq val2)))
 
 
 
@@ -578,9 +574,6 @@ improve efficiency of regression."
 (defmulti sub-intersect-valuations 
   "Like intersect-valuations, but returns a non-empty subset of the intersection as quickly as possible."
   (fn [v1 v2] [(:class v1) (:class v2)]))
-
-(def *no-subsumption-info* {:class ::NoSubsumptionInfo})
-(defmethod valuation-subsumes?     [::NoSubsumptionInfo ::NoSubsumptionInfo] [val1 val2 subsumption-map] true)
 
 
 

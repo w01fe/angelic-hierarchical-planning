@@ -5,12 +5,9 @@
 ; TODO TODO: :full graph is incorrect; we either need to turn off
   duplicate plan elimination, or somehow merge ancestor sets. 
 
-; TODO TODO TODO: <= != < or =; graph-add-and-check! is incorrect, misses
-  pruning opps?   ? ? ?  Missed this because its onl a problem for
-  non-simple valuations.
-
 ;; TODO: turn off caching when doing the full graph thing?  Or keep
    track of "parent" pointers on a per-plan x node, not per-ALT-node basis
+
 
 ; TODO: check for pruning on expansion, not storage -- otherwise, can
   end up with no pruning at all (?) (two equivalent plans, each has
@@ -30,9 +27,6 @@
   turn off duplicate plan elimination in this setting ?
 
 ; TODO: ALT should only record weak pruning for cycle graph.
-
-; TODO: replacement policy should also be stricter-- always replace if
-  you're equal.  
 
 ; Prefix check (????) 
 

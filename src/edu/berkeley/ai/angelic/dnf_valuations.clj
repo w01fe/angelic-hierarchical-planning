@@ -132,22 +132,33 @@
 
 ;; TODO: slow slow slow?
 (defmethod valuation-subsumes?     [::DNFValuationSI ::DNFValuationSI] valuation-subsumes?-dnf [val1 val2 subsumption-map]
-  (and (every? identity (map >= (:rews val1) (:rews val2)))
-       (every? identity 
-	      (map (fn [sub1 sub2]
-		     (every? (fn [[atom-pred [gt-fn eq-fn]]]
-			       (every? identity (map gt-fn (get sub1 atom-pred) (get sub2 atom-pred))))
-			     subsumption-map))
-		   (:sub-maps val1) (:sub-maps val2)))))
+  (cond (and (every? identity (map > (:rews val1) (:rews val2)))
+	     (every? identity 
+		     (map (fn [sub1 sub2]
+			    (every? (fn [[atom-pred [gt-fn eq-fn]]]
+				      (every? identity (map gt-fn (get sub1 atom-pred) (get sub2 atom-pred))))
+				    subsumption-map))
+			  (:sub-maps val1) (:sub-maps val2))))
+	   :strict
+	(and (every? identity (map = (:rews val1) (:rews val2)))
+	     (every? identity 
+		     (map (fn [sub1 sub2]
+			    (every? (fn [[atom-pred [gt-fn eq-fn]]]
+				      (every? identity (map eq-fn 
+							    (get sub1 atom-pred) (get sub2 atom-pred))))
+				    subsumption-map))
+			  (:sub-maps val1) (:sub-maps val2))))
+           :equal
+	(and (every? identity (map >= (:rews val1) (:rews val2)))
+	     (every? identity 
+		     (map (fn [sub1 sub2]
+			    (every? (fn [[atom-pred [gt-fn eq-fn]]]
+				      (every? identity (map #(or (gt-fn %1 %2) (eq-fn %1 %2))
+							    (get sub1 atom-pred) (get sub2 atom-pred))))
+				    subsumption-map))
+			  (:sub-maps val1) (:sub-maps val2))))
+           :weak))
 
-(defmethod valuation-equals?     [::DNFValuationSI ::DNFValuationSI] valuation-equals?-dnf [val1 val2 subsumption-map]
-  (and (= (:rews val1) (:rews val2))
-       (every? identity 
-	      (map (fn [sub1 sub2]
-		     (every? (fn [[atom-pred [gt-fn eq-fn]]]
-			       (every? identity (map eq-fn (get sub1 atom-pred) (get sub2 atom-pred))))
-			     subsumption-map))
-		   (:sub-maps val1) (:sub-maps val2)))))
 
           
 

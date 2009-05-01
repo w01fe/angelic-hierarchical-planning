@@ -273,19 +273,20 @@
     (if-let [[_ bad-name bad-node]
 	     (util/find-first
 	   (fn [[graph-si graph-node]]
-	     (not (or (and (= (:graph? alt) :icaps08) (not (.contains live-set graph-node)))
-		      (not (valuation-subsumes? graph-si opt-si subsumption-info))
-		      (and (or (= (:graph? alt) :bhaskara) 
-			       (and (= (:graph? alt) :simple) (not (.contains live-set graph-node)))
-			       (and (= (:graph? alt) true) (util/safe-get ^node :was-tight?) (not (.contains live-set graph-node)))
-			       (and (= (:graph? alt) :full)
-				    (util/safe-get ^node :was-tight?) 
-				    (not (.contains live-set graph-node))
-				    (some (fn [anc-name]
-					    (or (= anc-name graph-node)
-						(contains? (get prune-map anc-name #{}) graph-node)))
-					  ancestor-set)))
-			   (valuation-equals? graph-si opt-si subsumption-info)))))
+	     (let [subsumes? (valuation-subsumes? graph-si opt-si subsumption-info)] 
+	       (not (or (and (= (:graph? alt) :icaps08) (not (.contains live-set graph-node)))
+			(not subsumes?)
+			(and (not (= subsumes? :strict))
+			     (or (= (:graph? alt) :bhaskara) 
+				 (and (= (:graph? alt) :simple) (not (.contains live-set graph-node)))
+				 (and (= (:graph? alt) true) (util/safe-get ^node :was-tight?) (not (.contains live-set graph-node)))
+				 (and (= (:graph? alt) :full)
+				      (util/safe-get ^node :was-tight?) 
+				      (not (.contains live-set graph-node))
+				      (some (fn [anc-name]
+					      (or (= anc-name graph-node)
+						  (contains? (get prune-map anc-name #{}) graph-node)))
+					    ancestor-set))))))))
 	   graph-tuples)]
         (do (util/sref-set! (:fate ^node) bad-node)
 	    (when (= (:graph? alt) :full) 
@@ -303,9 +304,7 @@
 ;	    (println "cb " (count graph-tuples))
 	    (when (every?
 		   (fn [[graph-si graph-node]]
-		     (or (not (valuation-subsumes? graph-si pess-si subsumption-info))
-			 (and (not (.contains live-set graph-node)) ; Important that live subsumes dead.
-			      (valuation-equals? graph-si pess-si subsumption-info))))
+		     (not (#{:strict :weak} (valuation-subsumes? graph-si pess-si subsumption-info))))
 		   graph-tuples)
 	      (.put graph-map pair
 		(cons [pess-si name node] ;; TODO: remove node.
