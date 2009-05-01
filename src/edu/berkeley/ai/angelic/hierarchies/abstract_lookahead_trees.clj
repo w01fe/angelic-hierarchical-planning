@@ -270,8 +270,8 @@
 	[opt-states opt-si] (get-valuation-states opt-val subsumption-info)
 	graph-tuples        (.get graph-map [opt-states rest-plan])]
 ;   (println (count graph-tuples) (:graph? alt) (:class opt-val))
-    (if-let [[_ bad-name bad-node]
-	     (util/find-first
+    (if-let [[bad-si bad-name bad-node]
+	     (util/find-first  ; TODO: find first, weakest ?
 	   (fn [[graph-si graph-node]]
 	     (let [subsumes? (valuation-subsumes? graph-si opt-si subsumption-info)] 
 	       (not (or (and (= (:graph? alt) :icaps08) (not (.contains live-set graph-node)))
@@ -289,7 +289,7 @@
 					    ancestor-set))))))))
 	   graph-tuples)]
         (do (util/sref-set! (:fate ^node) bad-node)
-	    (when (= (:graph? alt) :full) 
+	    (when (and (= (:graph? alt) :full) (not (= :strict (valuation-subsumes? bad-si opt-si subsumption-info))))
 	      (.put prune-map bad-name
 		    (util/union (get prune-map bad-name #{}) (conj ancestor-set name))))
 	    false)

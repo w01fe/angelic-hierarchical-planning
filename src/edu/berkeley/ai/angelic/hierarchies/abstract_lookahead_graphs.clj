@@ -7,6 +7,106 @@
 
 ;; Abstract lookahead graphs, which include merge nodes.
 
+; TODOS from todo.txt:
+
+; Think about other invalidation strategies. 
+
+;  Auto-merging above and beyond what's given.  (based on same opt-sets &
+;set of plans to go.  Store with each node, minimal rep. of
+;plan-to-go??)
+; - How do we find this?  In WW and NS, "Strips-top-level" is always
+; fair?  sort-of  
+; - Option to turn off suffixes.
+; - Try for more structure sharing
+;   - Merge remaining plans when we merge.  (?)  
+;    - Full forward-minimization is now possible.  Just merge next-maps
+
+
+;- When we auto-merge, how do we deal with duplicate plans?
+;  - Even if none, may arise when we start refining ...
+
+;  ALGs should have some mode for finding suboptimal plans.
+; - Is there a simple Weighted A*/AHSS-like algorithm for ALGs, and what does it look like? Specifically, it seems like extracting optimistic state sequences may be the wrong thing to do here (instead, bias things to include more pessimistic states in the sequences?).
+; TODO: a way to implement extract-a-solution (or refine potentially suboptimal things...)
+
+; If we make things look worse in early part of the graph, we have to
+;touch *everything* to fix it.  Partial way around this by keeping
+;track of "delta"?
+
+
+;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;; Minor
+
+
+;- Going backwards, keep track of the reward of the second-best path. 
+
+; - After refining a node, instead of returning directly to the root, progress forward along the optimal state sequence.  If at any p;oint the progressed valuation assigns the regressed state a reward corresponding to a plan at least as good as the second-best path,; call backwards-pass starting at this node.
+
+; - At the other end, cache the max-gap for the current state sequence going forward from the root.  If, during a backwards pass, you; hit the cached state sequence and the current max-gap is > the cached one, stop going backwards and refine right away.
+
+
+;;;;;;;;;;;;;;;; Think About
+
+; Incremental expansion.
+
+; How to use pessimistic descriptions in ALG
+
+;hierarchical preconditions -> bhaskara  (lots more spurious states).
+
+;- What's the relationship, if any, between optimal ALG search and
+;  algorithms like AO*?  
+
+; - Enforce consistency, add assertions back to sbp - difficult for
+;   non-simple valuations.
+;   - Option is to keep hierarchical structure, re-progress ... ?
+
+
+
+
+;;;;;;;;;;;;;;;;; Progression/subsumption efficiency
+
+; - Incremental progression/merging.  It should be possible to progress only "diffs" going forward, since usually only small changes ;will have been made to the valuations.  This will probably be very important if the valuations get very large.  Similar indexing may; allow more efficiently finding the best precursor (for OR-nodes) and the best regressed state (for AND-nodes).
+
+;Incremental progression v.2. (only progress best clauses first...) -- could
+;allow more merging without degenerating to symbolic BFS.
+
+;Clauses record provenance.  Assume optimsitic consistency.  rewards
+;always go down.  Can only affect some subest of progressed results.
+;By decreasing reward by x for decreased by x, or by anything for
+;killed state.
+
+;(If doing fancy valuation tricks, much watch out for
+;identitydescrpition, conditional, ...)
+
+;Might as well store provenance too, for regression ...
+;... and implement incremental progression/merging?
+; -- But problem with provenance is things may be OK even if 
+;    valuation is out of date, in which case chain is invalid
+;    ... . . . . ...?
+;
+; Smarter way to compare vectors of rewards in subsumption ...
+
+
+; Better to regress partial clauses ...
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
 ; Subsumption is more difficult here, since there's no "rest" of plan to worry about.
 ; Just ignore it for now, and ignore pessimistic descriptions too.  
 
