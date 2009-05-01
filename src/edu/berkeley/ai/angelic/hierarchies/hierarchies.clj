@@ -4,6 +4,9 @@
 ; Neat handling of high-level preconditions (be careful, can mess up equality -- use sets?)
 ;; HLAs may be hashed, etc, so should be sure to be canonical.
 
+; Hierarchy is responsible for handling the goal now, e.g., by a finish action.
+; Every plan should reach at most one state, *finish-state*, defined in descriptions-and-valuations.
+
 ;; Parsing
 
 (defmulti parse-hierarchy-type (fn [type contents domain] type))
@@ -19,7 +22,7 @@
 
 ;; Methods
 
-(defmulti #^{:doc "Take a hierarchy and instance and return an instantiated top-level HLA."} 
+(defmulti #^{:doc "Take a hierarchy and instance and return an instantiated top-level HLA sequence."} 
   instantiate-hierarchy (fn [hierarchy instance] (:class hierarchy)))
 
 (defmulti #^{:doc "Get the env associated with this instantiated HLA."} 
@@ -51,13 +54,14 @@
 
 (defmulti hla-pessimistic-description    :class)
 
-(defmulti hla-finish-hla "Get an hla of this type that restricts to goal then leads to *finish-clause*" :class)
-
 
 (defn get-hierarchy [file env]
   (instantiate-hierarchy 
    (parse-hierarchy file (envs/get-domain env))
    env))
+
+
+
 
 
 (comment ; Not sure if this will be needed later. ..

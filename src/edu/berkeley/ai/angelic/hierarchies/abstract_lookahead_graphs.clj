@@ -164,11 +164,11 @@
 
 
 
-(defstruct abstract-lookahead-graph :class :env :goal :split-set 
+(defstruct abstract-lookahead-graph :class :env :split-set 
 	   :refine-gap? :minimize? :auto-merge? :prune? :sloppy? :smart-search? :consistent-search? :suboptimal-weight)
 (defn- make-alg [env split-set refine-gap? minimize? auto-merge? prune? sloppy? smart-search? consistent-search? suboptimal-weight]
   (with-meta 
-   (struct abstract-lookahead-graph ::AbstractLookaheadGraph env (envs/get-goal env) split-set refine-gap? minimize? auto-merge? prune? sloppy? smart-search? consistent-search? suboptimal-weight)
+   (struct abstract-lookahead-graph ::AbstractLookaheadGraph env  split-set refine-gap? minimize? auto-merge? prune? sloppy? smart-search? consistent-search? suboptimal-weight)
    {:merge-map (HashMap.)
     :prune-map (HashMap.)}
    ))
@@ -527,13 +527,13 @@
 
 
 (defmethod compute-alg-optimistic-valuation ::ALGFinalNode opt-final [alg node]
-  (restrict-valuation (alg-optimistic-valuation alg (:plan node)) (:goal (:alg node))))
+  (alg-optimistic-valuation alg (:plan node)))
 
 (defmethod compute-alg-weighted-valuation ::ALGFinalNode opt-final [alg node]
-  (restrict-valuation (alg-weighted-valuation alg (:plan node)) (:goal (:alg node))))
+  (alg-weighted-valuation alg (:plan node)))
 
 (defmethod compute-alg-pessimistic-valuation ::ALGFinalNode pess-final [alg node]
-  (restrict-valuation (alg-pessimistic-valuation alg (:plan node)) (:goal (:alg node))))
+  (alg-pessimistic-valuation alg (:plan node)))
 
 (declare invalidate-valuations)
 (defn handle-graph [alg node]
@@ -762,20 +762,19 @@
      refine-gap? controls whether the opt-pess gap is used to pick what to refine, or if the first HLA is refined.
      minimize? causes the ALG to attempt to share prefixes as much as possible, or not at all.
      auto-merge? causes the graph to merge nodes which have, or have ever had, the same optimistic sets."
-  ([initial-node]
-     (make-initial-alg-node initial-node #{} false true true))
-  ([initial-node split-set refine-gap? minimize? auto-merge? prune? sloppy? smart-search? consistent-search? suboptimal-weight]
+  ([initial-plan]
+     (make-initial-alg-node initial-plan #{} false true true))
+  ([initial-plan split-set refine-gap? minimize? auto-merge? prune? sloppy? smart-search? consistent-search? suboptimal-weight]
      (make-initial-alg-node 
-      (hla-default-optimistic-valuation-type initial-node) 
-      (hla-default-pessimistic-valuation-type initial-node)
-      initial-node split-set  refine-gap? minimize? auto-merge?  prune? sloppy? smart-search? consistent-search? suboptimal-weight))
-  ([opt-valuation-class pess-valuation-class initial-node split-set refine-gap? minimize? auto-merge?  prune? sloppy? smart-search? consistent-search? suboptimal-weight]
+      (hla-default-optimistic-valuation-type (first initial-plan))
+      (hla-default-pessimistic-valuation-type (first initial-plan))
+      initial-plan split-set  refine-gap? minimize? auto-merge?  prune? sloppy? smart-search? consistent-search? suboptimal-weight))
+  ([opt-valuation-class pess-valuation-class initial-plan split-set refine-gap? minimize? auto-merge?  prune? sloppy? smart-search? consistent-search? suboptimal-weight]
      (util/assert-is (contains? '#{true false} auto-merge?))
      (util/assert-is (contains? '#{false :forward :full} minimize?))
      (util/assert-is (contains? '#{false :local :global :both} prune?))
      (util/assert-is (contains? '#{false :lazy :strict} consistent-search?))
-     (let [initial-plan (list initial-node) 
-	   env (hla-environment (first initial-plan)), 
+     (let [env (hla-environment (first initial-plan)), 
 	   alg (make-alg env split-set refine-gap? minimize? auto-merge? prune? sloppy? smart-search? consistent-search? suboptimal-weight)
 	   init-opt (state->valuation opt-valuation-class (envs/get-initial-state env))]
        (make-alg-final-node alg

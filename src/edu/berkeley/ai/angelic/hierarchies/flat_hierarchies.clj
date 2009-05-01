@@ -24,6 +24,11 @@
 (defn- make-flat-primitive-hla [env action]
   (struct flat-primitive-hla ::FlatPrimitiveHLA action env))
 
+(defstruct flat-finish-hla :class :desc :env)
+(derive ::FlatFinishHLA ::FlatPrimitiveHLA)
+(defn- make-flat-finish-hla [env]
+  (struct flat-finish-hla ::FlatFinishHLA (instantiate-description-schema *finish-description* env) env))
+
 
 ; Special descriptions for Act.
 
@@ -41,10 +46,11 @@
 
 
 (defmethod instantiate-hierarchy ::FlatHierarchySchema [hierarchy instance]
-  (make-flat-act-hla 
-   instance 
-   (make-flat-act-optimistic-description (envs/get-goal instance) (:upper-reward-fn hierarchy))
-   (envs/get-action-space instance)))
+  [(make-flat-act-hla 
+    instance 
+    (make-flat-act-optimistic-description (envs/get-goal instance) (:upper-reward-fn hierarchy))
+    (envs/get-action-space instance))
+   (make-flat-finish-hla instance)])
 
 (defmethod hla-default-optimistic-valuation-type ::FlatActHLA [hla] 
   :edu.berkeley.ai.angelic/ExplicitValuation)
@@ -54,11 +60,13 @@
 
 (defmethod hla-primitive? ::FlatPrimitiveHLA [hla] true)
 (defmethod hla-primitive ::FlatPrimitiveHLA [hla] (:action hla))
+(defmethod hla-primitive ::FlatFinishHLA [hla] :noop)
 
 (defmethod hla-primitive? ::FlatActHLA [hla] false)
 (defmethod hla-primitive ::FlatActHLA [hla] (throw (UnsupportedOperationException.)))
 
 (defmethod hla-name ::FlatPrimitiveHLA [hla] (:name (:action hla)))
+(defmethod hla-name ::FlatFinishHLA [hla] 'finish)
 (defmethod hla-name ::FlatActHLA [hla] 'act)
 
 (defmethod hla-immediate-refinements [::FlatPrimitiveHLA :edu.berkeley.ai.angelic/Valuation] [hla val] nil)
@@ -81,11 +89,17 @@
 (defmethod hla-optimistic-description ::FlatPrimitiveHLA [hla]
   (make-explicit-description (envs/make-enumerated-action-space [(:action hla)])))
 
+(defmethod hla-optimistic-description ::FlatFinishHLA [hla]
+  (util/safe-get hla :desc))
+
 (defmethod hla-optimistic-description ::FlatActHLA [hla] 
   (:opt-desc hla))
 
 (defmethod hla-pessimistic-description ::FlatPrimitiveHLA [hla] 
   (make-explicit-description (envs/make-enumerated-action-space [(:action hla)])))
+
+(defmethod hla-pessimistic-description ::FlatFinishHLA [hla]
+  (util/safe-get hla :desc))
 
 (defmethod hla-pessimistic-description ::FlatActHLA [hla] 
   *pessimal-description*)

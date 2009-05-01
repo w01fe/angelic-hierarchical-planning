@@ -17,10 +17,10 @@
 
 ;; ALTs, nodes, and plans
 
-(defstruct abstract-lookahead-tree :cache? :graph? :goal :ref-choice-fn :subsumption-info)
-(defn- make-alt [cache? graph? goal ref-choice-fn subsumption-info]
+(defstruct abstract-lookahead-tree :cache? :graph? :ref-choice-fn :subsumption-info)
+(defn- make-alt [cache? graph? ref-choice-fn subsumption-info]
   (with-meta 
-    (struct abstract-lookahead-tree cache? graph? goal ref-choice-fn subsumption-info)
+    (struct abstract-lookahead-tree cache? graph? ref-choice-fn subsumption-info)
     {:graph-map (HashMap.)
      :live-set  (HashSet.)
      :prune-map (HashMap.) ; map from node name to set of blacklist nodes not to prune from
@@ -45,7 +45,6 @@
 	       (and (util/safe-get previous-node :primitive?)
 		    (hla-primitive? hla)))) 
    {:pessimistic-valuation (util/sref pess-val), :optimistic-valuation (util/sref opt-val)
-    :lower-reward-bound (util/sref nil) :upper-reward-bound (util/sref nil) 
     :cache (HashMap.) :fate (util/sref nil)
     :was-tight? was-tight? :was-final? (util/sref false)
     }))
@@ -208,30 +207,29 @@
 
 (declare graph-add-and-check!)
 (defn make-initial-alt-node 
-  ([initial-node] 
-     (make-initial-alt-node initial-node true true))
-  ([initial-node ref-choice-fn] 
-     (make-initial-alt-node initial-node ref-choice-fn true true))
-  ([initial-node cache? graph?] 
-     (make-initial-alt-node initial-node first-choice-fn cache? graph?))
-  ([initial-node ref-choice-fn cache? graph?] 
-     (make-initial-alt-node initial-node {} ref-choice-fn cache? graph?))
-  ([initial-node subsumption-info ref-choice-fn cache? graph?] 
+  ([initial-plan] 
+     (make-initial-alt-node initial-plan true true))
+  ([initial-plan ref-choice-fn] 
+     (make-initial-alt-node initial-plan ref-choice-fn true true))
+  ([initial-plan cache? graph?] 
+     (make-initial-alt-node initial-plan first-choice-fn cache? graph?))
+  ([initial-plan ref-choice-fn cache? graph?] 
+     (make-initial-alt-node initial-plan {} ref-choice-fn cache? graph?))
+  ([initial-plan subsumption-info ref-choice-fn cache? graph?] 
      (make-initial-alt-node 
-      (hla-default-optimistic-valuation-type initial-node)
-      (hla-default-pessimistic-valuation-type initial-node)
-      subsumption-info initial-node ref-choice-fn cache? graph?))
-  ([valuation-class subsumption-info initial-node ref-choice-fn cache? graph?]
-     (make-initial-alt-node valuation-class valuation-class subsumption-info initial-node ref-choice-fn cache? graph?))
-  ([opt-valuation-class pess-valuation-class subsumption-info initial-node ref-choice-fn cache? graph?]
+      (hla-default-optimistic-valuation-type (first initial-plan))
+      (hla-default-pessimistic-valuation-type (first initial-plan))
+      subsumption-info initial-plan ref-choice-fn cache? graph?))
+  ([valuation-class subsumption-info initial-plan ref-choice-fn cache? graph?]
+     (make-initial-alt-node valuation-class valuation-class subsumption-info initial-plan ref-choice-fn cache? graph?))
+  ([opt-valuation-class pess-valuation-class subsumption-info initial-plan ref-choice-fn cache? graph?]
 
-     (make-initial-alt-node ::ALTPlanNode opt-valuation-class pess-valuation-class subsumption-info initial-node ref-choice-fn cache? graph?))
- ([node-type opt-valuation-class pess-valuation-class subsumption-info initial-node ref-choice-fn cache? graph?]
+     (make-initial-alt-node ::ALTPlanNode opt-valuation-class pess-valuation-class subsumption-info initial-plan ref-choice-fn cache? graph?))
+ ([node-type opt-valuation-class pess-valuation-class subsumption-info initial-plan ref-choice-fn cache? graph?]
 ;  (util/assert-is (empty? subsumption-info)) ;; Taken out for now. TODO
   (util/assert-is (contains? #{true false :full :simple :bhaskara :icaps08} graph?))
-  (let [initial-plan (list initial-node) ;(if (seq? initial-node) initial-node (list initial-node))
-	env (hla-environment (first initial-plan)), 
-	alt (make-alt cache? graph? (envs/get-goal env) ref-choice-fn subsumption-info)
+  (let [env (hla-environment (first initial-plan)), 
+	alt (make-alt cache? graph?  ref-choice-fn subsumption-info)
 	root (make-alt-root-node alt 
 		     (state->valuation opt-valuation-class (envs/get-initial-state env))
 		     (state->valuation pess-valuation-class (envs/get-initial-state env)))
@@ -350,20 +348,11 @@
     (throw (IllegalArgumentException.))))
 
 (defmethod search/lower-reward-bound ::ALTPlanNode [node] 
-  (let [alt  (:alt node)
-	node (:plan node)
-	s (:lower-reward-bound ^node)]
-    (or (util/sref-get s)
-	(util/sref-set! s 
-	  (valuation-max-reward (do-restrict-valuation-alt (pessimistic-valuation node) (:goal alt)))))))
+  (valuation-max-reward (pessimistic-valuation (:plan node))))
 
 (defmethod search/upper-reward-bound ::ALTPlanNode [node] 
-  (let [alt (:alt node)
-	node (:plan node)
-	s (:upper-reward-bound ^node)]
-    (or (util/sref-get s)
-	(util/sref-set! s 
-          (valuation-max-reward (do-restrict-valuation-alt (optimistic-valuation node) (:goal alt)))))))
+  (valuation-max-reward (optimistic-valuation (:plan node))))
+
 
 (defmethod search/reward-so-far ::ALTPlanNode [node] 0)
 
@@ -488,7 +477,7 @@
      (fn [[s s2] a] 
        (make-initial-alt-node 
 	(edu.berkeley.ai.angelic.hierarchies.strips-hierarchies/sub-environment-hla 
-	 (:hla a) s (state->condition s2 env))
+	  (:hla a) s (state->condition s2 env))
 	(util/safe-get alt :subsumption-info)
 	(util/safe-get alt :ref-choice-fn)
 	(util/safe-get alt :cache?)

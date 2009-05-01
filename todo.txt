@@ -11,9 +11,6 @@
   end up with no pruning at all (?) (two equivalent plans, each has
   cost go up by 1 each time we refine)?  Possible, but unlikely.  
 
-;; TODO: put back finish!  Otherwise, with multiple goal states we may
-   do n times worse where n is # of goal states.
-
 ; Ideally, pruning condition should reduce to A* graph given
   consistency, flat strips hierarchy.
 ; Suppose we assume consistency.

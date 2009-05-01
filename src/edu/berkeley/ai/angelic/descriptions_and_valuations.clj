@@ -6,6 +6,7 @@
 
 
 
+
 ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
 ;;;;; Ordinary valuations and descriptions
 
@@ -76,6 +77,7 @@
 
 
 ;;; Methods involving both descriptions and valuations
+
 
 (defmulti progress-valuation
   "Produce a new valuation representing exactly the result of progressing val through desc."
@@ -294,17 +296,32 @@ improve efficiency of regression."
 
 ;;; Finish description
 
-(derive ::FinishDescription ::Description)
+(derive ::FinishDescription ::PropositionalDescription)
 (def *finish-description* {:class ::FinishDescription})
 (def *finish-state*  #{[(gensym "goal")]})
 (def *finish-clause* (state->clause *finish-state*))
-(defmethod instantiate-description-schema ::FinishDescription [desc instance]  desc)
+(defmethod instantiate-description-schema ::FinishDescription [desc instance]  
+  (assoc desc :goal (envs/get-goal instance)))
 (defmethod ground-description             ::FinishDescription [desc var-map]  desc)
+
+(defmethod progress-valuation    [::ConditionalValuation ::FinishDescription] [val desc]
+  (if (envs/consistent-condition? (envs/conjoin-conditions (util/safe-get val :condition)
+						      (util/safe-get desc :goal)))
+    (map->valuation ::ExplicitValuation {*finish-state* (valuation-max-reward val)})))
+
+(defmethod regress-state    [::ConditionalValuation ::FinishDescription ::Valuation] [state preval desc postval]
+  (let [condition (util/safe-get preval :condition)
+	goal      (util/safe-get desc :goal)]
+    [(util/to-set (envs/get-positive-conjuncts (envs/conjoin-conditions condition goal))) 0]))
+
 (defmethod progress-clause       ::FinishDescription [clause desc]
-  {*finish-clause* 0})
+  (when-let [restricted (restrict-clause clause (util/safe-get desc :goal))]
+    {*finish-clause* 0}))
+
 (defmethod regress-clause-state  ::FinishDescription [state pre-clause desc post-clause-rew]
   (util/assert-is (= state *finish-state*))
-  [(minimal-clause-state pre-clause) 0])
+  (when-let [restricted (restrict-clause pre-clause (util/safe-get desc :goal))]
+    [(minimal-clause-state restricted) 0]))
 
 
 
@@ -316,7 +333,7 @@ improve efficiency of regression."
 (derive ::PessimalValuation ::ExplicitValuation)
 (def *pessimal-valuation* {:class ::PessimalValuation :state-map {}})
 
-(defn- make-explicit-valuation- [state-map]
+(defn make-explicit-valuation [state-map]
   (if (empty? state-map) 
       *pessimal-valuation*
     (struct explicit-valuation ::ExplicitValuation state-map)))

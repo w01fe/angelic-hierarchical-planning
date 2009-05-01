@@ -195,12 +195,12 @@
 (defn get-flat-strips-hierarchy 
   ([env] (get-flat-strips-hierarchy env (constantly 0)))
   ([env act-desc-or-upper-reward-fn]
-   (util/safe-singleton (util/safe-singleton
-    (hla-immediate-refinements 
-     (instantiate-hierarchy 
-      (make-flat-strips-hierarchy-schema (envs/get-domain env) act-desc-or-upper-reward-fn) env)
-     (state->valuation :edu.berkeley.ai.angelic.dnf-valuations/DNFValuation
-		       (envs/get-initial-state env)))))))
+     (let [init-val (state->valuation :edu.berkeley.ai.angelic.dnf-valuations/DNFValuation
+		       (envs/get-initial-state env))
+	   [tla finish]
+	   (instantiate-hierarchy 
+	    (make-flat-strips-hierarchy-schema (envs/get-domain env) act-desc-or-upper-reward-fn) env)]
+   [(util/safe-singleton (util/safe-singleton (hla-immediate-refinements tla init-val))) finish])))
 
 
 
@@ -294,7 +294,6 @@
 	 (constant-simplify-strips-primitive-schema primitive const-preds)))))
 
 
-
 (defmethod instantiate-hierarchy ::StripsHierarchySchema [hierarchy instance] 
   (util/assert-is (isa? (:class instance) :edu.berkeley.ai.domains.strips/StripsPlanningInstance))
   (let [old-hla-map    (util/safe-get hierarchy :hlas)
@@ -313,12 +312,13 @@
 			#(instantiate-strips-hla-schema % instance old-hla-map trans-objects const-pred-map)
 			old-hla-map)]
 ;    (println "AA " (ground-description (:optimistic-schema (get new-hla-map root-hla-name)) nil))
-    (make-strips-hla 
+   [(make-strips-hla 
      (struct strips-hierarchy ::StripsHierarchy new-hla-map instance old-hla-map)
      (util/safe-get new-hla-map root-hla-name)
      {}
      envs/*true-condition*
-     false)))    
+     false)
+    (make-strips-hla hierarchy (util/safe-get new-hla-map (:name *finish-strips-hla-schema*)) nil (envs/get-goal instance) :noop)]))    
 
 
 
@@ -403,10 +403,6 @@
 			 (repeat envs/*true-condition*)))))))))
 
 
-(defmethod hla-finish-hla ::StripsHLA [hla]
-  (let [hierarchy        (:hierarchy hla)
-	problem-instance (:problem-instance hierarchy)]
-    (make-strips-hla hierarchy *finish-strips-hla-schema* nil (envs/get-goal problem-instance) :noop)))
 
 ;; Used by AHLRTA
 
@@ -439,11 +435,13 @@
 ; TODO: DANGEROUS
 (defn sub-environment-hla "Change the initial state and goal associated iwth this hierarchy.  This may be very dangerous since things like goal- predicates and descriptions will not be re-instantiated.  Can only be used safely when all references to the goal are in actions with pessimal pessimisitc descriptions, and actions with non-vacuous pessimistic descriptions never refine to such actions."
   [hla new-init new-goal]
-  (assoc hla
-    :hierarchy 
-    (assoc (util/safe-get hla :hierarchy)
-      :problem-instance
-      (envs/sub-environment (util/safe-get-in hla [:hierarchy :problem-instance]) new-init new-goal))))
+  (let [hierarchy (assoc (util/safe-get hla :hierarchy)
+		    :problem-instance
+		    (envs/sub-environment (util/safe-get-in hla [:hierarchy :problem-instance]) new-init new-goal))] 
+    [(assoc hla :hierarchy  hierarchy)
+     (make-strips-hla hierarchy 
+		      (util/safe-get-in hierarchy [:hla-map (:name *noop-strips-hla-schema*)]) 
+		      new-goal {} :noop)]))
 
 
 
