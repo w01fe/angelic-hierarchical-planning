@@ -574,15 +574,16 @@
 
 
 
-(defn- get-and-check-sol [sol initial-hla]
+(defn- get-and-check-sol [sol initial-plan]
   (doseq [cache? [true false]
 	  graph? [true false]]
+    ;(println cache? graph?)
     (util/is (contains? sol 
       (map :name
          (first
-	  (envs/check-solution (hla-environment initial-hla)
+	  (envs/check-solution (hla-environment (first initial-plan))
 	    (edu.berkeley.ai.search.algorithms.textbook/a-star-search
-	    (alt-node initial-hla cache? graph?)))))))))
+	    (alt-node initial-plan cache? graph?)))))))))
 
 
 (require '[edu.berkeley.ai.domains.nav-switch :as nav-switch])
@@ -620,6 +621,7 @@
        (get-and-check-sol *strips-ns-sol* (strips-hierarchies/get-flat-strips-hierarchy (simplifier *strips-ns*)))))
    (util/testing "Ordinary strips hierarchy"
      (doseq [simplifier (butlast *simplifiers*)]
+    ;   (println simplifier)
        (get-and-check-sol *strips-ns-sol* (get-hierarchy nav-switch/*nav-switch-hierarchy* (simplifier *strips-ns*))))))		
 
 (def *strips-wh* (warehouse/make-warehouse-strips-env 2 2 [1 1] false {0 '[a]} nil ['[a table1]]))

@@ -309,10 +309,23 @@ improve efficiency of regression."
 						      (util/safe-get desc :goal)))
     (map->valuation ::ExplicitValuation {*finish-state* (valuation-max-reward val)})))
 
+(defmethod progress-valuation    [::ExplicitValuation ::FinishDescription] progress-explicit-final [val desc]
+  (if (some #(envs/satisfies-condition? % (util/safe-get desc :goal)) (keys (explicit-valuation-map val)))
+    (map->valuation ::ExplicitValuation {*finish-state* (valuation-max-reward val)})
+    *pessimal-valuation*))
+
+(prefer-method progress-valuation [::PessimalValuation ::Description] [::ExplicitValuation ::FinishDescription])
+
 (defmethod regress-state    [::ConditionalValuation ::FinishDescription ::Valuation] [state preval desc postval]
   (let [condition (util/safe-get preval :condition)
 	goal      (util/safe-get desc :goal)]
     [(util/to-set (envs/get-positive-conjuncts (envs/conjoin-conditions condition goal))) 0]))
+
+(defmethod regress-state    [::ExplicitValuation ::FinishDescription ::Valuation] [state preval desc postval]
+  (if-let [s (util/find-first #(envs/satisfies-condition? % (util/safe-get desc :goal)) 
+			 (keys (explicit-valuation-map val)))]
+    [s 0]))
+
 
 (defmethod progress-clause       ::FinishDescription [clause desc]
   (when-let [restricted (restrict-clause clause (util/safe-get desc :goal))]
