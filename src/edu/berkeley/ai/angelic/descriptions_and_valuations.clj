@@ -309,12 +309,6 @@ improve efficiency of regression."
 						      (util/safe-get desc :goal)))
     (map->valuation ::ExplicitValuation {*finish-state* (valuation-max-reward val)})))
 
-(defmethod progress-valuation    [::ExplicitValuation ::FinishDescription] progress-explicit-final [val desc]
-  (if (some #(envs/satisfies-condition? % (util/safe-get desc :goal)) (keys (explicit-valuation-map val)))
-    (map->valuation ::ExplicitValuation {*finish-state* (valuation-max-reward val)})
-    *pessimal-valuation*))
-
-(prefer-method progress-valuation [::PessimalValuation ::Description] [::ExplicitValuation ::FinishDescription])
 
 (defmethod regress-state    [::ConditionalValuation ::FinishDescription ::Valuation] [state preval desc postval]
   (let [condition (util/safe-get preval :condition)
@@ -352,21 +346,21 @@ improve efficiency of regression."
     (struct explicit-valuation ::ExplicitValuation state-map)))
 
 (defmethod map->valuation ::ExplicitValuation [type state-map] 
-  (make-explicit-valuation- state-map))
+  (make-explicit-valuation state-map))
 
 (defmethod explicit-valuation-map ::ExplicitValuation [val]
   (:state-map val))
 
 (defmethod restrict-valuation [::ExplicitValuation :edu.berkeley.ai.envs/Condition]
   [val condition]
-  (make-explicit-valuation- 
+  (make-explicit-valuation 
    (reduce (fn [m k] (if (envs/satisfies-condition? k condition) 
 		         m
 		       (dissoc m k)))
 	   (:state-map val) (keys (:state-map val)))))
 
 (defmethod union-valuations [::ExplicitValuation ::ExplicitValuation] [v1 v2]
-  (make-explicit-valuation- 
+  (make-explicit-valuation 
    (util/merge-best > (:state-map v1) (:state-map v2))))
 
 (defmethod union-valuations [::PessimalValuation ::Valuation] [v1 v2] v2)
@@ -387,7 +381,7 @@ improve efficiency of regression."
   (struct explicit-description ::ExplicitDescription action-space))
 
 (defmethod progress-valuation [::Valuation ::ExplicitDescription]  [val desc]
-  (make-explicit-valuation- 
+  (make-explicit-valuation 
    (util/merge-best > {} 
     (for [[state reward] (explicit-valuation-map val)
 	  action (envs/applicable-actions state (:action-space desc))]
@@ -395,6 +389,14 @@ improve efficiency of regression."
 	[next (+ reward step-reward)])))))
 
 (defmethod progress-valuation [::PessimalValuation ::Description]  [val desc] val)
+
+(defmethod progress-valuation    [::ExplicitValuation ::FinishDescription] progress-explicit-final [val desc]
+  (if (some #(envs/satisfies-condition? % (util/safe-get desc :goal)) (keys (explicit-valuation-map val)))
+    (map->valuation ::ExplicitValuation {*finish-state* (valuation-max-reward val)})
+    *pessimal-valuation*))
+
+(prefer-method progress-valuation [::PessimalValuation ::Description] [::ExplicitValuation ::FinishDescription])
+
 
 (defmethod regress-state [::Valuation ::PessimalDescription ::Valuation] [state pre-val desc post-val]
   nil)

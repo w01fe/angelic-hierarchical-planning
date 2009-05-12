@@ -257,6 +257,8 @@
 ; Return true if keep, false if prune.
 ; Note, even strictly better subsumption checking can make things worse...
 
+; Note: this does not yet do full ancestor pruning.  
+
 ; Return true if keep, false if prune.
 (defn graph-add-and-check! [alt node rest-plan name ancestor-set]
   (util/assert-is (:graph? alt))
@@ -280,7 +282,7 @@
 				 (and (= (:graph? alt) true) (util/safe-get ^node :was-tight?) (not (.contains live-set graph-node)))
 				 (and (= (:graph? alt) :full)
 				      (util/safe-get ^node :was-tight?) 
-				      (not (.contains live-set graph-node))
+				     ; (not (.contains live-set graph-node))
 				      (some (fn [anc-name]
 					      (or (= anc-name graph-node)
 						  (contains? (get prune-map anc-name #{}) graph-node)))
@@ -513,7 +515,9 @@
   (util/sh "open" "-a" "Skim" "/tmp/alt.pdf"))
 
 
-(defn graphviz-alt2 [nodes]
+(defn graphviz-alt2 
+  ([nodes] (graphviz-alt2 nodes true true true))
+  ([nodes show-finish show-refined show-noop]
   "TODO: identify source of node, etc."
   (doseq [node nodes,
 	  n (util/iterate-while :previous (:plan node))]
@@ -523,28 +527,31 @@
    (last (util/iterate-while :previous (:plan (first nodes))))
    identity
    (fn [n] 
-     (if (isa? (:class n) ::ALTPlanNode)
-         {:label (util/double-quote [(search/lower-reward-bound n)
-				     (search/upper-reward-bound n)])
-	  :color "green"}
+;     (if (isa? (:class n) ::ALTPlanNode)
+;         {:label (util/double-quote [(search/lower-reward-bound n)
+;				     (search/upper-reward-bound n)])
+;	  :color "green"}
        (let [fate (util/sref-get (:fate ^n))]
+;	 (println fate)
 	 {:label (util/double-quote [(valuation-max-reward (pessimistic-valuation n))
 				     (valuation-max-reward (optimistic-valuation n))])
 	  :color (cond 
 		   (= :live fate) "green"
 		   (and fate (not (= :refined fate))) "red" 
-		   :else "black")})))
+		   :else "black")}));)
    (fn [n] 
      (when-not (isa? (:class n) ::ALTPlanNode)
      (let [parent-fate (util/sref-get (:fate ^n))]
        (cond (and parent-fate (not (= parent-fate :refined)) (not (= parent-fate :dead)) (not (= parent-fate :live)))
   	       (do (assert (empty? (:cache ^n)))
 		   [[{:color "red" :style "dotted"} parent-fate]])
-	     (and (= parent-fate :live) (empty? (:cache ^n)))
-	       (let [final (util/make-safe (util/find-first #(identical? (:plan %) n) nodes))]
-		 [[{:label (util/double-quote "[finish]") :color "green"} final]])
+	     ;(and (= parent-fate :live) (empty? (:cache ^n)))
+	     ;  (let [final (util/make-safe (util/find-first #(identical? (:plan %) n) nodes))]
+	     ;   [[{:label (util/double-quote "[finish]") :color "green"} final]])
 	     :else
-	       (for [[e n] (:cache ^n)]
+	       (for [[e n] (:cache ^n) :when (and (or show-finish (not (.startsWith (str (hla-name e)) "[finish")))
+						  (or show-refined (not (= :refined (util/sref-get (:fate ^n)))))
+						  (or show-noop (not (.startsWith (str (hla-name e)) "[noop"))))]
 		 (let [fate (util/sref-get (:fate ^n))]
 		   [{:label (util/double-quote (hla-name e)) 
 		     :color (condp = fate :refined "blue" :live "green" "black")}  
@@ -553,7 +560,7 @@
 	  n (util/iterate-while :previous (:plan node))]
     (util/sref-set! (:fate ^n) nil))
   (util/sh "open" "-a" "Skim" "/tmp/alt.pdf")
-  )
+  ))
 
 
 (comment

@@ -4,7 +4,7 @@
   (:require [edu.berkeley.ai [util :as util] [envs :as envs] [search :as search]] 
             [edu.berkeley.ai.angelic.hierarchies hierarchies flat-hierarchies strips-hierarchies 
 	  ;   hybrid-strips-hierarchies
-	     abstract-lookahead-trees abstract-lookahead-graphs clause-graphs
+	     abstract-lookahead-trees abstract-lookahead-graphs ;clause-graphs
 	     offline-algorithms online-algorithms]))
   
             
