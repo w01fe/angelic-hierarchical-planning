@@ -2,6 +2,42 @@
   (:use edu.berkeley.ai.util edu.berkeley.ai.util.queues edu.berkeley.ai.util.disjoint-sets)
   )
 
+;;;; Incremental directed acyclic graphs for cycle detection (only).
+
+; For now, only keep track of edges in forward direction.
+; Simplest possible implementation (for now), don't keep track of anything.
+; A DAG is just a map from node labels (arbitrary objects) to sets of child node labels.
+
+(defn make-empty-dag [] {})
+
+(defn dag-descendants [dag s] (get dag s #{}))
+
+(defn dag-descendant? [dag s t]
+  (or (= s t)
+    (loop [open #{s} closed #{}]
+      (when-first [f open]
+	(let [r (disj open f)]
+	  (if (contains? closed f)
+	      (recur r closed)
+	    (let [desc (get dag f #{})]
+	      (or (contains? desc t)
+		  (recur (into r desc) (conj closed f))))))))))
+
+(defn dag-add-edge [dag s t]
+  (assert (not (dag-descendant? dag t s)))
+  (assoc dag s (conj (get dag s #{}) t)))
+
+(deftest test-dag
+  (is (not (dag-descendant? (make-empty-dag) 'a 'b)))
+  (is (not (dag-descendant? (-> (make-empty-dag) (dag-add-edge 'b 'a)) 'a 'b)))
+  (is (dag-descendant? (-> (make-empty-dag) (dag-add-edge 'a 'b)) 'a 'b))
+  (is (dag-descendant? (-> (make-empty-dag) (dag-add-edge 'a 'b) (dag-add-edge 'b 'c)) 'a 'c))
+  (is (not (dag-descendant? (-> (make-empty-dag) (dag-add-edge 'a 'b) (dag-add-edge 'c 'b)) 'a 'c))))
+  
+
+
+;;;; Undirected graphs, shortest paths, spanning trees, etc.
+
 ; nodes is a set of nodes, edges is a map from sets of edges to costs
 
 (defstruct undirected-graph :class :nodes :edges)

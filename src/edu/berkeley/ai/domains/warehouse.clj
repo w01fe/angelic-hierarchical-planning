@@ -6,6 +6,7 @@
 	   [edu.berkeley.ai.angelic.dnf-valuations :as dv])
  )
 
+; Note: WW heuristic is inconsistent.
 
 (let [f (util/path-local "warehouse.pddl")]
   (defn make-warehouse-strips-domain []

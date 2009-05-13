@@ -1,38 +1,5 @@
 ;;;;;;;;;;;;;;;; Implement
 
-; TODO TODO: :full graph is incorrect; we either need to turn off
-  duplicate plan elimination, or somehow merge ancestor sets. 
-
-;; TODO: turn off caching when doing the full graph thing?  Or keep
-   track of "parent" pointers on a per-plan x node, not per-ALT-node basis
-
-
-; TODO: check for pruning on expansion, not storage -- otherwise, can
-  end up with no pruning at all (?) (two equivalent plans, each has
-  cost go up by 1 each time we refine)?  Possible, but unlikely.  
-
-; Ideally, pruning condition should reduce to A* graph given
-  consistency, flat strips hierarchy.
-; Suppose we assume consistency.
-
-; Inconsistency of, e.g., WW heuristic can be a real problem.
-
-
-; Prefix check (????) 
-
-
-; Add consistency enforcement to ALT, or graph search is incorrect. ?
-
-; Fix ALT in case of overlapping plans. (check up on this also.)
-
-; Remove hack to ALT to show prettier graphs.
-
-
-; Check on A*-graph/sloppy ALT discrepancies. (tiebreak upper-reward-bound?)
-
-Clause-based subsumption for ALTs. (will help with WW navigation ?)s
-
-
 ;;;;;;;;;;;;;;;; General TODO
 
 
@@ -49,5 +16,5 @@ Useful HLAs are ones with high success probability, low computational
 complexity.   All of these things are context-sensitive, can be
 imprecise, except for solid opt/pess descriptions.  
 
-TODO: figure out what to do with forall conditions in NCSTRIPS.
+Check up on forall conditions in NCSTRIPS.
 
