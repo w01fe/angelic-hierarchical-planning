@@ -15,7 +15,7 @@
 
 (defn dag-descendant? [dag s t]
   (or (= s t)
-      (let [open (LinkedList.) closed (HashSet.)]
+      (let [open (LinkedList. [s]) closed (HashSet.)]
 	(loop []
 	  (when-not (.isEmpty open)
 	    (let [f (.remove open)]
@@ -40,6 +40,7 @@
   (assoc dag s (conj (get dag s #{}) t)))
 
 (deftest test-dag
+  (is (dag-descendant?  (make-empty-dag) 'a 'a))
   (is (not (dag-descendant? (make-empty-dag) 'a 'b)))
   (is (not (dag-descendant? (-> (make-empty-dag) (dag-add-edge 'b 'a)) 'a 'b)))
   (is (dag-descendant? (-> (make-empty-dag) (dag-add-edge 'a 'b)) 'a 'b))

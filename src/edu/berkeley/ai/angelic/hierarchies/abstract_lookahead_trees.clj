@@ -222,29 +222,14 @@
   (make-alt-node :root nil false opt-val pess-val))
 
 (declare graph-add-and-check!)
-(defn make-initial-alt-node 
-  ([initial-plan] 
-     (make-initial-alt-node initial-plan true true))
-  ([initial-plan ref-choice-fn] 
-     (make-initial-alt-node initial-plan ref-choice-fn true true))
-  ([initial-plan cache? graph?] 
-     (make-initial-alt-node initial-plan first-choice-fn cache? graph? false))
-  ([initial-plan cache? graph? retest?] 
-     (make-initial-alt-node initial-plan first-choice-fn cache? graph? retest?))
-  ([initial-plan ref-choice-fn cache? graph? retest?] 
-     (make-initial-alt-node initial-plan {} ref-choice-fn cache? graph? retest?))
-  ([initial-plan subsumption-info ref-choice-fn cache? graph? retest?] 
-     (make-initial-alt-node 
-      (hla-default-optimistic-valuation-type (first initial-plan))
-      (hla-default-pessimistic-valuation-type (first initial-plan))
-      subsumption-info initial-plan ref-choice-fn cache? graph? retest?))
-  ([valuation-class subsumption-info initial-plan ref-choice-fn cache? graph? retest?]
-     (make-initial-alt-node valuation-class valuation-class subsumption-info initial-plan ref-choice-fn cache? graph? retest?))
-  ([opt-valuation-class pess-valuation-class subsumption-info initial-plan ref-choice-fn cache? graph? retest?]
 
-     (make-initial-alt-node ::ALTPlanNode opt-valuation-class pess-valuation-class subsumption-info initial-plan ref-choice-fn cache? graph? retest?))
- ([node-type opt-valuation-class pess-valuation-class subsumption-info initial-plan ref-choice-fn cache? graph? retest?]
-;  (util/assert-is (empty? subsumption-info)) ;; Taken out for now. TODO
+(util/defn-opt make-initial-alt-node 
+  [initial-plan & 
+    node-type ::ALTPlanNode, ref-choice-fn first-gap-choice-fn,
+    cache? true, graph? true, retest? false,
+    subsumption-info {}, valuation-class nil, 
+    opt-valuation-class (or valuation-class (hla-default-optimistic-valuation-type (first initial-plan)))
+    pess-valuation-class (or valuation-class (hla-default-pessimistic-valuation-type (first initial-plan)))]
   (util/assert-is (contains? #{true false :full :simple :bhaskara :icaps08} graph?))
   (when retest? (assert graph?))
   (let [env (hla-environment (first initial-plan)), 
@@ -262,7 +247,7 @@
       (if (empty? actions)
           (make-alt-plan-node node-type alt name previous)
 	(recur (next actions)
-	       (get-alt-node alt (first actions) previous false)))))))
+	       (get-alt-node alt (first actions) previous false))))))
 
 (defn alt-node [& args] (apply make-initial-alt-node args))
 
@@ -785,4 +770,51 @@
 	  (.put graph-map pair [pess-rew name])))
       true)))
 
+)
+
+
+
+
+(comment  ; before optional args.
+(defn make-initial-alt-node 
+  ([initial-plan] 
+     (make-initial-alt-node initial-plan true true))
+  ([initial-plan ref-choice-fn] 
+     (make-initial-alt-node initial-plan ref-choice-fn true true))
+  ([initial-plan cache? graph?] 
+     (make-initial-alt-node initial-plan first-choice-fn cache? graph? false))
+  ([initial-plan cache? graph? retest?] 
+     (make-initial-alt-node initial-plan first-choice-fn cache? graph? retest?))
+  ([initial-plan ref-choice-fn cache? graph? retest?] 
+     (make-initial-alt-node initial-plan {} ref-choice-fn cache? graph? retest?))
+  ([initial-plan subsumption-info ref-choice-fn cache? graph? retest?] 
+     (make-initial-alt-node 
+      (hla-default-optimistic-valuation-type (first initial-plan))
+      (hla-default-pessimistic-valuation-type (first initial-plan))
+      subsumption-info initial-plan ref-choice-fn cache? graph? retest?))
+  ([valuation-class subsumption-info initial-plan ref-choice-fn cache? graph? retest?]
+     (make-initial-alt-node valuation-class valuation-class subsumption-info initial-plan ref-choice-fn cache? graph? retest?))
+  ([opt-valuation-class pess-valuation-class subsumption-info initial-plan ref-choice-fn cache? graph? retest?]
+
+     (make-initial-alt-node ::ALTPlanNode opt-valuation-class pess-valuation-class subsumption-info initial-plan ref-choice-fn cache? graph? retest?))
+ ([node-type opt-valuation-class pess-valuation-class subsumption-info initial-plan ref-choice-fn cache? graph? retest?]
+;  (util/assert-is (empty? subsumption-info)) ;; Taken out for now. TODO
+  (util/assert-is (contains? #{true false :full :simple :bhaskara :icaps08} graph?))
+  (when retest? (assert graph?))
+  (let [env (hla-environment (first initial-plan)), 
+	alt (make-alt cache? graph? retest? ref-choice-fn subsumption-info)
+	root (make-alt-root-node alt 
+		     (state->valuation opt-valuation-class (envs/get-initial-state env))
+		     (state->valuation pess-valuation-class (envs/get-initial-state env)))
+	name ((:node-counter ^alt))]
+    (when graph? (assert (graph-add-and-check! alt root initial-plan name))) ;*always-live*)))
+ ;   (println (:graph-map ^alt))
+;    (.add #^HashSet (:live-set ^alt) *always-live*)
+    (.add #^HashSet (:live-set ^alt) name)
+    (loop [actions initial-plan
+	   previous root]
+      (if (empty? actions)
+          (make-alt-plan-node node-type alt name previous)
+	(recur (next actions)
+	       (get-alt-node alt (first actions) previous false)))))))
 )
