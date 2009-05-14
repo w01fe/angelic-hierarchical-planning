@@ -1,4 +1,5 @@
 (ns edu.berkeley.ai.util.graphs
+  (:import [java.util HashSet HashMap LinkedList])
   (:use edu.berkeley.ai.util edu.berkeley.ai.util.queues edu.berkeley.ai.util.disjoint-sets)
   )
 
@@ -14,14 +15,25 @@
 
 (defn dag-descendant? [dag s t]
   (or (= s t)
-    (loop [open #{s} closed #{}]
-      (when-first [f open]
-	(let [r (disj open f)]
-	  (if (contains? closed f)
-	      (recur r closed)
-	    (let [desc (get dag f #{})]
-	      (or (contains? desc t)
-		  (recur (into r desc) (conj closed f))))))))))
+      (let [open (LinkedList.) closed (HashSet.)]
+	(loop []
+	  (when-not (.isEmpty open)
+	    (let [f (.remove open)]
+	      (if (.contains closed f)
+		  (recur)
+		(let [desc (dag-children dag f)]
+		  (or (contains? desc t)
+		      (do (.addAll open desc) 
+			  (.add closed f)
+			  (recur)))))))))))
+;    (loop [open #{s} closed #{}]
+;      (when-first [f open]
+;	(let [r (disj open f)]
+;	  (if (contains? closed f)
+;	      (recur r closed)
+;	    (let [desc (get dag f #{})]
+;	      (or (contains? desc t)
+;		  (recur (into r desc) (conj closed f))))))))))
 
 (defn dag-add-edge [dag s t]
   (assert (not (dag-descendant? dag t s)))
