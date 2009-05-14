@@ -444,7 +444,7 @@
     [(assoc hla :hierarchy  hierarchy)
      (make-strips-hla hierarchy 
 		      (util/safe-get-in hierarchy [:hla-map (:name *noop-strips-hla-schema*)]) 
-		      new-goal {} :noop)]))
+		      {} new-goal :noop)]))
 
 
 

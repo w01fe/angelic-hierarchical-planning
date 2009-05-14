@@ -483,6 +483,7 @@
     (envs/make-conjunctive-condition state (util/difference all-atoms state))))
 
 (defn extract-state-seq [plan state-seq]
+;  (println "ESS" (count state-seq) (first state-seq))
   (if (nil? (:previous plan))
       state-seq
     (recur (:previous plan)
@@ -502,14 +503,12 @@
   [node]
   (util/assert-is (> (search/lower-reward-bound node) Double/NEGATIVE_INFINITY))
   (let [env       (hla-environment (:hla (:plan node)))
-	state-seq (extract-state-seq (:plan node) [(first (valuation-max-reward-state
-						    (restrict-valuation 
-						     (pessimistic-valuation (:plan node))
-						     (envs/get-goal env))))])
+	state-seq (extract-state-seq (:plan node) 
+				     [(first (valuation-max-reward-state (pessimistic-valuation (:plan node))))])
 	alt       (util/safe-get node :alt)]
   ;  (println "decomposing " (search/node-str node) " on \n" (util/str-join "\n\n" (map #(envs/state-str env %) state-seq)))
     (util/assert-is (= (first state-seq) (envs/get-initial-state env)))
-    (util/assert-is (envs/satisfies-condition? (last state-seq) (envs/get-goal env)))
+;    (util/assert-is (envs/satisfies-condition? (last state-seq) (envs/get-goal env)))
     (map 
      (fn [[s s2] a] 
        (make-initial-alt-node 
@@ -518,7 +517,8 @@
 	(util/safe-get alt :subsumption-info)
 	(util/safe-get alt :ref-choice-fn)
 	(util/safe-get alt :cache?)
-	(util/safe-get alt :graph?)))
+	(util/safe-get alt :graph?)
+	(util/safe-get alt :recheck-graph?)))
      (partition 2 1 state-seq)
      (rest (reverse (util/iterate-while :previous (:plan node)))))))
 

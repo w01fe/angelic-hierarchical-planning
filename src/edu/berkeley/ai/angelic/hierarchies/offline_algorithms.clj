@@ -119,7 +119,7 @@
 	    (or (search/extract-optimal-solution next)
 		(and (= (search/upper-reward-bound next) (search/lower-reward-bound next))
 		     (> (alts/alt-node-hla-count next) 1)
-		     (do (println "Committing to " (search/node-str next)) true)
+		     ;(do (println "Committing to " (search/node-str next)) true)
 		     (concat-solutions 
 		      (map aha-star-decomposed-search (alts/decompose-plan next))))
 		(do 
