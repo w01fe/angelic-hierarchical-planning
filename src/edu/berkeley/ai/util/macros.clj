@@ -51,10 +51,29 @@
   (assert (even? (count bindings)))
   (let [bindings (partition 2 bindings)
 	mg (gensym)]
-    (assert (apply distinct? (map #(keyword (str (first %))) bindings)))
+    (assert (distinct-elts? (map #(keyword (str (first %))) bindings)))
     `(let ~(into [mg m] 
 		 (apply concat
 		   (map (fn [[k v]] [k `(or (get ~mg ~(keyword (str k))) ~v) 
 				     mg `(dissoc ~mg ~(keyword (str k)))]) bindings)))  
        (assert (empty? ~mg))
        ~@body)))
+
+(defmacro defn-opt
+  "Like defn, but things following & are pairs of optional things.  Optional last-item holds input map."
+  [name & fargs]
+  (let [[doc-string bindings body]
+	(if (string? (first fargs)) 
+	    [(first fargs) (second fargs) (nthnext fargs 2)]
+	  ["" (first fargs) (next fargs)])
+	doc-string (str doc-string "\n" bindings)
+	split-pos  (or (position '& bindings) (count bindings))
+        norm-args  (vec (take split-pos bindings))
+	opt-args   (vec (drop (inc split-pos) bindings))
+	[g opt-args] (if (odd? (count opt-args))
+		         [(last opt-args) (drop-last 1 opt-args)]
+		       [(gensym) opt-args])]	
+    `(defn ~name ~doc-string
+       (~norm-args (~name ~@norm-args {}))
+       (~(conj norm-args g) 
+	(parse-optional-argmap ~g ~opt-args ~@body))))) 

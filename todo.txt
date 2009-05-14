@@ -1,6 +1,14 @@
 ;;;;;;;;;;;;;;;; Implement
 
-Fix duplicate plans from optimistic-aha-star-search.  
+Figure out if was-tight? is correct condition, get rid of it?
+Seems correct (implies complex condition)?
+
+Change ALT to option-sets/maps ?
+
+Improve efficiency of graph check, by at least changing to mutable DSs.
+
+Add tests for decomposed, weighted, optimistic offline algs. 
+
 
 ;;;;;;;;;;;;;;;; General TODO
 

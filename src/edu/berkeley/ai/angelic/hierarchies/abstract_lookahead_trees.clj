@@ -21,6 +21,12 @@
 ;  also create cycles.  Thus, it's only turned on when we're using graph
 ; style that never prunes weakly on non-live nodes.
 
+; An interesting, efficiently checkable condition is whether any ancestor of a given HLA has made
+; a non-vacuous pessimistic claim.  If not, you can prune strictly on anything.
+  ; but is it correct ??
+  ; In fact, while it doesn't change the # of refinements (AT ALL), it does make runtime 2x faster
+   ; on (*icaps-ww* 4).... seems it's just since it avoids DAG calls.  
+
 ; TODO?: clause-based subsumption?
 
 ;; ALTs, nodes, and plans
@@ -46,7 +52,7 @@
     (util/sref-set! final-ref true))
   (struct alt-plan-node class alt name plan))
 
-; was-tight? tells whether some ancestor had equal opt + pess valuation-max-reward.
+; was-tight? tells whether some ancestor HLA made non-vacuous pessimistic claim.
 (defstruct alt-action-node :hla :previous :primitive?)
 (defn make-alt-node [hla previous-node was-tight? opt-val pess-val] 
   (with-meta  

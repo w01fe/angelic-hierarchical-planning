@@ -28,6 +28,7 @@
 			:g-rew 0
 			:previous (assoc (:previous (:plan node)) :g-rew 0)))))
 
+;[node-type opt-valuation-class pess-valuation-class subsumption-info initial-plan ref-choice-fn cache? graph? retest?]
 
 (defmethod alts/construct-immediate-refinement ::AHLRTAALTPlanNode [node previous actions alt name]
   (if (empty? actions) 
