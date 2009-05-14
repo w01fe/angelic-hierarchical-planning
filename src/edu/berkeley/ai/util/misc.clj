@@ -5,6 +5,9 @@
 
 (def *debug-level* 0)
 
+(defmacro debug [l & body]
+  `(binding [*debug-level* ~l] ~@body))
+
 (defn single-quote [s] (str "'" s "'"))
 
 (defn double-quote [s] (str "\"" s "\""))

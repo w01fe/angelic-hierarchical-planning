@@ -10,7 +10,7 @@
 
 (defn make-empty-dag [] {})
 
-(defn dag-descendants [dag s] (get dag s #{}))
+(defn dag-children [dag s] (get dag s #{}))
 
 (defn dag-descendant? [dag s t]
   (or (= s t)

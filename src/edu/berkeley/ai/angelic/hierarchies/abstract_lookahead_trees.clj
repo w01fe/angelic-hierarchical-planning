@@ -34,7 +34,7 @@
      :ancestor-graph (util/sref (graphs/make-empty-dag))
      :node-counter (util/counter-from 0)}))
 
-(util/defvar- *always-live* -1)
+;(util/defvar- *always-live* -1)
 
 (derive ::ALTPlanNode ::search/Node)
 (defstruct alt-plan-node :class :alt :name :plan)
@@ -245,9 +245,9 @@
 		     (state->valuation opt-valuation-class (envs/get-initial-state env))
 		     (state->valuation pess-valuation-class (envs/get-initial-state env)))
 	name ((:node-counter ^alt))]
-    (when graph? (assert (graph-add-and-check! alt root initial-plan *always-live*)))
+    (when graph? (assert (graph-add-and-check! alt root initial-plan name))) ;*always-live*)))
  ;   (println (:graph-map ^alt))
-    (.add #^HashSet (:live-set ^alt) *always-live*)
+;    (.add #^HashSet (:live-set ^alt) *always-live*)
     (.add #^HashSet (:live-set ^alt) name)
     (loop [actions initial-plan
 	   previous root]
@@ -266,7 +266,8 @@
 
 (defn test-and-add-edge! "Returns true iff edge added." [alt from to]
   (let [ancestor-graph-ref (util/safe-get ^alt :ancestor-graph)]
-    (when-not (graphs/dag-descendant? (util/sref-get ancestor-graph-ref from to))
+;    (println (util/sref-get ancestor-graph-ref) from to)
+    (when-not (graphs/dag-descendant? (util/sref-get ancestor-graph-ref) to from)
       (util/sref-up! ancestor-graph-ref #(graphs/dag-add-edge % from to))
       true)))
 
@@ -305,7 +306,9 @@
 	 (util/find-first  ; TODO: find first, weakest ?  But then make sure not to add extra edges...
 	   (fn [[graph-si graph-node]]
 	     (let [subsumes? (valuation-subsumes? graph-si opt-si subsumption-info)] 
-	       (not (or (and (= (:graph? alt) :icaps08) (not (.contains live-set graph-node)))
+;	       (println "AAA" graph-node name)
+	       (not (or (= graph-node name)
+		        (and (= (:graph? alt) :icaps08) (not (.contains live-set graph-node)))
 			(not subsumes?)
 			(and (not (= subsumes? :strict))
 			     (or (= (:graph? alt) :bhaskara) 
@@ -323,11 +326,13 @@
 (defn plan-prunable? [alt plan]
   (let [name (util/safe-get plan :name)]
     (loop [node (util/safe-get plan :plan) rest-plan nil]
-      (or (node-prunable? alt node rest-plan name)
+      (or ;(println name (map hla-name rest-plan))
+          (node-prunable? alt node rest-plan name)
 	  (when-let [previous (util/safe-get node :previous)]
 	    (recur previous (cons (util/safe-get node :hla) rest-plan)))))))
 
 (defn graph-add-and-check! [alt node rest-plan name]
+;  (println "GAC" (map hla-name rest-plan))
   (when-not (node-prunable? alt node rest-plan name)
     (add-node-pruning-info! alt node rest-plan name)
     true))
@@ -386,13 +391,14 @@
       (if (and (or (> (valuation-max-reward (optimistic-valuation nxt)) Double/NEGATIVE_INFINITY)
 		   (and (util/sref-set! (:fate ^nxt) :dead) false))
 	       (or (next actions) 
-		   (and (not (util/sref-get (:was-final? ^nxt)))
-			(not (= :full (:graph? alt))))) ; Eliminate duplicates.
+		   (not (util/sref-get (:was-final? ^nxt)))
+		   (= :full (:graph? alt))) ; Eliminate duplicates.
 	       (or (not (:graph? alt)) 
 		   (graph-add-and-check! alt nxt (next actions) 
 					 name)))
 	  (recur node nxt (next actions) alt name was-tight?)
 	(util/print-debug 3 "Late prune at" (search/node-str {:class ::ALTPlanNode :plan nxt})
+			  (map hla-name (next actions))
 			  ;(map println (map optimistic-valuation (util/iterate-while :previous nxt)))
 ;			  (optimistic-valuation (:previous (:previous nxt)))
 			  )))))
@@ -407,9 +413,9 @@
 	ref-node    ((util/safe-get alt :ref-choice-fn) node)]
     (when (and ref-node
 	       (or (not (util/safe-get alt :recheck-graph?))
-		   (and (not (plan-prunable? alt node))
-			(println "Secondary pruning at recheck!")
-			true)))
+		   (not (when (plan-prunable? alt node) 
+			       (println "Secondary pruning at recheck!")
+			       true))))
      ;; If ref-fn is correct, == when not fully primitive
    ;   (println "About to refine " (search/node-str node) " at " (hla-name (:hla ref-node)))
       (let [was-tight?  (and (contains? #{true :full} graph?) 
@@ -426,9 +432,9 @@
 	 (for [ref (hla-immediate-refinements (:hla ref-node) (optimistic-valuation (:previous ref-node)))]
 	   (let [name         ((:node-counter ^alt))]
   	     (util/print-debug 3 "\nConsidering refinement " (map hla-name ref) " at " (hla-name (:hla ref-node)))
+	     (when (= graph? :full)
+	       (assert (test-and-add-edge! alt name (util/safe-get node :name))))
 	     (when-let [nxt (construct-immediate-refinement node (:previous ref-node) (concat ref after-actions) alt name was-tight?)]
-	       (when (= graph? :full)
-		 (assert (test-and-add-edge! alt name (util/safe-get node :name))))
 	       (when graph? (.add #^HashSet (:live-set ^alt) name))
 ;		 (when (> (search/upper-reward-bound nxt) urb) 
 ;		   (util/sref-set! (:upper-reward-bound ^(:plan nxt)) urb)
