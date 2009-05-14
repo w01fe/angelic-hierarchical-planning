@@ -310,15 +310,18 @@
 	const-pred-map (:const-pred-map instance)
 	new-hla-map    (util/map-vals 
 			#(instantiate-strips-hla-schema % instance old-hla-map trans-objects const-pred-map)
-			old-hla-map)]
+			old-hla-map)
+	new-hierarchy (struct strips-hierarchy ::StripsHierarchy new-hla-map instance old-hla-map)]
 ;    (println "AA " (ground-description (:optimistic-schema (get new-hla-map root-hla-name)) nil))
    [(make-strips-hla 
-     (struct strips-hierarchy ::StripsHierarchy new-hla-map instance old-hla-map)
+     new-hierarchy
      (util/safe-get new-hla-map root-hla-name)
      {}
      envs/*true-condition*
      false)
-    (make-strips-hla hierarchy (util/safe-get new-hla-map (:name *finish-strips-hla-schema*)) nil (envs/get-goal instance) :noop)]))    
+    (make-strips-hla 
+      new-hierarchy
+     (util/safe-get new-hla-map (:name *finish-strips-hla-schema*)) nil (envs/get-goal instance) :noop)]))    
 
 
 
