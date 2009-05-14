@@ -405,7 +405,6 @@
 
 (defmethod search/immediate-refinements ::ALTPlanNode [node] 
   (util/timeout)
-  (util/sref-up! search/*ref-counter* inc)
   (let [urb         (search/upper-reward-bound node)
 	alt         (util/safe-get node :alt)
 	graph?      (util/safe-get alt :graph?)
@@ -418,6 +417,7 @@
 			       true))))
      ;; If ref-fn is correct, == when not fully primitive
    ;   (println "About to refine " (search/node-str node) " at " (hla-name (:hla ref-node)))
+      (util/sref-up! search/*ref-counter* inc)
       (let [was-tight?  (and (contains? #{true :full} graph?) 
 			 (or (util/safe-get ^ref-node :was-tight?)
 			     (> (valuation-max-reward (pessimistic-valuation ref-node)) 
