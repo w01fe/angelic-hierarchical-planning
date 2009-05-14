@@ -42,3 +42,19 @@
      `(let [r# (cond-list ~@args)]
 	(if ~pred (cons ~elt r#) r#)))) 
 
+(defmacro parse-optional-argmap 
+  "Takes a map and set of bindings.  Each (required unique) var in bindings
+   is bound to the corresponding keyword mapping in m, or to the result of the 
+   value expression otherwise, for body.  Expressions are evaluated sequentially, and may
+   use previous bindings.  It is an error if m contains unbound keys."
+  [m bindings & body]
+  (assert (even? (count bindings)))
+  (let [bindings (partition 2 bindings)
+	mg (gensym)]
+    (assert (apply distinct? (map #(keyword (str (first %))) bindings)))
+    `(let ~(into [mg m] 
+		 (apply concat
+		   (map (fn [[k v]] [k `(or (get ~mg ~(keyword (str k))) ~v) 
+				     mg `(dissoc ~mg ~(keyword (str k)))]) bindings)))  
+       (assert (empty? ~mg))
+       ~@body)))
