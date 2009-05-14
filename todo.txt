@@ -1,5 +1,6 @@
 ;;;;;;;;;;;;;;;; Implement
 
+Fix duplicate plans from optimistic-aha-star-search.  
 
 ;;;;;;;;;;;;;;;; General TODO
 

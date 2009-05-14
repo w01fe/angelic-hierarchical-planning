@@ -40,7 +40,9 @@
 (defstruct alt-plan-node :class :alt :name :plan)
 (defn make-alt-plan-node [class alt name plan]
   (let [final-ref (:was-final? ^plan)]
-    (util/assert-is (not (util/sref-get final-ref)))
+    (when (util/sref-get final-ref)
+      (println "Warning: duplicate plan ... " (search/node-str {:class ::ALTPlanNode :plan plan}))
+      (throw (Exception.))) 
     (util/sref-set! final-ref true))
   (struct alt-plan-node class alt name plan))
 
@@ -342,7 +344,7 @@
 	       
 
 ;; Node methods 
-
+(declare construct-immediate-refinement)
 (defmethod search/reroot-at-node ::ALTPlanNode [node & args]
   (let [alt (:alt node)
 	#^HashMap cache (:graph-map ^alt)
@@ -351,18 +353,23 @@
     (.clear live-set)
     (.clear cache)
     (util/sref-set! (:ancestor-graph ^alt) (graphs/make-empty-dag))
-    (when (:graph? alt)
-      (loop [node (:plan node), plan nil]
-	(when node
-	  (graph-add-and-check! alt node plan name)
-	  (recur (:previous node) (cons (:hla node) plan)))))
+;    (when (:graph? alt)
+;      (loop [node (:plan node), plan nil]
+;	(when node
+;	  (graph-add-and-check! alt node plan name)
+;	  (recur (:previous node) (cons (:hla node) plan)))))
     (.add live-set name)
 ;    (println "refs " (util/sref-get search/*ref-counter*))
 ;    (println (first args))
 ;    (println (:ref-choice-fn (:alt node)))
-    (if (seq args)
-        (assoc node :alt (assoc (:alt node) :ref-choice-fn (first args)))
-      node)))
+    (construct-immediate-refinement node 
+				    (vary-meta (last (util/iterate-while :previous (:plan node))) assoc :cache (HashMap.))
+				    (map :hla (next (reverse (util/iterate-while :previous (:plan node))))) 
+				    (if (seq args) (assoc (:alt node) :ref-choice-fn (first args)) (:alt node))
+				    name false)))
+;    (if (seq args)
+;        (assoc node :alt (assoc (:alt node) :ref-choice-fn (first args)))
+;      node)))
 ;  (.clear 
 
 
