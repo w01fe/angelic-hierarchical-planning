@@ -226,15 +226,15 @@
 (util/defn-opt make-initial-alt-node 
   [initial-plan & 
     node-type ::ALTPlanNode, ref-choice-fn first-gap-choice-fn,
-    cache? true, graph? true, retest? false,
+    cache? true, graph? true, recheck-graph? false,
     subsumption-info {}, valuation-class nil, 
     opt-valuation-class (or valuation-class (hla-default-optimistic-valuation-type (first initial-plan)))
     pess-valuation-class (or valuation-class (hla-default-pessimistic-valuation-type (first initial-plan))),
     arg-map]
   (util/assert-is (contains? #{true false :full :simple :bhaskara :icaps08} graph?))
-  (when retest? (assert graph?))
+  (when recheck-graph? (assert graph?))
   (let [env (hla-environment (first initial-plan)), 
-	alt (make-alt cache? graph? retest? ref-choice-fn subsumption-info arg-map)
+	alt (make-alt cache? graph? recheck-graph? ref-choice-fn subsumption-info arg-map)
 	root (make-alt-root-node alt 
 		     (state->valuation opt-valuation-class (envs/get-initial-state env))
 		     (state->valuation pess-valuation-class (envs/get-initial-state env)))

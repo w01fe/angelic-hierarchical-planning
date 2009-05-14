@@ -56,7 +56,7 @@
 		 (apply concat
 		   (map (fn [[k v]] [k `(or (get ~mg ~(keyword (str k))) ~v) 
 				     mg `(dissoc ~mg ~(keyword (str k)))]) bindings)))  
-       (assert (empty? ~mg))
+       (assert-is (empty? ~mg))
        ~@body)))
 
 (defmacro defn-opt
