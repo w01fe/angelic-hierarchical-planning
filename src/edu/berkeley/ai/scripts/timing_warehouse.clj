@@ -118,7 +118,7 @@
 	     [algs/aha-star-search (apply alts/alt-node (hierarchies/get-hierarchy warehouse/*warehouse-hierarchy* e) alt-args)]
 	     [algs/aha-star-search (apply alts/alt-node (hierarchies/get-hierarchy warehouse/*warehouse-hierarchy-improved* e) alt-args)]]]
       (search/reset-ref-counter)
-      (println [(time (second (alg node))) (util/sref-get search/*ref-counter*)]))))
+      (println [(util/time-limit (second (alg node)) 20) (util/sref-get search/*ref-counter*)]))))
 	  
 
 

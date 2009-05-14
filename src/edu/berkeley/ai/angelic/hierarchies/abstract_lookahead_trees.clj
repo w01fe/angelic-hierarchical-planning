@@ -414,7 +414,7 @@
     (when (and ref-node
 	       (or (not (util/safe-get alt :recheck-graph?))
 		   (not (when (plan-prunable? alt node) 
-			       (println "Secondary pruning at recheck!")
+;;			       (println "Secondary pruning at recheck!")
 			       true))))
      ;; If ref-fn is correct, == when not fully primitive
    ;   (println "About to refine " (search/node-str node) " at " (hla-name (:hla ref-node)))
