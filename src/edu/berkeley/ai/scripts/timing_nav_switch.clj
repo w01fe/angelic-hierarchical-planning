@@ -36,8 +36,8 @@
 ;		 ["unguided-alt-tf" #(alts/alt-node (hierarchies/get-hierarchy warehouse/*warehouse-hierarchy-unguided* %) true false)]
 ;		 ["unguided-alt-ft" #(alts/alt-node (hierarchies/get-hierarchy warehouse/*warehouse-hierarchy-unguided* %) false true)]
 ;		 ["unguided-alt-tt" #(alts/alt-node (hierarchies/get-hierarchy warehouse/*warehouse-hierarchy-unguided* %) true true)]
-		 ["guided-alt-tp" #(alts/alt-node (hierarchies/get-hierarchy nav-switch/*nav-switch-hierarchy* %) true true)]
-		 ["guided-alt-tt" #(alts/alt-node (hierarchies/get-hierarchy nav-switch/*nav-switch-hierarchy* %) true :full)]
+		 ["guided-alt-tp" #(alts/alt-node (hierarchies/get-hierarchy nav-switch/*nav-switch-hierarchy* %) {:cache? true :graph? true})]
+		 ["guided-alt-tt" #(alts/alt-node (hierarchies/get-hierarchy nav-switch/*nav-switch-hierarchy* %) {:cache? true :graph? :full})]
 		 ])
 
 (util/defvar- *time-limit* 20)
@@ -104,9 +104,9 @@
 	h (nav-switch/make-flat-nav-switch-heuristic (nth *nav-goals* i))]
     (doseq [[alg node]
 	    [[textbook/a-star-graph-search (search/ss-node e h)]
-	     [algs/aha-star-search (apply alts/alt-node (strips-hierarchies/get-flat-strips-hierarchy e h) alt-args)]
-	     [algs/aha-star-search (apply alts/alt-node (hierarchies/get-hierarchy nav-switch/*nav-switch-flat-hierarchy*  e) alt-args)]
-	     [algs/aha-star-search (apply alts/alt-node (hierarchies/get-hierarchy nav-switch/*nav-switch-hierarchy* e) alt-args)]]]
+	     [algs/aha-star-search (alts/alt-node (strips-hierarchies/get-flat-strips-hierarchy e h) alt-args)]
+	     [algs/aha-star-search (alts/alt-node (hierarchies/get-hierarchy nav-switch/*nav-switch-flat-hierarchy*  e) alt-args)]
+	     [algs/aha-star-search (alts/alt-node (hierarchies/get-hierarchy nav-switch/*nav-switch-hierarchy* e) alt-args)]]]
       (search/reset-ref-counter)
       (println [(time (second (alg node))) (util/sref-get search/*ref-counter*)]))))
 
@@ -153,7 +153,7 @@
 (defn- time-and-check-hierarchical [str reward hierarchy-schema env val-type]
   (println str)
   (let [initial-hla (hierarchies/instantiate-hierarchy hierarchy-schema env)
-	node (edu.berkeley.ai.angelic.hierarchies.abstract-lookahead-trees/make-initial-alt-node val-type initial-hla false false)]
+	node (edu.berkeley.ai.angelic.hierarchies.abstract-lookahead-trees/make-initial-alt-node initial-hla {:valuation-type val-type :cache? false :graph? false})]
   (util/assert-is 
    (= reward (second (envs/check-solution (hierarchies/hla-environment initial-hla)
      (time 

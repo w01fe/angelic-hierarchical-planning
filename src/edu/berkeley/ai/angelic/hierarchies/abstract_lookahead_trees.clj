@@ -31,10 +31,10 @@
 
 ;; ALTs, nodes, and plans
 
-(defstruct abstract-lookahead-tree :cache? :graph? :recheck-graph? :ref-choice-fn :subsumption-info)
-(defn- make-alt [cache? graph? recheck-graph? ref-choice-fn subsumption-info]
+(defstruct abstract-lookahead-tree :cache? :graph? :recheck-graph? :ref-choice-fn :subsumption-info :arg-map)
+(defn- make-alt [cache? graph? recheck-graph? ref-choice-fn subsumption-info arg-map]
   (with-meta 
-    (struct abstract-lookahead-tree cache? graph?  recheck-graph? ref-choice-fn subsumption-info)
+    (struct abstract-lookahead-tree cache? graph?  recheck-graph? ref-choice-fn subsumption-info arg-map)
     {:graph-map (HashMap.)
      :live-set  (HashSet.)
      :ancestor-graph (util/sref (graphs/make-empty-dag))
@@ -229,11 +229,12 @@
     cache? true, graph? true, retest? false,
     subsumption-info {}, valuation-class nil, 
     opt-valuation-class (or valuation-class (hla-default-optimistic-valuation-type (first initial-plan)))
-    pess-valuation-class (or valuation-class (hla-default-pessimistic-valuation-type (first initial-plan)))]
+    pess-valuation-class (or valuation-class (hla-default-pessimistic-valuation-type (first initial-plan))),
+    arg-map]
   (util/assert-is (contains? #{true false :full :simple :bhaskara :icaps08} graph?))
   (when retest? (assert graph?))
   (let [env (hla-environment (first initial-plan)), 
-	alt (make-alt cache? graph? retest? ref-choice-fn subsumption-info)
+	alt (make-alt cache? graph? retest? ref-choice-fn subsumption-info arg-map)
 	root (make-alt-root-node alt 
 		     (state->valuation opt-valuation-class (envs/get-initial-state env))
 		     (state->valuation pess-valuation-class (envs/get-initial-state env)))
@@ -512,11 +513,7 @@
        (make-initial-alt-node 
 	(edu.berkeley.ai.angelic.hierarchies.strips-hierarchies/sub-environment-hla 
 	  (:hla a) s (state->condition s2 env))
-	(util/safe-get alt :subsumption-info)
-	(util/safe-get alt :ref-choice-fn)
-	(util/safe-get alt :cache?)
-	(util/safe-get alt :graph?)
-	(util/safe-get alt :recheck-graph?)))
+	(util/safe-get alt :arg-map)))
      (partition 2 1 state-seq)
      (rest (reverse (util/iterate-while :previous (:plan node)))))))
 
@@ -623,7 +620,7 @@
          (first
 	  (envs/check-solution (hla-environment (first initial-plan))
 	    (edu.berkeley.ai.search.algorithms.textbook/a-star-search
-	    (alt-node initial-plan cache? graph?)))))))))
+	    (alt-node initial-plan {:cache? cache? :graph? graph?})))))))))
 
 
 (require '[edu.berkeley.ai.domains.nav-switch :as nav-switch])

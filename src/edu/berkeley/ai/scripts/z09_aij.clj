@@ -32,7 +32,7 @@
 	[[warehouse/make-warehouse-strips-env [:args ['[3 4 [1 2] false {0 [b a] 2 [c]} nil [[a b c]]]]]]
 	 [nav-switch/make-nav-switch-strips-env [:args ['[10 10 [[2 2]] [0 9] false [9 0]]]]]]]]
      (fn [m] #_ (println m) `(alts/alt-node (strips-hierarchies/get-flat-strips-hierarchy (strips/constant-predicate-simplify (apply ~(:domain m) ~(:args m))))
-			~(:ref-choice m)))
+			~{:ref-choie-fn (:ref-choice m)}))
      (fn [m] #_ (println m) `(envs/solution-name (~(:algorithm m) ~'init))))
     'edu.berkeley.ai.scripts.z09-aij
     nil

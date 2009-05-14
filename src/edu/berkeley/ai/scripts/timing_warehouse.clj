@@ -35,7 +35,7 @@
 ;		 ["unguided-alt-tf" #(alts/alt-node (hierarchies/get-hierarchy warehouse/*warehouse-hierarchy-unguided* %) true false)]
 ;		 ["unguided-alt-ft" #(alts/alt-node (hierarchies/get-hierarchy warehouse/*warehouse-hierarchy-unguided* %) false true)]
 ;		 ["unguided-alt-tt" #(alts/alt-node (hierarchies/get-hierarchy warehouse/*warehouse-hierarchy-unguided* %) true true)]
-		 ["guided-alt-tp" #(alts/alt-node (hierarchies/get-hierarchy warehouse/*warehouse-hierarchy* %) true true)]
+		 ["guided-alt-tp" #(alts/alt-node (hierarchies/get-hierarchy warehouse/*warehouse-hierarchy* %) {:cache? true :graph? true})]
 ;		 ["guided-alt-tt" #(alts/alt-node (hierarchies/get-hierarchy warehouse/*warehouse-hierarchy* %) true :full)]
 		 ])
 
@@ -114,9 +114,9 @@
 	d (angelic/ground-description (angelic/instantiate-description-schema (angelic/parse-description [:warehouse-act] nil nil) e) {})]
     (doseq [[alg node]
 	    [[textbook/a-star-graph-search (search/ss-node e (fn [s] (angelic/valuation-max-reward (angelic/progress-valuation (angelic/state->valuation :edu.berkeley.ai.angelic.dnf-valuations/DNFValuation s) d))))]
-	     [algs/aha-star-search (apply alts/alt-node (strips-hierarchies/get-flat-strips-hierarchy e [:warehouse-act]) alt-args)]
-	     [algs/aha-star-search (apply alts/alt-node (hierarchies/get-hierarchy warehouse/*warehouse-hierarchy* e) alt-args)]
-	     [algs/aha-star-search (apply alts/alt-node (hierarchies/get-hierarchy warehouse/*warehouse-hierarchy-improved* e) alt-args)]]]
+	     [algs/aha-star-search (alts/alt-node (strips-hierarchies/get-flat-strips-hierarchy e [:warehouse-act]) alt-args)]
+	     [algs/aha-star-search (alts/alt-node (hierarchies/get-hierarchy warehouse/*warehouse-hierarchy* e) alt-args)]
+	     [algs/aha-star-search (alts/alt-node (hierarchies/get-hierarchy warehouse/*warehouse-hierarchy-improved* e) alt-args)]]]
       (search/reset-ref-counter)
       (println [(util/time-limit (second (alg node)) 40) (util/sref-get search/*ref-counter*)]))))
 	  

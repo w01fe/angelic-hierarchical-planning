@@ -41,7 +41,7 @@
     (iterate inc 0))))
    
 (comment 
-  (time-limit (map :name (first (hierarchical-forward-search (alt-node (get-hierarchy *warehouse-hierarchy* (constant-predicate-simplify (make-warehouse-strips-env 3 4 [1 2] false {0 '[b a] 2 '[c]} nil ['[a b c]]))) (make-first-maximal-choice-fn '{act 10 move-blocks 9 move-block 8 move-to 7 navigate 6 nav 5}) false false)))) 30)
+  (time-limit (map :name (first (hierarchical-forward-search (alt-node (get-hierarchy *warehouse-hierarchy* (constant-predicate-simplify (make-warehouse-strips-env 3 4 [1 2] false {0 '[b a] 2 '[c]} nil ['[a b c]]))) {:ref-choice-fn (make-first-maximal-choice-fn '{act 10 move-blocks 9 move-block 8 move-to 7 navigate 6 nav 5}) :cache? false :graph? false})))) 30)
   )
 
 
@@ -220,9 +220,9 @@
 
  (do (reset-ref-counter) (println (second (time (aha-star-search (alt-node (get-hierarchy *warehouse-hierarchy* (constant-predicate-simplify (make-warehouse-strips-env 4 4 [1 2] false {0 '[a] 2 '[c b]} nil ['[a c table1]]))))))) (sref-get *ref-counter*)))
 
-(do (reset-ref-counter) (println (second (time (optimistic-aha-star-search (alt-node (get-hierarchy *warehouse-hierarchy* (constant-predicate-simplify (make-warehouse-strips-env 4 4 [1 2] false {0 '[a] 2 '[c b]} nil ['[a c table1]]))) icaps-choice-fn) 2 (get-weighted-aha-star-priority-fn 100)))) (sref-get *ref-counter*)))
+(do (reset-ref-counter) (println (second (time (optimistic-aha-star-search (alt-node (get-hierarchy *warehouse-hierarchy* (constant-predicate-simplify (make-warehouse-strips-env 4 4 [1 2] false {0 '[a] 2 '[c b]} nil ['[a c table1]]))) {:ref-choice-fn icaps-choice-fn}) 2 (get-weighted-aha-star-priority-fn 100)))) (sref-get *ref-counter*)))
 
-(interactive-search (alt-node (get-hierarchy *warehouse-hierarchy* (constant-predicate-simplify (make-warehouse-strips-env 4 4 [1 2] false {0 '[a] 2 '[c b]} nil ['[a c table1]]))) icaps-choice-fn) (make-tree-search-pq) (get-weighted-aha-star-priority-fn 10))
+(interactive-search (alt-node (get-hierarchy *warehouse-hierarchy* (constant-predicate-simplify (make-warehouse-strips-env 4 4 [1 2] false {0 '[a] 2 '[c b]} nil ['[a c table1]]))) {:ref-choice-fn icaps-choice-fn}) (make-tree-search-pq) (get-weighted-aha-star-priority-fn 10))
 )
 
 ;; Testing
@@ -256,7 +256,7 @@
      (util/testing (str inst-n " " cache? " " graph? " " sf-n)
 ;       (println inst-n cache? graph? sf-n)
        (util/is ((if strict? = >=) rew  
-	 (second (envs/check-solution env (alg (alts/alt-node (get-hierarchy h env) cache? graph?)))))))))
+	 (second (envs/check-solution env (alg (alts/alt-node (get-hierarchy h env) {:cache? cache? :graph? graph?})))))))))
 
 
       
