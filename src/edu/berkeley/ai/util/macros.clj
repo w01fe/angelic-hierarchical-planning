@@ -42,6 +42,7 @@
      `(let [r# (cond-list ~@args)]
 	(if ~pred (cons ~elt r#) r#)))) 
 
+(declare distinct-elts? position)
 (defmacro parse-optional-argmap 
   "Takes a map and set of bindings.  Each (required unique) var in bindings
    is bound to the corresponding keyword mapping in m, or to the result of the 
