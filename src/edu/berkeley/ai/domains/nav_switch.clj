@@ -122,10 +122,15 @@
   (apply make-nav-switch-strips-env (make-random-nav-switch-args size n-switches)))
 
 
-(defn make-flat-nav-switch-heuristic [[goal-x goal-y]]
+(defn make-flat-nav-switch-heuristic [env]
+  (let [goal (envs/get-goal env)
+	pos  (envs/get-positive-conjuncts goal)
+	goal-x (util/desymbolize (second (util/make-safe (util/find-first #(= (first %) 'atx) pos))) 1)
+	goal-y (util/desymbolize (second (util/make-safe (util/find-first #(= (first %) 'aty) pos))) 1)]
+    (util/assert-is (= (count pos) 2))
    (fn [state] 
      (* -2 (+ (util/abs (- (util/desymbolize (first (strips/get-strips-state-pred-val state 'atx)) 1) goal-x)) 
-	      (util/abs (- (util/desymbolize (first (strips/get-strips-state-pred-val state 'aty)) 1) goal-y))))))
+	      (util/abs (- (util/desymbolize (first (strips/get-strips-state-pred-val state 'aty)) 1) goal-y)))))))
 
 
 (defn- get-and-check-sol [env]

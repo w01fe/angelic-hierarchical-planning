@@ -409,13 +409,14 @@
 
 ;; Used by AHLRTA
 
-(defn convert-to-prim-act-strips-hla [initial-node]
-  (let [{:keys [hierarchy schema var-map precondition]} initial-node,
+(defn convert-to-prim-act-strips-hla [initial-plan]
+  (let [{:keys [hierarchy schema var-map precondition]}       (first initial-plan),
 	{:keys [hla-schema-map problem-instance]}              hierarchy,
 	{:keys [trans-objects const-pred-map domain]}          problem-instance,
 	act-vars      (map (fn [[t v]] [v t]) (util/safe-get-in hla-schema-map ['act :vars]))
 	prim-action-schemata (util/safe-get domain :action-schemata)]
-    (make-strips-hla
+   (assert (= 2 (count initial-plan)))
+   [(make-strips-hla
      hierarchy
      (instantiate-strips-hla-schema
       (make-strips-hla-schema 
@@ -430,9 +431,10 @@
        (parse-description [:pess] :dummy :dummy)
        nil)
       problem-instance hla-schema-map trans-objects const-pred-map)
-     {}
-     envs/*true-condition*
-     false)))
+      {}
+      envs/*true-condition*
+      false)
+    (second initial-plan)]))
 
 ;; Used in decomposition
 ; TODO: DANGEROUS

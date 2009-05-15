@@ -101,7 +101,7 @@
 
 (defn test-icaps-nav [i & alt-args]
   (let [e (nth *nav* i)
-	h (nav-switch/make-flat-nav-switch-heuristic (nth *nav-goals* i))]
+	h (nav-switch/make-flat-nav-switch-heuristic e)] ;(nth *nav-goals* i))]
     (doseq [[alg node]
 	    [[textbook/a-star-graph-search (search/ss-node e h)]
 	     [algs/aha-star-search (alts/alt-node (strips-hierarchies/get-flat-strips-hierarchy e h) alt-args)]

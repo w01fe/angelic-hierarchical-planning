@@ -8,6 +8,9 @@
 	    [edu.berkeley.ai.angelic.hierarchies.strips-hierarchies :as sh])
   )
 
+; NOTE: These algorithms are not compatible with weak pruning!  (??)
+ ; TODO: is there a way to make them compatible??
+ ; Is it even compatible with strict pruning ??? 
 
 ; (sa/convert-to-prim-act-strips-hla initial-node)
 
@@ -16,24 +19,24 @@
 (derive ::AHLRTAALTPlanNode ::alts/ALTPlanNode)
 
 ;; TODO: handle g-cost...
-(defn- make-initial-ahlrta-alt-node [env initial-node ref-choice-fn cache? graph? memory high-level-hla-set]
-  (let [initial-node (assoc initial-node :hierarchy (assoc (:hierarchy initial-node) :problem-instance env)) 
-	node (alts/alt-node ::AHLRTAALTPlanNode 
-			    (hla-default-optimistic-valuation-type initial-node)
-			    (hla-default-pessimistic-valuation-type initial-node)
-			    nil
-			    initial-node ref-choice-fn cache? graph?)]
-    (assoc node :alt (assoc (:alt node) :memory memory :high-level-hla-set high-level-hla-set)
-	        :plan (assoc (:plan node) 
-			:g-rew 0
-			:previous (assoc (:previous (:plan node)) :g-rew 0)))))
+(defn- make-initial-ahlrta-alt-node [env initial-plan memory high-level-hla-set alt-arg-map]
+  (let [initial-plan (map #(assoc-in % [:hierarchy :problem-instance] env) initial-plan) 
+	node (alts/alt-node initial-plan (assoc alt-arg-map :node-type ::AHLRTAALTPlanNode))]
+    (util/assert-is (= (count initial-plan) 2))
+    (update-in 
+     (update-in node [:alt] #(assoc % :memory memory :high-level-hla-set high-level-hla-set))
+     [:plan]
+     #(assoc-in (assoc-in (assoc % :g-rew 0) [:previous :g-rew] 0) [:previous :previous :g-rew] 0))))
+;    (assoc node :alt (assoc (:alt node) :memory memory :high-level-hla-set high-level-hla-set)
+;	        :plan (assoc (:plan node) 
+;			:g-rew 0
+;			:previous (assoc (:previous (:plan node)) :g-rew 0)))))
 
-;[node-type opt-valuation-class pess-valuation-class subsumption-info initial-plan ref-choice-fn cache? graph? retest?]
-
-(defmethod alts/construct-immediate-refinement ::AHLRTAALTPlanNode [node previous actions alt name]
+(defmethod alts/construct-immediate-refinement ::AHLRTAALTPlanNode [node previous actions alt name was-tight?]
+;  (println (search/node-str {:class ::alts/ALTPlanNode :plan previous}) (map hla-name actions))
   (if (empty? actions) 
       (alts/make-alt-plan-node (:class node) alt name previous)
-    (let [nxt    (alts/get-alt-node alt (first actions) previous)
+    (let [nxt (alts/get-alt-node alt (first actions) previous was-tight?)
 	  nxt    (assoc nxt
 		   :g-rew (+ (util/safe-get previous :g-rew)
 			     (if (contains? (util/safe-get alt :high-level-hla-set) (util/safe-get-in nxt [:hla :schema :name]))
@@ -42,14 +45,24 @@
 				  (valuation-max-reward (alts/optimistic-valuation previous))))))
 	  prim?  (util/safe-get nxt :primitive?)
 	  states              (when prim? (explicit-valuation-map (alts/optimistic-valuation nxt)))
-	  [state rew-so-far]  (when prim? (util/assert-is (= 1 (count states))) (first states))
-	  rew-to-go           (when prim? (get (util/safe-get alt :memory) state))]
-      (if rew-to-go
-	  (search/adjust-reward (alts/make-alt-plan-node (:class node) alt name nxt) (+ rew-so-far rew-to-go))  
-	(when (and (> (valuation-max-reward (alts/optimistic-valuation nxt)) Double/NEGATIVE_INFINITY)
-		   (or (not (util/safe-get alt :graph?)) 
-		       (alts/graph-add-and-check! alt nxt (next actions) name)))
-	  (recur node nxt (next actions) alt name))))))
+	  [state rew-so-far]  (when prim? (util/assert-is (<= (count states) 1)) (first states))
+	  rew-to-go           (when state (get (util/safe-get alt :memory) state))]
+     (if rew-to-go
+	(search/adjust-reward (alts/make-alt-plan-node (:class node) alt name nxt) (+ rew-so-far rew-to-go))
+      (if (and (or (> (valuation-max-reward (alts/optimistic-valuation nxt)) Double/NEGATIVE_INFINITY)
+		   (and (util/sref-set! (:fate ^nxt) :dead) false))
+	       (or (next actions) 
+		   (not (util/sref-get (:was-final? ^nxt)))
+		   (= :full (:graph? alt))) ; Eliminate duplicates.
+	       (or (not (:graph? alt)) 
+		   (alts/graph-add-and-check! alt nxt (next actions) 
+					 name)))
+	  (recur node nxt (next actions) alt name was-tight?)
+	(util/print-debug 3 "Late prune at" (search/node-str {:class ::ALTPlanNode :plan nxt})
+			  (map hla-name (next actions))
+			  ;(map println (map optimistic-valuation (util/iterate-while :previous nxt)))
+;			  (optimistic-valuation (:previous (:previous nxt)))
+			  ))))))
 
 
 
@@ -62,18 +75,18 @@
 ; TODO: consistency for RA?
 
 (defn ahlrta-star-search 
-  ([initial-hla max-steps max-refs] 
-     (ahlrta-star-search initial-hla max-steps max-refs #{'act}))
-  ([initial-hla max-steps max-refs high-level-hla-set] 
-     (ahlrta-star-search initial-hla max-steps max-refs high-level-hla-set alts/first-choice-fn true true))
-  ([initial-hla max-steps max-refs high-level-hla-set ref-choice-fn cache? graph?]
-     (let [initial-hla (sh/convert-to-prim-act-strips-hla initial-hla)
+  ([initial-plan max-steps max-refs] 
+     (ahlrta-star-search initial-plan max-steps max-refs #{'act}))
+  ([initial-plan max-steps max-refs high-level-hla-set] 
+     (ahlrta-star-search initial-plan max-steps max-refs high-level-hla-set {:ref-choice-fn alts/first-choice-fn}))
+  ([initial-plan max-steps max-refs high-level-hla-set alt-arg-map]
+     (let [initial-plan (sh/convert-to-prim-act-strips-hla initial-plan)
 	   memory (HashMap.)]
        (real-time/real-time-search
-	(hla-environment initial-hla)
+	(hla-environment (first initial-plan))
 	max-steps
 	(fn [env]
-	  (let [node (make-initial-ahlrta-alt-node env initial-hla ref-choice-fn cache? graph? memory high-level-hla-set)
+	  (let [node (make-initial-ahlrta-alt-node env initial-plan memory high-level-hla-set alt-arg-map)
 		pq   (queues/make-tree-search-pq)]
 	    (doseq [nn (search/immediate-refinements node)] ; Start by populating with prim-then-act plans
 	      (queues/pq-add! pq nn (- (search/upper-reward-bound nn))))
@@ -99,6 +112,10 @@
 	      (util/print-debug 1 "Intending plan" (search/node-str n) ", g =" g ", f =" f) 
 	      (search/node-first-action n))))))))
 	      
+
+
+
+
 
 
 

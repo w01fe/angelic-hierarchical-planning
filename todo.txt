@@ -3,12 +3,13 @@
 Figure out if was-tight? is correct condition, get rid of it?
 Seems correct (implies complex condition)?
 
-Change ALT to option-sets/maps ?
+Description of ahlrta* in ICAPS paper is wrong too ?!?!?!
+  - Missing "plan is primitive" step?s
+  - OR, more concisely, if min f-cost plan is primitive, break;
 
-Improve efficiency of graph check, by at least changing to mutable DSs.
+Implementation does not handle primitive plans properly ?
 
 Add tests for decomposed, weighted, optimistic offline algs. 
-
 
 ;;;;;;;;;;;;;;;; General TODO
 

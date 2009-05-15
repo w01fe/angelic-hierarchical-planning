@@ -139,4 +139,6 @@
    :title "online results" 
    :ps-file (Format nil "~Afigs/ww.eps" *path*))
 
+
+(plot (ds->chart [{:a 1 :b 1} {:a 2 :b 2} {:a 3 :b 3}] [] :a :b {:xrange "[0:4]" :yrange "[0:4]" :default-series-options {:type "boxes"}} {}))
 )

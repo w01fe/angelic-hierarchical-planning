@@ -48,7 +48,7 @@
   (let [final-ref (:was-final? ^plan)]
     (when (util/sref-get final-ref)
       (println "Warning: duplicate plan ... " (search/node-str {:class ::ALTPlanNode :plan plan}))
-      (throw (Exception.))) 
+    #_  (throw (Exception.))) 
     (util/sref-set! final-ref true))
   (struct alt-plan-node class alt name plan))
 

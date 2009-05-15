@@ -266,6 +266,11 @@
      ((:fn desc) [pre-clause])]))
 
 
+(defn make-flat-warehouse-heuristic [env]
+  (let [d (angelic/ground-description (angelic/instantiate-description-schema (angelic/parse-description [:warehouse-act] nil nil) env) {})]
+    (fn [s] (angelic/valuation-max-reward (angelic/progress-valuation (angelic/state->valuation :edu.berkeley.ai.angelic.dnf-valuations/DNFValuation s) d)))))
+
+
 (comment 
 (defmethod angelic/progress-valuation [::angelic/ConditionalValuation ::WarehouseActDescription] [val desc] 
   (util/assert-is (and (empty? (envs/get-positive-conjuncts (:condition val)))

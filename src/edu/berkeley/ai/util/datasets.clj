@@ -2,6 +2,8 @@
   (:use edu.berkeley.ai.util edu.berkeley.ai.util.charts)
   )
 
+; Data set is just a list of maps with the same keys.
+
 (defmacro ds-fn [bindings & body]
   (let [ds (gensym)]
     `(fn [~ds]
