@@ -99,7 +99,7 @@
 
 
 (defn make-offline-experiment-set []
-  (make-aij-experiment-set "nav-switch-test" 100
+  (make-aij-experiment-set "offline-test" 100
     [:product
       [:domain [] [[:nav-switch 
 		    [:product
