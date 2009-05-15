@@ -19,6 +19,7 @@
 (defn run-files-cluster 
   ([files]      (run-files-cluster "jawolfe" files))
   ([name files]
+     (println name)
      (doseq [f files]
        (println 
 	(apply util/sh 
@@ -35,7 +36,7 @@
 
 (defn run-experiment-set-cluster [es]
   (run-files-cluster 
-   (:name es)
+   (:name (first es))
    (experiments/write-experiment-set es)))
 
 ;(defn run-in-subprocess [filename forms] 
