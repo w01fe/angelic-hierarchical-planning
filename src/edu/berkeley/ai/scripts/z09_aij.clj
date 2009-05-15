@@ -93,13 +93,13 @@
 (defn make-aij-experiment-set [name max-seconds arg-spec]
   (experiments/make-experiment-set name
     arg-spec get-init-form get-solution-form
-    'edu.berkeley.ai.scripts.z09-aij nil ;10
+    'edu.berkeley.ai.scripts.z09-aij 10
      max-seconds 512 nil experiments/*planning-experiment-result*))
 
 
 
 (defn make-offline-experiment-set []
-  (make-aij-experiment-set "nav-switch-test" 1
+  (make-aij-experiment-set "nav-switch-test" 100
     [:product
       [:domain [] [[:nav-switch 
 		    [:product
