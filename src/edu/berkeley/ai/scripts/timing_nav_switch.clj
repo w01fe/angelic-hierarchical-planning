@@ -97,11 +97,9 @@
        [20 20 [[3 7] [12 18] [16 2]] [19 0] true [0 19]]
        [100 100 [[26 91] [50 24] [54 97] [2 35] [25 9] [34 53] [2 16] [49 47] [67 10] [23 82]] [99 0] true [0 99]]]))
 
-(def *nav-goals* [[4 0] [0 19] [0 99]])
-
-(defn test-icaps-nav [i & alt-args]
+(defn test-icaps-nav [i alt-args]
   (let [e (nth *nav* i)
-	h (nav-switch/make-flat-nav-switch-heuristic e)] ;(nth *nav-goals* i))]
+	h (nav-switch/make-flat-nav-switch-heuristic e)] 
     (doseq [[alg node]
 	    [[textbook/a-star-graph-search (search/ss-node e h)]
 	     [algs/aha-star-search (alts/alt-node (strips-hierarchies/get-flat-strips-hierarchy e h) alt-args)]

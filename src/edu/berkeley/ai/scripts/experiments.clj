@@ -10,7 +10,7 @@
 
 (def *simple-experiment-result* ::SimpleExperimentResult)
 
-(defstruct simple-experiment-result :class :experiment :commit-id :timout? :memout? :output :printed :init-ms :ms :mb)
+(defstruct simple-experiment-result :class :experiment :commit-id :timeout? :memout? :output :printed :init-ms :ms :mb)
 
 (defmethod setup-experiment-result ::SimpleExperimentResult [experiment] nil)
 
@@ -23,7 +23,7 @@
 (def *planning-experiment-result* ::PlanningExperimentResult)
 
 (defstruct planning-experiment-result 
-  :class :experiment :commit-id :timout? :memout? :output :printed :init-ms :ms :mb
+  :class :experiment :commit-id :timeout? :memout? :output :printed :init-ms :ms :mb
   :next-count :ref-count :op-count :pp-count)
 
 (defmethod setup-experiment-result ::PlanningExperimentResult [experiment]

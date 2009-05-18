@@ -109,7 +109,7 @@
 	  [7 6 [0 2] true {0 '[b] 1 '[a] 2 '[c]  } nil ['[a b c table5]]]]))
 
 
-(defn test-icaps-ww [i & alt-args]
+(defn test-icaps-ww [i alt-args]
   (let [e (nth *icaps-ww* i)
 	d (angelic/ground-description (angelic/instantiate-description-schema (angelic/parse-description [:warehouse-act] nil nil) e) {})]
     (doseq [[alg node]

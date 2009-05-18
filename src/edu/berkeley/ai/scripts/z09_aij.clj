@@ -80,7 +80,7 @@
 
 (defn get-node-init-form [m hierarchy-form]
   (cond (contains? #{:hierarchy :flat-hierarchy} (:type m))
-	  `(alts/alt-node ~hierarchy-form ~{:graph? (:graph? m) :ref-choice-fn (:choice-fn m)}) ;TODO
+	  `(alts/alt-node ~hierarchy-form ~{:graph? (:graph? m) :ref-choice-fn (:choice-fn m) :recheck-graph? (:recheck-graph? m)}) ;TODO
 	(= :strips (:type m))
 	  `(let [env# ~hierarchy-form] (search/ss-node env# (~(:heuristic m) env#)))))
 
@@ -125,7 +125,8 @@
 	    [:algorithm [] [[:aha-star     [:algorithm-fn ['offline/aha-star-search]]]]]]
 	 [:product
 	    [:type      [:hierarchy]]
-            [:graph?    [:bhaskara :full]]
+            [:graph?    [] [[:bhaskara [:recheck-graph? true]]
+			    [:full     [:recheck-graph? false]]]]
 	    [:ref-choice [] [[:first-gap [:choice-fn [`alts/first-gap-choice-fn]]]
 			     [:icaps     [:choice-fn [`alts/icaps-choice-fn]]]]]
 	    [:algorithm [] [[:aha-star     [:algorithm-fn ['offline/aha-star-search]]]
@@ -133,6 +134,27 @@
 			    [:optimistic5  [:product [:algorithm-fn ['offline/optimistic-aha-star-search]]
 					             [:algorithm-args [[1.05 `(alts/get-weighted-aha-star-priority-fn 2.0)]]]]]]]]]]))
 	    
+(comment 
+  ; Note: current run forgot to turn on recheck-graph? -- change is minimal for ww, zero for ww.
+
+  (def *ww-diff* [6 7 0 8 1 2 5 9 3 10 4])
+  (def *offline* 
+       (map (fn [m] (if (= :warehouse (:domain m)) 
+		      (update-in m [:instance-num] #(position % *ww-diff*)) 
+		      m)) 
+     (experiment-set-results->dataset (read-experiment-set-results (make-offline-experiment-set))))
+
+  (plot (ds->chart (filter (ds-fn [type domain] (and (= type :strips) (= domain :warehouse))) *offline*) [] :instance-num :ref-count {:ylog "t"} {}))
+
+(plot (ds->chart (filter (ds-fn [domain] (and (= domain :warehouse))) *offline*) [:type :graph? :ref-choice :algorithm] :instance-num :ref-count {:ylog "t" :key "4,100000"} {}))
+
+(plot (ds->chart (filter (ds-fn [algorithm domain timout?] (and (not timout?) (= domain :warehouse) (contains? #{:aha-star :a-star-graph} algorithm))) *offline*) [:type :graph? :ref-choice :algorithm] :instance-num :ref-count {:ylog "t" :key "4.5,10000" :xlabel "WW instance" :ylabel "Number of refs" :yrange "[10:10000]"} {}) "/Users/jawolfe/Desktop/charts/optimal-ww-refs.pdf")
+
+(plot (ds->chart (filter (fn [m] (contains? #{nil :full} (:graph? m))) (filter (ds-fn [algorithm domain timout?] (and (not timout?) (= domain :warehouse) (contains? #{:aha-star :a-star-graph :ahss} algorithm))) *offline*)) [:type :graph? :ref-choice :algorithm] :instance-num :ref-count {:ylog "t" :key "4.5,10000" :xlabel "WW instance" :ylabel "Number of refs" :yrange "[10:10000]"} {}) "/Users/jawolfe/Desktop/charts/suboptimal-ww-refs.pdf")
+
+(plot (ds->chart (filter (fn [m] (and (contains? #{:full nil} (:graph? m)) (contains? #{:first-gap nil} (:ref-choice m)))) (filter (ds-fn [type algorithm domain timout?] (and (not timout?) (= domain :nav-switch) (#{:strips :hierarchy} type) (#{:aha-star :a-star-graph} algorithm))) *offline*)) [:type :graph? :ref-choice :algorithm :switches] :size :ref-count {:ylog "t" :xlog "t" :key "30,10000" :xlabel "Nav size" :ylabel "Number of refs" :xrange "[5:500]" :yrange "[10:10000]"} {}) "/Users/jawolfe/Desktop/charts/optimal-nav-refs.pdf")
+
+ )
 
 
 
