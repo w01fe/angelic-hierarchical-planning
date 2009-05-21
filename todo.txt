@@ -1,5 +1,12 @@
 ;;;;;;;;;;;;;;;; Implement
 
+Bug with online, when used with hierarchy and pruning.
+  - Issue is with reward-adjust-node ... make "reward-to-finish"
+  action?  
+  - TODO: ... but, why does it happen only with pruning ? 
+
+TODO: enforce consistency in AHLRTA*
+
 Figure out if was-tight? is correct condition, get rid of it?
 Seems correct (implies complex condition)?
 
@@ -7,9 +14,12 @@ Description of ahlrta* in ICAPS paper is wrong too ?!?!?!
   - Missing "plan is primitive" step?s
   - OR, more concisely, if min f-cost plan is primitive, break;
 
-Implementation does not handle primitive plans properly ?
+Search through TODOs.
 
 Add tests for decomposed, weighted, optimistic offline algs. 
+
+Note about consistency with AHLRTA* -- have a flag on descriptions for
+consistent?, raise extra errors when true ?
 
 ;;;;;;;;;;;;;;;; General TODO
 

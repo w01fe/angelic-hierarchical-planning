@@ -142,7 +142,7 @@
        (map (fn [m] (if (= :warehouse (:domain m)) 
 		      (update-in m [:instance-num] #(position % *ww-diff*)) 
 		      m)) 
-     (experiment-set-results->dataset (read-experiment-set-results (make-offline-experiment-set))))
+     (experiment-set-results->dataset (read-experiment-set-results (make-offline-experiment-set)))))
 
   (plot (ds->chart (filter (ds-fn [type domain] (and (= type :strips) (= domain :warehouse))) *offline*) [] :instance-num :ref-count {:ylog "t"} {}))
 

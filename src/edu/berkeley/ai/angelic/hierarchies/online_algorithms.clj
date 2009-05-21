@@ -58,7 +58,7 @@
 		   (alts/graph-add-and-check! alt nxt (next actions) 
 					 name)))
 	  (recur node nxt (next actions) alt name was-tight?)
-	(util/print-debug 3 "Late prune at" (search/node-str {:class ::ALTPlanNode :plan nxt})
+	(util/print-debug 3 "Late prune at" (search/node-str {:class ::alts/ALTPlanNode :plan nxt})
 			  (map hla-name (next actions))
 			  ;(map println (map optimistic-valuation (util/iterate-while :previous nxt)))
 ;			  (optimistic-valuation (:previous (:previous nxt)))
@@ -73,6 +73,10 @@
 
 ; consistency, etc. improvements; better than ICAPS?
 ; TODO: consistency for RA?
+
+; If heuristic is inconsistent, reward may increase ... but convergence is still guaranteed! ?
+
+;; TODO: enforce consistency, add back checks?
 
 (defn ahlrta-star-search 
   ([initial-plan max-steps max-refs] 
@@ -107,13 +111,20 @@
 			  (doseq [nn (search/immediate-refinements n)] 
 			    (queues/pq-add! pq nn (- (min nf (search/upper-reward-bound nn))))) ; enforce consistency
 			  (recur (dec max-refs) next-g-n-f))))))]
-	      (util/assert-is (<= f (or (.get memory (envs/get-initial-state env)) Double/POSITIVE_INFINITY)))
-	      (.put memory (envs/get-initial-state env) f)
+;	      (util/assert-is (<= f (or (.get memory (envs/get-initial-state env)) Double/POSITIVE_INFINITY)))
+	      (let [old-f (or (.get memory (envs/get-initial-state env)) Double/POSITIVE_INFINITY)]
+		(when (> f old-f) 
+		  (util/print-debug 1 "Warning: inconsistency detected!")
+		  ;(throw (Exception. "Inconsistency!"))
+		  )
+		(.put memory (envs/get-initial-state env) (min f old-f)))
 	      (util/print-debug 1 "Intending plan" (search/node-str n) ", g =" g ", f =" f) 
 	      (search/node-first-action n))))))))
 	      
 
-
+(comment 
+(debug 1 (ahlrta-star-search (get-hierarchy *warehouse-hierarchy* (nth *icaps-ww* 5)) 100 100 #{'act 'move-blocks} {:graph? :full})) 
+ )
 
 
 
