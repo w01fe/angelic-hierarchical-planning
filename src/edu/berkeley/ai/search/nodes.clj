@@ -96,7 +96,6 @@
 (def *nn nil)
 (def *ns nil)
 
-;; TODO: check goal
 (defn interactive-search 
   ([node] (interactive-search node (queues/make-tree-search-pq) #(- (upper-reward-bound %))))
   ([node pq priority-fn]
@@ -176,7 +175,6 @@
   (queues/pq-add! pq node (priority-fn node))
   (map-leaf-refinements- f pq priority-fn))
 
-; TODO: versions based on other search algorithms!
 (defn refinements-depth
   "Returns a lazy seq of *mostly unique* refinement nodes at the desired depth (or optimal solns
    at lower depths, with search cutoff), computed by depth-first graph search, reopened if better.  
@@ -202,7 +200,7 @@
 
 
 
-;; TODO: these are somewhat misnomors, if hierarchy is infinite (e.g.) ?
+;; These are somewhat misnomors, if hierarchy is infinite (e.g.) ?
 ; So far ignoring internal structure of nodes (bounds) 
 (defn first-optimal-solution [node pq priority-fn]
   (some extract-optimal-solution

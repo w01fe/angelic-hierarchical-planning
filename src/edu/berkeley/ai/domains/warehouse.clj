@@ -173,18 +173,6 @@
 		    [b2 c2 g2] positions 
 		    :when (not (= b1 b2))]  
 		[b1 b2 (- (max 3 (+ (manhattan c1 g1) (manhattan g1 c2))))]))
-
- ;            (concat
-;	      (if (and holding (contains? block-set holding))
-;		  [[term holding 0]] ;TODO: ??
-;	        (for [[b c g] positions] ; Get to first block and pick it up
-;		  [term b (- (util/reduce-key min #(max 1 (manhattan % c)) gripper-pos))]))   ;TODO: if holding??
-;	      (for [[b c g] positions] ; Put final block in final position (could have max 2?)
-;		[b term (- (manhattan c g))])
-;	      (for [[b1 c1 g1] positions, ; Holding b1; put it in g1, go to b1, pick it up
-;		    [b2 c2 g2] positions 
-;		    :when (not (= b1 b2))]  
-;		[b1 b2 (- (max 1 (+ (manhattan c1 g1) (manhattan g1 c2))))]))
 	     )
 	    0))
 

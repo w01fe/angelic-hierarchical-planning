@@ -50,7 +50,6 @@
 
 
 
-;; TODO: implicit sets
 
 (defmulti applicable-actions (fn [state action-space] (:class action-space)))
 (defmulti all-actions :class)

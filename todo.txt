@@ -1,9 +1,7 @@
 ;;;;;;;;;;;;;;;; Implement
 
-Search through TODOs.
+Check out simple vs. full valuations.
 
-Note about consistency with AHLRTA* -- have a flag on descriptions for
-consistent?, raise extra errors when true ?
 
 
 TODO: enforce consistency in AHLRTA*

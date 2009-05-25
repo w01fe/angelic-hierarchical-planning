@@ -85,12 +85,6 @@
 
 ;;; Misc
 
-(comment 
-(defn is-dummy-var? [var]
-  (and (keyword? var)  ; TODO: slow?
-       (let [#^String s (name var)]
-	 (.startsWith s "?"))));)
-  )
 
 ;;; PDDL domain parsing helpers 
 

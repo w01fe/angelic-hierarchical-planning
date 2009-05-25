@@ -67,7 +67,6 @@
 (comment ; Not sure if this will be needed later. ..
 
   ; Search space for use with action hierarchies
-  ; TODO: have some debug level where we check that the action space matches what's generated top-down.
 
   (defstruct hierarchical-search-space-struct :class :state-space :action-space :goal :top-level-action)
 

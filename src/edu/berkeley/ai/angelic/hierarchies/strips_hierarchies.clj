@@ -31,12 +31,10 @@
 (def *finish-strips-hla-schema* 
      (make-strips-hla-schema (gensym "finish") nil nil nil nil *finish-description* *finish-description* :noop))
 
-; TODO: double check about removing precs from NCSTRIPS for primitives.
-; TODO: some more general way to do this (without focusing on ncstrips)
 (defn- make-strips-primitive-hla-schema [types objects predicates action]
   (let [desc (ncstrips/make-ncstrips-description-schema 
 	      types (props/check-objects types (concat objects (:vars action))) predicates 
-	      [(ncstrips/make-ncstrips-effect-schema nil nil nil ; (:pos-pre action) (:neg-pre action) TODO: double check
+	      [(ncstrips/make-ncstrips-effect-schema nil nil nil 
 					      (:add-list action) (:delete-list action) nil nil nil nil nil 
 					      (if (number? (:cost action)) (constantly (:cost action)) (:cost-fn action)))] 
 	      (:vars action))]
@@ -169,9 +167,7 @@
 (defmethod ground-description :edu.berkeley.ai.angelic.hierarchies/FlatActOptimisticDescription [desc var-map] desc)
 
 
-; TODO: use ncstrips for Act description?
 ; Immediate refinements are [name pos-prec neg-prec unk-types expansion]
-; TODO: check it's correct to ignore primitive precs.
 (defn make-flat-strips-hierarchy-schema [domain upper-reward-fn]
   (util/assert-is (isa? (:class domain) :edu.berkeley.ai.domains.strips/StripsPlanningDomain))
   {:class ::StripsHierarchySchema
@@ -261,7 +257,7 @@
   (util/map-vals (fn [t] (util/safe-get objects t)) dummy-var-type-map))
 
 ; CSP takes on sole responsibility for handling *all* constant predicates.  Really (?)
-; TODO: drop all constants here!  BUT must do it in right order?
+;   drop all constants here!  BUT must do it in right order?
 (defn instantiate-strips-hla-schema [schema instance hla-map trans-objects const-pred-map]
   (let [{:keys [name vars pos-pre neg-pre refinement-schemata optimistic-schema pessimistic-schema primitive]} schema
 	const-preds  (util/keyset const-pred-map)
@@ -290,7 +286,7 @@
 	    expansion]))))
      (instantiate-description-schema optimistic-schema instance)
      (instantiate-description-schema pessimistic-schema instance)
-     (if (or (not primitive) (= primitive :noop)) primitive  ; TODO: hacky.
+     (if (or (not primitive) (= primitive :noop)) primitive  
 	 (constant-simplify-strips-primitive-schema primitive const-preds)))))
 
 

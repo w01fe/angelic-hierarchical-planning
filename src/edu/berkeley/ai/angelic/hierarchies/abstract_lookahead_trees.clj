@@ -281,7 +281,7 @@
 		 (not (#{:strict :weak} (valuation-subsumes? graph-si pess-si subsumption-info))))
 	       graph-tuples)
 	  (.put graph-map pair
-		(cons [pess-si name node] ;; TODO: remove node.
+		(cons [pess-si name node]
 		      (remove
 		       (fn [[graph-si graph-node]]
 			 (valuation-subsumes? pess-si graph-si subsumption-info))
@@ -520,7 +520,6 @@
 
 (require '[edu.berkeley.ai.util.graphviz :as graphviz])
 (defn graphviz-alt [node]
-  "TODO: identify source of node, etc."
   (graphviz/write-graphviz "/tmp/alt.pdf"
    [(last (util/iterate-while :previous (:plan node))) false]
    (fn [[n r]] n) ;(:name n))
@@ -548,7 +547,6 @@
 (defn graphviz-alt2 
   ([nodes] (graphviz-alt2 nodes true true true))
   ([nodes show-finish show-refined show-noop]
-  "TODO: identify source of node, etc."
   (doseq [node nodes,
 	  n (util/iterate-while :previous (:plan node))]
     (assert (contains? #{nil :live} (util/sref-get (:fate ^n))))
@@ -795,7 +793,7 @@
 
      (make-initial-alt-node ::ALTPlanNode opt-valuation-class pess-valuation-class subsumption-info initial-plan ref-choice-fn cache? graph? retest?))
  ([node-type opt-valuation-class pess-valuation-class subsumption-info initial-plan ref-choice-fn cache? graph? retest?]
-;  (util/assert-is (empty? subsumption-info)) ;; Taken out for now. TODO
+  (util/assert-is (empty? subsumption-info)) ;; Taken out for now. TODO
   (util/assert-is (contains? #{true false :full :simple :bhaskara :icaps08} graph?))
   (when retest? (assert graph?))
   (let [env (hla-environment (first initial-plan)), 

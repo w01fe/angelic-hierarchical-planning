@@ -208,7 +208,6 @@
 
   )
 ;;;; On to heuristics.
-;; TODO: graph search
 
 (comment
 (time-and-check-flat 

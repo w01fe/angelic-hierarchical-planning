@@ -82,7 +82,7 @@
 ;	  prim-act-refs)))))
 
 (defmethod hla-hierarchical-preconditions ::FlatPrimitiveHLA [hla] 
-  envs/*true-condition*) ;TODO??
+  envs/*true-condition*) 
 (defmethod hla-hierarchical-preconditions ::FlatActHLA [hla] 
   envs/*true-condition*) 
 

@@ -10,11 +10,7 @@
 ; TODO: look at pattern/production matching, ala soar, instead?
   ; Chapter 9 AIMA - benefit: incremental.
 
-; TODO: all unary constraints should be resolved first, domains filtered? 
-; TODO: order vars and constraints to put const first
-
-; TODO: for now,
- ; no multi-occurances
+; For now,
  ; no guaranteed objects
  ; no multiple occurances of same var in pred
 
@@ -31,7 +27,6 @@
 ;  (println "fpd" map pred domain)
   (util/intersection-coll domain (if-let [#^Map m (first (.get map pred))] (.keySet m) nil)))
 
-;; TODO: make smarter?
 (defn filter-neg-domain [map pred domain]
 ;  (println map pred domain)
   (let [sub (first (get map pred))]
@@ -188,19 +183,12 @@
   	    (map #(vector % false) (get-unk-ordering unks all-domains var-pred-map pred-instances const-tuples args [] instance)))))
 
 
-;;; Making final maps.  TODO: precompile?
-;(defn make-permuter [args var-ordering]
-;  (let [arg-positions (map vector (iterate inc 1) (map #(util/position % var-ordering) args))
-;	arg-permutation (map first (sort-by second arg-positions))]
-;    (fn permute [#^clojure.lang.APersistentVector tuple] 
-;      (util/vec-map (fn [ind] (.get tuple ind)) arg-permutation))))
 
 (defn get-permutation [args var-ordering]
   (let [arg-positions (map vector (iterate inc 1) (map #(util/position % var-ordering) args))]
     (vec (map first (sort-by second arg-positions)))))
 
 
-; TODO: be smarter about map sizes?
 (defn my-assoc-in [#^HashMap m #^clojure.lang.APersistentVector key-vec #^clojure.lang.APersistentVector perm ind]
 ;  (println m key-vec perm ind)
   (if (< (inc ind) (count perm))
@@ -214,11 +202,10 @@
     (.put m (.get key-vec (.get perm ind)) true)))
 
   
-;; TODO: filter based on domains?
 (defn make-value-map-maker "Take a set of allowed tuples and make a multi-stage map following the var-ordering."
   [pos? pred args var-ordering dummy-unary-var dummy-unary-val]
 ;  (println "val-map " args var-ordering allowed-tuples)
-  (if (= (first args) dummy-unary-var) ;; TODO
+  (if (= (first args) dummy-unary-var) 
       (if pos?
 	  (fn value-map-maker-unary1 [true-tuple-map poss-tuple-map] 
 	    (when (or (seq (get true-tuple-map pred)) (seq (get poss-tuple-map pred))) {dummy-unary-val true}))

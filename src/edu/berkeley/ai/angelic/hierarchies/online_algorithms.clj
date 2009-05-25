@@ -8,17 +8,14 @@
 	    [edu.berkeley.ai.angelic.hierarchies.strips-hierarchies :as sh])
   )
 
-; NOTE: These algorithms are not compatible with weak pruning!  (??)
- ; TODO: is there a way to make them compatible??
- ; Is it even compatible with strict pruning ??? 
-
-; (sa/convert-to-prim-act-strips-hla initial-node)
+; 
+; Note about consistency with AHLRTA* -- have a flag on descriptions for
+; consistent?, raise extra errors when true ?
 
 
 ; Need to subtype ALT nodes so we can check for repeated states.
 (derive ::AHLRTAALTPlanNode ::alts/ALTPlanNode)
 
-;; TODO: handle g-cost...
 (defn- make-initial-ahlrta-alt-node [env initial-plan memory high-level-hla-set alt-arg-map]
   (let [initial-plan (map #(assoc-in % [:hierarchy :problem-instance] env) initial-plan) 
 	node (alts/alt-node initial-plan (assoc alt-arg-map :node-type ::AHLRTAALTPlanNode))]
@@ -67,9 +64,6 @@
 
 
 ; TODO:  tiebreak by lower-bound/priority-fn?
-;; TODO: two modifications (max-ref discounting, locking in conditions)
-
-; With high number of refs, why isn't this faster??? should be lightning once many states visited
 
 ; consistency, etc. improvements; better than ICAPS?
 ; TODO: consistency for RA?
@@ -149,7 +143,6 @@
    ; To do this, though, can't cut things off in construct-immediate-refinement as now.
    ; If there are multiple states along path ... ?
 
-;; TODO: handle g-cost...
 (defn- make-initial-ahlrta2-alt-node [env initial-plan alt-arg-map ]
     (update-in (alts/alt-node (map #(assoc-in % [:hierarchy :problem-instance] env) initial-plan) alt-arg-map) [:plan]
       (fn [n] (update-in (assoc n :g-so-far 0 :min-f-to-go Double/POSITIVE_INFINITY) [:previous]

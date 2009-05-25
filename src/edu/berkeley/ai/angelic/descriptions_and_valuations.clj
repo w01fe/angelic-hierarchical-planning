@@ -158,7 +158,6 @@
   (set (map key (filter (fn [p] (= (val p) :true)) clause))))
 
 (defn matching-clause-state [clause state]
-;  (util/assert-is (clause-includes-state? clause state)) ;; TODO: remove!!
   (let [[true-atoms unk-atoms] (util/separate (fn [p] (= (val p) :true)) clause)]
     (set (concat (map key true-atoms)
 		 (filter state (map key unk-atoms))))))
