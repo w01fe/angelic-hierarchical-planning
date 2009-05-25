@@ -55,7 +55,7 @@
     (assert (distinct-elts? (map #(keyword (str (first %))) bindings)))
     `(let ~(into [mg m] 
 		 (apply concat
-		   (map (fn [[k v]] [k `(or (get ~mg ~(keyword (str k))) ~v) 
+		   (map (fn [[k v]] [k `(get ~mg ~(keyword (str k)) ~v) 
 				     mg `(dissoc ~mg ~(keyword (str k)))]) bindings)))  
        (assert-is (empty? ~mg))
        ~@body)))
