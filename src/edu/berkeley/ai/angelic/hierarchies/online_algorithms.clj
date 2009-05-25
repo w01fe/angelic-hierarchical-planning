@@ -44,8 +44,10 @@
 	  states              (when prim? (explicit-valuation-map (alts/optimistic-valuation nxt)))
 	  [state rew-so-far]  (when prim? (util/assert-is (<= (count states) 1)) (first states))
 	  rew-to-go           (when state (get (util/safe-get alt :memory) state))]
+    ;  (when prim? (util/print-debug 2 "Found primitive prefix at " (search/node-str {:class ::alts/ALTPlanNode :plan nxt}) " with " (count states) " states:" (hash state) (get (util/safe-get alt :memory) state)))
      (if rew-to-go
-	(search/adjust-reward (alts/make-alt-plan-node (:class node) alt name nxt) (+ rew-so-far rew-to-go))
+	(do (util/print-debug 2 "Found known state at " (search/node-str {:class ::alts/ALTPlanNode :plan nxt}))
+	    (search/adjust-reward (alts/make-alt-plan-node (:class node) alt name nxt) (+ rew-so-far rew-to-go)))
       (if (and (or (> (valuation-max-reward (alts/optimistic-valuation nxt)) Double/NEGATIVE_INFINITY)
 		   (and (util/sref-set! (:fate ^nxt) :dead) false))
 	       (or (next actions) 
@@ -56,7 +58,8 @@
 					 name)))
 	  (recur node nxt (next actions) alt name was-tight?)
 	(util/print-debug 3 "Late prune at" (search/node-str {:class ::alts/ALTPlanNode :plan nxt})
-			  (map hla-name (next actions))
+			  (map hla-name (next actions)) 
+			  " with " (valuation-max-reward (alts/optimistic-valuation nxt)) (not (:graph? alt))
 			  ;(map println (map optimistic-valuation (util/iterate-while :previous nxt)))
 ;			  (optimistic-valuation (:previous (:previous nxt)))
 			  ))))))
@@ -66,17 +69,25 @@
 ; TODO:  tiebreak by lower-bound/priority-fn?
 
 ; consistency, etc. improvements; better than ICAPS?
-; TODO: consistency for RA?
 
-; If heuristic is inconsistent, reward may increase ... but convergence is still guaranteed! ?
+; Inconsistencies can arise when we visit a state, then a neighbor, then a state again,
+; when the bound we got for neighbor is too optimistic, or pruning is avoided.
+  ; Plus, simple changes in queue ordering can affect pruning.
+  ; Convergence is still guaranteed.
+  ; Simple example: put-r leads to known state, so is ignored.
+  ; When current state is known, up-down is cut off.
+   ; Otherwise, up-down-putr represents best plan for pruning bound; 
+    ; we only get it when we don't know current state.
+  ; TODO: way to fix this? 
 
-;; TODO: enforce consistency, add back checks?
+; e.g., inconsistency with (debug 1 (ahlrta-star-search (get-hierarchy *warehouse-hierarchy* (nth *icaps-ww* 5)) 100 70 '#{act move-blocks} {:graph? :bhaskara} 6 '{act 1 'move-blocks 1 'move-to 1 'navigate 2 'nav 3}))
+
 
 (defn ahlrta-star-search 
   "AHLRTA* search from ICAPS '08.  
     max-primitives specifies max # of legal primitives, used to throw away
       refinements as specified in the paper.  Nil = don't throw anything away.
-    ref-level-map specifies whether to include other described improvement, 
+      ref-level-map specifies whether to include other described improvement, 
       locking in only when plan is more refined than last locked-in plan.
       This amounts to tie-breaking towards plans with greater ref-level, which
       is the sum of the ref-levels of the actions in the plan."
@@ -93,6 +104,7 @@
 	(hla-environment (first initial-plan))
 	max-steps
 	(fn [env]
+;	  (println memory "\n\n\n" (envs/get-initial-state env) "\n\n" )
 	  (let [node (make-initial-ahlrta-alt-node env initial-plan memory high-level-hla-set alt-arg-map)
 		pq   (queues/make-tree-search-pq)]
 	    (doseq [nn (search/immediate-refinements node)] ; Start by populating with prim-then-act plans
@@ -112,19 +124,19 @@
 					  (apply + (map #(get ref-level-map (first (hla-name (:hla %))) 4)
 							(butlast (util/iterate-while :previous (:plan n))))))))
 			      next-g-n-f  (if (< ng (nth g-n-f 0)) [ng n nf] g-n-f)]
-			  (util/print-debug 2 "Refining" (search/node-str n) "with g =" ng ", f =" nf 
+			  (util/print-debug 2 "Refining" 0 (search/node-str n) "with g =" ng ", f =" nf 
 					    (if (not (identical? g-n-f next-g-n-f)) (str "; locking in " )))
 			  (doseq [nn (search/immediate-refinements n)] 
 			    (queues/pq-add! pq nn (- (min nf (search/upper-reward-bound nn))))) ; enforce consistency
 			  (recur (dec max-refs) next-g-n-f))))))]
 ;	      (util/assert-is (<= f (or (.get memory (envs/get-initial-state env)) Double/POSITIVE_INFINITY)))
+	      (util/print-debug 1 "Intending plan" (search/node-str n) ", g =" g ", f =" f) 
 	      (let [old-f (or (.get memory (envs/get-initial-state env)) Double/POSITIVE_INFINITY)]
 		(when (> f old-f) 
 		  (util/print-debug 1 "Warning: inconsistency detected!")
-		  ;(throw (Exception. "Inconsistency!"))
+		  (throw (Exception. "Inconsistency!"))
 		  )
 		(.put memory (envs/get-initial-state env) (min f old-f)))
-	      (util/print-debug 1 "Intending plan" (search/node-str n) ", g =" g ", f =" f) 
 	      (search/node-first-action n))))))))
 	      
 

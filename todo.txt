@@ -1,11 +1,5 @@
 ;;;;;;;;;;;;;;;; Implement
 
-Check out simple vs. full valuations.
-
-
-
-TODO: enforce consistency in AHLRTA*
-
 TODO: weighted A*, optimistic A* need not reopen states to preserve
 suboptimality bound ? (see ARA* paper)
 
@@ -19,6 +13,7 @@ Add tests for decomposed, weighted, optimistic offline algs.
  
 Later
 
+Fix regression for simple valuations ?
 
 Add NCStrips tests.
 

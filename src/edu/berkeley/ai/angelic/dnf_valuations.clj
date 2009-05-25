@@ -9,7 +9,7 @@
 ; DNF simple valuations are like DNF valuations, but the reward is the same for all clauses.
  ; In the pessimistic case min reward is taken, optimistic = max.
 
-; *state->valuation, map->valuation, explicit-valuation-map, restrict-valuation, union-valuations, *empty-valuation?, *valuation-state-reward, *valuation-max-reward-state, *valuation-max-reward, *get-valuation-states, *valuation-subsumes?, progress-exact, regress-state
+; TODO: simple valuations may not be working properly with regression. (in particular, incorrect rewards may be reported...)
 
 
 (derive ::DNFValuation :edu.berkeley.ai.angelic/PropositionalValuation)

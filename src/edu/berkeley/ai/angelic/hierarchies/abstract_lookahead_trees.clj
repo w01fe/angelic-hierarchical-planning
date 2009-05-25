@@ -226,7 +226,7 @@
 (util/defn-opt make-initial-alt-node 
   [initial-plan & 
     node-type ::ALTPlanNode, ref-choice-fn first-gap-choice-fn,
-    cache? true, graph? true, recheck-graph? false,
+    cache? true, graph? true, recheck-graph? false, 
     subsumption-info {}, valuation-class nil, 
     opt-valuation-class (or valuation-class (hla-default-optimistic-valuation-type (first initial-plan)))
     pess-valuation-class (or valuation-class (hla-default-pessimistic-valuation-type (first initial-plan))),
@@ -274,7 +274,7 @@
 	pess-val              (pessimistic-valuation node)]
     (when (> (valuation-max-reward pess-val) Double/NEGATIVE_INFINITY)
       (let [[pess-states pess-si] (get-valuation-states pess-val subsumption-info)
-	    pair                  [pess-states rest-plan]
+	    pair [pess-states rest-plan]
 	    graph-tuples          (.get graph-map pair)]
 	(when (every?
 	       (fn [[graph-si graph-node]]
@@ -321,7 +321,11 @@
   (let [name (util/safe-get plan :name)]
     (loop [node (util/safe-get plan :plan) rest-plan nil]
       (or ;(println name (map hla-name rest-plan))
-          (node-prunable? alt node rest-plan name)
+          (and (node-prunable? alt node rest-plan name)
+	       (do (util/print-debug 3 "Secondary pruning at " 
+				 (search/node-str {:class ::ALTPlanNode :plan node})
+				 (map hla-name rest-plan))
+	       true))
 	  (when-let [previous (util/safe-get node :previous)]
 	    (recur previous (cons (util/safe-get node :hla) rest-plan)))))))
 
@@ -409,13 +413,13 @@
 	graph?      (util/safe-get alt :graph?)
 	plan        (:plan node)
 	ref-node    ((util/safe-get alt :ref-choice-fn) node)]
+    (util/print-debug 3  "About to refine " (search/node-str node) " at " (hla-name (:hla ref-node)))
     (when (and ref-node
 	       (or (not (util/safe-get alt :recheck-graph?))
 		   (not (when (plan-prunable? alt node) 
-;;			       (println "Secondary pruning at recheck!")
+			       (util/print-debug 3 "Secondary pruning at recheck!")
 			       true))))
      ;; If ref-fn is correct, == when not fully primitive
-   ;   (println "About to refine " (search/node-str node) " at " (hla-name (:hla ref-node)))
       (util/sref-up! search/*ref-counter* inc)
       (let [was-tight?  (and (contains? #{true :full} graph?) 
 			 (or (util/safe-get ^ref-node :was-tight?)

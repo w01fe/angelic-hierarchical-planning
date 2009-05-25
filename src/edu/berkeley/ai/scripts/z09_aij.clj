@@ -96,7 +96,8 @@
     'edu.berkeley.ai.scripts.z09-aij 10
      max-seconds 512 nil experiments/*planning-experiment-result*))
 
-
+; TODO: use simple valuations?!
+; TODO: note sloppy graph.
 
 (defn make-offline-experiment-set []
   (make-aij-experiment-set "offline-test" 100
