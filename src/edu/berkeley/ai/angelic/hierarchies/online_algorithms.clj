@@ -79,11 +79,20 @@
 ;; TODO: enforce consistency, add back checks?
 
 (defn ahlrta-star-search 
+  "AHLRTA* search from ICAPS '08.  
+    max-primitives specifies max # of legal primitives, used to throw away
+      refinements as specified in the paper.  Nil = don't throw anything away.
+    ref-level-map specifies whether to include other described improvement, 
+      locking in only when plan is more refined than last locked-in plan.
+      This amounts to tie-breaking towards plans with greater ref-level, which
+      is the sum of the ref-levels of the actions in the plan."
   ([initial-plan max-steps max-refs] 
      (ahlrta-star-search initial-plan max-steps max-refs #{'act}))
   ([initial-plan max-steps max-refs high-level-hla-set] 
      (ahlrta-star-search initial-plan max-steps max-refs high-level-hla-set {:ref-choice-fn alts/first-choice-fn}))
   ([initial-plan max-steps max-refs high-level-hla-set alt-arg-map]
+     (ahlrta-star-search initial-plan max-steps max-refs high-level-hla-set alt-arg-map nil nil))
+  ([initial-plan max-steps max-refs high-level-hla-set alt-arg-map max-primitives ref-level-map]
      (let [initial-plan (sh/convert-to-prim-act-strips-hla initial-plan)
 	   memory (HashMap.)]
        (real-time/real-time-search
@@ -95,7 +104,7 @@
 	    (doseq [nn (search/immediate-refinements node)] ; Start by populating with prim-then-act plans
 	      (queues/pq-add! pq nn (- (search/upper-reward-bound nn))))
 	    (let [[g n f]  
-		(loop [max-refs max-refs
+		(loop [max-refs (int (* max-refs (if max-primitives (/ (queues/pq-size pq) max-primitives) 1)))
 			 g-n-f [Double/POSITIVE_INFINITY :dummy Double/POSITIVE_INFINITY]]
 		  (util/assert-is (not (queues/pq-empty? pq)) "dead end!")
 		  (let [[n nnf] (queues/pq-remove-min-with-cost! pq)
@@ -104,7 +113,10 @@
 		    (if (zero? max-refs) (assoc g-n-f 2 nf) ;g-n-f
 		      (if (or ra? (search/extract-optimal-solution n))
 			  [(if ra? :ra :opt) (if ra? (search/ra-node-base n) n) nf]
-			(let [ng     (util/safe-get-in n [:plan :g-rew])
+			(let [ng     (+ (util/safe-get-in n [:plan :g-rew])
+					(* 0.00000001 (if (not ref-level-map) 0
+					  (apply + (map #(get ref-level-map (first (hla-name (:hla %))) 4)
+							(butlast (util/iterate-while :previous (:plan n))))))))
 			      next-g-n-f  (if (< ng (nth g-n-f 0)) [ng n nf] g-n-f)]
 			  (util/print-debug 2 "Refining" (search/node-str n) "with g =" ng ", f =" nf 
 					    (if (not (identical? g-n-f next-g-n-f)) (str "; locking in " )))
@@ -124,6 +136,8 @@
 
 (comment 
 (debug 1 (ahlrta-star-search (get-hierarchy *warehouse-hierarchy* (nth *icaps-ww* 5)) 100 100 #{'act 'move-blocks} {:graph? :full})) 
+
+(debug 1 (ahlrta-star-search (get-hierarchy *warehouse-hierarchy* (nth *icaps-ww* 5)) 100 100 '#{act} {:graph? :full} 6 '{act 1 'move-blocks 1 'move-to 1 'navigate 2 'nav 3}))
  )
 
 
@@ -136,17 +150,15 @@
    ; If there are multiple states along path ... ?
 
 ;; TODO: handle g-cost...
-(defn- make-initial-ahlrta2-alt-node [env initial-node ref-choice-fn cache? graph? ]
-  (let [node
-	(alts/alt-node ::alts/ALTPlanNode 
-		       (hla-default-optimistic-valuation-type initial-node) 
-		       (hla-default-pessimistic-valuation-type initial-node) 
-		       nil
-		       (assoc initial-node :hierarchy (assoc (:hierarchy initial-node) :problem-instance env))
-		       ref-choice-fn cache? graph?)]
-    (assoc node :plan (assoc (:plan node) 
-			:g-so-far 0 :min-f-to-go Double/POSITIVE_INFINITY
-			:previous (assoc (:previous (:plan node)) :g-so-far 0 :min-f-to-go Double/POSITIVE_INFINITY)))))
+(defn- make-initial-ahlrta2-alt-node [env initial-plan alt-arg-map ]
+    (update-in (alts/alt-node (map #(assoc-in % [:hierarchy :problem-instance] env) initial-plan) alt-arg-map) [:plan]
+      (fn [n] (update-in (assoc n :g-so-far 0 :min-f-to-go Double/POSITIVE_INFINITY) [:previous]
+	(fn [n2] (update-in (assoc n2 :g-so-far 0 :min-f-to-go Double/POSITIVE_INFINITY) [:previous]
+	   #(assoc % :g-so-far 0 :min-f-to-go Double/POSITIVE_INFINITY)))))))
+
+;    (assoc node :plan (assoc (:plan node) 
+;			:g-so-far 0 :min-f-to-go Double/POSITIVE_INFINITY
+;			:previous (assoc (:previous (:plan node)) :g-so-far 0 :min-f-to-go Double/POSITIVE_INFINITY)))))
 
 ;; TODO: think about interaction with graph
 (defn- postprocess-plan-known-states 
@@ -199,21 +211,21 @@
 ; TODO: still must handle goal plan (add assertion to make sure knowns don't mess it up!)
 ; TODO: option to do final push or not?
 (defn improved-ahlrta-star-search 
-  ([initial-hla max-steps max-refs] 
-     (improved-ahlrta-star-search initial-hla max-steps max-refs #{'act}))
-  ([initial-hla max-steps max-refs high-level-hla-set] 
-     (improved-ahlrta-star-search initial-hla max-steps max-refs high-level-hla-set alts/first-choice-fn true true))
-  ([initial-hla max-steps max-refs high-level-hla-set ref-choice-fn cache? graph?]
-     (let [initial-hla (sh/convert-to-prim-act-strips-hla initial-hla)
+  ([initial-plan max-steps max-refs] 
+     (improved-ahlrta-star-search initial-plan max-steps max-refs #{'act}))
+  ([initial-plan max-steps max-refs high-level-hla-set] 
+     (improved-ahlrta-star-search initial-plan max-steps max-refs high-level-hla-set {}))
+  ([initial-plan max-steps max-refs high-level-hla-set alt-arg-map]
+     (let [initial-plan (sh/convert-to-prim-act-strips-hla initial-plan)
 	   memory (HashMap.)]
-       (def *init* initial-hla)
+;       (def *init* initial-hla)
        (real-time/real-time-search
-	(hla-environment initial-hla)
+	(hla-environment (first initial-plan))
 	max-steps
 	(fn [env]
 	  (let [state-rews (HashMap.)
 		pq   (queues/make-tree-search-pq)]
-	    (queues/pq-add! pq (make-initial-ahlrta2-alt-node env initial-hla ref-choice-fn cache? graph?) Double/NEGATIVE_INFINITY) 
+	    (queues/pq-add! pq (make-initial-ahlrta2-alt-node env initial-plan alt-arg-map) Double/NEGATIVE_INFINITY) 
 	    (.put state-rews (envs/get-initial-state env) 0)
 	    (let [[g n f]  
 		(loop [max-refs max-refs
