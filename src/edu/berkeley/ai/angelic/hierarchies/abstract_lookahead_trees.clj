@@ -20,6 +20,9 @@
 ; Note: msut be very careful about eliminating duplicate plans; can
 ;  also create cycles.  Thus, it's only turned on when we're using graph
 ; style that never prunes weakly on non-live nodes.
+ ; Why don't we just add an edge, exactly ?  Well, then we have to keep trakc
+   ; of set of final nodes at each point, possibly add mulitple edges, etc.  
+   ; And, in current hierarchies, shouldn't happen (why does it?)
 
 ; An interesting, efficiently checkable condition is whether any ancestor of a given HLA has made
 ; a non-vacuous pessimistic claim.  If not, you can prune strictly on anything.
@@ -310,7 +313,7 @@
 				 (and (= (:graph? alt) true) (util/safe-get ^node :was-tight?) 
 				      (not (.contains live-set graph-node)))
 				 (and (= (:graph? alt) :full)
-				      (util/safe-get ^node :was-tight?) 
+				     ; (util/safe-get ^node :was-tight?) TODO: put back? 
 				      (not (test-and-add-edge! alt graph-node name)))))))))
 	   graph-tuples)]
         (util/sref-set! (:fate ^node) bad-node)

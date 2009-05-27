@@ -97,7 +97,7 @@
      max-seconds 512 nil experiments/*planning-experiment-result*))
 
 ; TODO: use simple valuations?!
-; TODO: note sloppy graph.
+; TODO: investigate AHLRTA* variations, ref-choice, etc.
 
 (defn make-offline-experiment-set []
   (make-aij-experiment-set "offline-test" 100
@@ -157,6 +157,7 @@
 
  )
 
+; (let [e (constant-predicate-simplify (make-warehouse-strips-env 4 4 [1 2] false {0 '[a] 2 '[c b]} nil ['[a c table1]]))] (doseq [[n h] [["flat" (get-flat-strips-hierarchy e [:warehouse-act])] ["hierarchcial" (get-hierarchy *warehouse-hierarchy-improved* e)]]] (println n (get-time-pair (do (reset-ref-counter) [(second (aha-star-search (alt-node h {:graph? :full :recheck-graph? true}))) (sref-get *ref-counter*)])))))
 
 
 ; (plot (ds->chart (ds-summarize (experiment-set-results->dataset (read-experiment-set-results (make-nav-switch-experiment-set))) [:type :size :switches] [[:ms (fn [& args] (when (every? identity args ) (apply mean args))) (ds-fn [ms] ms)]]) [:type :switches] :size :ms {:key "top left" :xlabel "size" :ylabel "ms" :title "square nav-switch solution time, grouped by n-switches" :ylog true :xlog true :xtics "4, 2, 256"} (fn [[type switches]] {:lt ({0 1 1 2 20 3} switches) :lc ({:hierarchy (gp-rgb 255 0 0) :flat-hierarchy (gp-rgb 0 255 0) :strips (gp-rgb 0 0 255)} type)})))

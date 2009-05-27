@@ -1,5 +1,6 @@
 ;;;;;;;;;;;;;;;; Implement
 
+
 TODO: weighted A*, optimistic A* need not reopen states to preserve
 suboptimality bound ? (see ARA* paper)
 
@@ -7,6 +8,9 @@ TODO: ARA*
 
 Add tests for decomposed, weighted, optimistic offline algs. 
 
+put back was-tight?  (removed for easy description in paper.)
+
+think about implicit pruning (i.e., decomposition, etc.)
 
 ;;;;;;;;;;;;;;;; General TODO
 

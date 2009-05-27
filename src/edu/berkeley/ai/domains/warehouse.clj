@@ -15,7 +15,12 @@
 
 ; initial-stacks is map from column number to stacks of block names (top-down).
 ; goal-stacks is seq of desired stacks
-(defn make-warehouse-strips-env [width height initial-pos initial-faceright? initial-stacks initial-holding goal-stacks]
+(defn make-warehouse-strips-env 
+  ([width height initial-pos initial-faceright? initial-stacks initial-holding goal-stacks]
+     (make-warehouse-strips-env width height initial-pos initial-faceright? initial-stacks initial-holding goal-stacks nil))
+  ([width height initial-pos initial-faceright? initial-stacks initial-holding goal-stacks dead-cols]
+  (util/assert-is (every? (set (range width)) dead-cols))
+  (util/assert-is (not-any? initial-stacks dead-cols))
   (strips/make-strips-planning-instance 
    "nav-switch"
    (make-warehouse-strips-domain)
@@ -34,7 +39,7 @@
 	   (util/forcat [x (range width)]
 	     (let [stack (concat (get initial-stacks x) [(util/symbol-cat "table" x)])]
 	       (concat (if initial-holding [['clear initial-holding]])
-		       [['clear (first stack)]]
+		       (when-not ((set dead-cols) x) [['clear (first stack)]])
 		       (for [[b c] (partition 2 1 stack)]
 			 ['on b c])
 		       (util/forcat [[y b] (util/indexed (reverse stack))]
@@ -60,7 +65,7 @@
 	 (for [y (reverse (range 1 height))]
 	   (apply str
 	     (for [x (range width)]
-	       (get square-map [x y] (if facingright? ">" "<"))))))))))
+	       (get square-map [x y] (if facingright? ">" "<")))))))))))
 
 (def *warehouse-hierarchy-unguided* (util/path-local "warehouse_icaps08_unguided.hierarchy"))
 (def *warehouse-hierarchy*          (util/path-local "warehouse_icaps08.hierarchy"))

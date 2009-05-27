@@ -109,8 +109,10 @@
 		pq   (queues/make-tree-search-pq)]
 	    (doseq [nn (search/immediate-refinements node)] ; Start by populating with prim-then-act plans
 	      (queues/pq-add! pq nn (- (search/upper-reward-bound nn))))
-	    (let [[g n f]  
-		(loop [max-refs (int (* max-refs (if max-primitives (/ (queues/pq-size pq) max-primitives) 1)))
+	    (let [ref-limit (int (* max-refs (if max-primitives (/ (queues/pq-size pq) max-primitives) 1)))
+		  _ (util/print-debug 1 "Allowing" ref-limit "refinements.")
+		  [g n f]  
+		(loop [max-refs ref-limit
 			 g-n-f [Double/POSITIVE_INFINITY :dummy Double/POSITIVE_INFINITY]]
 		  (util/assert-is (not (queues/pq-empty? pq)) "dead end!")
 		  (let [[n nnf] (queues/pq-remove-min-with-cost! pq)
@@ -134,7 +136,7 @@
 	      (let [old-f (or (.get memory (envs/get-initial-state env)) Double/POSITIVE_INFINITY)]
 		(when (> f old-f) 
 		  (util/print-debug 1 "Warning: inconsistency detected!")
-		  (throw (Exception. "Inconsistency!"))
+		;  (throw (Exception. "Inconsistency!"))
 		  )
 		(.put memory (envs/get-initial-state env) (min f old-f)))
 	      (search/node-first-action n))))))))

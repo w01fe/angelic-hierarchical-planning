@@ -125,3 +125,6 @@
 ; (interactive-search (tdf-node (get-hierarchy *warehouse-hierarchy-unguided* (constant-predicate-simplify (make-warehouse-strips-env 7 6 [0 2] true {0 '[b] 1 '[a] 2 '[c]  } nil ['[a b c table5]])))) (make-tree-search-pq) #(- (upper-reward-bound %)))
 
 ; (binding [*debug-level* 2] (let [e (nth *icaps-ww* 0) d (ground-description (instantiate-description-schema (parse-description [:warehouse-act] nil nil) e) {})] (interactive-search (ss-node e (fn [s] (valuation-max-reward (progress-valuation (state->valuation :edu.berkeley.ai.angelic.dnf-valuations/DNFValuation s) d)))) (make-graph-search-pq) #(- (upper-reward-bound %)))))
+
+
+; (let [e (constant-predicate-simplify (make-warehouse-strips-env 4 8 [1 2] false {0 '[a] 2 '[c b]} nil ['[a c table1]]))] (doseq [[n h] [["flat" (get-flat-strips-hierarchy e [:warehouse-act])] ["hierarchcial" (get-hierarchy *warehouse-hierarchy-improved* e)]]] (println n (get-time-pair (do (reset-ref-counter) [(second (aha-star-search (alt-node h {:graph? :full :recheck-graph? true}))) (sref-get *ref-counter*)])))))
