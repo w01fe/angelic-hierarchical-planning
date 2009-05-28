@@ -438,6 +438,7 @@
 	 (for [ref (hla-immediate-refinements (:hla ref-node) (optimistic-valuation (:previous ref-node)))]
 	   (let [name         ((:node-counter ^alt))]
   	     (util/print-debug 3 "\nConsidering refinement " (map hla-name ref) " at " (hla-name (:hla ref-node)))
+	     (util/sref-up! search/*plan-counter* inc)
 	     (when (= graph? :full)
 	       (assert (test-and-add-edge! alt name (util/safe-get node :name))))
 	     (when-let [nxt (construct-immediate-refinement node (:previous ref-node) (concat ref after-actions) alt name was-tight?)]

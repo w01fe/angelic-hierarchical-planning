@@ -17,9 +17,11 @@
 
 
 (def *ref-counter* (util/sref 0))
+(def *plan-counter* (util/sref 0))
 
 (defn reset-ref-counter [] 
-  (util/sref-set! *ref-counter* 0))
+  (util/sref-set! *ref-counter* 0)
+  (util/sref-set! *plan-counter* 0))
 
 (defmulti #^{:doc "(pref. lazy) seq of node refinements; should begin with primitive.  Should increment ref-counter."} immediate-refinements :class)
 

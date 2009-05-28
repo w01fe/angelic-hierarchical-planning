@@ -88,8 +88,11 @@
   (util/sref-up! *ref-counter* inc)
   (let [search-space (:search-space node)
 	state (:state node)]
-    (map #(make-state-space-node search-space % #_ (min (util/safe-get ^node :path-min) (upper-reward-bound node))) 
-	 (envs/successor-states state (:action-space search-space)))))
+    (for [succ (envs/successor-states state (:action-space search-space))]
+      (do (util/sref-up! *plan-counter* inc)
+	  (make-state-space-node search-space succ)))))
+;    (map #(make-state-space-node search-space % #_ (min (util/safe-get ^node :path-min) (upper-reward-bound node))) 
+;	 )))
 
 (defmethod primitive-refinement ::StateSpaceNode [node] 
   nil)

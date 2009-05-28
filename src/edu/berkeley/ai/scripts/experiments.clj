@@ -24,7 +24,7 @@
 
 (defstruct planning-experiment-result 
   :class :experiment :commit-id :timeout? :memout? :output :printed :init-ms :ms :mb
-  :next-count :ref-count :op-count :pp-count)
+  :next-count :ref-count :plan-count :op-count :pp-count)
 
 (defmethod setup-experiment-result ::PlanningExperimentResult [experiment]
   (envs/reset-next-counter)
@@ -37,6 +37,7 @@
 	  experiment (util/git-commit-id) timeout? memout? output printed init-ms ms mb
 	  (util/sref-get envs/*next-counter*)
 	  (util/sref-get search/*ref-counter*)
+	  (util/sref-get search/*plan-counter*)
 	  (util/sref-get angelic/*op-counter*)
 	  (util/sref-get angelic/*pp-counter*)
 	  ))
