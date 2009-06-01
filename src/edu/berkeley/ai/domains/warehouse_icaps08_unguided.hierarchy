@@ -1,5 +1,5 @@
 ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
-;;; Warehouse hierarchy -- assumes all goals are Ons.
+;;; Warehouse hierarchy -- assumes all goals are Ons.  Actually not quite icaps08, uses "improved" nav.
 ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
 
 (define (hierarchy warehouse)
@@ -115,7 +115,6 @@
 					      (util/symbol-abs-diff ?dx ?cx 1)
 					      (util/symbol-abs-diff ?cy ?topy 1)
 					      (util/symbol-abs-diff ?dy ?topy 1)))))       
-
   (:hla nav       
        :parameters (?cx - xc ?cy - yc ?dx - xc ?dy - yc ?topy - yc)
        :refinement (:precondition (gripperat ?dx ?dy) :expansion ())
@@ -130,9 +129,12 @@
        :optimistic  (:ncstrips (:effect (and (gripperat ?dx ?dy) (not (gripperat ?cx ?cy)))
 			        :cost-expr (+ (util/symbol-abs-diff ?dx ?cx 1)
 					      (util/symbol-abs-diff ?dy ?cy 1))))
-       :pessimistic (:ncstrips (:precondition (forall (?x - xc) (and) (not (someblockat ?x ?topy)))
+       :pessimistic (:ncstrips (:precondition (and (not (xc= ?cx ?dx)) (forall (?x - xc) (and) (not (someblockat ?x ?topy))))
                                 :effect (and (gripperat ?dx ?dy) (not (gripperat ?cx ?cy)))
 			        :cost-expr (+ (util/symbol-abs-diff ?dx ?cx 1)
 					      (util/symbol-abs-diff ?cy ?topy 1)
-					      (util/symbol-abs-diff ?dy ?topy 1))))))
+					      (util/symbol-abs-diff ?dy ?topy 1)))
+			       (:precondition (xc= ?cx ?dx)
+                                :effect (and (gripperat ?dx ?dy) (not (gripperat ?cx ?cy)))
+			        :cost-expr   (util/symbol-abs-diff ?cy ?dy 1)))))
 

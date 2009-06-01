@@ -95,6 +95,7 @@
  (map #(strips/constant-predicate-simplify (apply nav-switch/make-nav-switch-strips-env %))
       [[5 5 [[1 1]] [0 4] false [4 0]]
        [20 20 [[3 7] [12 18] [16 2]] [19 0] true [0 19]]
+       [40 40 [[3 7] [12 18] [16 2] [23 16] [11 34] [35 29] [7 11] [28 5] [9 32]] [39 0] true [0 39]]
        [100 100 [[26 91] [50 24] [54 97] [2 35] [25 9] [34 53] [2 16] [49 47] [67 10] [23 82]] [99 0] true [0 99]]]))
 
 (defn test-icaps-nav [i alt-args]

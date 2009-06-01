@@ -14,6 +14,9 @@ think about implicit pruning (i.e., decomposition, etc.)
 
 ;;;;;;;;;;;;;;;; General TODO
 
+Think about connection between hierarchical methods and first-order
+theorem proving.  Pessimistic descriptions are not pure logical
+statements ! 
  
 Later
 

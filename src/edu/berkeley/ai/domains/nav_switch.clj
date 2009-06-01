@@ -105,6 +105,7 @@
     
 
 (def *nav-switch-hierarchy*          (util/path-local "nav_switch.hierarchy"))
+(def *nav-switch-hierarchy-unguided*          (util/path-local "nav_switch_unguided.hierarchy"))
 ;(def *nav-switch-hierarchy2*         (util/path-local "nav_switch2.hierarchy"))
 (def *nav-switch-old-hierarchy* (util/path-local "nav_switch_old.hierarchy"))
 (def *nav-switch-flat-hierarchy*          (util/path-local "nav_switch_flat.hierarchy"))
