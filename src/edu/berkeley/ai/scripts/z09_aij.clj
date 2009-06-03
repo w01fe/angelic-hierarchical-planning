@@ -53,8 +53,25 @@
       [2 2 [1 1] false {0 '[a]} nil ['[a table1]]]
       [3 3 [1 1] false {0 '[a] 2 '[b]} nil ['[b a]]]
       [3 4 [1 2] false {0 '[b a] 2 '[c]} nil ['[a b c]]]
+      [7 6 [0 2] true {0 '[b] 1 '[a] 2 '[c]  } nil ['[a b c table5]]]
+      [5 4 [1 2] false {0 '[a b] 1 '[c] 2 '[d e] 3 '[f]} nil '[[a d table1]]]
+
       [4 4 [1 2] false {0 '[a] 2 '[c b]} nil ['[a c table1]]]
-      [7 6 [0 2] true {0 '[b] 1 '[a] 2 '[c]  } nil ['[a b c table5]]]])
+      [10 4 [1 2] false {0 '[a] 9 '[c b]} nil ['[a c table1]]]
+      [20 4 [1 2] false {0 '[a] 19 '[c b]} nil ['[a c table1]]]
+      [4 20 [1 2] false {0 '[a] 3 '[c b]} nil ['[a c table1]]]
+      [10 20 [1 2] false {0 '[a] 9 '[c b]} nil ['[a c table1]]]
+      [20 20 [1 2] false {0 '[a] 19 '[c b]} nil ['[a c table1]]]
+
+      [4 4 [0 3] false {0 '[a c] 3 '[e g]} nil '[[a e table1] [c g table3]]]
+      [4 4 [0 3] false {0 '[a c] 3 '[e g]} nil '[[a e table1] [g c table3]]]
+      [4 10 [0 3] false {0 '[a c] 3 '[e g]} nil '[[a e table1] [g c table3]]]
+      [6 5 [0 4] false {0 '[a c] 3 '[e g]} nil '[[a e table1] [c g table4]]]
+
+      ;; infeasible
+      [3 6 [0 3] false {0 '[a c] 2 '[e g]} nil '[[a e table0] [g c table2]]]
+
+      ])
 
 (def get-ns-args (memoize (fn [size switches run] (nav-switch/make-random-nav-switch-args size switches))))
 
@@ -69,7 +86,7 @@
 
 (defn get-env-init-form [m]
   (condp = (:domain m)
-    :nav-switch (get-ns-form (:size m) (:switches m) (:run m))
+    :nav-switch (get-ns-form (:size m) (if (integer? (:switches m)) (:switches m) (int (Math/ceil (* (:switches m) (:size m) (:size m))))) (:run m))
     :warehouse  (get-warehouse-form (nth *warehouse-args* (:instance-num m)))))
 
 (defn get-hierarchy-init-form [m env-form]
@@ -80,7 +97,9 @@
 
 (defn get-node-init-form [m hierarchy-form]
   (cond (contains? #{:hierarchy :flat-hierarchy} (:type m))
-	  `(alts/alt-node ~hierarchy-form ~{:graph? (:graph? m) :ref-choice-fn (:choice-fn m) :recheck-graph? (:recheck-graph? m)}) ;TODO
+	  `(alts/alt-node ~hierarchy-form ~{:graph? (:graph? m) :ref-choice-fn (:choice-fn m) :recheck-graph? (:recheck-graph? m)
+					    :opt-valuation-class :edu.berkeley.ai.angelic.dnf-valuations/DNFOptimisticSimpleValuation
+					    :pess-valuation-class :edu.berkeley.ai.angelic.dnf-valuations/DNFPessimisticSimpleValuation}) 
 	(= :strips (:type m))
 	  `(let [env# ~hierarchy-form] (search/ss-node env# (~(:heuristic m) env#)))))
 
@@ -107,8 +126,8 @@
 		     [:heuristic [`nav-switch/make-flat-nav-switch-heuristic]] 
 		     [:hierarchy [`nav-switch/*nav-switch-hierarchy*]]
 		     [:size     [5 10 50 100 500]]
-		     [:switches [1 3 10]]
-		     ;[:run      [1]]
+		     [:switches [1 5 20 0.01 0.03 0.10]]
+		     [:run      [1 2 3]]
 		     ]]
 		   [:warehouse
 		    [:product
@@ -123,18 +142,55 @@
          [:product
 	    [:type      [:flat-hierarchy]]
             [:graph?    [:bhaskara :full]]
+	    [:recheck-graph? [true]]
+;	    [:opt-valuation-class [:edu.berkeley.ai.angelic.dnf-valuations/DNFOptimisticSimpleValuation]]
+;	    [:pess-valuation-class [:edu.berkeley.ai.angelic.dnf-valuations/DNFOptimisticSimpleValuation]]
 	    [:algorithm [] [[:aha-star     [:algorithm-fn ['offline/aha-star-search]]]]]]
 	 [:product
 	    [:type      [:hierarchy]]
-            [:graph?    [] [[:bhaskara [:recheck-graph? true]]
-			    [:full     [:recheck-graph? false]]]]
+	    [:recheck-graph? [true]]
+            [:graph?    [:bhaskara :full]]
 	    [:ref-choice [] [[:first-gap [:choice-fn [`alts/first-gap-choice-fn]]]
 			     [:icaps     [:choice-fn [`alts/icaps-choice-fn]]]]]
 	    [:algorithm [] [[:aha-star     [:algorithm-fn ['offline/aha-star-search]]]
 			    [:ahss         [:algorithm-fn ['offline/ahss-search]]]
 			    [:optimistic5  [:product [:algorithm-fn ['offline/optimistic-aha-star-search]]
 					             [:algorithm-args [[1.05 `(alts/get-weighted-aha-star-priority-fn 2.0)]]]]]]]]]]))
-	    
+	 
+
+(defn make-online-experiment-set []
+  (make-aij-experiment-set "online-test" 1000000
+    [:product
+     [:domain [] [[:nav-switch 
+		    [:product
+		     [:heuristic [`nav-switch/make-flat-nav-switch-heuristic]] 
+		     [:hierarchy [`nav-switch/*nav-switch-hierarchy*]]
+		     [:size     [100 500]]
+		     [:switches [0.01 0.10]]
+		     [:run      [1 2 3]]
+		     [:high-level-hla-set ['#{act go}]]
+		     [:max-primitives [nil 5]]
+		     [:ref-level-map [nil '{act 1 go 2 nav 3}]]
+		     ]]
+		   [:warehouse
+		    [:product
+		     [:heuristic [`warehouse/make-flat-warehouse-heuristic]] 
+		     [:hierarchy [`warehouse/*warehouse-hierarchy-improved*]]
+		     [:instance-num [0 1 2 3 4 5 6 7 8 9 10]]
+		     [:high-level-hla-set ['#{act move-to move-blocks move-block}]]
+		     [:max-primitives [nil 5]]
+		     [:ref-level-map [nil '{act 0 move-blocks 1 move-to 2 move-block 2 navigate 3 nav 4}]]
+		    ]]]]
+     [:algorithm [:ahlrta-star]]
+     [:max-steps [10000]]
+     [:max-refs  [10 20 50 100 200 500 1000 2000 5000]]
+     [:type [:flat-hierarchy :hierarchy]]
+     [:ref-choice [] [[:first-gap [:choice-fn [`alts/first-gap-choice-fn]]]
+		      [:icaps     [:choice-fn [`alts/icaps-choice-fn]]]]]
+     [:recheck-graph? [true]]
+     [:graph?         [:full]]]))
+
+
 (comment 
   ; Note: current run forgot to turn on recheck-graph? -- change is minimal for ww, zero for ww.
 
