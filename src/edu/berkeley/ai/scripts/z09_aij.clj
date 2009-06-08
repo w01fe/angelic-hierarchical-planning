@@ -120,7 +120,7 @@
 (defn make-aij-experiment-set [name max-seconds arg-spec]
   (experiments/make-experiment-set name
     arg-spec get-init-form get-solution-form
-    'edu.berkeley.ai.scripts.z09-aij  nil ;10
+    'edu.berkeley.ai.scripts.z09-aij  nil 10
      max-seconds 512 false experiments/*planning-experiment-result*))
 
 ; TODO: use simple valuations?!
@@ -133,9 +133,9 @@
 		    [:product
 		     [:heuristic [`nav-switch/make-flat-nav-switch-heuristic]] 
 		     [:hierarchy [`nav-switch/*nav-switch-hierarchy*]]
-		     [:size     [5 ]];10 50 100 500]]
-		     [:switches [1 ]];5 20 0.01 0.03 0.10]]
-		     [:run      [1 ]];2 3]]
+		     [:size     [5 10 50 100 500]]
+		     [:switches [1 5 20 0.01 0.03 0.10]]
+		     [:run      [1 2 3]]
 		     ]]
 		   [:warehouse
 		    [:product
@@ -172,11 +172,11 @@
 		    [:product
 		     [:heuristic [`nav-switch/make-flat-nav-switch-heuristic]] 
 		     [:hierarchy [`nav-switch/*nav-switch-hierarchy*]]
-;		     [:size     [100 500]]
-		     [:size     [100]]
-		     [:switches [0.001 ]];0.01]] ; 0.10]]
-		     [:run      [1]]
-;		     [:run      [1 2 3]]
+		     [:size     [100 500]]
+;		     [:size     [100]]
+		     [:switches [0.001 0.01]] ; 0.10]]
+;		     [:run      [1]]
+		     [:run      [1 2 3]]
 		     [:high-level-hla-set ['#{act go}]]
 		     [:max-primitives [nil 5]]
 		     [:ref-level-map [nil '{act 1 go 2 nav 3}]]
@@ -185,18 +185,18 @@
 		    [:product
 		     [:heuristic [`warehouse/make-flat-warehouse-heuristic]] 
 		     [:hierarchy [`warehouse/*warehouse-hierarchy-improved*]]
-		     [:instance-num [9 ]] ; 16 18]]
+		     [:instance-num [9 16 18]]
 		     [:high-level-hla-set ['#{act move-to move-blocks move-block navigate}]]
 		     [:max-primitives [nil 5]]
 		     [:ref-level-map [nil '{act 0 move-blocks 1 move-to 2 move-block 2 navigate 3 nav 4}]]
 		    ]]]]
      [:algorithm [:ahlrta-star]]
      [:algorithm-fn [`online/ahlrta-star-search]]
-;     [:max-steps [10000]]
-     [:max-steps [300]]
-;     [:max-refs  [10 20 50 100 200 500 1000 2000 5000]]
+     [:max-steps [10000]]
+;     [:max-steps [300]]
+     [:max-refs  [10 20 50 100 200 500 1000 2000 5000]]
 ;     [:max-refs  [10 30 100 300 1000 ]]
-     [:max-refs  [10 ]]
+;     [:max-refs  [10 ]]
      [:type [] [[:flat-hierarchy
 		 [:ref-choice [] [[:first-gap [:choice-fn [`alts/first-gap-choice-fn]]]]]]
 		[:hierarchy 

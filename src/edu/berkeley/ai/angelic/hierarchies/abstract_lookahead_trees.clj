@@ -100,10 +100,10 @@
     (or (util/sref-get s)
 	(util/sref-set! s 
 	  (do (util/sref-up! *op-counter* inc)
-	      (println "Progress-optimistic" 
-	               (optimistic-valuation (:previous node))
-		       (hla-hierarchical-preconditions (:hla node))
-		       (hla-name (:hla node)))
+;	      (println "Progress-optimistic" 
+;	               (optimistic-valuation (:previous node))
+;		       (hla-hierarchical-preconditions (:hla node))
+;		       (hla-name (:hla node)))
 	      (progress-valuation 
 	       (do-restrict-valuation-alt (optimistic-valuation (:previous node))
 					  (hla-hierarchical-preconditions (:hla node)))
