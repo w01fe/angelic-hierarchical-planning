@@ -1,0 +1,24 @@
+
+
+(define (hierarchy nav-2d)
+  (:type :strips-hierarchy)
+  (:hla act
+       :parameters (?cx - xc ?cy - yc ?gx - xc ?gy - yc)
+       :precondition (and (goal-atx ?gx) (goal-aty ?gy) (atx ?cx) (aty ?cy))
+       :refinement   (:expansion    ((nav ?cx ?cy ?gx ?gy)))    
+       :optimistic   (:opt 0)
+       :pessimistic  (:pess))
+
+       
+  (:hla nav       
+       :parameters (?cx - xc ?cy - yc ?dx - xc ?dy - yc)
+       :refinement (:precondition (and (atx ?dx) (aty ?dy)) :expansion ())
+       :refinement (:parameters (:? - xc) :expansion ((left  ?cx ?cy :?) (nav :? ?cy ?dx ?dy)))
+       :refinement (:parameters (:? - yc) :expansion ((up    ?cx ?cy :?) (nav ?cx :? ?dx ?dy)))
+       :refinement (:parameters (:? - yc) :expansion ((down  ?cx ?cy :?) (nav ?cx :? ?dx ?dy)))
+       :refinement (:parameters (:? - xc) :expansion ((right ?cx ?cy :?) (nav :? ?cy ?dx ?dy)))
+       :optimistic (:ncstrips (:effect (and (atx ?dx) (aty ?dy) (not (atx ?cx)) (not (aty ?cy))) 
+                               :cost-expr (+ (util/symbol-abs-diff ?dx ?cx 1)
+					     (util/symbol-abs-diff ?dy ?cy 1))))
+       :pessimistic (:pess)))
+
