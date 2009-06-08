@@ -406,11 +406,11 @@
 ;; Used by AHLRTA
 
 (defn convert-to-prim-act-strips-hla [initial-plan]
-  (let [{:keys [hierarchy schema var-map precondition]}       (first initial-plan),
-	{:keys [hla-schema-map problem-instance]}              hierarchy,
-	{:keys [trans-objects const-pred-map domain]}          problem-instance,
-	act-vars      (map (fn [[t v]] [v t]) (util/safe-get-in hla-schema-map ['act :vars]))
-	prim-action-schemata (util/safe-get domain :action-schemata)]
+  (let [{:keys [hierarchy schema var-map precondition]} (first initial-plan),
+	{:keys [hla-schema-map problem-instance]}       hierarchy,
+	{:keys [trans-objects const-pred-map domain]}   problem-instance,
+	top-level-name                                  (hla-name (first initial-plan))
+	prim-action-schemata     (util/safe-get domain :action-schemata)]
    (assert (= 2 (count initial-plan)))
    [(make-strips-hla
      hierarchy
@@ -420,9 +420,8 @@
        [] nil nil
        (for [action prim-action-schemata]
 	 (let [prim-vars (for [[t v] (:vars action)] [(gensym (str "?" v)) t])]
-	   [(:name action) nil nil (into {} (concat prim-vars act-vars)) 
-	    [(into [(:name action)] (map first prim-vars)) 
-	     (into ['act] (map first act-vars))]]))
+	   [(:name action) nil nil (into {} prim-vars)
+	    [(into [(:name action)] (map first prim-vars)) top-level-name]]))
        (parse-description [:opt] :dummy :dummy)
        (parse-description [:pess] :dummy :dummy)
        nil)
@@ -431,6 +430,7 @@
       envs/*true-condition*
       false)
     (second initial-plan)]))
+
 
 ;; Used in decomposition
 ; TODO: DANGEROUS

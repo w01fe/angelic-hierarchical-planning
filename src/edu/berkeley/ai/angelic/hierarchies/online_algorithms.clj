@@ -45,6 +45,7 @@
 	  [state rew-so-far]  (when prim? (util/assert-is (<= (count states) 1)) (first states))
 	  rew-to-go           (when state (get (util/safe-get alt :memory) state))]
     ;  (when prim? (util/print-debug 2 "Found primitive prefix at " (search/node-str {:class ::alts/ALTPlanNode :plan nxt}) " with " (count states) " states:" (hash state) (get (util/safe-get alt :memory) state)))
+      (util/print-debug 4 "Considering action" (hla-name (first actions)) " with prev val " (alts/optimistic-valuation previous))
      (if rew-to-go
 	(do (util/print-debug 2 "Found known state at " (search/node-str {:class ::alts/ALTPlanNode :plan nxt}))
 	    (search/adjust-reward (alts/make-alt-plan-node (:class node) alt name nxt) (+ rew-so-far rew-to-go)))

@@ -41,7 +41,6 @@
     nil
     experiments/*planning-experiment-result*))
 	
-
 (def *warehouse-args* 
      [[3 4 [2 3] true {0 '[a] 2 '[c baz]} nil '[[c a]]]
       [4 4 [2 3] true {0 '[a] 2 '[c baz]} nil '[[baz c a]]]
@@ -68,9 +67,9 @@
       [4 10 [0 3] false {0 '[a c] 3 '[e g]} nil '[[a e table1] [g c table3]]]
       [6 5 [0 4] false {0 '[a c] 3 '[e g]} nil '[[a e table1] [c g table4]]]
 
-      ;; infeasible
+      ;; infeasible: TODO; look for more.  ICAPS should be better, but it's not (pruning)? ...
       [3 6 [0 3] false {0 '[a c] 2 '[e g]} nil '[[a e table0] [g c table2]]]
-
+      [4 4 [1 3] false {0 '[a b c] 1 '[x d] 2 '[e g] } nil '[[a e table0] [g c table2]]]
       ])
 
 (def get-ns-args (memoize (fn [size switches run] (nav-switch/make-random-nav-switch-args size switches))))
@@ -95,11 +94,16 @@
     :flat-hierarchy  `(let [env# ~env-form] (strips-hierarchies/get-flat-strips-hierarchy env# (~(:heuristic m) env#)))
     :strips          env-form))
 
+(defn get-alt-args [m]
+  {:graph? (:graph? m) :ref-choice-fn (:choice-fn m) :recheck-graph? (:recheck-graph? m)
+   :opt-valuation-class :edu.berkeley.ai.angelic.dnf-valuations/DNFOptimisticSimpleValuation
+   :pess-valuation-class :edu.berkeley.ai.angelic.dnf-valuations/DNFPessimisticSimpleValuation})
+
 (defn get-node-init-form [m hierarchy-form]
-  (cond (contains? #{:hierarchy :flat-hierarchy} (:type m))
-	  `(alts/alt-node ~hierarchy-form ~{:graph? (:graph? m) :ref-choice-fn (:choice-fn m) :recheck-graph? (:recheck-graph? m)
-					    :opt-valuation-class :edu.berkeley.ai.angelic.dnf-valuations/DNFOptimisticSimpleValuation
-					    :pess-valuation-class :edu.berkeley.ai.angelic.dnf-valuations/DNFPessimisticSimpleValuation}) 
+  (cond (= (util/safe-get m :algorithm) :ahlrta-star)
+	  hierarchy-form
+        (contains? #{:hierarchy :flat-hierarchy} (:type m))
+	  `(alts/alt-node ~hierarchy-form ~(get-alt-args m)) 
 	(= :strips (:type m))
 	  `(let [env# ~hierarchy-form] (search/ss-node env# (~(:heuristic m) env#)))))
 
@@ -107,33 +111,37 @@
   (get-node-init-form m (get-hierarchy-init-form m (get-env-init-form m))))
 
 (defn get-solution-form [m]
-  `(envs/solution-name (~(:algorithm-fn m) ~'init ~@(:algorithm-args m))))
+  `(envs/solution-name (apply ~(:algorithm-fn m) ~'init 
+    ~(if (= (util/safe-get m :algorithm) :ahlrta-star)
+	 [(util/safe-get m :max-steps) (util/safe-get m :max-refs) `'~(util/safe-get m :high-level-hla-set)
+	  (get-alt-args m) (util/safe-get m :max-primitives) `'~(util/safe-get m :ref-level-map)]
+       (:algorithm-args m)))))
 
 (defn make-aij-experiment-set [name max-seconds arg-spec]
   (experiments/make-experiment-set name
     arg-spec get-init-form get-solution-form
-    'edu.berkeley.ai.scripts.z09-aij 10
-     max-seconds 512 nil experiments/*planning-experiment-result*))
+    'edu.berkeley.ai.scripts.z09-aij  nil ;10
+     max-seconds 512 false experiments/*planning-experiment-result*))
 
 ; TODO: use simple valuations?!
 ; TODO: investigate AHLRTA* variations, ref-choice, etc.
 
 (defn make-offline-experiment-set []
-  (make-aij-experiment-set "offline-test" 100
+  (make-aij-experiment-set "offline-test" 1000
     [:product
       [:domain [] [[:nav-switch 
 		    [:product
 		     [:heuristic [`nav-switch/make-flat-nav-switch-heuristic]] 
 		     [:hierarchy [`nav-switch/*nav-switch-hierarchy*]]
-		     [:size     [5 10 50 100 500]]
-		     [:switches [1 5 20 0.01 0.03 0.10]]
-		     [:run      [1 2 3]]
+		     [:size     [5 ]];10 50 100 500]]
+		     [:switches [1 ]];5 20 0.01 0.03 0.10]]
+		     [:run      [1 ]];2 3]]
 		     ]]
 		   [:warehouse
 		    [:product
 		     [:heuristic [`warehouse/make-flat-warehouse-heuristic]] 
 		     [:hierarchy [`warehouse/*warehouse-hierarchy-improved*]]
-		     [:instance-num [0 1 2 3 4 5 6 7 8 9 10]]
+		     [:instance-num [1]] ;(vec (range 23))]
 		    ]]]]
       [:union  
          [:product 
@@ -142,9 +150,8 @@
          [:product
 	    [:type      [:flat-hierarchy]]
             [:graph?    [:bhaskara :full]]
+	    [:ref-choice [] [[:first-gap [:choice-fn [`alts/first-gap-choice-fn]]]]]
 	    [:recheck-graph? [true]]
-;	    [:opt-valuation-class [:edu.berkeley.ai.angelic.dnf-valuations/DNFOptimisticSimpleValuation]]
-;	    [:pess-valuation-class [:edu.berkeley.ai.angelic.dnf-valuations/DNFOptimisticSimpleValuation]]
 	    [:algorithm [] [[:aha-star     [:algorithm-fn ['offline/aha-star-search]]]]]]
 	 [:product
 	    [:type      [:hierarchy]]
@@ -159,15 +166,17 @@
 	 
 
 (defn make-online-experiment-set []
-  (make-aij-experiment-set "online-test" 1000000
+  (make-aij-experiment-set "online-pretest" 1000000
     [:product
      [:domain [] [[:nav-switch 
 		    [:product
 		     [:heuristic [`nav-switch/make-flat-nav-switch-heuristic]] 
 		     [:hierarchy [`nav-switch/*nav-switch-hierarchy*]]
-		     [:size     [100 500]]
-		     [:switches [0.01 0.10]]
-		     [:run      [1 2 3]]
+;		     [:size     [100 500]]
+		     [:size     [100]]
+		     [:switches [0.001 ]];0.01]] ; 0.10]]
+		     [:run      [1]]
+;		     [:run      [1 2 3]]
 		     [:high-level-hla-set ['#{act go}]]
 		     [:max-primitives [nil 5]]
 		     [:ref-level-map [nil '{act 1 go 2 nav 3}]]
@@ -176,20 +185,29 @@
 		    [:product
 		     [:heuristic [`warehouse/make-flat-warehouse-heuristic]] 
 		     [:hierarchy [`warehouse/*warehouse-hierarchy-improved*]]
-		     [:instance-num [0 1 2 3 4 5 6 7 8 9 10]]
-		     [:high-level-hla-set ['#{act move-to move-blocks move-block}]]
+		     [:instance-num [9 ]] ; 16 18]]
+		     [:high-level-hla-set ['#{act move-to move-blocks move-block navigate}]]
 		     [:max-primitives [nil 5]]
 		     [:ref-level-map [nil '{act 0 move-blocks 1 move-to 2 move-block 2 navigate 3 nav 4}]]
 		    ]]]]
      [:algorithm [:ahlrta-star]]
-     [:max-steps [10000]]
-     [:max-refs  [10 20 50 100 200 500 1000 2000 5000]]
-     [:type [:flat-hierarchy :hierarchy]]
-     [:ref-choice [] [[:first-gap [:choice-fn [`alts/first-gap-choice-fn]]]
-		      [:icaps     [:choice-fn [`alts/icaps-choice-fn]]]]]
+     [:algorithm-fn [`online/ahlrta-star-search]]
+;     [:max-steps [10000]]
+     [:max-steps [300]]
+;     [:max-refs  [10 20 50 100 200 500 1000 2000 5000]]
+;     [:max-refs  [10 30 100 300 1000 ]]
+     [:max-refs  [10 ]]
+     [:type [] [[:flat-hierarchy
+		 [:ref-choice [] [[:first-gap [:choice-fn [`alts/first-gap-choice-fn]]]]]]
+		[:hierarchy 
+		 [:ref-choice [] [[:first-gap [:choice-fn [`alts/first-gap-choice-fn]]]
+				  [:icaps     [:choice-fn [`alts/icaps-choice-fn]]]]]]]]
+     [:graph?         [:full]]
      [:recheck-graph? [true]]
-     [:graph?         [:full]]]))
+     ]))
 
+
+; (solution-name (apply ahlrta-star-search (let [env__33628__auto__ (constant-predicate-simplify (apply make-nav-switch-strips-env (quote [100 100 ([24 95] [55 26] [33 59] [50 2] [88 27] [4 97] [57 89] [32 74] [50 84] [38 39]) [99 0] true [0 99]])))] (get-flat-strips-hierarchy env__33628__auto__ (make-flat-nav-switch-heuristic env__33628__auto__))) (quote (1000 10 #{act go} {:graph? :full, :ref-choice-fn first-gap-choice-fn, :recheck-graph? true, :opt-valuation-class :edu.berkeley.ai.angelic.dnf-valuations/DNFOptimisticSimpleValuation, :pess-valuation-class :edu.berkeley.ai.angelic.dnf-valuations/DNFPessimisticSimpleValuation} nil nil))))
 
 (comment 
   ; Note: current run forgot to turn on recheck-graph? -- change is minimal for ww, zero for ww.

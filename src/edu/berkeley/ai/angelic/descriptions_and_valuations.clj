@@ -527,6 +527,8 @@ improve efficiency of regression."
    (+ (:max-reward desc)
       (valuation-max-reward val))))
 
+;(prefer-method progress-valuation [::PessimalValuation ::Description] [::Valuation ::ConditionalDescription])
+
 (defmethod progress-clause  ::ConditionalDescription [clause desc]
   {(util/safe-get desc :condition-dnf) 
    (util/safe-get desc :max-reward)})

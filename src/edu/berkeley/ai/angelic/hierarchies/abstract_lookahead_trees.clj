@@ -100,6 +100,10 @@
     (or (util/sref-get s)
 	(util/sref-set! s 
 	  (do (util/sref-up! *op-counter* inc)
+	      (println "Progress-optimistic" 
+	               (optimistic-valuation (:previous node))
+		       (hla-hierarchical-preconditions (:hla node))
+		       (hla-name (:hla node)))
 	      (progress-valuation 
 	       (do-restrict-valuation-alt (optimistic-valuation (:previous node))
 					  (hla-hierarchical-preconditions (:hla node)))
@@ -235,6 +239,7 @@
     pess-valuation-class (or valuation-class (hla-default-pessimistic-valuation-type (first initial-plan))),
     arg-map]
   (util/assert-is (contains? #{true false :full :simple :bhaskara :icaps08} graph?))
+  (util/assert-is (fn? ref-choice-fn))
   (when recheck-graph? (assert graph?))
   (let [env (hla-environment (first initial-plan)), 
 	alt (make-alt cache? graph? recheck-graph? ref-choice-fn subsumption-info arg-map)
@@ -434,6 +439,7 @@
 							  (iterate :previous plan))))]
 	(when graph? (.remove #^HashSet (:live-set ^alt) (util/safe-get node :name)))
 	(util/sref-set! (:fate ^ref-node) :refined)
+;	(println (count (hla-immediate-refinements (:hla ref-node) (optimistic-valuation (:previous ref-node)))))
 	(filter identity
 	 (for [ref (hla-immediate-refinements (:hla ref-node) (optimistic-valuation (:previous ref-node)))]
 	   (let [name         ((:node-counter ^alt))]
