@@ -152,15 +152,17 @@
 
 (defn write-experiment-set 
   ([es] (write-experiment-set es *default-run-dir*))
-  ([es run-dir]
+  ([es run-dir] (write-experiment-set es run-dir 0 (count es)))
+  ([es min max] (write-experiment-set es *default-run-dir* min max))
+  ([es run-dir min max]
   (util/assert-is (> (count es) 0))
   (let [new-dir (str run-dir (:name (first es)))
 	in-dir  (str new-dir "/in")
 	out-dir (str new-dir "/out")]
-    (when (util/file-exists? new-dir) (throw (IllegalArgumentException. "Run-dir already exists")))
+;    (when (util/file-exists? new-dir) (throw (IllegalArgumentException. "Run-dir already exists")))
     (util/mkdirs in-dir out-dir)
     (doall
-    (for [[i e] (util/indexed es)]
+    (for [[i e] (subvec (vec (util/indexed es)) min max)]
       (let [clj-file (str in-dir "/" i ".clj")]
 	(write-experiment e clj-file (str out-dir "/" i ".txt"))
 	clj-file))))))
