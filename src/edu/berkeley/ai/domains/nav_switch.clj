@@ -114,10 +114,21 @@
 (defn make-random-nav-switch-args [size n-switches]
   (util/assert-is (>= (* size size) n-switches))
   [size size 
-   (take n-switches (distinct (repeatedly #(vector (rand-int size) (rand-int size)))))
+   (vec (take n-switches (distinct (repeatedly #(vector (rand-int size) (rand-int size))))))
    [(dec size) 0]
    true
    [0 (dec size)]])
+
+(defn make-random-nav-switch-args-code 
+  ([size n-switches] (make-random-nav-switch-args-code size n-switches (rand-int 100000)))
+  ([size n-switches seed]
+     (util/assert-is (>= (* size size) n-switches))
+     [size size 
+      `(let [r# (java.util.Random. ~seed)]
+	 (vec (take ~n-switches (distinct (repeatedly #(vector (.nextInt r# ~size) (.nextInt r# ~size)))))))
+      [(dec size) 0]
+      true
+      [0 (dec size)]]))
 
 (defn make-random-nav-switch-strips-env [size n-switches]
   (apply make-nav-switch-strips-env (make-random-nav-switch-args size n-switches)))

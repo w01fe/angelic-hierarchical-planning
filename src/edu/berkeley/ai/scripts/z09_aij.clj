@@ -72,12 +72,12 @@
       [4 4 [1 3] false {0 '[a b c] 1 '[x d] 2 '[e g] } nil '[[a e table0] [g c table2]]]
       ])
 
-(def get-ns-args (memoize (fn [size switches run] (nav-switch/make-random-nav-switch-args size switches))))
+;(defn get-ns-args [size switches run )
 
 (defn get-ns-form [size switches run]
   `(strips/constant-predicate-simplify 
     (apply nav-switch/make-nav-switch-strips-env 
-	   '~(get-ns-args size switches run))))
+	   ~(nav-switch/make-random-nav-switch-args-code size switches run))))
 
 (defn get-warehouse-form [args]
   `(strips/constant-predicate-simplify
@@ -141,7 +141,7 @@
 		    [:product
 		     [:heuristic [`warehouse/make-flat-warehouse-heuristic]] 
 		     [:hierarchy [`warehouse/*warehouse-hierarchy-improved*]]
-		     [:instance-num [1]] ;(vec (range 23))]
+		     [:instance-num (vec (range 23))]
 		    ]]]]
       [:union  
          [:product 
