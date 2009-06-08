@@ -120,7 +120,7 @@
 (defn make-aij-experiment-set [name max-seconds arg-spec]
   (experiments/make-experiment-set name
     arg-spec get-init-form get-solution-form
-    'edu.berkeley.ai.scripts.z09-aij  nil 10
+    'edu.berkeley.ai.scripts.z09-aij  10
      max-seconds 512 false experiments/*planning-experiment-result*))
 
 ; TODO: use simple valuations?!
