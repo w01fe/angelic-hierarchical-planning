@@ -28,7 +28,8 @@
   (let [obj-map (reduce (fn [m [k & vs]] (assoc-cat m k (if (coll? (first vs)) (first vs) vs))) {} guaranteed-objs)]
     (doseq [k (keys obj-map)] (safe-get types k))
     (assert-is (distinct-elts? (apply concat (vals obj-map))))
-    obj-map))
+    (map-vals set obj-map)))
+;    obj-map))
 
 (defn check-predicates [types predicates]
   (let [pred-map (map-map seq->vector-pair predicates)]
@@ -56,7 +57,7 @@
 	  
 (defn is-type? [types objects obj type]
  ; (prn types objects obj type)
-  (or (includes? (get objects type) obj)
+  (or (contains? (to-set (get objects type)) obj)
       (some #(is-type? types objects obj %) (get types type))))
 
 (defn check-type [types objects obj type]
