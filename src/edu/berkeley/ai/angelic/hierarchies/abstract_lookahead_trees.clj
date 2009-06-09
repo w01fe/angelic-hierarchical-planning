@@ -46,14 +46,14 @@
 ;(util/defvar- *always-live* -1)
 
 (derive ::ALTPlanNode ::search/Node)
-(defstruct alt-plan-node :class :alt :name :plan)
-(defn make-alt-plan-node [class alt name plan]
+(defstruct alt-plan-node :class :alt :name :plan :depth)
+(defn make-alt-plan-node [class alt name plan depth]
   (let [final-ref (:was-final? ^plan)]
     (when (util/sref-get final-ref)
       (println "Warning: duplicate plan ... " (search/node-str {:class ::ALTPlanNode :plan plan}))
     #_  (throw (Exception.))) 
     (util/sref-set! final-ref true))
-  (struct alt-plan-node class alt name plan))
+  (struct alt-plan-node class alt name plan depth))
 
 ; was-tight? tells whether some ancestor HLA made non-vacuous pessimistic claim.
 (defstruct alt-action-node :hla :previous :primitive?)
@@ -254,7 +254,7 @@
     (loop [actions initial-plan
 	   previous root]
       (if (empty? actions)
-          (make-alt-plan-node node-type alt name previous)
+          (make-alt-plan-node node-type alt name previous 0)
 	(recur (next actions)
 	       (get-alt-node alt (first actions) previous false))))))
 
@@ -369,7 +369,7 @@
     (construct-immediate-refinement node 
 				    (vary-meta (last (util/iterate-while :previous (:plan node))) assoc :cache (HashMap.))
 				    (map :hla (next (reverse (util/iterate-while :previous (:plan node))))) 
-				    (if (seq args) (assoc (:alt node) :ref-choice-fn (first args)) (:alt node))
+				    (if (seq args) (assoc (:alt node) :ref-choice-fn (first args)) (:alt node)) 0
 				    name false)))
 ;    (if (seq args)
 ;        (assoc node :alt (assoc (:alt node) :ref-choice-fn (first args)))
@@ -394,10 +394,10 @@
 
 (defmethod search/reward-so-far ::ALTPlanNode [node] 0)
 
-(defmulti construct-immediate-refinement (fn [node previous actions alt name was-tight?] (:class node)))
-(defmethod construct-immediate-refinement ::ALTPlanNode [node previous actions alt name was-tight?]
+(defmulti construct-immediate-refinement (fn [node previous actions alt parent-depth name was-tight?] (:class node)))
+(defmethod construct-immediate-refinement ::ALTPlanNode [node previous actions alt parent-depth name was-tight?]
   (if (empty? actions) 
-    (make-alt-plan-node (:class node) alt name previous)
+    (make-alt-plan-node (:class node) alt name previous (inc parent-depth) )
     (let [nxt (get-alt-node alt (first actions) previous was-tight?)]
       (if (and (or (> (valuation-max-reward (optimistic-valuation nxt)) Double/NEGATIVE_INFINITY)
 		   (and (util/sref-set! (:fate ^nxt) :dead) false))
@@ -407,7 +407,7 @@
 	       (or (not (:graph? alt)) 
 		   (graph-add-and-check! alt nxt (next actions) 
 					 name)))
-	  (recur node nxt (next actions) alt name was-tight?)
+	  (recur node nxt (next actions) alt parent-depth name was-tight?)
 	(util/print-debug 3 "Late prune at" (search/node-str {:class ::ALTPlanNode :plan nxt})
 			  (map hla-name (next actions))
 			  ;(map println (map optimistic-valuation (util/iterate-while :previous nxt)))
@@ -447,7 +447,7 @@
 	     (util/sref-up! search/*plan-counter* inc)
 	     (when (= graph? :full)
 	       (assert (test-and-add-edge! alt name (util/safe-get node :name))))
-	     (when-let [nxt (construct-immediate-refinement node (:previous ref-node) (concat ref after-actions) alt name was-tight?)]
+	     (when-let [nxt (construct-immediate-refinement node (:previous ref-node) (concat ref after-actions) alt (util/safe-get node :depth) name was-tight?)]
 	       (when graph? (.add #^HashSet (:live-set ^alt) name))
 ;		 (when (> (search/upper-reward-bound nxt) urb) 
 ;		   (util/sref-set! (:upper-reward-bound ^(:plan nxt)) urb)
@@ -484,6 +484,9 @@
 
 (defmethod search/node-plan-length ::ALTPlanNode [node]
   (dec (count (util/iterate-while :previous (:plan node)))))
+
+(defmethod search/node-depth ::ALTPlanNode [node]
+  (util/safe-get node :depth))
 
 (defn alt-node-hla-count  [node]
   (count (remove #(hla-primitive? (:hla %)) (butlast (util/iterate-while :previous (:plan node))))))

@@ -50,10 +50,13 @@
 
 ;;; Algorithms from ICAPS 08 paper
 
+
+;; TODO: ???
 (defn aha-star-priority-fn [x] 
   (- 0
      (search/upper-reward-bound x)
-     (/ (max (search/lower-reward-bound x) -999999.0) 1000000.0)))
+     (/ (max (search/lower-reward-bound x) -999999.0) 1000000.0)
+     (/ (max (search/node-depth x) 1000000) 10000000000.0)))
 
 (defn aha-star-search  "AHA*.  Identical to A* up to tiebreaking.  Assumes integer costs."
   [node]

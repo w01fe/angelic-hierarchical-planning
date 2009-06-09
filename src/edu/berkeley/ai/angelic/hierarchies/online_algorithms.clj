@@ -29,10 +29,10 @@
 ;			:g-rew 0
 ;			:previous (assoc (:previous (:plan node)) :g-rew 0)))))
 
-(defmethod alts/construct-immediate-refinement ::AHLRTAALTPlanNode [node previous actions alt name was-tight?]
+(defmethod alts/construct-immediate-refinement ::AHLRTAALTPlanNode [node previous actions alt parent-depth name was-tight?]
 ;  (println (search/node-str {:class ::alts/ALTPlanNode :plan previous}) (map hla-name actions))
   (if (empty? actions) 
-      (alts/make-alt-plan-node (:class node) alt name previous)
+      (alts/make-alt-plan-node (:class node) alt name previous (inc parent-depth))
     (let [nxt (alts/get-alt-node alt (first actions) previous was-tight?)
 	  nxt    (assoc nxt
 		   :g-rew (+ (util/safe-get previous :g-rew)
@@ -57,7 +57,7 @@
 	       (or (not (:graph? alt)) 
 		   (alts/graph-add-and-check! alt nxt (next actions) 
 					 name)))
-	  (recur node nxt (next actions) alt name was-tight?)
+	  (recur node nxt (next actions) alt parent-depth name was-tight?)
 	(util/print-debug 3 "Late prune at" (search/node-str {:class ::alts/ALTPlanNode :plan nxt})
 			  (map hla-name (next actions)) 
 			  " with " (valuation-max-reward (alts/optimistic-valuation nxt)) (not (:graph? alt))
