@@ -172,7 +172,7 @@
 
          
 (defmethod envs/get-action-space  ::StripsPlanningInstance [instance]
-  (let [instantiations (map #'strips-action->action (util/safe-get instance :all-actions))]
+  (let [instantiations (map #'strips-action->action (force (util/safe-get instance :all-actions)))]
     (envs/make-enumerated-action-space 
      instantiations
      (make-successor-generator instantiations)
@@ -255,8 +255,9 @@
        reg-init
        (seq fluent-goal-atoms)
        fluent-atoms
-       (get-cps-strips-action-instantiations (util/safe-get-in instance [:domain :action-schemata])
-					     trans-objects fluent-atoms always-true-atoms instance)
+       (delay 
+        (get-cps-strips-action-instantiations (util/safe-get-in instance [:domain :action-schemata])
+ 					     trans-objects fluent-atoms always-true-atoms instance))
        (util/safe-get instance :state-str-fn))
       :always-true-atoms always-true-atoms 
 ;      :always-false-atoms always-false-atoms
@@ -304,7 +305,7 @@
        (flattener (util/safe-get instance :init-atoms))
        (flattener (util/safe-get instance :goal-atoms))
        (flattener (util/safe-get instance :all-atoms))
-       (map #(flatten-action % flattener) (util/safe-get instance :all-actions))
+       (map #(flatten-action % flattener) (force (util/safe-get instance :all-actions)))
        (util/safe-get instance :state-str-fn))
       :unflatten-map (into {} backward-map))))
    
