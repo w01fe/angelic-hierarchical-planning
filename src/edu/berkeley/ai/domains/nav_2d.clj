@@ -9,27 +9,34 @@
 (defn preprocess-map 
   "Returns a new, hopefully fast/compact c-space free-fn"
   [width height free-fn radius]
-  (let [offsets (for [dx (range (- radius) (inc radius)), dy (range (- radius) (inc radius))
+  (let [width (int width)
+	height (int height)
+	radius (int radius)
+	offsets (for [dx (range (- radius) (inc radius)), dy (range (- radius) (inc radius))
 		      :when (<= (+ (* dx dx) (* dy dy)) (* radius radius))]
 		  [dx dy])
-	fill-map (make-array Boolean/TYPE (* height width))
-	idx-fn   (fn [x y] (+ x (* y width)))]
+	fill-map (make-array Boolean/TYPE (* height width))]
     (doseq [y (range height), x (range width)]
-      (when (some (fn [[dx dy]]
-		    (let [nx (+ x dx)
-			  ny (+ y dy)]
-		      (or (< nx 0) (>= nx width) (< ny 0) (>= ny height) (not (free-fn [nx ny])))))
+      (let [x (int x) y (int y)]
+	(when (some (fn [[dx dy]]
+		      (let [dx (int dx)
+			    dy (int dy)
+			    nx (+ x dx)
+			    ny (+ y dy)]
+			(or (< nx 0) (>= nx width) (< ny 0) (>= ny height) (not (free-fn [nx ny])))))
 		offsets)
-	(aset-boolean fill-map (idx-fn x y) true))
+	  (aset-boolean fill-map (+ x (* y width)) true)))
 ;      (println x y (aget fill-map (idx-fn x y)))
       )
     (fn [[x y]]
-      (and (aget fill-map (idx-fn x y))
-	   (some (fn [[dx dy]]
-		   (let [nx (+ x dx), ny (+ y dy)]
-		     (if (and (>= nx 0) (< nx width) (>= ny 0) (< ny height) (not (aget fill-map (idx-fn nx ny))))
-		       true nil)))
-		 [[-1 0] [1 0] [0 -1] [0 1]])))))
+      (let [x (int x) y (int y)]
+	(and (aget fill-map (+ x (* y width)))
+	     (some (fn [[dx dy]]
+		     (let [dx (int dx) dy (int dy)
+			   nx (+ x dx), ny (+ y dy)]
+		       (if (and (>= nx 0) (< nx width) (>= ny 0) (< ny height) (not (aget fill-map (+ nx (* ny width)))))
+			 true nil)))
+		 [[-1 0] [1 0] [0 -1] [0 1]]))))))
 
 
 (let [f (util/path-local "nav_2d.pddl")]
