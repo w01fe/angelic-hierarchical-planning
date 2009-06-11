@@ -42,9 +42,19 @@
 			:else                     ".")))))))))
    
 (defn repurpose-nav-2d-strips-env [env [init-x init-y] [goal-x goal-y]]
-  (envs/sub-environment env
-    #{['atx (util/symbol-cat "x" init-x)] ['aty (util/symbol-cat "y" init-y)]})
-    (envs/make-conjunctive-condition #{['atx (util/symbol-cat "x" goal-x)] ['aty (util/symbol-cat "y" goal-y)]} nil))
+  ; init-atoms, goal-atoms, always-true-atoms, const-pred-map
+  (let [old-cpm      (util/safe-get env :const-pred-map)
+	old-goal-atx (first (util/safe-get old-cpm 'goal-atx))
+	old-goal-aty (first (util/safe-get old-cpm 'goal-aty))
+	new-goal-atx ['goal-atx (util/symbol-cat "x" goal-x)]
+	new-goal-aty ['goal-aty (util/symbol-cat "y" goal-y)]]
+    (assoc env 
+      :init-atoms [['atx (util/symbol-cat "x" init-x)] ['aty (util/symbol-cat "y" init-y)]]
+      :goal-atoms [['atx (util/symbol-cat "x" goal-x)] ['aty (util/symbol-cat "y" goal-y)]]
+      :always-true-atoms (conj (disj (util/safe-get env :always-true-atoms) old-goal-atx old-goal-aty)
+			       new-goal-atx new-goal-aty)
+      :const-pred-map    (assoc old-cpm 'goal-atx #{new-goal-atx} 'goal-aty #{new-goal-aty}))))
+
 
 
 (comment 
