@@ -18,7 +18,7 @@
   (util/assert-is (= :free (map-fn [init-x init-y])))
   (util/assert-is (= :free (map-fn [goal-x goal-y])))
   (strips/make-strips-planning-instance 
-   "nav-2d"
+   "nav-2d"  
    (make-nav-2d-strips-domain)
    {'xc (map #(util/symbol-cat "x" %) (range width))
     'yc (map #(util/symbol-cat "y" %) (range height))}
@@ -26,8 +26,7 @@
 	   (map (fn [x] ['left-of (util/symbol-cat "x" (dec x)) (util/symbol-cat "x" x)]) (range 1 width))
 	   (map (fn [x] ['above   (util/symbol-cat "y" (dec x)) (util/symbol-cat "y" x)]) (range 1 height))
            (for [y (range height) x (range width) :when (= :border (map-fn [x y]))] 
-	     ['border (util/symbol-cat "x" x) (util/symbol-cat "y" y)])
-   	   (map (fn [x] ['above   (util/symbol-cat "y" (dec x)) (util/symbol-cat "y" x)]) (range 1 height)))
+	     ['border (util/symbol-cat "x" x) (util/symbol-cat "y" y)]))
    [['atx (util/symbol-cat "x" goal-x)] ['aty (util/symbol-cat "y" goal-y)]]
    (fn [state]
      (let [pos [(util/desymbolize (first (strips/get-strips-state-pred-val state 'atx)) 1)
@@ -41,7 +40,13 @@
 			(= (map-fn [x y]) :border)   "X"
 			(= (map-fn [x y]) :occupied) "@"
 			:else                     ".")))))))))
-    
+   
+(defn repurpose-nav-2d-strips-env [env [init-x init-y] [goal-x goal-y]]
+  (envs/sub-environment env
+    #{['atx (util/symbol-cat "x" init-x)] ['aty (util/symbol-cat "y" init-y)]})
+    (envs/make-conjunctive-condition #{['atx (util/symbol-cat "x" goal-x)] ['aty (util/symbol-cat "y" goal-y)]} nil))
+
+
 (comment 
 (def *test-map*
   [[0 1 0 0 0 0 0 0 1 0 0]
