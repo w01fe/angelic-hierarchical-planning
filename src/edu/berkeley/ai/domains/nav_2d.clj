@@ -5,6 +5,53 @@
  )
 
 
+(def *sqrt2* (Math/sqrt 2))
+(def *nav-actions*
+     {'left  [-1  0 -1]
+      'right [ 1  0 -1]
+      'up    [ 0 -1 -1]
+      'down  [ 0  1 -1]
+      'ul    [-1 -1 (- *sqrt2*)]
+      'ur    [ 1 -1 (- *sqrt2*)]
+      'dl    [-1  1 (- *sqrt2*)]
+      'dr    [ 1  1 (- *sqrt2*)]})
+      
+
+(defn make-nav-2d-env [free-fn [width height] [init-x init-y] [goal-x goal-y]]
+  (let [width (int width), height (int height)
+	init [init-x init-y]
+	goal [goal-x goal-y]
+	legal-coord? (fn [[x y]] (and (>= x 0) (>= y 0) (< x width) (< y height)))
+	actions 
+      (for [[name [dx dy c]] *nav-actions*]
+	(let [dx (int dx) dy (int dy) c (double c)]
+	  (envs/make-action name (fn [[x y]] (let [x (int x) y (int y)] [[(+ x dx) (+ y dy)] c]))
+			    (envs/make-simple-condition 
+			     (fn [[x y]] (let [x (int x) y (int y) nx (int (+ x dx)) ny (int (+ y dy))]
+					   (and (>= nx 0) (>= ny 0) (< nx width) (< ny height)
+						(free-fn [nx ny]))))
+			     true))))
+	]
+    (util/assert-is (and (legal-coord? init) (free-fn init)))
+    (util/assert-is (and (legal-coord? goal) (free-fn goal)))
+    (envs/make-environment 
+     init
+     (states/make-state-set str)
+     (envs/make-enumerated-action-space actions)
+     (envs/make-simple-condition #(= % goal) true))))
+
+
+(defn make-nav-2d-heuristic [[goal-x goal-y]]
+  (let [goal-x (int goal-x) goal-y (int goal-y)]
+    (fn [[cur-x cur-y]]
+      (let [cur-x (int cur-x) cur-y (int cur-y)]
+	(let [dx (Math/abs (int (- cur-x goal-x)))
+	      dy (Math/abs (int (- cur-y goal-y)))
+	      mind (min dx dy)
+	      resd (- (max dx dy) mind)]
+	  (- 0 (* mind *sqrt2*) resd))))))
+  
+
 
 
 (let [f (util/path-local "nav_2d.pddl")]

@@ -30,11 +30,16 @@
 ;(defn uniform-cost-graph-search "Tree uniform-cost search"  [node]
 ;  (first-optimal-solution node (queues/make-graph-search-pq) #(- (reward-so-far %))))
 
+(defn a-star-priority-fn [x] 
+  (- 0
+     (upper-reward-bound x)
+     (/ (min (node-depth x) 100000000.0) 10000000000.0)))
+
 (defn a-star-search             "Tree a* search"            [node]
-  (first-optimal-solution node (queues/make-tree-search-pq)  (fn negator [x] (- (upper-reward-bound x)))))
+  (first-optimal-solution node (queues/make-tree-search-pq)  a-star-priority-fn #_(fn negator [x] (- (upper-reward-bound x)))))
 
 (defn a-star-graph-search       "Graph a* search"           [node]
-  (first-optimal-solution node (queues/make-graph-search-pq) (fn negator [x] (- (upper-reward-bound x)))))
+  (first-optimal-solution node (queues/make-graph-search-pq) a-star-priority-fn #_ (fn negator [x] (- (upper-reward-bound x)))))
 
 
 (defn get-weighted-a-star-priority-fn [wt]

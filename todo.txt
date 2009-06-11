@@ -1,8 +1,11 @@
 ;;;;;;;;;;;;;;;; Implement
 
 Tiebreaking in AHA* (depht-first) can make huge difference ...
-  Investigate difference compared to experiments just run.
+  Investigate difference compared to experiments just run.  (AGAIN,
+  had bug)
  - Should also add this to tree/graph (flat) A* search ?!
+  ( does not seem to really matter ...)
+  - 
 
 TODO: weighted A*, optimistic A* need not reopen states to preserve
 suboptimality bound ? (see ARA* paper)

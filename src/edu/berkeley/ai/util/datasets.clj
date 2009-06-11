@@ -7,6 +7,14 @@
 (defmacro ds-fn [bindings & body]
   (let [ds (gensym)]
     `(fn [~ds]
+       (let ~(vec (mapcat #(if (vector? %) 
+			       [(first %) `(get ~ds ~(keyword (name (first %))) ~(second %))]
+			     [% `(safe-get ~ds ~(keyword (name %)))]) bindings))
+	 ~@body))))
+
+#_ (defmacro ds-fn [bindings & body]
+  (let [ds (gensym)]
+    `(fn [~ds]
        (let ~(vec (interleave bindings (map (fn [b] `(safe-get ~ds ~(keyword (name b)))) bindings)))
 	 ~@body))))
 
@@ -15,7 +23,7 @@
     (assoc x new-field (f x))))
 
 (defn ds-summarize [ds group-fields field-combiner-extractors]
-  (for [[k v] (group-by (fn [d] (vec (map #(safe-get d %) group-fields))) ds)]
+  (for [[k v] (group-by (fn [d] (vec (map #(get d %) group-fields))) ds)]
     (into {} 
 	  (concat
 	   (map vector group-fields k)

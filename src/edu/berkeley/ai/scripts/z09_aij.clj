@@ -164,6 +164,28 @@
 			    [:optimistic5  [:product [:algorithm-fn ['offline/optimistic-aha-star-search]]
 					             [:algorithm-args [[1.05 `(alts/get-weighted-aha-star-priority-fn 2.0)]]]]]]]]]]))
 	 
+(comment 
+  ; All algorithms ran out of memory (hard) on problem 16. 
+  (let [ww-order [6 0 7 8 1 21 2 5 22 11 3 9 12 4 13 14 15 10 17 18 20 19]] ; 16 
+    (def *offline* 
+	 (map (fn [m] (if (= :warehouse (:domain m)) 
+			(update-in m [:instance-num] #(position % ww-order)) 
+			m)) 
+	      (experiment-set-results->dataset (read-experiment-set-results (make-offline-experiment-set) "/Users/jawolfe/Desktop/")))))
+
+  (plot (ds->chart (filter (ds-fn [type domain] (and (= type :strips) (= domain :warehouse))) *offline*) [] :instance-num :ref-count {:ylog "t"} {}))
+ 
+  (plot (ds->chart (filter (ds-fn [domain ms] (and ms (= domain :warehouse))) *offline*) [:type :graph? :ref-choice :algorithm] :instance-num :ref-count {:ylog "t" :key "8,100000" :yrange "[10:100000]"} {}))
+
+(plot (ds->chart (filter (ds-fn [algorithm domain timeout? memout?] (and (not timeout?) (not memout?) (= domain :warehouse) (contains? #{:aha-star :a-star-graph} algorithm))) *offline*) [:type :graph? :ref-choice :algorithm] :instance-num :ref-count {:ylog "t" :key "22,200" :xlabel "WW instance" :ylabel "Number of refs" :yrange "[10:100000]"} {}) #_ "/Users/jawolfe/Desktop/charts/optimal-ww-refs.pdf")
+
+(plot (ds->chart (filter (fn [m] (contains? #{nil :full} (:graph? m))) (filter (ds-fn [algorithm domain ms] (and ms (= domain :warehouse) (contains? #{:aha-star :a-star-graph :ahss} algorithm))) *offline*)) [:type :graph? :ref-choice :algorithm] :instance-num :ref-count {:ylog "t" :key "21,200" :xlabel "WW instance" :ylabel "Number of refs" :yrange "[10:100000]"} {}) #_ "/Users/jawolfe/Desktop/charts/suboptimal-ww-refs.pdf")
+
+(plot (ds->chart (ds-summarize (filter (fn [m] (and (contains? #{:full nil} (:graph? m)) (contains? #{:first-gap nil} (:ref-choice m)))) (filter (ds-fn [type algorithm domain] (and (= domain :nav-switch) (#{:strips :hierarchy} type) (#{:aha-star :a-star-graph} algorithm))) *offline*)) [:type :graph? :ref-choice :algorithm :switches :size] [[:ref-count  (fn [& args] (when (every? first args) (apply mean (map second args)))) (ds-fn [run ref-count] [run ref-count])]])  [:type :graph? :ref-choice :algorithm :switches] :size :ref-count {:ylog "t" :xlog "t" :key "45,1000000" :xlabel "Nav size" :ylabel "Number of refs" :xrange "[5:1000]" :yrange "[10:1000000]"} {}) #_"/Users/jawolfe/Desktop/charts/optimal-nav-refs.pdf")  
+
+  
+  )
+
 
 (defn make-online-experiment-set []
   (make-aij-experiment-set "online-pretest" 1000000
@@ -207,9 +229,12 @@
      ]))
 
 
-; (solution-name (apply ahlrta-star-search (let [env__33628__auto__ (constant-predicate-simplify (apply make-nav-switch-strips-env (quote [100 100 ([24 95] [55 26] [33 59] [50 2] [88 27] [4 97] [57 89] [32 74] [50 84] [38 39]) [99 0] true [0 99]])))] (get-flat-strips-hierarchy env__33628__auto__ (make-flat-nav-switch-heuristic env__33628__auto__))) (quote (1000 10 #{act go} {:graph? :full, :ref-choice-fn first-gap-choice-fn, :recheck-graph? true, :opt-valuation-class :edu.berkeley.ai.angelic.dnf-valuations/DNFOptimisticSimpleValuation, :pess-valuation-class :edu.berkeley.ai.angelic.dnf-valuations/DNFPessimisticSimpleValuation} nil nil))))
+(comment 
+  (def *online* (experiment-set-results->dataset (read-experiment-set-results (make-online-experiment-set) "/Users/jawolfe/Desktop/")))
+  )
 
 (comment 
+ ; This was for the old run. 
   ; Note: current run forgot to turn on recheck-graph? -- change is minimal for ww, zero for ww.
 
   (def *ww-diff* [6 7 0 8 1 2 5 9 3 10 4])
@@ -228,6 +253,8 @@
 (plot (ds->chart (filter (fn [m] (contains? #{nil :full} (:graph? m))) (filter (ds-fn [algorithm domain timout?] (and (not timout?) (= domain :warehouse) (contains? #{:aha-star :a-star-graph :ahss} algorithm))) *offline*)) [:type :graph? :ref-choice :algorithm] :instance-num :ref-count {:ylog "t" :key "4.5,10000" :xlabel "WW instance" :ylabel "Number of refs" :yrange "[10:10000]"} {}) "/Users/jawolfe/Desktop/charts/suboptimal-ww-refs.pdf")
 
 (plot (ds->chart (filter (fn [m] (and (contains? #{:full nil} (:graph? m)) (contains? #{:first-gap nil} (:ref-choice m)))) (filter (ds-fn [type algorithm domain timout?] (and (not timout?) (= domain :nav-switch) (#{:strips :hierarchy} type) (#{:aha-star :a-star-graph} algorithm))) *offline*)) [:type :graph? :ref-choice :algorithm :switches] :size :ref-count {:ylog "t" :xlog "t" :key "30,10000" :xlabel "Nav size" :ylabel "Number of refs" :xrange "[5:500]" :yrange "[10:10000]"} {}) "/Users/jawolfe/Desktop/charts/optimal-nav-refs.pdf")
+
+
 
  )
 
