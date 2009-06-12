@@ -48,7 +48,7 @@
       (util/print-debug 4 "Considering action" (hla-name (first actions)) " with prev val " (alts/optimistic-valuation previous))
      (if rew-to-go
 	(do (util/print-debug 2 "Found known state at " (search/node-str {:class ::alts/ALTPlanNode :plan nxt}))
-	    (search/adjust-reward (alts/make-alt-plan-node (:class node) alt name nxt) (+ rew-so-far rew-to-go)))
+	    (search/adjust-reward (alts/make-alt-plan-node (:class node) alt name nxt (inc parent-depth)) (+ rew-so-far rew-to-go)))
       (if (and (or (> (valuation-max-reward (alts/optimistic-valuation nxt)) Double/NEGATIVE_INFINITY)
 		   (and (util/sref-set! (:fate ^nxt) :dead) false))
 	       (or (next actions) 

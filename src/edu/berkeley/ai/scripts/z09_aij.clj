@@ -229,6 +229,35 @@
      ]))
 
 
+(defn make-online-experiment-set2 []
+  (make-aij-experiment-set "online-pretest2" 1000000
+    [:product
+     [:domain [] [[:warehouse
+		    [:product
+		     [:heuristic [`warehouse/make-flat-warehouse-heuristic]] 
+		     [:hierarchy [`warehouse/*warehouse-hierarchy-improved*]]
+		     [:instance-num [2 3 5]]
+		     [:high-level-hla-set ['#{act move-to move-blocks move-block navigate}
+					   '#{act move-blocks}]]
+		     [:max-primitives [5]]
+		     [:ref-level-map [nil '{act 0 move-blocks 1 move-to 2 move-block 2 navigate 3 nav 4}]]
+		    ]]]]
+     [:algorithm [:ahlrta-star]]
+     [:algorithm-fn [`online/ahlrta-star-search]]
+     [:max-steps [10000]]
+;     [:max-steps [300]]
+     [:max-refs  [10 20 50 100 200 500 1000 2000 5000]]
+;     [:max-refs  [10 ]]
+     [:type [] [[:flat-hierarchy
+		 [:ref-choice [] [[:first-gap [:choice-fn [`alts/first-gap-choice-fn]]]]]]
+		[:hierarchy 
+		 [:ref-choice [] [[:first-gap [:choice-fn [`alts/first-gap-choice-fn]]]
+				  [:icaps     [:choice-fn [`alts/icaps-choice-fn]]]]]]]]
+     [:union [:product [:graph? [:full]]     [:recheck-graph? [true]]]
+             [:product [:graph? [:bhaskara]] [:recheck-graph? [false]]]]
+     ]))
+
+
 (comment 
   (def *online* (experiment-set-results->dataset (read-experiment-set-results (make-online-experiment-set) "/Users/jawolfe/Desktop/")))
   )
