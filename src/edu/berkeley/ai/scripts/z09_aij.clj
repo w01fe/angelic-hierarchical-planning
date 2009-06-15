@@ -228,6 +228,12 @@
      [:recheck-graph? [true]]
      ]))
 
+(comment 
+  (def *online* (experiment-set-results->dataset (read-experiment-set-results (make-online-experiment-set) "/Users/jawolfe/Desktop/")))
+
+  (plot (ds->chart (ds-derive (ds-fn [output] (- (second output))) (filter (ds-fn [ms instance-num max-primitives ref-level-map] (and ms (not ref-level-map) (= instance-num 9) (= max-primitives 5))) (filter (ds-fn [domain] (= domain :warehouse)) *online*)) :cost) [:algorithm :type :ref-choice ] :max-refs :cost {:ylog "t" :xlog "t" :key "7000, 6000"} {})) 
+
+  )
 
 (defn make-online-experiment-set2 []
   (make-aij-experiment-set "online-pretest2" 1000000
@@ -257,6 +263,12 @@
              [:product [:graph? [:bhaskara]] [:recheck-graph? [false]]]]
      ]))
 
+(comment 
+  (def *online2* (experiment-set-results->dataset (read-experiment-set "online-pretest2" "/Users/jawolfe/Desktop/")))
+
+  (plot (ds->chart (ds-derive (ds-fn [output] (- (second output))) (filter (ds-fn [ms instance-num ref-level-map] (and ms (not ref-level-map) (= instance-num 2))) (filter (ds-fn [domain] (= domain :warehouse)) *online*)) :cost) [:algorithm :type :ref-choice :graph?] :max-refs :cost {:ylog "t" :xlog "t" :key "7000, 6000"} {})) 
+
+  )
 
 (comment 
   (def *online* (experiment-set-results->dataset (read-experiment-set-results (make-online-experiment-set) "/Users/jawolfe/Desktop/")))

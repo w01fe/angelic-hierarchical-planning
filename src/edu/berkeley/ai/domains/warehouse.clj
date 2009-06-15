@@ -69,10 +69,13 @@
 
 (def *warehouse-hierarchy-unguided* (util/path-local "warehouse_icaps08_unguided.hierarchy"))
 (def *warehouse-hierarchy*          (util/path-local "warehouse_icaps08.hierarchy"))
+(def *warehouse-hierarchy-nl*          (util/path-local "warehouse_icaps08_nl.hierarchy"))
 (def *warehouse-hierarchy-decomposed* (util/path-local "warehouse_decomposed.hierarchy"))
 (def *warehouse-hierarchy-decomposed-unguided* (util/path-local "warehouse_decomposed_unguided.hierarchy"))
 (def *warehouse-hierarchy-improved*          (util/path-local "warehouse_improved.hierarchy"))
+(def *warehouse-hierarchy-nl-improved*          (util/path-local "warehouse_nl_improved.hierarchy"))
 
+(def *warehouse-hierarchy-test*          (util/path-local "warehouse_icaps08_test.hierarchy"))
 
 ; Act description used in hierarchy
 

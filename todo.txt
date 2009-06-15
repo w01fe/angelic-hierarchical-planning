@@ -1,5 +1,18 @@
 ;;;;;;;;;;;;;;;; Implement
 
+Missing constraints could be reason for poor performance of
+icaps-choice-fn ?!?!?!?!?!?  For instance, we dont check if putdown
+location is free, but it's hard since we don't have disjunctions.
+
+Figure out (large) discrepancy between my implementation of Bhaskara's
+thing and his -- I do significantly worse, it seems.  
+
+Hierarchy doesn't allow move(b,c,c), which could be needed to get
+through tall stack.  
+
+Think about pruning between real-time branches -- interaction with
+hierarchical precons ? 
+
 Tiebreaking in AHA* (depht-first) can make huge difference ...
   Investigate difference compared to experiments just run.  (AGAIN,
   had bug)
