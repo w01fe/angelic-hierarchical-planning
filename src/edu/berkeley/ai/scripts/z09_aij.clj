@@ -120,11 +120,146 @@
 (defn make-aij-experiment-set [name max-seconds arg-spec]
   (experiments/make-experiment-set name
     arg-spec get-init-form get-solution-form
-    'edu.berkeley.ai.scripts.z09-aij  10
+    'edu.berkeley.ai.scripts.z09-aij 10
      max-seconds 512 false experiments/*planning-experiment-result*))
 
 ; TODO: use simple valuations?!
 ; TODO: investigate AHLRTA* variations, ref-choice, etc.
+
+(defn make-offline-experiment-set []
+  (make-aij-experiment-set "offline-test" 10000
+    [:product
+      [:domain [] [[:nav-switch 
+		    [:product
+		     [:heuristic [`nav-switch/make-flat-nav-switch-heuristic]] 
+		     [:hierarchy [`nav-switch/*nav-switch-hierarchy*]]
+		     [:size     [5 10 50 100 500]]
+		     [:switches [1 5 20 0.01 0.03 0.10]]
+		     [:run      [1 2 3]]
+		     ]]
+		   [:warehouse
+		    [:product
+		     [:heuristic [`warehouse/make-flat-warehouse-heuristic]] 
+		     [:hierarchy [`warehouse/*warehouse-hierarchy-improved* `warehouse/*warehouse-hierarchy-nl-improved*]]
+		     [:instance-num (vec (range 23))]
+		    ]]]]
+      [:union  
+         [:product 
+            [:type      [:strips]]
+	    [:algorithm [] [[:a-star-graph [:algorithm-fn [`textbook/a-star-graph-search]]]]]]
+         [:product
+	    [:type      [:flat-hierarchy]]
+            [:graph?    [:full]]
+	    [:recheck-graph? [true]]
+	    [:ref-choice [] [[:first-gap [:choice-fn [`alts/first-gap-choice-fn]]]]]
+	    [:algorithm [] [[:aha-star     [:algorithm-fn ['offline/aha-star-search]]]]]]
+	 [:product
+	    [:type      [:hierarchy]]
+            [:graph?    [:full]]
+	    [:recheck-graph? [true]]
+	    [:ref-choice [] [[:first-gap [:choice-fn [`alts/first-gap-choice-fn]]]
+			     [:icaps     [:choice-fn [`alts/icaps-choice-fn]]]]]
+	    [:algorithm [] [[:aha-star     [:algorithm-fn ['offline/aha-star-search]]]
+			    [:ahss         [:algorithm-fn ['offline/ahss-search]]]]]]]]))
+	 
+(comment 
+  ; All algorithms ran out of memory (hard) on problem 16. 
+  (let [ww-order [6 0 7 8 1 21 2 5 22 11 3 9 12 4 13 14 15 10 17 18 20 19]] ; 16 
+    (def *offline* 
+	 (map (fn [m] (if (= :warehouse (:domain m)) 
+			(update-in m [:instance-num] #(position % ww-order)) 
+			m)) 
+	      (experiment-set-results->dataset (read-experiment-set-results (make-offline-experiment-set) "/Users/jawolfe/Desktop/")))))
+
+  (plot (ds->chart (filter (ds-fn [type domain] (and (= type :strips) (= domain :warehouse))) *offline*) [] :instance-num :ref-count {:ylog "t"} {}))
+ 
+  (plot (ds->chart (filter (ds-fn [domain ms] (and ms (= domain :warehouse))) *offline*) [:type :graph? :ref-choice :algorithm] :instance-num :ref-count {:ylog "t" :key "8,100000" :yrange "[10:100000]"} {}))
+
+(plot (ds->chart (filter (ds-fn [algorithm domain timeout? memout?] (and (not timeout?) (not memout?) (= domain :warehouse) (contains? #{:aha-star :a-star-graph} algorithm))) *offline*) [:type :graph? :ref-choice :algorithm] :instance-num :ref-count {:ylog "t" :key "22,200" :xlabel "WW instance" :ylabel "Number of refs" :yrange "[10:100000]"} {}) #_ "/Users/jawolfe/Desktop/charts/optimal-ww-refs.pdf")
+
+(plot (ds->chart (filter (fn [m] (contains? #{nil :full} (:graph? m))) (filter (ds-fn [algorithm domain ms] (and ms (= domain :warehouse) (contains? #{:aha-star :a-star-graph :ahss} algorithm))) *offline*)) [:type :graph? :ref-choice :algorithm] :instance-num :ref-count {:ylog "t" :key "21,200" :xlabel "WW instance" :ylabel "Number of refs" :yrange "[10:100000]"} {}) #_ "/Users/jawolfe/Desktop/charts/suboptimal-ww-refs.pdf")
+
+(plot (ds->chart (ds-summarize (filter (fn [m] (and (contains? #{:full nil} (:graph? m)) (contains? #{:first-gap nil} (:ref-choice m)))) (filter (ds-fn [type algorithm domain] (and (= domain :nav-switch) (#{:strips :hierarchy} type) (#{:aha-star :a-star-graph} algorithm))) *offline*)) [:type :graph? :ref-choice :algorithm :switches :size] [[:ref-count  (fn [& args] (when (every? first args) (apply mean (map second args)))) (ds-fn [run ref-count] [run ref-count])]])  [:type :graph? :ref-choice :algorithm :switches] :size :ref-count {:ylog "t" :xlog "t" :key "45,1000000" :xlabel "Nav size" :ylabel "Number of refs" :xrange "[5:1000]" :yrange "[10:1000000]"} {}) #_"/Users/jawolfe/Desktop/charts/optimal-nav-refs.pdf")  
+
+  
+  )
+
+(defn make-online-experiment-set []
+  (make-aij-experiment-set "online-test" 1000000
+    [:product
+     [:max-primitives [nil 5]]
+     [:domain [] [[:nav-switch 
+		    [:product
+		     [:heuristic [`nav-switch/make-flat-nav-switch-heuristic]]
+		     [:hierarchy [`nav-switch/*nav-switch-hierarchy*]]
+		     [:size     [100 500]]
+;		     [:size     [100]]
+		     [:switches [0.001 0.01]] ; 0.10]]
+;		     [:switches [0.001]]
+		     [:run      [1 2 3]]
+;		     [:run      [1]]
+		     [:high-level-hla-set ['#{act go}]]
+		     [:ref-level-map [nil]]
+		     ]]
+		   [:warehouse
+		    [:product
+		     [:heuristic [`warehouse/make-flat-warehouse-heuristic]] 
+		     [:hierarchy [`warehouse/*warehouse-hierarchy-improved* `warehouse/*warehouse-hierarchy-nl-improved*]]
+		     [:instance-num (vec (range 21))]
+;		     [:instance-num [9 16 18]]
+;		     [:instance-num [1]]
+		     [:high-level-hla-set ['#{act move-blocks}]]
+		     [:ref-level-map [nil]]
+		    ]]]]
+     [:algorithm [:ahlrta-star]]
+     [:algorithm-fn [`online/ahlrta-star-search]]
+     [:max-steps [10000]]
+;     [:max-steps [300]]
+     [:max-refs  [10 20 50 100 200 500 1000 2000 5000]]
+;     [:max-refs  [10 30 100 300 1000 ]]
+;     [:max-refs  [10 ]]
+     [:type [] [[:flat-hierarchy
+		 [:ref-choice [] [[:first-gap [:choice-fn [`alts/first-gap-choice-fn]]]]]]
+		[:hierarchy 
+		 [:ref-choice [] [[:first-gap [:choice-fn [`alts/first-gap-choice-fn]]]
+				  [:icaps     [:choice-fn [`alts/icaps-choice-fn]]]]]]]]
+     [:graph?         [:full]]
+     [:recheck-graph? [true]]
+     ]))
+
+(comment 
+  (def *online* (experiment-set-results->dataset (read-experiment-set-results (make-online-experiment-set) "/Users/jawolfe/Desktop/")))
+
+  (plot (ds->chart (ds-derive (ds-fn [output] (- (or (second output) -20000))) (filter (ds-fn [ms instance-num max-primitives ref-level-map] (and ms (not ref-level-map) (= instance-num 9) (= max-primitives 5))) (filter (ds-fn [domain] (= domain :warehouse)) *online*)) :cost) [:algorithm :type :ref-choice ] :max-refs :cost {:ylog "t" :xlog "t" :key "7000, 6000"} {})) 
+ 
+  (plot (ds->chart (ds-derive (ds-fn [output] (- (or (second output) -20000))) (filter (ds-fn [ms size max-primitives ref-level-map] (and ms (not ref-level-map)  (not max-primitives) (= size 500))) (filter (ds-fn [domain] (= domain :nav-switch)) *online*)) :cost) [:algorithm :type :ref-choice ] :max-refs :cost {:ylog "t" :xlog "t" :key "7000, 6000"} {}))
+
+  )
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+;; old runs
+
+(comment 
+
 
 (defn make-offline-experiment-set []
   (make-aij-experiment-set "offline-test" 1000
@@ -164,7 +299,6 @@
 			    [:optimistic5  [:product [:algorithm-fn ['offline/optimistic-aha-star-search]]
 					             [:algorithm-args [[1.05 `(alts/get-weighted-aha-star-priority-fn 2.0)]]]]]]]]]]))
 	 
-(comment 
   ; All algorithms ran out of memory (hard) on problem 16. 
   (let [ww-order [6 0 7 8 1 21 2 5 22 11 3 9 12 4 13 14 15 10 17 18 20 19]] ; 16 
     (def *offline* 
@@ -185,6 +319,9 @@
 
   
   )
+
+
+(comment 
 
 
 (defn make-online-experiment-set []
@@ -228,12 +365,15 @@
      [:recheck-graph? [true]]
      ]))
 
-(comment 
   (def *online* (experiment-set-results->dataset (read-experiment-set-results (make-online-experiment-set) "/Users/jawolfe/Desktop/")))
 
-  (plot (ds->chart (ds-derive (ds-fn [output] (- (second output))) (filter (ds-fn [ms instance-num max-primitives ref-level-map] (and ms (not ref-level-map) (= instance-num 9) (= max-primitives 5))) (filter (ds-fn [domain] (= domain :warehouse)) *online*)) :cost) [:algorithm :type :ref-choice ] :max-refs :cost {:ylog "t" :xlog "t" :key "7000, 6000"} {})) 
+  (plot (ds->chart (ds-derive (ds-fn [output] (- (or (second output) -20000))) (filter (ds-fn [ms instance-num max-primitives ref-level-map] (and ms (not ref-level-map) (= instance-num 9) (= max-primitives 5))) (filter (ds-fn [domain] (= domain :warehouse)) *online*)) :cost) [:algorithm :type :ref-choice ] :max-refs :cost {:ylog "t" :xlog "t" :key "7000, 6000"} {})) 
+ 
+  (plot (ds->chart (ds-derive (ds-fn [output] (- (or (second output) -20000))) (filter (ds-fn [ms size max-primitives ref-level-map] (and ms (not ref-level-map)  (not max-primitives) (= size 500))) (filter (ds-fn [domain] (= domain :nav-switch)) *online*)) :cost) [:algorithm :type :ref-choice ] :max-refs :cost {:ylog "t" :xlog "t" :key "7000, 6000"} {}))
 
   )
+
+(comment 
 
 (defn make-online-experiment-set2 []
   (make-aij-experiment-set "online-pretest2" 1000000
@@ -263,10 +403,20 @@
              [:product [:graph? [:bhaskara]] [:recheck-graph? [false]]]]
      ]))
 
-(comment 
-  (def *online2* (experiment-set-results->dataset (read-experiment-set "online-pretest2" "/Users/jawolfe/Desktop/")))
+    (def *online2* (experiment-set-results->dataset (read-experiment-set-results (make-online-experiment-set2) "/Users/jawolfe/Desktop/")))
 
-  (plot (ds->chart (ds-derive (ds-fn [output] (- (second output))) (filter (ds-fn [ms instance-num ref-level-map] (and ms (not ref-level-map) (= instance-num 2))) (filter (ds-fn [domain] (= domain :warehouse)) *online*)) :cost) [:algorithm :type :ref-choice :graph?] :max-refs :cost {:ylog "t" :xlog "t" :key "7000, 6000"} {})) 
+  (plot (ds->chart (ds-derive (ds-fn [output] (- (or (second output) -10000))) (filter (ds-fn [ms instance-num ref-level-map] (and ms (not ref-level-map) (= instance-num 3))) (filter (ds-fn [domain] (= domain :warehouse)) *online2*)) :cost) [:algorithm :type :ref-choice :graph?] :max-refs :cost {:ylog "t" :xlog "t" :key "7000, 6000"} {}))
+ 
+
+  )
+
+
+
+(comment 
+    (def *online2* (experiment-set-results->dataset (read-experiment-set-results (make-online-experiment-set2) "/Users/jawolfe/Desktop/")))
+
+  (plot (ds->chart (ds-derive (ds-fn [output] (- (or (second output) -10000))) (filter (ds-fn [ms instance-num ref-level-map] (and ms (not ref-level-map) (= instance-num 3))) (filter (ds-fn [domain] (= domain :warehouse)) *online2*)) :cost) [:algorithm :type :ref-choice :graph?] :max-refs :cost {:ylog "t" :xlog "t" :key "7000, 6000"} {}))
+ 
 
   )
 
