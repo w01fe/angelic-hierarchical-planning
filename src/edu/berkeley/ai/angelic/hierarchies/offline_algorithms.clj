@@ -139,8 +139,8 @@
 
 
 (defn ahss-et-search "Pass a *finite* threshold"
-  ([node] (ahss-decomposed-search node (- Double/MAX_VALUE)))
-  ([node threshold] (ahss-decomposed-search node threshold alts/icaps-priority-fn))
+  ([node] (ahss-et-search node (- Double/MAX_VALUE)))
+  ([node threshold] (ahss-et-search node threshold alts/icaps-priority-fn))
   ([node threshold priority-fn]
  ;    (println (search/node-plan-length node) (alts/alt-node-hla-count node))
      (let [pq        (queues/make-tree-search-pq)
