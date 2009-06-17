@@ -202,7 +202,7 @@
     item))
 
 (defn optimistic-aha-star-search 
-  ([node wt sub-pf] (optimistic-aha-star-search node wt sub-pf false))
+  ([node wt sub-pf] (optimistic-aha-star-search node wt sub-pf false false))
   ([node wt sub-pf decompose? et?]
   (let [opt-pf (fn negator [x] (- (search/upper-reward-bound x)))
 	opt-pq (queues/make-fancy-tree-search-pq)

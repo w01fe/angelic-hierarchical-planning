@@ -216,7 +216,8 @@
 		prev-lower (valuation-max-reward (pessimistic-valuation prev))
 		opt  (- upper prev-upper)
 		pess (- lower prev-lower)
-		act? (= 'act (first (hla-name (:hla nd))))]
+	;	act? (= 'act (first (hla-name (:hla nd))))
+		]
 ;	    (println upper lower prev-upper prev-lower opt pess act?)
 	    (recur prev prev-upper prev-lower
 		   (- p 
