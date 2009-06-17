@@ -7,7 +7,7 @@
  )
 
 
-(def *sqrt2* (Math/sqrt 2))
+(def *sqrt2* (/ 99 70) #_(Math/sqrt 2)) ; pruning + imprecise arithmetic = PAIN
 (def *nav-actions*
      {'left  [-1  0 -1]
       'right [ 1  0 -1]
@@ -26,7 +26,7 @@
 	legal-coord? (fn [[x y]] (and (>= x 0) (>= y 0) (< x width) (< y height)))
 	actions 
       (for [[name [dx dy c]] *nav-actions*]
-	(let [dx (int dx) dy (int dy) c (double c)]
+	(let [dx (int dx) dy (int dy) #_ c #_ (double c)]
 	  (envs/make-action name (fn [[x y]] (let [x (int x) y (int y)] [[(+ x dx) (+ y dy)] c]))
 			    (envs/make-simple-condition 
 			     (fn [[x y]] (let [x (int x) y (int y) nx (int (+ x dx)) ny (int (+ y dy))]
@@ -149,10 +149,10 @@
 	actions 
       (cons 
        (envs/make-action 'connect
-	 (fn [p] [(util/safe-get connector-targets p) -1.0])
+	 (fn [p] [(util/safe-get connector-targets p) -1])
 	 (envs/make-simple-condition #(find connector-targets %)))
        (for [[name [dx dy c]] *nav-actions*]
-	(let [dx (int dx) dy (int dy) c (double c)]
+	(let [dx (int dx) dy (int dy) #_ c #_ (double c)]
 	  (envs/make-action name 
 	    (fn [[x y]] (let [x (int x) y (int y)] [[(+ x dx) (+ y dy)] c]))
 	    (envs/make-simple-condition 
