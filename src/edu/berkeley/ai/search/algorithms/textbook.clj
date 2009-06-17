@@ -33,7 +33,8 @@
 (defn a-star-priority-fn [x] 
   (- 0
      (upper-reward-bound x)
-     (/ (min (node-depth x) 100000000.0) 10000000000.0)))
+     (/ (min (node-depth x) 10000000.0) 1000000000.0)))
+  
 
 (defn a-star-search             "Tree a* search"            [node]
   (first-optimal-solution node (queues/make-tree-search-pq)  a-star-priority-fn #_(fn negator [x] (- (upper-reward-bound x)))))

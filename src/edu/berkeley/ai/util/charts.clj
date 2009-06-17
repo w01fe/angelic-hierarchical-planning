@@ -40,7 +40,7 @@
     (assert-is (contains? #{1 2} (count (first (:data series)))))
     (spit filename
       (str-join "\n"
-	(map (fn [dp] (str-join ", " dp)) 
+	(map (fn [dp] (str-join ", " (map #(if (number? %) (double %) %) dp))) 
 	     (safe-get series :data))))
     (apply str (single-quote filename)
 	 " using " (if (= 1 (count (first (:data series)))) "0:1" "1:2")
@@ -80,6 +80,7 @@
 	  (if (:xlog chart) "set logscale x\n" "unset logscale x\n")
 	  (if (:ylog chart) "set logscale y\n" "unset logscale y\n")
 	  "set term pdf enhanced " (:term chart) "\n"
+;	  "set term size 100, 100\n"
 	  "set output " (single-quote pdf-file) "\n"
 	  (apply str (for [c (:extra-commands chart)] (str c "\n")))
 	  "plot " 

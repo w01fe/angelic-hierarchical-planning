@@ -195,7 +195,8 @@
 	      prev-lower (valuation-max-reward (pessimistic-valuation prev))
 	      opt  (- upper prev-upper)
 	      pess (- lower prev-lower)
-	      act? (= 'act (first (hla-name (:hla nd))))]
+	      name (hla-name (:hla nd))
+	      act? (or (= 'act name) (and (coll? name) (= 'act (first name))))]
 	  (recur prev prev-upper prev-lower
 		 (- p 
 		    (max (/ (+ opt pess) 2)

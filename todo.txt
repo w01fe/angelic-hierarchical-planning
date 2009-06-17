@@ -1,11 +1,14 @@
 ;;;;;;;;;;;;;;;; Implement
 
-Missing constraints could be reason for poor performance of
-icaps-choice-fn ?!?!?!?!?!?  For instance, we dont check if putdown
-location is free, but it's hard since we don't have disjunctions.
 
-Figure out (large) discrepancy between my implementation of Bhaskara's
-thing and his -- I do significantly worse, it seems.  
+
+Kernel-map type version of graph planning.
+
+Subgoal caching / plan tying (i.e., cost for X at least cost for Y -
+distance to Y from X).   
+
+Figure out why a-star-graph and flat-hierarchy are performing
+differently on nav-switch !
 
 Hierarchy doesn't allow move(b,c,c), which could be needed to get
 through tall stack.  

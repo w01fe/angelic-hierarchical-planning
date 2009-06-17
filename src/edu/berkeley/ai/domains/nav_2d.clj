@@ -307,9 +307,13 @@
      (when (= (region-fn cpos) (region-fn goal-pos))
        [[(make-nav-hla hla goal-pos)]])
      (if (find connector-targets cpos)  ; already at connector
-         (for [[connector rew] (connector-dists cpos)]
+         (for [[connector rew] (connector-dists cpos)
+	       :when (or (= (region-fn (connector-targets connector)) (region-fn goal-pos))
+			 (seq (connector-dists (connector-targets connector))))]
 	   [(make-traverse-hla hla cpos connector rew) connect hla])
-       (for [connector (region-connectors (region-fn cpos))]
+       (for [connector (region-connectors (region-fn cpos))
+	     :when (or (= (region-fn (connector-targets connector)) (region-fn goal-pos))
+		       (seq (connector-dists (connector-targets connector))))]
 	 [(make-nav-hla hla connector) connect hla])))))
 
 
