@@ -316,7 +316,7 @@ improve efficiency of regression."
 
 (defmethod regress-state    [::ExplicitValuation ::FinishDescription ::Valuation] [state preval desc postval]
   (if-let [s (util/find-first #(envs/satisfies-condition? % (util/safe-get desc :goal)) 
-			 (keys (explicit-valuation-map val)))]
+			 (keys (explicit-valuation-map preval)))]
     [s 0]))
 
 
