@@ -257,7 +257,7 @@
 		  (fn [[cur-x cur-y]] [dst rew])
 		  (envs/make-simple-condition (constantly true) true))]))]
     {:class ::NavRegionsTraverse :env (util/safe-get parent-hla :env)
-     :optimistic-description desc :pessimistic-description desc
+     :optimistic-description desc :pessimistic-description [:pess] ; desc
      :primitives (util/safe-get parent-hla :primitives)
      :src src :dst dst :rew rew}))
  
