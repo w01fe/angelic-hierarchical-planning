@@ -168,11 +168,13 @@
 		       (recur false threshold))))))))))))
 
 (defn ahss-decomposed-search 
-  [node]
-  (if-let [result (ahss-et-search node)]
+  ([node] (ahss-decomposed-search node (- Double/MAX_VALUE)))
+  ([node threshold] (ahss-decomposed-search node threshold alts/icaps-priority-fn))
+  ([node threshold priority-fn]
+  (if-let [result (ahss-et-search node threshold priority-fn)]
     (if (isa? (:class result) ::search/Node)
         (if (> (alts/alt-node-hla-count result) 1)
-	    (concat-solutions (map #(ahss-decomposed-search % (search/lower-reward-bound %))
+	    (concat-solutions (map #(ahss-decomposed-search % (search/lower-reward-bound %) priority-fn)
 				   (alts/decompose-plan result)))
 	  (recur (search/reroot-at-node node))))))
 
@@ -229,16 +231,16 @@
 
 (defn streaming-search 
   "Refine provided plan (node) using AHSS.
-   Returns a lazy seq of result actions, which will be populated as eagerly as possible.
-   Does not return a final cost."
-  [node]
-  (apply concat
+   Returns a lazy seq of result actions, but no final cost.
+   The user may want to call seque on the resulting sequence, to realize it in the background."
+  ([node]
+    (apply concat
     (for [result (alts/decompose-plan node)]
       (let [next (ahss-et-search result (search/lower-reward-bound result))]
 	(if (isa? (:class next) ::search/Node)
  	    (streaming-search next)
-	  (first next))))))
-; TODO: seque!
+	  (first next)))))))
+
 
 
 (comment 
