@@ -234,12 +234,11 @@
    Returns a lazy seq of result actions, but no final cost.
    The user may want to call seque on the resulting sequence, to realize it in the background."
   ([node]
-    (apply concat
-    (for [result (alts/decompose-plan node)]
-      (let [next (ahss-et-search result (search/lower-reward-bound result))]
-	(if (isa? (:class next) ::search/Node)
- 	    (streaming-search next)
-	  (first next)))))))
+    (if (isa? (:class node) ::search/Node)
+        (apply concat
+	  (for [result (alts/decompose-plan node)]
+	    (streaming-search (ahss-et-search result (search/lower-reward-bound result)))))
+      (first node))))
 
 
 
