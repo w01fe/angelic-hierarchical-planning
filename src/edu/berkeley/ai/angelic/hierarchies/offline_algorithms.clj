@@ -176,7 +176,7 @@
         (if (> (alts/alt-node-hla-count result) 1)
 	    (concat-solutions (map #(ahss-decomposed-search % (search/lower-reward-bound %) priority-fn)
 				   (alts/decompose-plan result)))
-	  (recur (search/reroot-at-node node))))))
+	  (recur (search/reroot-at-node node) (search/lower-reward-bound node) priority-fn))))))
 
 
 
