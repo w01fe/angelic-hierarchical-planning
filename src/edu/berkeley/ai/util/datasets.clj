@@ -39,11 +39,14 @@
   ([ds group-fields x y chart-options series-option-fn] 
      (ds->chart ds group-fields x y chart-options series-option-fn identity))
   ([ds group-fields x y chart-options series-option-fn series-name-fn] 
+     (ds->chart ds group-fields x y chart-options series-option-fn series-name-fn identity))
+  ([ds group-fields x y chart-options series-option-fn series-name-fn sort-fn] 
      (apply struct-map chart :series 
+       (sort-fn
        (for [[k v] (group-by (fn [d] (vec (map #(get d %) #_ #(safe-get d %) group-fields))) ds)]
          (apply struct-map series :title (series-name-fn k) :data 
 		(sort-by first (map (fn [d] [(safe-get d x) (safe-get d y)]) v))
-		(mapcat identity (series-option-fn k))))
+		(mapcat identity (series-option-fn k)))))
        (mapcat identity chart-options))))
 
 	    

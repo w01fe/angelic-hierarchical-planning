@@ -1,6 +1,6 @@
 ;;;;;;;;;;;;;;;; Implement
 
-
+beware of real-valued costs + pruning. 
 
 Kernel-map type version of graph planning.
 
