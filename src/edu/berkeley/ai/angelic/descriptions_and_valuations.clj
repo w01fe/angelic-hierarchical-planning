@@ -393,7 +393,7 @@ improve efficiency of regression."
 				 :let [[next step-reward] (envs/next-state-and-reward stat action)]
 				 :when (= next state)]
 			     [stat step-reward pre-reward]))]
-    (util/first-maximal-element #(+ (second %) (nth % 3)) candidates)))
+    (util/first-maximal-element #(+ (second %) (nth % 2)) candidates)))
 
 (defmethod progress-valuation [::Valuation ::ExplicitDescription]  [val desc]
   (make-explicit-valuation 
