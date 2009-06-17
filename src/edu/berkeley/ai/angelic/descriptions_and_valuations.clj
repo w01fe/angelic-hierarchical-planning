@@ -387,6 +387,22 @@ improve efficiency of regression."
       (let [[next step-reward] (envs/next-state-and-reward state action)]
 	[next (+ reward step-reward)])))))
 
+(defmethod regress-state    [::ExplicitValuation ::ExplicitDescription ::Valuation] [state preval desc postval]
+  (when-let [candidates (seq (for [[stat pre-reward] (explicit-valuation-map preval)
+				 action         (envs/applicable-actions stat (:action-space desc))
+				 :let [[next step-reward] (envs/next-state-and-reward stat action)]
+				 :when (= next state)]
+			     [stat step-reward pre-reward]))]
+    (util/first-maximal-element #(+ (second %) (nth % 3)) candidates)))
+
+(defmethod progress-valuation [::Valuation ::ExplicitDescription]  [val desc]
+  (make-explicit-valuation 
+   (util/merge-best > {} 
+    (for [[state reward] (explicit-valuation-map val)
+	  action (envs/applicable-actions state (:action-space desc))]
+      (let [[next step-reward] (envs/next-state-and-reward state action)]
+	[next (+ reward step-reward)])))))
+
 (defmethod progress-valuation [::PessimalValuation ::Description]  [val desc] val)
 
 (defmethod progress-valuation    [::ExplicitValuation ::FinishDescription] progress-explicit-final [val desc]
