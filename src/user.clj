@@ -10,6 +10,7 @@
 (defn uall [] (u util envs search search.algorithms.textbook angelic angelic.hierarchies domains.nav-switch domains.strips  angelic.dnf-valuations angelic.ncstrips-descriptions angelic.hierarchies.strips-hierarchies util.queues util.graphs domains.warehouse  domains.discrete-road-trip domains.road-trip angelic.hierarchies.abstract-lookahead-trees angelic.hierarchies.abstract-lookahead-graphs #_ angelic.hierarchies.clause-graphs angelic.hierarchies.offline-algorithms angelic.hierarchies.online-algorithms scripts.experiments scripts.cluster #_ scripts.z09-aij scripts.z09-icaps08-tr util.datasets util.charts util.graphviz scripts.timing-warehouse scripts.timing-nav-switch ))
 ; domains.hybrid-strips domains.hybrid-blocks
 
+(comment 
 (defn lr [] (require '[ros ros nav] :reload-all))
 
 (defmacro ur [& args] 
@@ -18,7 +19,7 @@
 	       )
        (use ~@(map #(list 'quote (if (coll? %) (cons (symbol-append 'ros. (first %)) (rest %)) (symbol-append 'ros. %))) args))))
 
-(defn uros [] (ur ros nav))
+(defn uros [] (ur ros nav)))
 
 ; These may be useful but cause gui to load
 (use 'clojure.inspector)  
