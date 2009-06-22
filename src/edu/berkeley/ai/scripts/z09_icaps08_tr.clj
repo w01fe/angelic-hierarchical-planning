@@ -98,20 +98,20 @@
 
 
 (defn make-offline-experiment-set []
-  (make-aij-experiment-set "offline-test" 10000
+  (make-aij-experiment-set "offline" 10000
     [:product
       [:domain [] [[:nav-switch 
 		    [:product
 		     [:heuristic [`nav-switch/make-flat-nav-switch-heuristic]] 
 		     [:hierarchy [`nav-switch/*nav-switch-hierarchy*]]
-		     [:size     [5 10 50 100 500]]
-		     [:switches [1 5 20 0.01 0.03 0.10]]
+		     [:size     [5 10 20 50 100 200 500]]
+		     [:switches [20]]
 		     [:run      [1 2 3]]
 		     ]]
 		   [:warehouse
 		    [:product
 		     [:heuristic [`warehouse/make-flat-warehouse-heuristic]] 
-		     [:hierarchy [`warehouse/*warehouse-hierarchy-improved* `warehouse/*warehouse-hierarchy-nl-improved*]]
+		     [:hierarchy [`warehouse/*warehouse-hierarchy-nl-improved*]]
 		     [:instance-num (vec (range 23))]
 		    ]]]]
       [:union  
@@ -128,8 +128,7 @@
 	    [:type      [:hierarchy]]
             [:graph?    [:full]]
 	    [:recheck-graph? [true]]
-	    [:ref-choice [] [[:first-gap [:choice-fn [`alts/first-gap-choice-fn]]]
-			     [:icaps     [:choice-fn [`alts/icaps-choice-fn]]]]]
+	    [:ref-choice [] [[:first-gap [:choice-fn [`alts/first-gap-choice-fn]]]]]
 	    [:algorithm [] [[:aha-star     [:algorithm-fn ['offline/aha-star-search]]]
 			    [:ahss         [:algorithm-fn ['offline/ahss-search]]]]]]]]))
 
@@ -138,17 +137,16 @@
 (defn read-offline-results []
     (let [ww-order [6 0 7 8 1 21 2 5 22 11 3 9 12 4 13 14 15 10 17 18 20 19 16]]  
       (def *offline*
-	 (map (fn [m] (if (= :warehouse (:domain m)) 
-			(update-in m [:instance-num] #(util/position % ww-order)) 
-			m)) 
+	 (doall 
+	 (map (fn [m] (into {} (assoc (if (= :warehouse (:domain m)) 
+			       (update-in m [:instance-num] #(util/position % ww-order)) 
+			       m)
+			:printed nil :output [nil (second (:output m))]))) 
 	      (experiments/experiment-set-results->dataset 
 	       (experiments/read-experiment-set-results (make-offline-experiment-set) 
-							*run-folder*))))))
-
+							*run-folder*)))))))
 
 (comment 
-  ; All algorithms ran out of memory (hard) on problem 16. 
-
 
   (plot (ds->chart (filter (ds-fn [type domain] (and (= type :strips) (= domain :warehouse))) *offline*) [] :instance-num :ref-count {:ylog "t"} {}))
  
@@ -174,17 +172,15 @@
   )
 
 (defn make-online-experiment-set []
-  (make-aij-experiment-set "online-test" 1000000
+  (make-aij-experiment-set "online" 1000000
     [:product
-     [:max-primitives [nil 5]]
+     [:max-primitives [nil]]
      [:domain [] [[:nav-switch 
 		    [:product
 		     [:heuristic [`nav-switch/make-flat-nav-switch-heuristic]]
 		     [:hierarchy [`nav-switch/*nav-switch-hierarchy*]]
 		     [:size     [100 500]]
-;		     [:size     [100]]
-		     [:switches [0.001 0.01]] ; 0.10]]
-;		     [:switches [0.001]]
+		     [:switches [20]] ; 0.10]]
 		     [:run      [1 2 3]]
 ;		     [:run      [1]]
 		     [:high-level-hla-set ['#{act go}]]
@@ -193,25 +189,21 @@
 		   [:warehouse
 		    [:product
 		     [:heuristic [`warehouse/make-flat-warehouse-heuristic]] 
-		     [:hierarchy [`warehouse/*warehouse-hierarchy-improved* `warehouse/*warehouse-hierarchy-nl-improved*]]
+		     [:hierarchy [`warehouse/*warehouse-hierarchy-nl-improved*]]
 		     [:instance-num (vec (range 21))]
-;		     [:instance-num [9 16 18]]
-;		     [:instance-num [1]]
 		     [:high-level-hla-set ['#{act move-blocks}]]
 		     [:ref-level-map [nil]]
 		    ]]]]
      [:algorithm [:ahlrta-star]]
      [:algorithm-fn [`online/ahlrta-star-search]]
      [:max-steps [10000]]
-;     [:max-steps [300]]
-     [:max-refs  [10 20 50 100 200 500 1000 2000 5000]]
+     [:max-refs  [10 20 50 100 200 300 400 500 750 1000 1500 2000 3000 4000 5000]]
 ;     [:max-refs  [10 30 100 300 1000 ]]
 ;     [:max-refs  [10 ]]
      [:type [] [[:flat-hierarchy
 		 [:ref-choice [] [[:first-gap [:choice-fn [`alts/first-gap-choice-fn]]]]]]
 		[:hierarchy 
-		 [:ref-choice [] [[:first-gap [:choice-fn [`alts/first-gap-choice-fn]]]
-				  [:icaps     [:choice-fn [`alts/icaps-choice-fn]]]]]]]]
+		 [:ref-choice [] [[:first-gap [:choice-fn [`alts/first-gap-choice-fn]]]]]]]]
      [:graph?         [:full]]
      [:recheck-graph? [true]]
      ]))
@@ -219,20 +211,30 @@
 (defonce *online* nil)
 
 (defn read-online-results []
-  (def *online* (experiments/experiment-set-results->dataset 
-		 (experiments/read-experiment-set-results (make-online-experiment-set) 
-							  *run-folder*))))
+  (def *online* 
+      (doall 
+       (map #(into {} (assoc % :printed nil :output [nil (second (:output %))] ))
+	    (experiments/experiment-set-results->dataset 
+	     (experiments/read-experiment-set-results (make-online-experiment-set) 
+						      *run-folder*))))))
+
 
 (comment 
   
+; navigateless first-gap nil-max-prims seems best for ww
 
 ; scouting out ww
-(doseq [max-prims [nil 5] i (range 22)]  (plot (ds->chart (ds-derive (ds-fn [output ] (- (or (second output) -10000))) (filter (ds-fn [ms instance-num max-primitives hierarchy ref-choice] (and ms  (= instance-num i) (= max-prims max-primitives) (= (count (str hierarchy)) 64) (= ref-choice :first-gap))) (filter (ds-fn [domain] (= domain :warehouse)) *online*)) :cost) [:algorithm :type :ref-choice] :max-refs :cost {:ylog "t" :xlog "t" :key "7000, 6000" :xlabel (str i)} {})))
+(doseq [ i (range 4 5) max-prims [nil 5]]  (plot (ds->chart (ds-derive (ds-fn [output ] (- (or (second output) -10000))) (filter (ds-fn [ms instance-num max-primitives hierarchy ref-choice] (and ms  (= instance-num i) (= max-prims max-primitives) (= (count (str hierarchy)) 64) (= ref-choice :first-gap))) (filter (ds-fn [domain] (= domain :warehouse)) *online*)) :cost) [:algorithm :type :ref-choice] :max-refs :cost {:ylog "t" :xlog "t" :key "1000, 6000" :xlabel (str i)} {})))
+
+(doseq [ i (range 21) max-prims [nil]]  (plot (ds->chart (ds-derive (ds-fn [output ] (- (or (second output) -10000))) (filter (ds-fn [ms instance-num max-primitives] (and ms  (= instance-num i) (= max-prims max-primitives) )) (filter (ds-fn [domain] (= domain :warehouse)) *online*)) :cost) [:hierarchy :ref-choice :algorithm :type :ref-choice] :max-refs :cost {:ylog "t" :xlog "t" :key "1000, 100" :xlabel (str i " " max-prims)} {})))
 
 "[18 17.0 16 15 14* 13 12* 9* 8-6e 4* 2* 1/0e]"
  
 ;; Average of selected instances
-(plot (ds->chart (ds-summarize (ds-derive (ds-fn [output ] (- (or (second output) -10000))) (filter (ds-fn [ms instance-num max-primitives hierarchy ref-choice] (and ms  (#{18 17 15 14 13 12 11 10  4 3 2 9 5} instance-num) (nil? max-primitives) (= (count (str hierarchy)) 64) (= ref-choice :first-gap))) (filter (ds-fn [domain] (= domain :warehouse)) *online*)) :cost) [:type :graph? :ref-choice :algorithm :switches :size :max-refs] [[:cost mean (ds-fn [cost] cost)]]) [:algorithm :type :ref-choice] :max-refs :cost { :xrange "[0:5000]" :key "5000, 2000"  :title "Warehouse world - averaged over 13 instances" :xlabel "Allowed refinements per env step" :ylabel "Cost to reach goal"} {} ) "/Users/jawolfe/Desktop/new-charts/online-ww.pdf")
+(plot (ds->chart (ds-summarize (ds-derive (ds-fn [output ] (- (or (second output) -10000))) (filter (ds-fn [ms instance-num max-primitives hierarchy ref-choice] (and ms  (#{17 16 15 14 13 12 11 10  4 3 2 9 5} instance-num) (nil? max-primitives) (= (count (str hierarchy)) 64) (= ref-choice :first-gap))) (filter (ds-fn [domain] (= domain :warehouse)) *online*)) :cost) [:type :graph? :ref-choice :algorithm :switches :size :max-refs] [[:cost mean (ds-fn [cost] cost)]]) [:algorithm :type :ref-choice] :max-refs :cost { :xrange "[0:5000]" :key "5000, 2000"  :title "Warehouse world - averaged over 13 instances" :xlabel "Allowed refinements per env step" :ylabel "Cost to reach goal"} {} ) "/Users/jawolfe/Desktop/new-charts/online-ww.pdf")
+
+; With other choices.
+(plot (ds->chart (ds-summarize (ds-derive (ds-fn [output ] (- (or (second output) -10000))) (filter (ds-fn [ms instance-num max-primitives hierarchy ref-choice] (and ms  (#{16 17 15 14 13 12 11 10  4 3 2 9 5} instance-num) (nil? max-primitives) )) (filter (ds-fn [domain] (= domain :warehouse)) *online*)) :cost) [:type :graph? :ref-choice :hierarchy :algorithm :switches :size :max-refs] [[:cost mean (ds-fn [cost] cost)]]) [ :hierarchy :algorithm :type :ref-choice ] :max-refs :cost { :xrange "[0:5000]" :key "5000, 2000"  :title "Warehouse world - averaged over 13 instances" :xlabel "Allowed refinements per env step" :ylabel "Cost to reach goal"} {} ) "/Users/jawolfe/Desktop/new-charts/online-ww.pdf")
 
 
 ; Slides friendly

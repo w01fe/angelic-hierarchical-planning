@@ -50,7 +50,7 @@
 (defn make-alt-plan-node [class alt name plan depth]
   (let [final-ref (:was-final? ^plan)]
     (when (util/sref-get final-ref)
-      (println "Warning: duplicate plan ... " (search/node-str {:class ::ALTPlanNode :plan plan}))
+      (util/print-debug 2 "Warning: duplicate plan ... " (search/node-str {:class ::ALTPlanNode :plan plan}))
     #_  (throw (Exception.))) 
     (util/sref-set! final-ref true))
   (struct alt-plan-node class alt name plan depth))

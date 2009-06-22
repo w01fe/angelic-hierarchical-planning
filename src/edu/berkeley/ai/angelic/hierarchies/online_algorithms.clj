@@ -83,7 +83,8 @@
 
 ; e.g., inconsistency with (debug 1 (ahlrta-star-search (get-hierarchy *warehouse-hierarchy* (nth *icaps-ww* 5)) 100 70 '#{act move-blocks} {:graph? :bhaskara} 6 '{act 1 'move-blocks 1 'move-to 1 'navigate 2 'nav 3}))
 
-
+; No evidence that either "improvement" (max primitives, more-refined locking in) help, over wide variety of 
+; warehouse instances. ..
 (defn ahlrta-star-search 
   "AHLRTA* search from ICAPS '08.  
     max-primitives specifies max # of legal primitives, used to throw away
