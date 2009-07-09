@@ -48,10 +48,10 @@
 	      (for [[[x1 y1] [x2 y2]] doors]
 	       (let [r1 (int (aget arr (int y1) (int x1)))
 		     r2 (int (aget arr (int y2) (int x2)))]
-		 [['hall (util/symbol-cat "x" x1) (util/symbol-cat "y" y1) (util/symbol-cat "r" r2) 
-		   (util/symbol-cat "x" x2) (util/symbol-cat "y" y2)]
-		  ['hall (util/symbol-cat "x" x2) (util/symbol-cat "y" y2) (util/symbol-cat "r" r1) 
-		   (util/symbol-cat "x" x1) (util/symbol-cat "y" y1)]])))
+		 [['hall (util/symbol-cat "r" r1) (util/symbol-cat "x" x1) (util/symbol-cat "y" y1)
+		         (util/symbol-cat "r" r2) (util/symbol-cat "x" x2) (util/symbol-cat "y" y2)]
+		  ['hall (util/symbol-cat "r" r2) (util/symbol-cat "x" x2) (util/symbol-cat "y" y2) 
+		         (util/symbol-cat "r" r1) (util/symbol-cat "x" x1) (util/symbol-cat "y" y1)]])))
 	     (map (fn [x] ['left-of (util/symbol-cat "x" (dec x)) (util/symbol-cat "x" x)]) (range 1 width))
 	     (map (fn [x] ['above   (util/symbol-cat "y" (dec x)) (util/symbol-cat "y" x)]) (range 1 height)))
      (for [y (range height) x (range width) 
@@ -71,57 +71,23 @@
 			clean?        \ 
                         :else         (first (str reg)))))))))))))
 
-  
+  ; (map :name (first (a-star-graph-search (ss-node (constant-predicate-simplify (make-vac-rooms-strips-env 4 4 [[[0 0] [1 1]] [[2 2] [3 3]]]  [[[1 1] [2 2]]] [0 0]))))))
 
 (set! *warn-on-reflection* false)
 
+(def *vac-rooms-hierarchy*          (util/path-local "vac_rooms.hierarchy"))
+
+; (let [e (constant-predicate-simplify (make-vac-rooms-strips-env 4 4 [[[0 0] [1 1]] [[2 2] [3 3]]]  [[[1 1] [2 2]]] [0 0])) h (get-hierarchy *vac-rooms-hierarchy* e) rlm {(first (hla-name (first h))) 11 'act 10 'finish-cleaning 9 'clean-room 8 'clean-rows 7 'clean-row 6 'nav-left 5 'nav 4}]  (map :name (first (new-hierarchical-forward-search (alt-node h {:graph? false :cache? false :ref-choice-fn (make-first-maximal-choice-fn rlm)}) true rlm))))
+
+; (let [e (make-vac-rooms-strips-env 5 5 [[[0 0] [1 1]] [[0 3] [1 4]] [[3 0] [4 1]] [[3 3] [4 4]]] [[[1 1] [3 1]] [[1 3] [3 3]] [[0 1] [0 3]] [[4 1] [4 3]]] [0 0])] (println (state-str e (get-initial-state e))))
+
+; (let [e (constant-predicate-simplify (make-vac-rooms-strips-env 5 5 [[[0 0] [1 1]] [[0 3] [1 4]] [[3 0] [4 1]] [[3 3] [4 4]]] [[[1 1] [3 1]] [[1 3] [3 3]] [[0 1] [0 3]] [[4 1] [4 3]]] [0 0])) h (get-hierarchy *vac-rooms-hierarchy* e) rlm {(first (hla-name (first h))) 11 'act 10 'finish-cleaning 9 'clean-room 8 'clean-rows 7 'clean-row 6 'nav-left 5 'nav 4}]  (map :name (first (new-hierarchical-forward-search (alt-node h {:graph? false :cache? false :ref-choice-fn (make-first-maximal-choice-fn rlm)}) true rlm))))
+
+; (doseq [ commit? [true false] prune? [true false]] (sref-set! *plan-counter* 0) (let [e (constant-predicate-simplify (make-vac-rooms-strips-env 5 5 [[[0 0] [1 1]] [[0 3] [1 4]] [[3 0] [4 1]] [[3 3] [4 4]]] [[[1 1] [3 1]] [[1 3] [3 3]] [[0 1] [0 3]] [[4 1] [4 3]]] [0 0])) h (get-hierarchy *vac-rooms-hierarchy* e) rlm {(first (hla-name (first h))) 11 'act 10 'finish-cleaning 9 'clean-room 8 'clean-rows 7 'clean-row 6 'nav-left 5 'nav 4}]  (println prune? commit? (count (first (new-hierarchical-forward-search (alt-node h {:graph? false :cache? false :ref-choice-fn (make-first-maximal-choice-fn rlm)}) prune? (when commit? rlm)))) (sref-get *plan-counter*))))
+
+
+
 (comment
-
- 
-(defn make-nav-switch-strips-env [width height switch-coords initial-pos initial-hor? goal-pos]
-  (strips/make-strips-planning-instance 
-   "nav-switch"
-   (make-nav-switch-strips-domain)
-   {'xc (map #(util/symbol-cat "x" %) (range width))
-    'yc (map #(util/symbol-cat "y" %) (range height))}
-   (concat (when initial-hor? '[[horiz]])
-	   [['atx (util/symbol-cat "x" (first initial-pos))] ['aty (util/symbol-cat "y" (second initial-pos))]]
-	   (map (fn [pos] ['switch-at (util/symbol-cat "x" (first pos)) (util/symbol-cat "y" (second pos))]) switch-coords)
-	   (map (fn [x] ['left-of (util/symbol-cat "x" (dec x)) (util/symbol-cat "x" x)]) (range 1 width))
-	   (map (fn [x] ['above   (util/symbol-cat "y" (dec x)) (util/symbol-cat "y" x)]) (range 1 height)))
-   [['atx (util/symbol-cat "x" (first goal-pos))] ['aty (util/symbol-cat "y" (second goal-pos))]]
-   (fn [state]
-     (let [pos [(util/desymbolize (first (strips/get-strips-state-pred-val state 'atx)) 1)
-		(util/desymbolize (first (strips/get-strips-state-pred-val state 'aty)) 1)]
-	   hor? (contains? state '[horiz])]
-	(util/str-join "\n"
-	  (for [y (range height)]
-	    (apply str
-	      (for [x (range width)]
-		(let [coord [x y]]
-		  (if (contains? (set switch-coords)  coord)
-		      (if (= coord pos) \b \s)
-		    (if (= coord pos) \o (if hor? \- \|))))))))))
-   ))
-    
-
-(def *nav-switch-hierarchy*          (util/path-local "nav_switch.hierarchy"))
-(def *nav-switch-hierarchy-unguided*          (util/path-local "nav_switch_unguided.hierarchy"))
-;(def *nav-switch-hierarchy2*         (util/path-local "nav_switch2.hierarchy"))
-(def *nav-switch-old-hierarchy* (util/path-local "nav_switch_old.hierarchy"))
-(def *nav-switch-flat-hierarchy*          (util/path-local "nav_switch_flat.hierarchy"))
-
-
-
-(defn make-flat-nav-switch-heuristic [env]
-  (let [goal (envs/get-goal env)
-	pos  (envs/get-positive-conjuncts goal)
-	goal-x (util/desymbolize (second (util/make-safe (util/find-first #(= (first %) 'atx) pos))) 1)
-	goal-y (util/desymbolize (second (util/make-safe (util/find-first #(= (first %) 'aty) pos))) 1)]
-    (util/assert-is (= (count pos) 2))
-   (fn [state] 
-     (* -2 (+ (util/abs (- (util/desymbolize (first (strips/get-strips-state-pred-val state 'atx)) 1) goal-x)) 
-	      (util/abs (- (util/desymbolize (first (strips/get-strips-state-pred-val state 'aty)) 1) goal-y)))))))
 
 
 (defn- get-and-check-sol [env]

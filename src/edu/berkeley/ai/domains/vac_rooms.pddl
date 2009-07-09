@@ -3,7 +3,7 @@
 ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
 
 (define (domain vac-rooms)
-  (:requirements :strips :typing)
+  (:requirements :strips :typing :equality)
   (:types xc yc room)
   (:predicates (atx ?x - xc)
 	       (aty ?y - yc) 
@@ -15,7 +15,7 @@
 	       (roomr ?r - room ?x - xc)
 	       (roomt ?r - room ?y - yc)
 	       (roomb ?r - room ?y - yc)
-	       (hall  ?x1 - xc ?y1 - yc ?r2 - room ?x2 - xc ?y2 - yc)
+	       (hall  ?r1 - room ?x1 - xc ?y1 - yc ?r2 - room ?x2 - xc ?y2 - yc)
 	       (above ?y1 - yc ?y2 - yc)
 	       (left-of ?x1 - xc ?x2 - xc)
 	       )
@@ -52,7 +52,7 @@
 
   (:action tunnel
 	   :parameters   (?x - xc ?y - yc ?r - room ?nx - xc ?ny - yc ?nr - room)
-	   :precondition (and (atx ?x) (aty ?y) (in-room ?r) (hall ?x ?y ?nr ?nx ?ny))
+	   :precondition (and (atx ?x) (aty ?y) (in-room ?r) (hall ?r ?x ?y ?nr ?nx ?ny))
 	   :effect       (and (not (atx ?x)) (not (aty ?y)) (not (in-room ?r))
 			      (atx ?nx)      (aty ?ny)      (in-room ?nr))
 	   :cost 2))

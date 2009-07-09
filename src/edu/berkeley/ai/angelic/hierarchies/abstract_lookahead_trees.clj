@@ -401,8 +401,8 @@
   (if (empty? actions) 
     (make-alt-plan-node (:class node) alt name previous (inc parent-depth) )
     (let [nxt (get-alt-node alt (first actions) previous was-tight?)]
-      (if (and (or (> (valuation-max-reward (optimistic-valuation nxt)) Double/NEGATIVE_INFINITY)
-		   (and (util/sref-set! (:fate ^nxt) :dead) false))
+      (if (and ;(or (> (valuation-max-reward (optimistic-valuation nxt)) Double/NEGATIVE_INFINITY)
+		;   (and (util/sref-set! (:fate ^nxt) :dead) false))
 	       (or (next actions) 
 		   (not (util/sref-get (:was-final? ^nxt)))
 		   (= :full (:graph? alt))) ; Eliminate duplicates.

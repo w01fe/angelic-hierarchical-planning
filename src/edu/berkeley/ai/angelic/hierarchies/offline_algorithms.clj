@@ -65,7 +65,8 @@
      (assert (= false (:graph? (:alt node))))
      (assert (= false (:cache? (:alt node))))
      (util/timeout)
-     (let [pq (make-singleton-pq node)]
+     (let [pq (queues/make-queue-pq)]
+       (queues/pq-add! pq node)
        (loop []
 	 (when-not (queues/pq-empty? pq)
 	   (let [next          (queues/pq-remove-min! pq)]

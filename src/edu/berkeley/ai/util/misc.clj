@@ -226,7 +226,7 @@
 
 (defn match-mapping [var-tree match-tree]
   (let [matches (match-mappings var-tree match-tree)]
-    (when (empty? matches) (throw (IllegalArgumentException. (str "No matches: " var-tree " " match-tree))))
+    (when (empty? matches) (throw (IllegalArgumentException. (str "No matches: " var-tree " " (seq match-tree)))))
     (when (next matches) (throw (IllegalArgumentException. (str "Multiple matches: " var-tree " " match-tree "\n" (take 2 matches)))))
     (first matches)))
 
