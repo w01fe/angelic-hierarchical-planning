@@ -15,7 +15,7 @@
    (reduce + 0 (map second sols))])
 
 (defn make-singleton-pq [n]
-  (let [pq (queues/make-stack-pq)]
+  (let [pq (queues/make-queue-pq)]
     (queues/pq-add! pq (assoc n :depth 0) 0)
     pq))
 
@@ -23,33 +23,34 @@
   ([node] 
      (assert (= false (:graph? (:alt node))))
      (assert (= false (:cache? (:alt node))))
-     (hierarchical-forward-search node 0 (make-singleton-pq node) [] [] 0 #{}))
-  ([cur-node d pq rest-nodes-with-blacksets prims rew blackset]
+     (hierarchical-forward-search (make-singleton-pq node) [] [] 0 #{}))
+  ([pq rest-nodes-with-blacksets prims rew blackset]
      (util/timeout)
-     (if (queues/pq-empty? pq) 
-         (recur cur-node (inc d) (make-singleton-pq cur-node) rest-nodes-with-blacksets prims rew blackset) 
+     (when-not (queues/pq-empty? pq)
        (let [next          (queues/pq-remove-min! pq)
 	     succeeds-opt? (> (search/upper-reward-bound next) Double/NEGATIVE_INFINITY)]
-	 (if (or (not succeeds-opt?) (> (:depth next) d))
-	     (recur cur-node d pq rest-nodes-with-blacksets prims rew blackset)
+;	 (print (queues/pq-size pq) " ")
+;	 	 (println "consider " (map hla-name (search/node-plan next)))
+	 (if (not succeeds-opt?)
+	     (recur pq rest-nodes-with-blacksets prims rew blackset)
 	   (if-let [[acts acts-rew] (search/extract-a-solution next)]
 	       (if (empty? rest-nodes-with-blacksets)
-;		   (do (println "SOL!" prims acts rew acts-rew)
-		       [(concat prims acts) (+ rew acts-rew)];)
+		   [(concat prims acts) (+ rew acts-rew)];)
 		 (let [[[next-node next-blackset] & more-nbs] rest-nodes-with-blacksets]
-		   (recur next-node 0 (make-singleton-pq next-node) more-nbs (concat prims acts) (+ rew acts-rew) next-blackset)))
+		   (recur (make-singleton-pq next-node) more-nbs (concat prims acts) (+ rew acts-rew) next-blackset)))
 	     (let [succeeds-pess? (> (search/lower-reward-bound next) Double/NEGATIVE_INFINITY)
 		   key            (util/safe-get next :plan)] ;; TODO: specific to ALTs)]
 	       (if (and succeeds-pess? (not (contains? blackset key)))
 		   (let [[first-part & rest-parts] (alts/decompose-plan next)]
-		     (recur first-part 0 (make-singleton-pq first-part)
+;		     (println "decompose! " (map hla-name (search/node-plan next)))
+		     (recur (make-singleton-pq first-part)
 			    (concat 
 			     (map #(vector % (conj blackset key (util/safe-get % :plan))) rest-parts)
 			     rest-nodes-with-blacksets)
 			    prims rew (conj blackset key (util/safe-get first-part :plan))))
 		 (do (doseq [ref (search/immediate-refinements next)]
 		       (queues/pq-add! pq (assoc ref :depth (inc (:depth next))) 0))
-		     (recur cur-node d pq rest-nodes-with-blacksets prims rew blackset))))))))))
+		     (recur pq rest-nodes-with-blacksets prims rew blackset))))))))))
 
 
 (defn plan-max-level [node hla-map]
@@ -58,34 +59,29 @@
 
 (defn new-hierarchical-forward-search 
   "New version of HFS that only commits when an HLA has been refined to a lower level.  This eliminates the 
-   need for blacksets, and ensures that progress is made when a commitment happens."
-  ([node hla-map] 
+   need for blacksets, and ensures that progress is made when a commitment happens.  Only commits when
+   hla-map is non-nil."
+  ([node prune? hla-map] 
      (assert (= false (:graph? (:alt node))))
      (assert (= false (:cache? (:alt node))))
-     (new-hierarchical-forward-search node 0 (make-singleton-pq node) [] [] 0  hla-map))
-  ([cur-node d pq rest-nodes prims rew hla-map]
      (util/timeout)
-     (if (queues/pq-empty? pq) 
-         (recur cur-node (inc d) (make-singleton-pq cur-node) rest-nodes prims rew hla-map) 
-       (let [next          (queues/pq-remove-min! pq)]
+     (let [pq (make-singleton-pq node)]
+       (loop []
+	 (when-not (queues/pq-empty? pq)
+	   (let [next          (queues/pq-remove-min! pq)]
 ;	 (println "consider " (map hla-name (search/node-plan next)))
-	 (if (or (not (> (search/upper-reward-bound next) Double/NEGATIVE_INFINITY)) (> (:depth next) d))
-	     (recur cur-node d pq rest-nodes prims rew hla-map)
-	   (if-let [[acts acts-rew] (search/extract-a-solution next)]
-  	       (if (empty? rest-nodes)
-		   [(concat prims acts) (+ rew acts-rew)];)
-		 (let [[next-node & more-nodes] rest-nodes]
-		   (recur next-node 0 (make-singleton-pq next-node) more-nodes (concat prims acts) (+ rew acts-rew) hla-map)))
-	     (if (and (< (plan-max-level next hla-map) (plan-max-level cur-node hla-map))
-		      (> (search/lower-reward-bound next) Double/NEGATIVE_INFINITY))
-	         (let [[first-part & rest-parts] (alts/decompose-plan next)]
-;		   (println "commit!" (map hla-name (search/node-plan next)))
-		   (recur first-part 0 (make-singleton-pq first-part)
-			  (concat rest-parts rest-nodes)
-			  prims rew hla-map))
-	       (do (doseq [ref (search/immediate-refinements next)]
-		     (queues/pq-add! pq (assoc ref :depth (inc (:depth next))) 0))
-		   (recur cur-node d pq rest-nodes prims rew hla-map)))))))))
+	     (if (and prune? (not (> (search/upper-reward-bound next) Double/NEGATIVE_INFINITY)))
+	         (recur)
+	       (or (search/extract-a-solution next)
+		   (when (and hla-map (< (plan-max-level next hla-map) (plan-max-level node hla-map))
+			      (> (search/lower-reward-bound next) Double/NEGATIVE_INFINITY))
+		     (println "commit " (map hla-name (search/node-plan next)))
+		     (concat-solutions 
+		      (map #(new-hierarchical-forward-search % prune? hla-map)
+			   (alts/decompose-plan next))))
+		   (do (doseq [ref (search/immediate-refinements next)]
+			 (queues/pq-add! pq ref 0))
+		       (recur))))))))))
 
 ; (let [h (get-hierarchy *warehouse-hierarchy* (constant-predicate-simplify (make-warehouse-strips-env 3 4 [1 2] false {0 '[b a] 2 '[c]} nil ['[a b c]]))) rlm {(first (hla-name (first h))) 11 'act 10 'move-blocks 9 'move-block 8 'move-to 7 'navigate 6 'nav 5}   n (alt-node h {:ref-choice-fn (make-first-maximal-choice-fn rlm) :cache? false :graph? false})]   (time-limit (map :name (first (new-hierarchical-forward-search n rlm))) 30))
 
