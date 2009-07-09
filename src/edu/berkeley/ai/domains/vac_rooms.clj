@@ -77,6 +77,8 @@
 
 (def *vac-rooms-hierarchy*          (util/path-local "vac_rooms.hierarchy"))
 
+;(let [e (constant-predicate-simplify (make-vac-rooms-strips-env 4 4 [[[0 0] [1 1]] [[2 2] [2 2]]]  [[[1 1] [2 2]]] [0 0]))]  (map :name (first (new-hierarchical-forward-search (ss-node e) nil nil))))
+
 ; (let [e (constant-predicate-simplify (make-vac-rooms-strips-env 4 4 [[[0 0] [1 1]] [[2 2] [3 3]]]  [[[1 1] [2 2]]] [0 0])) h (get-hierarchy *vac-rooms-hierarchy* e) rlm {(first (hla-name (first h))) 11 'act 10 'finish-cleaning 9 'clean-room 8 'clean-rows 7 'clean-row 6 'nav-left 5 'nav 4}]  (map :name (first (new-hierarchical-forward-search (alt-node h {:graph? false :cache? false :ref-choice-fn (make-first-maximal-choice-fn rlm)}) true rlm))))
 
 ; (let [e (make-vac-rooms-strips-env 5 5 [[[0 0] [1 1]] [[0 3] [1 4]] [[3 0] [4 1]] [[3 3] [4 4]]] [[[1 1] [3 1]] [[1 3] [3 3]] [[0 1] [0 3]] [[4 1] [4 3]]] [0 0])] (println (state-str e (get-initial-state e))))
@@ -85,7 +87,9 @@
 
 ; (doseq [ commit? [true false] prune? [true false]] (sref-set! *plan-counter* 0) (let [e (constant-predicate-simplify (make-vac-rooms-strips-env 5 5 [[[0 0] [1 1]] [[0 3] [1 4]] [[3 0] [4 1]] [[3 3] [4 4]]] [[[1 1] [3 1]] [[1 3] [3 3]] [[0 1] [0 3]] [[4 1] [4 3]]] [0 0])) h (get-hierarchy *vac-rooms-hierarchy* e) rlm {(first (hla-name (first h))) 11 'act 10 'finish-cleaning 9 'clean-room 8 'clean-rows 7 'clean-row 6 'nav-left 5 'nav 4}]  (println prune? commit? (count (first (new-hierarchical-forward-search (alt-node h {:graph? false :cache? false :ref-choice-fn (make-first-maximal-choice-fn rlm)}) prune? (when commit? rlm)))) (sref-get *plan-counter*))))
 
-
+;; Ordering of Nav makes a HUGE difference if we don't commit -- want it as late as possible.
+;;   (make-vac-rooms-strips-env 4 4 [[[0 0] [1 1]] [[2 2] [2 2]]]  [[[1 1] [2 2]]] [0 0])
+;; Similarly, refining first always makes all algorithms do equally terribly
 
 (comment
 

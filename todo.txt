@@ -1,5 +1,7 @@
 ;;;;;;;;;;;;;;;; Implement
 
+Look at HLA order! 
+
 PUT BACK pruning in construct-immediate-refinement!
 
 beware of real-valued costs + pruning. 

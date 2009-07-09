@@ -10,8 +10,20 @@
        :refinement   (:parameters   (?fx - xc ?fy - yc)
 		      :precondition (and (roomr ?r ?fx) (roomb ?r ?fy))
 		      :expansion   ((clean-room ?cx ?cy ?r) (finish-cleaning ?fx ?fy ?r)))
+;       :exact        (:ncstrips (:effect (and (forall (?x - xc ?y - yc ?or - room)
+;						      (and (roomx ?or ?x) (roomy ?or ?y))
+;						      (clean ?x ?y))
+;					      (not (atx ?cx)) (not (aty ?cy)) (not (in-room ?r)))
+;				 :possible-effect
+;				         (and (forall (?x - xc ?y - yc ?or - room)
+;						      (and (roomr ?or ?x) (roomb ?or ?y))
+;						      (and (in-room ?or) (atx ?x) (aty ?y))))
+;				 :cost-expr 1))
+; Doesn't work - pessimistic is wrong.				      
        :optimistic   (:opt 0)
-       :pessimistic  (:pess))
+       :pessimistic  (:pess)
+       )
+  
 
   (:hla finish-cleaning
        :parameters (?cx - xc ?cy - yc ?r - room)
@@ -22,7 +34,9 @@
 		      :expansion   ((nav ?cx ?cy ?x1 ?y1 ?r) (tunnel ?x1 ?y1 ?r ?x2 ?y2 ?nr) 
 				    (clean-room ?x2 ?y2 ?nr) (finish-cleaning ?fx ?fy ?nr)))
        :optimistic   (:opt 0)
-       :pessimistic  (:pess))
+       :pessimistic  (:pess)
+       )
+   
 
   (:hla clean-room
 	:parameters (?cx - xc ?cy - yc ?r - room)

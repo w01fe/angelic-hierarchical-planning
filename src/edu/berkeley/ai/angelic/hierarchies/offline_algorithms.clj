@@ -54,7 +54,10 @@
 
 
 (defn plan-max-level [node hla-map]
-  (reduce max (map #(if (hla-primitive? %) 0 (util/safe-get hla-map (first (hla-name %)))) (search/node-plan node))))
+  (reduce max (map #(if (hla-primitive? %) 0 
+			(util/lazy-get hla-map (first (hla-name %)) 
+				       (do (println "Warning: unknown action " (first (hla-name %))) 10000000))) 
+		   (search/node-plan node))))
 
 
 (defn new-hierarchical-forward-search 
@@ -62,11 +65,13 @@
    need for blacksets, and ensures that progress is made when a commitment happens.  Only commits when
    hla-map is non-nil."
   ([node prune? hla-map] 
-     (assert (= false (:graph? (:alt node))))
-     (assert (= false (:cache? (:alt node))))
+;     (assert (= false (:graph? (:alt node))))
+;     (assert (= false (:cache? (:alt node))))
      (util/timeout)
-     (let [pq (queues/make-queue-pq)]
-       (queues/pq-add! pq node)
+;     (println "starting " (map hla-name (search/node-plan node)))
+     (let [node-level (when hla-map (plan-max-level node hla-map))
+	   pq (queues/make-queue-pq)]
+       (queues/pq-add! pq node 0)
        (loop []
 	 (when-not (queues/pq-empty? pq)
 	   (let [next          (queues/pq-remove-min! pq)]
@@ -74,15 +79,52 @@
 	     (if (and prune? (not (> (search/upper-reward-bound next) Double/NEGATIVE_INFINITY)))
 	         (recur)
 	       (or (search/extract-a-solution next)
-		   (when (and hla-map (< (plan-max-level next hla-map) (plan-max-level node hla-map))
+		   (when (and hla-map (< (plan-max-level next hla-map) node-level)
 			      (> (search/lower-reward-bound next) Double/NEGATIVE_INFINITY))
-		     (println "commit " (map hla-name (search/node-plan next)))
+;		     (println "commit " (map hla-name (search/node-plan next)))
 		     (concat-solutions 
 		      (map #(new-hierarchical-forward-search % prune? hla-map)
 			   (alts/decompose-plan next))))
 		   (do (doseq [ref (search/immediate-refinements next)]
 			 (queues/pq-add! pq ref 0))
 		       (recur))))))))))
+
+(defn new-hierarchical-forward-search-id 
+  "New version of HFS that only commits when an HLA has been refined to a lower level.  This eliminates the 
+   need for blacksets, and ensures that progress is made when a commitment happens.  Only commits when
+   hla-map is non-nil.
+   ASSUMES problem is solvable; if not, will never return."
+  ([node prune? hla-map]
+     (new-hierarchical-forward-search-id node prune? hla-map (iterate inc 0)))
+  ([node prune? hla-map depths] 
+;     (assert (= false (:graph? (:alt node))))
+;     (assert (= false (:cache? (:alt node))))
+     (util/timeout)
+     (let [node-level (when hla-map (plan-max-level node hla-map))]
+   (some 
+    (fn [d]
+ ;    (print d " ")
+     (let [pq (queues/make-stack-pq)]
+       (queues/pq-add! pq (assoc node :depth 0) 0)
+       (loop []
+	 (when-not (queues/pq-empty? pq)
+	   (let [next          (queues/pq-remove-min! pq)]
+;	 (println "consider " (map hla-name (search/node-plan next)))
+	     (if (or (> (:depth next) d)
+		     (and prune? (not (> (search/upper-reward-bound next) Double/NEGATIVE_INFINITY))))
+	         (recur)
+	       (or (search/extract-a-solution next)
+		   (when (and hla-map (< (plan-max-level next hla-map) node-level)
+			      (> (search/lower-reward-bound next) Double/NEGATIVE_INFINITY))
+;		     (println "commit " (map hla-name (search/node-plan next)))
+		     (concat-solutions 
+		      (map #(new-hierarchical-forward-search-id % prune? hla-map depths)
+			   (alts/decompose-plan next))))
+		   (do (doseq [ref (util/shuffle (search/immediate-refinements next))]
+			 (queues/pq-add! pq (assoc ref :depth (inc (:depth next))) 0))
+		       (recur)))))))))
+    depths))))
+ ;; TODO: remove shuffle?!
 
 ; (let [h (get-hierarchy *warehouse-hierarchy* (constant-predicate-simplify (make-warehouse-strips-env 3 4 [1 2] false {0 '[b a] 2 '[c]} nil ['[a b c]]))) rlm {(first (hla-name (first h))) 11 'act 10 'move-blocks 9 'move-block 8 'move-to 7 'navigate 6 'nav 5}   n (alt-node h {:ref-choice-fn (make-first-maximal-choice-fn rlm) :cache? false :graph? false})]   (time-limit (map :name (first (new-hierarchical-forward-search n rlm))) 30))
 
