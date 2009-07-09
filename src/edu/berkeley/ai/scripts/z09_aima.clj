@@ -73,7 +73,7 @@
 
 
 (defn make-vac-experiment-set []
-  (make-aima-experiment-set "vac" 10000
+  (make-aima-experiment-set "vac" 3600
     [:product
       [:instance-num (vec (range 4))]
       [:algorithm [:bfs :dfs :idfs]]
