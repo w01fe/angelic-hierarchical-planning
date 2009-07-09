@@ -68,7 +68,7 @@
     :strips          env-form))
 
 (defn get-alt-args [m]
-  {:graph? (:graph? m) :ref-choice-fn (:choice-fn m) :recheck-graph? (:recheck-graph? m)
+  {:graph? (:graph? m) :ref-choice-fn (:choice-fn m) :recheck-graph? (:recheck-graph? m) :cache? (get m :cache? true)
    :opt-valuation-class :edu.berkeley.ai.angelic.dnf-valuations/DNFOptimisticSimpleValuation
    :pess-valuation-class :edu.berkeley.ai.angelic.dnf-valuations/DNFPessimisticSimpleValuation})
 
@@ -335,40 +335,36 @@
 
 
 
-(defn make-offline-experiment-set []
-  (make-icaps-tr-experiment-set "offline" 10000
+
+
+
+(defn make-offline-hfs-experiment-set []
+  (make-icaps-tr-experiment-set "offline-hfs" 10000
     [:product
       [:domain [] [[:nav-switch 
 		    [:product
-		     [:heuristic [`nav-switch/make-flat-nav-switch-heuristic]] 
 		     [:hierarchy [`nav-switch/*nav-switch-hierarchy*]]
+;		     [:size [5]]
+;		     [:switches [1]]
+;		     [:run [1]]
 		     [:size     [5 10 20 50 100 200 500]]
 		     [:switches [20]]
 		     [:run      [1 2 3]]
 		     ]]
 		   [:warehouse
 		    [:product
-		     [:heuristic [`warehouse/make-flat-warehouse-heuristic]] 
 		     [:hierarchy [`warehouse/*warehouse-hierarchy-nl-improved*]]
+;		     [:instance-num (vec (range 2))]
 		     [:instance-num (vec (range 23))]
 		    ]]]]
-      [:union  
-         [:product 
-            [:type      [:strips]]
-	    [:algorithm [] [[:a-star-graph [:algorithm-fn [`textbook/a-star-graph-search]]]]]]
-         [:product
-	    [:type      [:flat-hierarchy]]
-            [:graph?    [:full]]
-	    [:recheck-graph? [true]]
-	    [:ref-choice [] [[:first-gap [:choice-fn [`alts/first-gap-choice-fn]]]]]
-	    [:algorithm [] [[:aha-star     [:algorithm-fn ['offline/aha-star-search]]]]]]
-	 [:product
-	    [:type      [:hierarchy]]
-            [:graph?    [:full]]
-	    [:recheck-graph? [true]]
-	    [:ref-choice [] [[:first-gap [:choice-fn [`alts/first-gap-choice-fn]]]]]
-	    [:algorithm [] [[:aha-star     [:algorithm-fn ['offline/aha-star-search]]]
-			    [:ahss         [:algorithm-fn ['offline/ahss-search]]]]]]]]))
+     [:type      [:hierarchy]]
+     [:graph?    [false]]
+     [:cache?    [false]]
+     [:recheck-graph? [false]]
+     [:ref-choice-fn [] [[:first-maximal [:choice-fn [`(alts/make-first-maximal-choice-fn 
+							~''{act 10 move-blocks 9 move-block 8 move-to 7
+							  navigate 6 go 5 nav 4})]]]]]
+     [:algorithm [] [[:hfs        [:algorithm-fn ['offline/hierarchical-forward-search]]]]]]))
 
 
 
