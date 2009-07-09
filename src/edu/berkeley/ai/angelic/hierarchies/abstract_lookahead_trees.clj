@@ -479,6 +479,9 @@
 (defmethod search/node-str ::ALTPlanNode [node] (fancy-node-str node))
 ;  (util/str-join " " (map (comp hla-name :hla) (next (reverse (util/iterate-while :previous (:plan node)))))))
 
+(defmethod search/node-plan ::ALTPlanNode [node]
+  (map :hla (rest (reverse (util/iterate-while :previous (:plan node))))))
+
 (defmethod search/node-first-action ::ALTPlanNode [node]
   (let [first-node (last (butlast (util/iterate-while :previous (:plan node))))
 	first-hla  (:hla first-node)]

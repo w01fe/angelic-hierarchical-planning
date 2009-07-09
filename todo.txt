@@ -7,14 +7,8 @@ Kernel-map type version of graph planning.
 Subgoal caching / plan tying (i.e., cost for X at least cost for Y -
 distance to Y from X).   
 
-Figure out why a-star-graph and flat-hierarchy are performing
-differently on nav-switch !
-
 Hierarchy doesn't allow move(b,c,c), which could be needed to get
 through tall stack.  
-
-Think about pruning between real-time branches -- interaction with
-hierarchical precons ? 
 
 Tiebreaking in AHA* (depht-first) can make huge difference ...
   Investigate difference compared to experiments just run.  (AGAIN,
