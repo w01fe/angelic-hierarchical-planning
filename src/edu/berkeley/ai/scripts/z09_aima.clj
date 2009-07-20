@@ -13,6 +13,11 @@
 	   )
  )
 
+; NOTE: these experiments were run with the default optimistic pruning
+; turned off, to ensure HTN gets no unfair bonus.  
+; This can't be done nicely, and involved commenting something out in 
+; abstract lookaehad tree code.
+
 (def *vac-args*
      [[4 4 [[[0 0] [1 1]]] 
        [] 

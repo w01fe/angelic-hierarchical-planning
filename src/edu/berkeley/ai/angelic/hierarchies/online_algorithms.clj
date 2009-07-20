@@ -1,5 +1,5 @@
 (ns edu.berkeley.ai.angelic.hierarchies.online-algorithms
-  (:use edu.berkeley.ai.angelic edu.berkeley.ai.angelic.hierarchies)
+  (:use clojure.test edu.berkeley.ai.angelic edu.berkeley.ai.angelic.hierarchies)
   (:import [java.util HashMap])
   (:require [edu.berkeley.ai [util :as util] [envs :as envs] [search :as search]]
 	    [edu.berkeley.ai.util.queues :as queues]
@@ -391,14 +391,14 @@
 ;		  (warehouse/make-warehouse-strips-env 4 4 [1 2] false {0 '[b a] 2 '[d] 3 '[c]} nil ['[a b c]]))])
 
 
-(util/deftest hierarchical-algorithms
+(deftest hierarchical-algorithms
    (doseq [[inst-n rew h env] [*ns-inst* *wh-inst*]
 	   cache?      [false true]
 	   graph?      [false true :full]
 	   [sf-n alg strict?] [["aha" aha-star-search true] ["ahss-inf" ahss-search false] ["ahss-=" #(ahss-search % rew) true]]]
-     (util/testing (str inst-n " " cache? " " graph? " " sf-n)
+     (testing (str inst-n " " cache? " " graph? " " sf-n)
 ;       (println inst-n cache? graph? sf-n)
-       (util/is ((if strict? = >=) rew  
+       (is ((if strict? = >=) rew  
 	 (second (envs/check-solution env (alg (alts/alt-node (get-hierarchy h env) cache? graph?)))))))))
 
  )

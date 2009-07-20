@@ -1,5 +1,5 @@
 (ns edu.berkeley.ai.util.hybrid
-  (:use edu.berkeley.ai.util)
+  (:use clojure.test  edu.berkeley.ai.util)
   (:require [edu.berkeley.ai.util [propositions :as props]]))
 
 

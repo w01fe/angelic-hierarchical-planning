@@ -1,5 +1,5 @@
 (ns edu.berkeley.ai.angelic.dnf-valuations
-  (:use [edu.berkeley.ai.angelic :as angelic])
+  (:use clojure.test [edu.berkeley.ai.angelic :as angelic])
   (:import [java.util HashMap])
   (:require [edu.berkeley.ai [util :as util] [envs :as envs]]
             [edu.berkeley.ai.util.propositions :as props]
@@ -242,38 +242,38 @@
       (or (not expect-equal-states?)
 	  (util/same-truth-value? expect-subsumes? (valuation-subsumes? sub1 sub2 nil)))))
 
-(util/deftest dnf-simple-subsumption
-  (util/is (test-simple-subsumption '{{[a 4] :true [b 2] :unknown} 5} '{{[a 4] :true [b 2] :unknown} 4} true true))
-  (util/is (test-simple-subsumption '{{[a 4] :true [b 2] :unknown} 5} '{{[a 4] :true [b 2] :unknown} 5} true true))
-  (util/is (test-simple-subsumption '{{[a 4] :true [b 2] :unknown} 5} '{{[a 4] :true [b 2] :unknown} 6} true false))
-  (util/is (test-simple-subsumption '{{[a 4] :true [b 2] :unknown} 5} '{{[a 4] :true [b 3] :unknown} 5} false false))
-  (util/is (test-simple-subsumption '{{[a 4] :true [b 2] :unknown} 5} '{{[a 4] :true [b 2] :true} 5} false false))
-  (util/is (test-simple-subsumption '{{[a 4] :true} 5, {[a 3] :true} 0} '{{[a 4] :true} 5, {[a 3] :true} 0} true true))
-  (util/is (test-simple-subsumption '{{[a 4] :true} 5, {[a 3] :true} 0} '{{[a 4] :true} 4, {[a 3] :true} -1} true true))
-  (util/is (test-simple-subsumption '{{[a 4] :true} 5, {[a 3] :true} 0} '{{[a 4] :true} 5, {[a 3] :true} -5} true true))
-  (util/is (test-simple-subsumption '{{[a 4] :true} 5, {[a 3] :true} 0} '{{[a 4] :true} 6, {[a 3] :true} -5} true false))
-  (util/is (test-simple-subsumption '{{[a 4] :true} 5, {[a 3] :true} 0} '{{[a 4] :true} 5, {[a 3] :true} 1} true false))
-  (util/is (test-simple-subsumption '{{[a 4] :true} 5, {[a 3] :true} 0} '{{[a 4] :unknown} 5, {[a 3] :true} 1} false false)))
+(deftest dnf-simple-subsumption
+  (is (test-simple-subsumption '{{[a 4] :true [b 2] :unknown} 5} '{{[a 4] :true [b 2] :unknown} 4} true true))
+  (is (test-simple-subsumption '{{[a 4] :true [b 2] :unknown} 5} '{{[a 4] :true [b 2] :unknown} 5} true true))
+  (is (test-simple-subsumption '{{[a 4] :true [b 2] :unknown} 5} '{{[a 4] :true [b 2] :unknown} 6} true false))
+  (is (test-simple-subsumption '{{[a 4] :true [b 2] :unknown} 5} '{{[a 4] :true [b 3] :unknown} 5} false false))
+  (is (test-simple-subsumption '{{[a 4] :true [b 2] :unknown} 5} '{{[a 4] :true [b 2] :true} 5} false false))
+  (is (test-simple-subsumption '{{[a 4] :true} 5, {[a 3] :true} 0} '{{[a 4] :true} 5, {[a 3] :true} 0} true true))
+  (is (test-simple-subsumption '{{[a 4] :true} 5, {[a 3] :true} 0} '{{[a 4] :true} 4, {[a 3] :true} -1} true true))
+  (is (test-simple-subsumption '{{[a 4] :true} 5, {[a 3] :true} 0} '{{[a 4] :true} 5, {[a 3] :true} -5} true true))
+  (is (test-simple-subsumption '{{[a 4] :true} 5, {[a 3] :true} 0} '{{[a 4] :true} 6, {[a 3] :true} -5} true false))
+  (is (test-simple-subsumption '{{[a 4] :true} 5, {[a 3] :true} 0} '{{[a 4] :true} 5, {[a 3] :true} 1} true false))
+  (is (test-simple-subsumption '{{[a 4] :true} 5, {[a 3] :true} 0} '{{[a 4] :unknown} 5, {[a 3] :true} 1} false false)))
 
-(util/deftest dnf-fancy-subsumption
+(deftest dnf-fancy-subsumption
   (let [sub-info {'a *subsumption-preds-gt* 'b *subsumption-preds-lt*}]
-    (util/is (valuation-subsumes? 
+    (is (valuation-subsumes? 
 	      (second (get-valuation-states (make-dnf-valuation ::DNFValuation '{{[a 4] :true [b 1] :unknown} 5}) sub-info))
 	      (second (get-valuation-states (make-dnf-valuation ::DNFValuation '{{[a 3] :unknown [b 3] :true} 2}) sub-info))
 	      sub-info))
-    (util/is (not (valuation-subsumes? 
+    (is (not (valuation-subsumes? 
 	      (second (get-valuation-states (make-dnf-valuation ::DNFValuation '{{[a 4] :true [b 1] :unknown} 2}) sub-info))
 	      (second (get-valuation-states (make-dnf-valuation ::DNFValuation '{{[a 3] :unknown [b 3] :true} 5}) sub-info))
 	      sub-info)))
-    (util/is (not (valuation-subsumes? 
+    (is (not (valuation-subsumes? 
 	      (second (get-valuation-states (make-dnf-valuation ::DNFValuation '{{[a 4] :true [b 5] :unknown} 5}) sub-info))
 	      (second (get-valuation-states (make-dnf-valuation ::DNFValuation '{{[a 3] :unknown [b 3] :true} 2}) sub-info))
 	      sub-info)))
-    (util/is (not (valuation-subsumes? 
+    (is (not (valuation-subsumes? 
 	      (second (get-valuation-states (make-dnf-valuation ::DNFValuation '{{[a 4] :true [b 1] :unknown} 5}) sub-info))
 	      (second (get-valuation-states (make-dnf-valuation ::DNFValuation '{{[a 5] :unknown [b 3] :true} 2}) sub-info))
 	      sub-info)))
-    (util/is (valuation-subsumes? 
+    (is (valuation-subsumes? 
 	      (second (get-valuation-states (make-dnf-valuation ::DNFValuation '{{[c] :true [a 4] :true [b 1] :unknown} 5}) sub-info))
 	      (second (get-valuation-states (make-dnf-valuation ::DNFValuation '{{[c] :true [a 3] :unknown [b 3] :true} 2}) sub-info))
 	      sub-info))

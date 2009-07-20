@@ -1,4 +1,5 @@
 (ns edu.berkeley.ai.domains.warehouse
+ (:use clojure.test )
  (:require [edu.berkeley.ai [util :as util] [envs :as envs]] 
            [edu.berkeley.ai.envs.states :as states]
            [edu.berkeley.ai.domains.strips :as strips]
@@ -292,19 +293,19 @@
 	 env   
 	 (constantly 0)))))))
 
-(util/deftest flat-warehouse
-  (util/testing "tiny instance"
+(deftest flat-warehouse
+  (testing "tiny instance"
     (let [env (make-warehouse-strips-env 2 2 [1 1] false {0 '[a]} nil ['[a table1]])]
       (doseq [graph? [true false]
 	      simplifier [identity strips/constant-predicate-simplify
 			  (comp strips/flatten-strips-instance strips/constant-predicate-simplify)]]
-	(util/is (= '((get-l a table0 x0 x1 y1) (left x1 x0 y1) (turn-r x0 y1) (put-r a table1 x1 x0 y0 y1))
+	(is (= '((get-l a table0 x0 x1 y1) (left x1 x0 y1) (turn-r x0 y1) (put-r a table1 x1 x0 y0 y1))
 		    (get-and-check-sol (simplifier env) graph?))))))
-  (util/testing "bigger instance"
+  (testing "bigger instance"
     (let [env (make-warehouse-strips-env 3 4 [1 2] false {0 '[b a] 2 '[c]} nil ['[a b c]])]
       (doseq [simplifier [strips/constant-predicate-simplify
 			  (comp strips/flatten-strips-instance strips/constant-predicate-simplify)]]
-	(util/is (= 14 
+	(is (= 14 
 		    (count (get-and-check-sol (simplifier env) true))))))))
 
 ;(comment

@@ -1,4 +1,5 @@
 (ns edu.berkeley.ai.domains.nav-2d
+ (:use clojure.test )
  (:require [edu.berkeley.ai [util :as util] [envs :as envs]] 
            [edu.berkeley.ai.envs.states :as states]
            [edu.berkeley.ai.domains.strips :as strips]
@@ -186,9 +187,9 @@
 	  (- 0 (* mind *sqrt2*) resd))))))
   
 
-(util/deftest test-nav-regions
+(deftest test-nav-regions
   (doseq [h [nil [(make-nav-regions-heuristic [10 2])]]]
-    (util/is (= '[dr ur connect right connect right right right dr]
+    (is (= '[dr ur connect right connect right right right dr]
 	 (map :name 
 	   (first 
 	    (edu.berkeley.ai.search.algorithms.textbook/a-star-graph-search 
@@ -338,8 +339,8 @@
   (util/safe-get hla :pessimistic-description))
 
 
-(util/deftest test-nav-regions-hierarchy
-  (util/is (= '[dr ur connect right connect right right right dr]
+(deftest test-nav-regions-hierarchy
+  (is (= '[dr ur connect right connect right right right dr]
        (map :name 
 	   (first 
 	    (edu.berkeley.ai.angelic.hierarchies.offline-algorithms/aha-star-search 
