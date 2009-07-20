@@ -87,32 +87,29 @@
 
 ; (Randomized) DFS.
 
+(defonce *vac* nil)
+
+(defn read-vac-results []
+  (def *vac* 
+       (experiments/experiment-set-results->dataset
+	(experiments/read-experiment-set-results (make-vac-experiment-set)))))
+
+(defn make-vac-csv []
+  (util/spit "/Users/jawolfe/Desktop/vac.csv"
+    (util/str-join "\n"
+      (map #(util/str-join "," %)
+	(cons ["rooms" "type" "search-strategy" "prune" "commit" "choice" 
+	       "timeout?" "memout?" "plans" "refs" "ms"]
+	  (for [{:keys [instance-num algorithm type ref-choice prune commit 
+			timeout? memout? plan-count ref-count ms]} *vac*]
+	    (concat [(inc instance-num) type algorithm]
+		    (if (= type :strips) ["", "", ""] [prune commit ref-choice])
+		    [timeout? memout?]
+		    (when-not (or timeout? memout?)
+		      [plan-count ref-count ms]))))))))
+	     
+
 (comment
-(defonce *offline* nil)
-
-(defn read-offline-results []
-    (let [ww-order [6 7 0 8 1 21 2 5 22 11 3 9 12 4 13 14 15 10 17 16 18]] ;20 19 ]]  
-      (def *offline*
-	 (doall 
-	 (map (fn [m] (into {} (assoc (if (= :warehouse (:domain m)) 
-			       (update-in m [:instance-num] #(util/position % ww-order)) 
-			       m)
-			:printed nil :output [nil (second (:output m))]))) 
-	      (experiments/experiment-set-results->dataset 
-	       (experiments/read-experiment-set-results (make-offline-experiment-set) 
-							*run-folder*)))))))
-; 136 and 148 ran out of memory hard.  
-; These are ww instances 3 and 16, with a-star-graph-search.  
-
-; Hierarchy ran out of memory (soft) on instance 20.  
-
-; All three runs of flat-hierarchy ran out of time (soft) on 500x500 problems.
- 
-; Flat hierarchy ran out of memory (soft) on instance 21 of WW, and 1 200-run of NS.
-
-; flat and flat-hierarchy show discrepancy only in plan count, since flat-heirarchy 
-; actually produces the primitive plans while flat leaves them implicit.
-
 (defn make-offline-charts 
   ([] (make-offline-charts "/Users/jawolfe/Desktop/new-charts/"))
   ([dir] 

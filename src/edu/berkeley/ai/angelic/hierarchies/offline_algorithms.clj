@@ -122,6 +122,7 @@
 			   (alts/decompose-plan next))))
 		   (do (doseq [ref (util/shuffle (vec (search/immediate-refinements next)))]
 			 (queues/pq-add! pq (assoc ref :depth (inc (:depth next))) 0))
+
 		       (recur)))))))))
     depths))))
  ;; TODO: remove shuffle?!

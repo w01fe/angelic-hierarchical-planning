@@ -277,6 +277,9 @@
 
 ; Use geometric mean to preserve ratios.
 
+; (doseq [m (filter #(= (map % [:size :type]) [100 :hierarchy]) *online*)] (println (:max-refs m) (:ref-count m) (/ (:ms m) (:ref-count m))))
+; ... shows runtime per ref is comparable for flat and hierarchical on both domains.
+
 (defn make-online-charts 
   ([] (make-online-charts "/Users/jawolfe/Desktop/new-charts/"))
   ([dir] 
@@ -366,11 +369,22 @@
 							  navigate 6 go 5 nav 4})]]]]]
      [:algorithm [] [[:hfs        [:algorithm-fn ['offline/hierarchical-forward-search]]]]]]))
 
+(defonce *offline-hfs* nil)
+
+(defn read-offline-hfs-results []
+    (let [ww-order [6 7 0 8 1 21 2 5 22 11 3 9 12 4 13 14 15 10 17 16 18]] ;20 19 ]]  
+      (def *offline-hfs*
+	 (doall 
+	 (map (fn [m] (into {} (assoc (if (= :warehouse (:domain m)) 
+			       (update-in m [:instance-num] #(util/position % ww-order)) 
+			       m)
+			:printed nil :output [nil (second (:output m))]))) 
+	      (experiments/experiment-set-results->dataset 
+	       (experiments/read-experiment-set-results (make-offline-hfs-experiment-set))))))))
 
 
-
-
-
+; HFS can only solve Nav-switch problems up to size 20, 5 easiest warehouse world problems (0-4) without running out of memory.
+; 
 
 
 
