@@ -1,6 +1,6 @@
 (ns edu.berkeley.ai.util.graphs
   (:import [java.util HashSet HashMap LinkedList])
-  (:use edu.berkeley.ai.util edu.berkeley.ai.util.queues edu.berkeley.ai.util.disjoint-sets)
+  (:use clojure.test  edu.berkeley.ai.util edu.berkeley.ai.util.queues edu.berkeley.ai.util.disjoint-sets)
   )
 
 ;;;; Incremental directed acyclic graphs for cycle detection (only).

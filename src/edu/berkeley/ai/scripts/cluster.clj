@@ -10,7 +10,7 @@
       "-q" "batch"
       "-l" "nodes=1:ppn=1:cpu3000"
       "-l" "mem=1200m"
-      "-l" "walltime=6:00:00"])
+      "-l" "walltime=24:00:00"])
 
 (defn run-files-subprocesses [files]
   (doseq [f files]

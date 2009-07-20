@@ -16,6 +16,9 @@
         (nth coll (/ (dec n) 2))
       (/ (+ (nth coll (/ n 2)) (nth coll (dec (/ n 2)))) 2))))
 
+(defn geometric-mean [& coll]
+  (Math/pow (double (reduce * coll)) (/ 1.0 (count coll)))) 
+
 (defn abs [x] (if (neg? x) (- x) x))
 
 (defn indicator [x] (if x 1 0))

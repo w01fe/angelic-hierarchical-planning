@@ -1,5 +1,6 @@
 (ns edu.berkeley.ai.domains.road-trip
 ; (:import [java.util HashMap HashSet])
+ (:use clojure.test )
  (:require [edu.berkeley.ai [util :as util] [envs :as envs]] 
            [edu.berkeley.ai.envs.states :as states]
            [edu.berkeley.ai.domains.hybrid-strips :as hs])
@@ -55,9 +56,9 @@
 
 
 (comment 
-(util/deftest simple-hybrid-test
+(deftest simple-hybrid-test
   (let [env (make-hybrid-blocks-strips-env 7 7 [2 2] '[[a 1 1 2 2] [b 4 1 2 2]] '[[b [[a]]]])]
-    (util/is 
+    (is 
      (envs/satisfies-condition?  
        (envs/safe-apply-actions (envs/get-initial-state env)
 	  [(hs/get-hs-action env 'get '{?b a ?c table})

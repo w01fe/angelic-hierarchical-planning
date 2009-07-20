@@ -1,5 +1,5 @@
 (ns edu.berkeley.ai.angelic.hierarchies.offline-algorithms
-  (:use edu.berkeley.ai.angelic.hierarchies)
+  (:use clojure.test edu.berkeley.ai.angelic.hierarchies)
   (:require [edu.berkeley.ai [util :as util] [search :as search]]
 	    [edu.berkeley.ai.util.queues :as queues]
 	    [edu.berkeley.ai.angelic.hierarchies.abstract-lookahead-trees :as alts])
@@ -14,6 +14,126 @@
   [(apply concat nil (map first sols))
    (reduce + 0 (map second sols))])
 
+(defn make-singleton-pq [n]
+  (let [pq (queues/make-queue-pq)]
+    (queues/pq-add! pq (assoc n :depth 0) 0)
+    pq))
+
+(defn hierarchical-forward-search "Node ref fn and graph must be set properly to mimic ICAPS07 behavior"
+  ([node] 
+     (assert (= false (:graph? (:alt node))))
+     (assert (= false (:cache? (:alt node))))
+     (hierarchical-forward-search (make-singleton-pq node) [] [] 0 #{}))
+  ([pq rest-nodes-with-blacksets prims rew blackset]
+     (util/timeout)
+     (when-not (queues/pq-empty? pq)
+       (let [next          (queues/pq-remove-min! pq)
+	     succeeds-opt? (> (search/upper-reward-bound next) Double/NEGATIVE_INFINITY)]
+;	 (print (queues/pq-size pq) " ")
+;	 	 (println "consider " (map hla-name (search/node-plan next)))
+	 (if (not succeeds-opt?)
+	     (recur pq rest-nodes-with-blacksets prims rew blackset)
+	   (if-let [[acts acts-rew] (search/extract-a-solution next)]
+	       (if (empty? rest-nodes-with-blacksets)
+		   [(concat prims acts) (+ rew acts-rew)];)
+		 (let [[[next-node next-blackset] & more-nbs] rest-nodes-with-blacksets]
+		   (recur (make-singleton-pq next-node) more-nbs (concat prims acts) (+ rew acts-rew) next-blackset)))
+	     (let [succeeds-pess? (> (search/lower-reward-bound next) Double/NEGATIVE_INFINITY)
+		   key            (util/safe-get next :plan)] ;; TODO: specific to ALTs)]
+	       (if (and succeeds-pess? (not (contains? blackset key)))
+		   (let [[first-part & rest-parts] (alts/decompose-plan next)]
+;		     (println "decompose! " (map hla-name (search/node-plan next)))
+		     (recur (make-singleton-pq first-part)
+			    (concat 
+			     (map #(vector % (conj blackset key (util/safe-get % :plan))) rest-parts)
+			     rest-nodes-with-blacksets)
+			    prims rew (conj blackset key (util/safe-get first-part :plan))))
+		 (do (doseq [ref (search/immediate-refinements next)]
+		       (queues/pq-add! pq (assoc ref :depth (inc (:depth next))) 0))
+		     (recur pq rest-nodes-with-blacksets prims rew blackset))))))))))
+
+
+(defn plan-max-level [node hla-map]
+  (reduce max (map #(if (hla-primitive? %) 0 
+			(util/lazy-get hla-map (first (hla-name %)) 
+				       (do (println "Warning: unknown action " (first (hla-name %))) 10000000))) 
+		   (search/node-plan node))))
+
+
+(defn new-hierarchical-forward-search 
+  "New version of HFS that only commits when an HLA has been refined to a lower level.  This eliminates the 
+   need for blacksets, and ensures that progress is made when a commitment happens.  Only commits when
+   hla-map is non-nil."
+  ([node prune? hla-map] 
+;     (assert (= false (:graph? (:alt node))))
+;     (assert (= false (:cache? (:alt node))))
+     (util/timeout)
+;     (println "starting " (map hla-name (search/node-plan node)))
+     (let [node-level (when hla-map (plan-max-level node hla-map))
+	   pq (queues/make-queue-pq)]
+       (queues/pq-add! pq node 0)
+       (loop []
+	 (when-not (queues/pq-empty? pq)
+	   (let [next          (queues/pq-remove-min! pq)]
+;	 (println "consider " (map hla-name (search/node-plan next)))
+	     (if (and prune? (not (> (search/upper-reward-bound next) Double/NEGATIVE_INFINITY)))
+	         (recur)
+	       (or (search/extract-a-solution next)
+		   (when (and hla-map (< (plan-max-level next hla-map) node-level)
+			      (> (search/lower-reward-bound next) Double/NEGATIVE_INFINITY))
+;		     (println "commit " (map hla-name (search/node-plan next)))
+		     (concat-solutions 
+		      (map #(new-hierarchical-forward-search % prune? hla-map)
+			   (alts/decompose-plan next))))
+		   (do (doseq [ref (search/immediate-refinements next)]
+			 (queues/pq-add! pq ref 0))
+		       (recur))))))))))
+
+(defn new-hierarchical-forward-search-id 
+  "New version of HFS that only commits when an HLA has been refined to a lower level.  This eliminates the 
+   need for blacksets, and ensures that progress is made when a commitment happens.  Only commits when
+   hla-map is non-nil.
+   ASSUMES problem is solvable; if not, will never return."
+  ([node prune? hla-map]
+     (new-hierarchical-forward-search-id node prune? hla-map (iterate inc 0)))
+  ([node prune? hla-map depths] 
+;     (assert (= false (:graph? (:alt node))))
+;     (assert (= false (:cache? (:alt node))))
+     (util/timeout)
+     (let [node-level (when hla-map (plan-max-level node hla-map))]
+   (some 
+    (fn [d]
+ ;    (print d " ")
+     (let [pq (queues/make-stack-pq)]
+       (queues/pq-add! pq (assoc node :depth 0) 0)
+       (loop []
+	 (when-not (queues/pq-empty? pq)
+	   (let [next          (queues/pq-remove-min! pq)]
+;	 (println "consider " (map hla-name (search/node-plan next)))
+	     (if (or (> (:depth next) d)
+		     (and prune? (not (> (search/upper-reward-bound next) Double/NEGATIVE_INFINITY))))
+	         (recur)
+	       (or (search/extract-a-solution next)
+		   (when (and hla-map (< (plan-max-level next hla-map) node-level)
+			      (> (search/lower-reward-bound next) Double/NEGATIVE_INFINITY))
+;		     (println "commit " (map hla-name (search/node-plan next)))
+		     (concat-solutions 
+		      (map #(new-hierarchical-forward-search-id % prune? hla-map depths)
+			   (alts/decompose-plan next))))
+		   (do (doseq [ref (util/shuffle (vec (search/immediate-refinements next)))]
+			 (queues/pq-add! pq (assoc ref :depth (inc (:depth next))) 0))
+
+		       (recur)))))))))
+    depths))))
+ ;; TODO: remove shuffle?!
+
+; (let [h (get-hierarchy *warehouse-hierarchy* (constant-predicate-simplify (make-warehouse-strips-env 3 4 [1 2] false {0 '[b a] 2 '[c]} nil ['[a b c]]))) rlm {(first (hla-name (first h))) 11 'act 10 'move-blocks 9 'move-block 8 'move-to 7 'navigate 6 'nav 5}   n (alt-node h {:ref-choice-fn (make-first-maximal-choice-fn rlm) :cache? false :graph? false})]   (time-limit (map :name (first (new-hierarchical-forward-search n rlm))) 30))
+
+; (def *e* (make-random-nav-switch-strips-env 5 2))
+; (let [h (get-hierarchy *nav-switch-hierarchy* (constant-predicate-simplify *e*)) rlm {(first (hla-name (first h))) 11 'act 10 'go 6 'nav 5}   n (alt-node h {:ref-choice-fn (make-first-maximal-choice-fn rlm) :cache? false :graph? false})]   (time-limit (map :name (first (hierarchical-forward-search n))) 30))
+
+(comment 
+ ; old, nicer but stack-blowing version
 (defn hierarchical-forward-search "Node ref fn and graph must be set properly to mimic ICAPS07 behavior"
   ([node] (hierarchical-forward-search node #{}))
   ([node blackset]
@@ -38,10 +158,12 @@
 		      (do (doseq [ref (search/immediate-refinements next)]
 			    (queues/pq-add! pq (assoc ref :depth (inc (:depth next))) 0))
 			  (recur)))))))))))
-    (iterate inc 0))))
+    (iterate inc 0)))))
    
 (comment 
   (time-limit (map :name (first (hierarchical-forward-search (alt-node (get-hierarchy *warehouse-hierarchy* (constant-predicate-simplify (make-warehouse-strips-env 3 4 [1 2] false {0 '[b a] 2 '[c]} nil ['[a b c]]))) {:ref-choice-fn (make-first-maximal-choice-fn '{act 10 move-blocks 9 move-block 8 move-to 7 navigate 6 nav 5}) :cache? false :graph? false})))) 30)
+
+  (time-limit (map :name (first (hierarchical-forward-search (alt-node (get-hierarchy *nav-switch-hierarchy* (constant-predicate-simplify (make-random-nav-switch-strips-env 4 2))) {:ref-choice-fn (make-first-maximal-choice-fn '{act 10 go 7 nav 5}) :cache? false :graph? false})))) 10)
   )
 
 
@@ -274,14 +396,14 @@
 ;		  (warehouse/make-warehouse-strips-env 4 4 [1 2] false {0 '[b a] 2 '[d] 3 '[c]} nil ['[a b c]]))])
 
 
-(util/deftest hierarchical-algorithms
+(deftest hierarchical-algorithms
    (doseq [[inst-n rew h env] [*ns-inst* *wh-inst*]
 	   cache?      [false true]
 	   graph?      [false true]
 	   [sf-n alg strict?] [["aha" aha-star-search true] ["ahss-inf" ahss-search false] ["ahss-=" #(ahss-search % rew) true]]]
-     (util/testing (str inst-n " " cache? " " graph? " " sf-n)
+     (testing (str inst-n " " cache? " " graph? " " sf-n)
 ;       (println inst-n cache? graph? sf-n)
-       (util/is ((if strict? = >=) rew  
+       (is ((if strict? = >=) rew  
 	 (second (envs/check-solution env (alg (alts/alt-node (get-hierarchy h env) {:cache? cache? :graph? graph?})))))))))
 
 

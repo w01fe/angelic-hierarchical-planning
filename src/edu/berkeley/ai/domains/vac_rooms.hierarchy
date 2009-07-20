@@ -1,0 +1,110 @@
+;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
+;;; vac-rooms
+;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
+
+(define (hierarchy vac-rooms)
+  (:type :strips-hierarchy)
+  (:hla act
+       :parameters (?cx - xc ?cy - yc ?r - room)
+       :precondition (and (atx ?cx) (aty ?cy) (in-room ?r))
+       :refinement   (:parameters   (?fx - xc ?fy - yc)
+		      :precondition (and (roomr ?r ?fx) (roomb ?r ?fy))
+		      :expansion   ((clean-room ?cx ?cy ?r) (finish-cleaning ?fx ?fy ?r)))
+;       :exact        (:ncstrips (:effect (and (forall (?x - xc ?y - yc ?or - room)
+;						      (and (roomx ?or ?x) (roomy ?or ?y))
+;						      (clean ?x ?y))
+;					      (not (atx ?cx)) (not (aty ?cy)) (not (in-room ?r)))
+;				 :possible-effect
+;				         (and (forall (?x - xc ?y - yc ?or - room)
+;						      (and (roomr ?or ?x) (roomb ?or ?y))
+;						      (and (in-room ?or) (atx ?x) (aty ?y))))
+;				 :cost-expr 1))
+; Doesn't work - pessimistic is wrong.				      
+       :optimistic   (:opt 0)
+       :pessimistic  (:pess)
+       )
+  
+
+  (:hla finish-cleaning
+       :parameters (?cx - xc ?cy - yc ?r - room)
+       :precondition (and (atx ?cx) (aty ?cy) (in-room ?r))
+       :refinement   (:expansion ())
+       :refinement   (:parameters   (?nr - room ?x1 - xc ?y1 - yc ?x2 - xc ?y2 - yc ?fx - xc ?fy - yc)
+		      :precondition (and (roomr ?nr ?fx) (roomb ?nr ?fy) (hall ?r ?x1 ?y1 ?nr ?x2 ?y2))
+		      :expansion   ((nav ?cx ?cy ?x1 ?y1 ?r) (tunnel ?x1 ?y1 ?r ?x2 ?y2 ?nr) 
+				    (clean-room ?x2 ?y2 ?nr) (finish-cleaning ?fx ?fy ?nr)))
+       :optimistic   (:opt 0)
+       :pessimistic  (:pess)
+       )
+   
+
+  (:hla clean-room
+	:parameters (?cx - xc ?cy - yc ?r - room)
+        :precondition (and (atx ?cx) (aty ?cy) (in-room ?r))
+	:refinement (:parameters   (?lx - xc ?rx - xc ?ty - yc ?by - yc)
+		     :precondition (and (rooml ?r ?lx) (roomr ?r ?rx) (roomt ?r ?ty) (roomb ?r ?by))
+		     :expansion    ((nav ?cx ?cy ?lx ?ty ?r)
+				    (clean-rows ?ty ?lx ?rx ?by ?r)))
+	:exact      (:ncstrips (:effect (and (forall (?x - xc ?y - yc)
+						     (and (roomx ?r ?x) (roomy ?r ?y))
+						     (clean ?x ?y))
+					     (not (atx ?cx)) (not (aty ?cy))
+					     (forall (?x - xc)
+						     (roomr ?r ?x)
+						     (atx ?x))
+					     (forall (?y - yc)
+						     (roomb ?r ?y)
+						     (aty ?y)))
+				:cost-expr 1)))
+
+  (:hla clean-rows
+	:parameters (?cy - yc ?lx - xc ?rx - xc ?by - yc ?r - room)
+        :precondition (and (atx ?lx) (aty ?cy) (in-room ?r))
+	:refinement (:precondition (yc= ?cy ?by)
+		     :expansion    ((clean-row ?lx ?cy ?rx ?r)))
+	:refinement (:parameters   (?ny - yc)
+		     :precondition (and (not (yc= ?cy ?by)) (above ?cy ?ny))
+		     :expansion     ((clean-row ?lx ?cy ?rx ?r) (nav-left ?rx ?cy ?lx ?r) (down ?r ?cy ?ny) 
+				    (clean-rows ?ny ?lx ?rx ?by ?r)))
+	:exact      (:ncstrips (:effect (and (forall (?x - xc ?y - yc)
+						     (and (roomx ?r ?x) (roomy ?r ?y))
+						     (clean ?x ?y))
+					     (not (atx ?lx)) (not (aty ?cy))
+					     (atx ?rx) (aty ?by))
+				:cost-expr 1)))
+
+  (:hla clean-row
+	:parameters (?cx - xc ?cy - yc ?rx - xc ?r - room)
+        :precondition (and (atx ?cx) (aty ?cy) (in-room ?r))
+	:refinement (:precondition (xc= ?cx ?rx)
+		     :expansion    ((suck ?cx ?cy)))
+	:refinement (:parameters   (?nx - xc)
+		     :expansion    ((suck ?cx ?cy) (right ?r ?cx ?nx) (clean-row ?nx ?cy ?rx ?r))) 
+	:exact      (:ncstrips (:effect (and (forall (?x - xc)
+						     (and (roomx ?r ?x))
+						     (clean ?x ?cy))
+					     (not (atx ?cx)) (atx ?rx))
+				:cost-expr 1)))
+
+  (:hla nav-left
+	:parameters (?cx - xc ?cy - yc ?lx - xc ?r - room)
+        :precondition (and (atx ?cx) (aty ?cy) (in-room ?r))
+	:refinement (:precondition (xc= ?cx ?lx)
+		     :expansion    ())
+	:refinement (:parameters   (?nx - xc)
+		     :expansion    ((left ?r ?cx ?nx) (nav-left ?nx ?cy ?lx ?r))) 
+	:exact      (:ncstrips (:effect (and (not (atx ?cx)) (atx ?lx))
+				:cost-expr 1)))
+
+       
+  (:hla nav       
+       :parameters (?cx - xc ?cy - yc ?dx - xc ?dy - yc ?r - room)
+       :refinement (:precondition (and (atx ?dx) (aty ?dy)) :expansion ())
+       :refinement (:parameters (:? - xc) :expansion ((left  ?r ?cx :?) (nav :? ?cy ?dx ?dy ?r)))
+       :refinement (:parameters (:? - yc) :expansion ((up    ?r ?cy :?) (nav ?cx :? ?dx ?dy ?r)))
+       :refinement (:parameters (:? - yc) :expansion ((down  ?r ?cy :?) (nav ?cx :? ?dx ?dy ?r)))
+       :refinement (:parameters (:? - xc) :expansion ((right ?r ?cx :?) (nav :? ?cy ?dx ?dy ?r)))
+       :exact        (:ncstrips (:effect (and (atx ?dx) (aty ?dy) (not (atx ?cx)) (not (aty ?cy))) 
+                                 :cost-expr 1 #_ (+ (util/symbol-abs-diff ?dx ?cx 1)
+				                    (util/symbol-abs-diff ?dy ?cy 1))))))
+

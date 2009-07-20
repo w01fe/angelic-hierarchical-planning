@@ -1,5 +1,5 @@
 (ns edu.berkeley.ai.search.smart-csps
- (:refer-clojure)
+ (:use clojure.test )
  (:import [java.util HashMap Map ArrayList])
  (:require [edu.berkeley.ai.util :as util] 
 	   [edu.berkeley.ai.util.propositions :as props]
@@ -332,8 +332,8 @@
 (require '[edu.berkeley.ai.angelic :as angelic])
 (require '[edu.berkeley.ai.angelic.dnf-valuations :as dv] )
 
-(util/deftest test-smart-csp
-  (util/is 
+(deftest test-smart-csp
+  (is 
    (= (set 
        (get-smart-csp-solutions 
 	(create-smart-csp #{['boo :a :b]} #{['bap :a :b]} 
@@ -343,7 +343,7 @@
 	{:c 5}
 	[[{} {}]]))
       #{{:a 1 :b 4} {:a 2 :b 3}}))
-  (util/is
+  (is
    (= (set 
        (get-smart-csp-solutions 
 	(create-smart-csp #{['boo] ['bee :a]} #{['bap]} 
@@ -358,7 +358,7 @@
 	    '{[bap] :true [bee 2] :true [bee 3] :true [bee 4] :true} 0
 	    '{[boo] :true [bap] :unknown [bee 5] :unknown} 0}))))
       #{{:a 1} {:a 5}}))
-  (util/is
+  (is
    (= (set 
        (get-smart-csp-solutions 
 	(create-smart-csp #{['boo] ['bee :a]} #{['bap]} 
@@ -374,7 +374,7 @@
 	    '{[boo] :true [bap] :unknown [bee 5] :unknown} 0}
 	  ))))
       #{{:a 1 :b 7} {:a 5 :b 7} {:a 1 :b 8} {:a 5 :b 8}}))
-  (util/is
+  (is
    (= (set 
        (get-smart-csp-solutions 
 	(create-smart-csp #{['boo :a :b] ['bee :a :d] ['box :d]} #{['bap :a :b] ['biz :a :b] ['bat :a :b :d]} 

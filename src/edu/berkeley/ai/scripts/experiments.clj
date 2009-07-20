@@ -182,12 +182,12 @@
   ([es run-dir]
      (let [new-dir (str run-dir (:name (first es)))
 	   out-dir (str new-dir "/out")]
-       (doall
+;       (doall
 	(for [i (range (count es))
 	      :let [file-name (str out-dir "/" i ".txt")]
 	      :when (if (.exists (java.io.File. file-name)) true 
 			(println "Warning:" file-name "missing"))]
-	  (util/read-file file-name))))))
+	  (util/read-file file-name)))));)
 
 
 (defn experiment-result->map [er]

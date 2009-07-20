@@ -1,5 +1,5 @@
 (ns edu.berkeley.ai.angelic.hierarchies.abstract-lookahead-trees
-  (:use edu.berkeley.ai.angelic edu.berkeley.ai.angelic.hierarchies)
+  (:use clojure.test edu.berkeley.ai.angelic edu.berkeley.ai.angelic.hierarchies)
   (:import [java.util HashMap Map$Entry HashSet])
   (:require [edu.berkeley.ai [util :as util] [envs :as envs] [search :as search]]
 	    [edu.berkeley.ai.util.graphs :as graphs]))
@@ -50,7 +50,7 @@
 (defn make-alt-plan-node [class alt name plan depth]
   (let [final-ref (:was-final? ^plan)]
     (when (util/sref-get final-ref)
-      (println "Warning: duplicate plan ... " (search/node-str {:class ::ALTPlanNode :plan plan}))
+      (util/print-debug 2 "Warning: duplicate plan ... " (search/node-str {:class ::ALTPlanNode :plan plan}))
     #_  (throw (Exception.))) 
     (util/sref-set! final-ref true))
   (struct alt-plan-node class alt name plan depth))
@@ -479,6 +479,9 @@
 (defmethod search/node-str ::ALTPlanNode [node] (fancy-node-str node))
 ;  (util/str-join " " (map (comp hla-name :hla) (next (reverse (util/iterate-while :previous (:plan node)))))))
 
+(defmethod search/node-plan ::ALTPlanNode [node]
+  (map :hla (rest (reverse (util/iterate-while :previous (:plan node))))))
+
 (defmethod search/node-first-action ::ALTPlanNode [node]
   (let [first-node (last (butlast (util/iterate-while :previous (:plan node))))
 	first-hla  (:hla first-node)]
@@ -632,7 +635,7 @@
   (doseq [cache? [true false]
 	  graph? [true false]]
     ;(println cache? graph?)
-    (util/is (contains? sol 
+    (is (contains? sol 
       (map :name
          (first
 	  (envs/check-solution (hla-environment (first initial-plan))
@@ -661,19 +664,19 @@
 		     strips/constant-predicate-simplify
 		     (comp strips/flatten-strips-instance strips/constant-predicate-simplify)])
 
-(util/deftest alt-nav-switch
-   (util/testing "flat hierarchy, non-strips"
+(deftest alt-nav-switch
+   (testing "flat hierarchy, non-strips"
      (get-and-check-sol *flat-ns-sol* (get-flat-hierarchy *flat-ns*))
      (get-and-check-sol *flat-ns-sol* (get-flat-hierarchy *flat-ns* *flat-ns-heur*)))
-   (util/testing "flat hierarchy, strips"
+   (testing "flat hierarchy, strips"
      (get-and-check-sol *strips-ns-sol* (get-flat-hierarchy *strips-ns* *strips-ns-heur*))
      (doseq [simplifier *simplifiers*]
        (get-and-check-sol *strips-ns-sol* (get-flat-hierarchy (simplifier *strips-ns*)))))
-   (util/testing "flat-strips hierarchy"
+   (testing "flat-strips hierarchy"
      (get-and-check-sol *strips-ns-sol* (strips-hierarchies/get-flat-strips-hierarchy *strips-ns* *strips-ns-heur*))
      (doseq [simplifier (butlast *simplifiers*)]
        (get-and-check-sol *strips-ns-sol* (strips-hierarchies/get-flat-strips-hierarchy (simplifier *strips-ns*)))))
-   (util/testing "Ordinary strips hierarchy"
+   (testing "Ordinary strips hierarchy"
      (doseq [simplifier (butlast *simplifiers*)]
     ;   (println simplifier)
        (get-and-check-sol *strips-ns-sol* (get-hierarchy nav-switch/*nav-switch-hierarchy* (simplifier *strips-ns*))))))		
@@ -688,8 +691,8 @@
 
 
 
-(util/deftest alt-down-warehouse
- (util/testing "flat-strips hierarchy"
+(deftest alt-down-warehouse
+ (testing "flat-strips hierarchy"
    (doseq [simplifier [(second *simplifiers*)]
 	   maker [strips-hierarchies/get-flat-strips-hierarchy 
 		  #(get-hierarchy warehouse/*warehouse-hierarchy-unguided* %)]]

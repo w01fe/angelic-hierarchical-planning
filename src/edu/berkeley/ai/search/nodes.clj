@@ -63,6 +63,9 @@
 (defmulti #^{:doc "Length of plan at node"} node-plan-length :class)
 (defmethod node-plan-length :Node [node] (throw (UnsupportedOperationException.)))
 
+(defmulti #^{:doc "plan at node"} node-plan :class)
+(defmethod node-plan :Node [node] (throw (UnsupportedOperationException.)))
+
 (defmulti #^{:doc "First primitive action at node"} node-first-action :class)
 (defmethod node-first-action :Node [node] (throw (UnsupportedOperationException.)))
 
