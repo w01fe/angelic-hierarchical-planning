@@ -1,0 +1,12 @@
+<launch>
+
+  <include file="$(find gazebo)/launch/simple_world.launch"/>
+  <include file="$(find pr2_gazebo)/pr2.launch"/>
+
+  <!-- load map -->
+  <node pkg="map_server" type="map_server" args="$(find gazebo_robot_description)/Media/materials/textures/map3.png 0.1" respawn="true" machine="three" />
+
+  <include file="$(find 2dnav_gazebo)/2dnav-stack-fake_localization.launch"/>
+
+</launch>
+

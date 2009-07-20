@@ -1,0 +1,14 @@
+<package>
+  <description brief="Angelic hierarchical planning code">Angelic hierarchical planning code.</description>
+  <author>Jason Wolfe (jawolfe@willowgarage.com)</author>
+  <license>BSD</license>
+  <review status="experimental" notes=""/>
+  <depend package="rosjava"/>
+  <depend package="rosclj"/>
+  <depend package="tf_node"/>
+  <depend package="tabletop_manipulation"/>
+  <depend package="ompl_planning"/>
+  <depend package="2dnav_pr2"/>
+  <depend package="move_base"/>
+  <url>http://pr.willowgarage.com/wiki/angelic_planning</url>
+</package>
