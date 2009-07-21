@@ -38,7 +38,7 @@
 
 ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;; Environment ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
 
-(defstruct robot-env :type :robot :world)
+(defstruct robot-env  :type :robot :world)
 
 (defn make-robot-env [robot world]
   (struct robot-env ::RobotEnv robot world))
@@ -85,7 +85,8 @@
 
 (defmethod robot-hla-refinements ::RobotHLA [nh a env]
   (assert (not (robot-hla-discrete-refinements? a)))
-  (repeatedly #(sample-robot-hla-refinement nh a env))) ; default implementation
+  (filter identity
+   (repeatedly #(sample-robot-hla-refinement nh a env)))) ; default implementation
 
 (defmethod sample-robot-hla-refinement ::RobotHLA [nh a env]
   (assert (robot-hla-discrete-refinements? a))
@@ -99,6 +100,16 @@
   (if (robot-action-primitive? a) a
       (when-let [ref (sample-robot-hla-refinement nh a env)]
 	(sample-robot-action-primitive-refinement nh ref env))))
+
+(defn robot-action-primitive-refinements [nh a env max-samples]
+  (if (robot-action-primitive? a) 
+      [a]
+    (mapcat #(robot-action-primitive-refinements nh % env max-samples)
+	    (if (robot-hla-discrete-refinements? a)
+	        (robot-hla-refinements nh a)
+	      (filter identity
+		(take max-samples 
+		  (repeatedly #(sample-robot-hla-refinement nh a env))))))))
 
 ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;; Action seqs ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
 
@@ -116,6 +127,10 @@
 	  (if (every? robot-action-primitive? actions) ::RobotPrimitiveSeq ::RobotHLASeq) 
 	  actions))
 
+(defmulti get-action-seq :type)
+(defmethod get-action-seq ::RobotAction [a] [a])
+(defmethod get-action-seq ::RobotActionSeq [a] (:actions a))
+
 (defmethod robot-primitive-result ::RobotPrimitiveSeq [nh action env]
   (loop [actions (:actions action) env env rew 0]
     (if (empty? actions) [env rew]
@@ -126,9 +141,29 @@
   (doseq [action (:actions action)]
     (execute-robot-primitive nh action)))
 
-;;; TODO: finish
 
-(defmethod robot-hla-discrete-refinements? ::RobotHLASeq [a] false)
+
+(defmethod robot-hla-discrete-refinements? ::RobotHLASeq [a]
+  (robot-hla-discrete-refinements?
+   (first (find #(not (robot-action-primitive? %)) (:actions a)))))
+
+(defmethod robot-hla-refinements ::RobotHLASeq [nh a env]
+  (loop [pre-actions [] env env post-actions (:actions a)]
+    (assert (not (empty? post-actions)))
+    (if (robot-action-primitive? (first post-actions))
+        (recur (conj pre-actions (first post-actions))
+	       (robot-primitive-result nh (first post-actions) env)
+	       (next post-actions))
+      (if (not (robot-hla-discrete-refinements? (first post-actions)))
+	  (filter identity
+	    (repeatedly #(sample-robot-hla-refinement nh a env)))
+	(for [ref (robot-hla-refinements nh (first post-actions) env)]
+	  (make-robot-action-seq
+	   (concat 
+	    pre-actions 
+	    (get-action-seq ref)
+	    (next post-actions))))))))
+
 
 (defmethod sample-robot-hla-refinement ::RobotHLASeq [nh a env]
   (loop [pre-actions [] env env post-actions (:actions a)]
@@ -137,26 +172,27 @@
         (recur (conj pre-actions (first post-actions))
 	       (robot-primitive-result nh (first post-actions) env)
 	       (next post-actions))
-      (make-robot-action-seq 
-       (concat 
-	pre-actions 
-	(sample-robot-hla-refinement nh (first post-actions) env) 
-	(next post-actions))))))
+      (when-let [ref (sample-robot-hla-refinement nh (first post-actions) env)]
+	(make-robot-action-seq 
+	 (concat 
+	  pre-actions 
+	  (get-action-seq ref))
+	 (next post-actions))))))
 
-(defmethod sample-robot-action-primitive-refinement ::RobotHLASeq [nh a env]
-  (loop [pre-actions [] env env post-actions (:actions a)]
-    (cond (empty? post-actions) 
-            pre-actions
-	  (robot-action-primitive? (first post-actions))
-	    (recur (conj pre-actions (first post-actions))
-		   (robot-primitive-result nh (first post-actions) env)
-		   (next post-actions))
-	  :else 
-	    (let [next-ref (sample-robot-action-primitive-refinement nh (first post-actions) env)]
-	      (when next-ref
-		(recur pre-actions env 
-		       (concat (if (isa? ::RobotActionSeq next-ref) (:actions next-ref) [next-ref])
-			       (next post-actions))))))))
+;(defmethod sample-robot-action-primitive-refinement ::RobotHLASeq [nh a env]
+;  (loop [pre-actions [] env env post-actions (:actions a)]
+;    (cond (empty? post-actions) 
+;            pre-actions
+;	  (robot-action-primitive? (first post-actions))
+;	    (recur (conj pre-actions (first post-actions))
+;		   (robot-primitive-result nh (first post-actions) env)
+;		   (next post-actions))
+;	  :else 
+;	    (let [next-ref (sample-robot-action-primitive-refinement nh (first post-actions) env)]
+;	      (when next-ref
+;		(recur pre-actions env 
+;		       (concat (get-action-seq next-ref)
+;			       (next post-actions))))))))
 		   
 
 
@@ -218,7 +254,7 @@
   (let [r?  (isa? (:type (:goal action)) :ros.robot/Right)
 	sol (plan-arm-motion nh r? (:world env) (:robot env) (:joint-angle-map (:goal action)) nil)
 	times (:times (:path sol))]
-    (describe-motion-plan sol)
+    (print "Result for joint action: ") (describe-motion-plan sol)
     (when (> (count times) 0)
       [(assoc-in env [:robot (if r? :rarm :larm)] (:goal action)) 
        (* *arm-cost-multiplier* (last times))])))
@@ -243,11 +279,13 @@
 (defn make-arm-pose-action [pose-constraint]
   (struct arm-pose-action ::ArmPoseAction pose-constraint))
 
+(defmethod robot-hla-discrete-refinements? ::ArmPoseAction [a] false)
+
 (defmethod sample-robot-hla-refinement ::ArmPoseAction [nh a env]
   (let [r?  (.startsWith #^String (:link_name (:pose-constraint a)) "r")
 	sol (plan-arm-motion nh r? (:world env) (:robot env) nil [(:pose-constraint a)])]
-    (describe-motion-plan sol)
-    (when (and (seq (:states (:path sol))) (not (:approximate sol)))
+    (print "Result for pose action: ") (describe-motion-plan sol)
+    (when (and (seq (:states (:path sol))));  (not (:approximate sol))) ;TODO ??
       (make-arm-joint-action 
        (make-robot-arm-state r? false
 	 (apply hash-map (interleave (:names (:path sol)) (:vals (last (:states (:path sol)))))))))))
@@ -276,9 +314,31 @@
 
 
 
+
+;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;; Search ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;  
+
+; A very dumb search algorithm that just checks all discrete refinements, and 
+; samples at most n refinements for each continuous action.  Returns a primitive
+; plan + reward.
+
+
+(defn simple-search [nh init-plans env goal-pred max-samples]
+  (last 
+   (sort-by second
+    (for [plan (mapcat #(robot-action-primitive-refinements nh % env max-samples)
+		       init-plans)
+	  :let [[result rew] (robot-primitive-result nh plan env)]
+	  :when (goal-pred result)]
+      [plan rew]))))
+      
+  
+
 ; (make-robot-action-seq [(make-base-action (make-robot-base-state 20 20 0)) (make-arm-action *larm-up-state*) (make-torso-action (make-robot-torso-state 0.3)) (make-gripper-action (make-robot-gripper-state true 0.05 nil))])
 ; (:robot (first (robot-primitive-result nh (make-robot-action-seq [(make-base-action (make-robot-base-state 20 20 0)) (make-arm-action *larm-up-state*) (make-torso-action (make-robot-torso-state 0.3)) (make-gripper-action (make-robot-gripper-state true 0.05 nil))]) (make-robot-env (get-current-robot-state nh) (get-initial-world 0.1 0.1 0)))))
 
+; (sample-robot-hla-refinement nh (make-arm-pose-action (encode-pose-constraint true "/torso_lift_link" [0.2 0.6 0.8] [0 0 1] 0)) (make-current-robot-env nh))
+
+; (simple-search nh [(make-arm-pose-action (encode-pose-constraint true "/torso_lift_link" [0.2 0.6 0.8] [0 0 1] 0))] (make-current-robot-env nh) (constantly true) 5)
 
 
 

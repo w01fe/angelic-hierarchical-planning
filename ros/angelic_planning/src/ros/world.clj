@@ -350,8 +350,8 @@
 (def *gazebo-offset* 25.65)
 (defn get-initial-world [d3-res d2-res d2-pad]
   (pre-render-world 
-   {"cup"   {:xyz [(+ *gazebo-offset* 2.35) (+ *gazebo-offset* 0) 0.6875] :rpy [0 0 0] :def (get-cup)}
-    "table" {:xyz [(+ *gazebo-offset* 2.28) (+ *gazebo-offset* -0.21) 0]  :rpy [0 0 0] :def (get-desk)}}
+   {"cup"   {:xyz [(+ *gazebo-offset* 2.35) (+ *gazebo-offset* 0) 0.6875] :rpy [0 0 0] :on "table" :def (get-cup)}
+    "table" {:xyz [(+ *gazebo-offset* 2.28) (+ *gazebo-offset* -0.21) 0]  :rpy [0 0 0] :on nil :def (get-desk)}}
    d3-res d2-res d2-pad))
   
 
