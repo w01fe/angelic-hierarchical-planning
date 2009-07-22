@@ -72,6 +72,7 @@
 	  [manipulation_srvs.srv    IKService]
 	  [tf_node.srv              TransformPoint TransformPose]
 	  [navfn.srv SetCostmap MakeNavPlan]
+	  [fk_node.srv              ForwardKinematics]
 ;	  [robot_srvs.srv StaticMap]
 ;	  [topological_map.srv GetTopologicalMap]
 	  ])
@@ -103,6 +104,11 @@
 
 (defn get-current-mechanism-state [#^NodeHandle nh]
   (get-single-message nh "/mechanism_state" (MechanismState.)))
+
+(def *tll-header* {:class Header :frame_id "/torso_lift_link"})
+(def *bl-header* {:class Header :frame_id "/base_link"})
+(def *map-header* {:class Header :frame_id "/map"})
+
 
 (defn l2-distance [v1 v2]
    (Math/sqrt (reduce + (map #(let [x (- (double %1) (double %2))] (* x x)) v1 v2))))
@@ -394,7 +400,7 @@
   (throw-arms nh) (Thread/sleep 10000) (tuck-arms nh))
 
 
-;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;; Inverse Kinematics ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
+;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;; Kinematics ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
 
 ; TODO: random joint configs.
 ; TODO: not very useful without collision checking of IK solutions.
@@ -415,6 +421,37 @@
      (catch RosException e
        nil
        ))))
+
+
+(defn make-kinematic-joint [[joint-name joint-position]]
+  {:class KinematicJoint :header (assoc *map-header* :stamp (.subtract (.now *ros*) (Duration. 0.1)))
+   :joint_name joint-name :value (if (coll? joint-position) (vec (map double joint-position)) [(double joint-position)])})
+
+
+(defn forward-kinematics
+  "Returns a lazy seq [in-collision? poses], where poses is a map
+   from link names to poses.  Assumes joints in map frame.
+   If in_collision is to be accurate, must first publish a collision map
+   to the appropriate topic in the fk_node."
+ [#^NodeHandle nh joint-map]
+   (let [res (call-srv nh "/fk_node/forward_kinematics"
+	      (map-msg {:class ForwardKinematics$Request
+			:joints (map make-kinematic-joint joint-map)}))]
+;     (println res)
+     (assert (= (count (:link_names res)) (count (:link_poses res))))
+    (cons (:in_collision res)
+	  (lazy-seq [(apply hash-map (interleave (:link_names res) (:link_poses res)))]))))
+
+(defn robot-forward-kinematics
+  "Like forward-kinematics, but takes a robot state and possibly world state,
+   if a collision map is to be published."
+ ([#^NodeHandle nh robot]
+    (forward-kinematics nh (get-joint-map robot)))
+ ([#^NodeHandle nh robot world]
+    (put-single-message "/fk_node/collision_map" 
+      (map-msg (world->collision-map world)) 1)
+    (robot-forward-kinematics nh robot)))
+
 
 ; (inverse-kinematics nh true {:class PoseStamped :header *tll-header* :pose {:class Pose :position {:class Point :x 0.53 :y -0.02 :z -0.38} :orientation {:class Quaternion :x 0.0 :y 0.0 :z 0.0 :w 1.0}}} (:joint-angle-map (get-current-arm-state nh true)))
 
@@ -449,9 +486,6 @@
 
 ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;  Arm Planning  ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
 
-(def *tll-header* {:class Header :frame_id "/torso_lift_link"})
-(def *bl-header* {:class Header :frame_id "/base_link"})
-(def *map-header* {:class Header :frame_id "/map"})
 
 (def *shared-arm-params*
      {:class KinematicSpaceParameters
@@ -483,30 +517,18 @@
        :toleranceAbove [tol]
        :toleranceBelow [tol]})))
 
-(defn make-kinematic-joint [[joint-name joint-position]]
-  {:class KinematicJoint :header (assoc *map-header* :stamp (.subtract (.now *ros*) (Duration. 0.1)))
-   :joint_name joint-name :value (if (coll? joint-position) (vec (map double joint-position)) [(double joint-position)])})
   
 
 (defn encode-xyz-pose-constraint-type [x? y? z?]
-  (cond (and x? y? z?) PoseConstraint/POSITION_XYZ
-	(and x? y?   ) PoseConstraint/POSITION_XY
-	(and    y? z?) PoseConstraint/POSITION_YZ
-	(and x?    z?) PoseConstraint/POSITION_XZ
-	x?             PoseConstraint/POSITION_X
-	x?             PoseConstraint/POSITION_Y
-	x?             PoseConstraint/POSITION_Z
-	:else          0))
+  (+ (if x? PoseConstraint/POSITION_X 0)
+     (if y? PoseConstraint/POSITION_Y 0)
+     (if z? PoseConstraint/POSITION_Z 0)))
 
 (defn encode-rpy-pose-constraint-type [r? p? y?]
-  (cond (and r? p? y?) PoseConstraint/ORIENTATION_RPY
-	(and r? p?   ) PoseConstraint/ORIENTATION_RP
-	(and    p? y?) PoseConstraint/ORIENTATION_PY
-	(and r?    y?) PoseConstraint/ORIENTATION_RY
-	r?             PoseConstraint/ORIENTATION_R
-	p?             PoseConstraint/ORIENTATION_P
-	y?             PoseConstraint/ORIENTATION_Y
-	:else          0))
+  (+ (if r? PoseConstraint/ORIENTATION_R 0)
+     (if p? PoseConstraint/ORIENTATION_P 0)
+     (if y? PoseConstraint/ORIENTATION_Y 0)))
+
 
 (defn encode-pose-constraint-type [[x? y? z?] [roll? pitch? yaw?]]
   (+ (encode-xyz-pose-constraint-type x? y? z?)
@@ -567,7 +589,7 @@
 							     (:joint-angle-map arm-state)))}})
     (MoveArmState.)))
 
-; Warning! TODO! planning in base_link may cause problems...
+
 
 
 
