@@ -1,7 +1,8 @@
 (ns edu.berkeley.ai.angelic.dnf-valuations
-  (:use clojure.test [edu.berkeley.ai.angelic :as angelic])
+  (:use clojure.test edu.berkeley.ai.angelic )
   (:import [java.util HashMap])
-  (:require [edu.berkeley.ai [util :as util] [envs :as envs]]
+  (:require [edu.berkeley.ai.angelic :as angelic]
+            [edu.berkeley.ai [util :as util] [envs :as envs]]
             [edu.berkeley.ai.util.propositions :as props]
 	    ))
 
