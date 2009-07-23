@@ -541,7 +541,7 @@
 			:joints (map make-kinematic-joint joint-map)}))]
 ;     (println res)
      (assert (= (count (:link_names res)) (count (:link_poses res))))
-    (cons (:in_collision res)
+    (cons (> (:in_collision res) 0)
 	  (lazy-seq [(apply hash-map (interleave (:link_names res) (:link_poses res)))]))))
 
 (defn robot-forward-kinematics
@@ -554,20 +554,52 @@
       (map-msg (world->collision-map world)) 1)
     (robot-forward-kinematics nh robot)))
 
+(defn rand-double [[mn mx]]
+  (+ mn (rand (- mx mn))))
+
+(defn random-arm-joint-map [nh right?]
+  (when-not *robot-joint-limits* (get-robot-xml))
+;    (doseq [joint (keys (:joint-angle-map (get-current-arm-state nh right?)))
+;	  :let [limits (*robot-joint-limits* joint)]]
+;      (println joint limits))
+    (into {}
+    (for [joint (keys (:joint-angle-map (get-current-arm-state nh right?)))
+	  :let [limits (*robot-joint-limits* joint)]]
+      [joint (rand-double 
+	      (or limits
+		 (do (println "Warning: no limits for joint" joint)
+		     [0 (* 2 Math/PI)])))])))
+
 (defn safe-inverse-kinematics 
-  ([#^NodeHandle nh robot world tries]
-     (put-single-message "/fk_node/collision_map" 
-       (map-msg (world->collision-map world)) 1)
-     (loop [tries tries]
-       (when (> tries 0)
+  "Find an IK solution respecting the collision space.  Pass
+   world if you want its collision map published.
+   Other initial joint configurations will be randomly generated."
+  [#^NodeHandle nh right? pose-stamped robot world random-retries]
+     (when world
+       (put-single-message "/fk_node/collision_map" 
+	 (map-msg (world->collision-map world)) 1))
+     (let [all-joints (get-joint-map robot)]
+      (loop [tries random-retries 
+	    init-joints (:joint-angle-map ((if right? :rarm :larm) robot))]
+;       (println init-joints)
+       (or (when-let [sol (inverse-kinematics nh right? pose-stamped init-joints)]
+	     (prn sol)
+	     (println)
+	     (print "Found IK solution ... ")
+	     (let [collision (first (forward-kinematics nh (merge all-joints sol)))]
+	       (println (if collision "" " not ") "in collision.") 
+	       (when (not collision)
+		 sol)))
+	   (when (> tries 0)
+	     (println "IK failed; retrying with random initial joints.")
+	     (recur (dec tries) (random-arm-joint-map nh right?)))))))
 	 
      
 
 
 ; (inverse-kinematics nh true {:class PoseStamped :header *tll-header* :pose {:class Pose :position {:class Point :x 0.53 :y -0.02 :z -0.38} :orientation {:class Quaternion :x 0.0 :y 0.0 :z 0.0 :w 1.0}}} (:joint-angle-map (get-current-arm-state nh true)))
 
-;(defn rand-double [[mn mx]]
-;  (+ mn (rand (- mx mn))))
+
 ;
 ;  (def *rarm-joint-limits*
 ;       (into {}
@@ -583,9 +615,7 @@
 ;	    (if-let [p (get *robot-joint-limits* j)]
 ;	        (vec (map read-string p))
 ;	      [(- Math/PI) Math/PI])])))
-;(defn rand-joint-config [right?]
-;  (into {}
-;    (map (fn [[k v]] [k (rand-double v)]) (if right? *rarm-joint-limits* *larm-joint-limits*))))
+
 
 
 ;(defn move-arm-directly-to-pose [nh right? pose-stamped ]
