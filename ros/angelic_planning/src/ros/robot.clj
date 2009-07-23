@@ -140,8 +140,92 @@
      :z (* z d)
      :w (Math/cos (double (/ a 2.0)))}))
 
+(defn quaternion-msg->axis-angle [msg]
+  (let [a (* 2 (Math/acos (double (:w msg))))
+	s (Math/sqrt (- 1 (double (* (:w msg) (:w msg)))))]
+    (if (< s 0.0001)
+        [[0 0 1] a]
+      [[(/ (:x msg) s) (/ (:y msg) s) (/ (:z msg) s)] a])))
+
+(defn multiply-quaternions [q1 q2]
+  (let [a1 (:w q1) b1 (:x q1) c1 (:y q1) d1 (:z q1)
+	a2 (:w q2) b2 (:x q2) c2 (:y q2) d2 (:z q2)]
+    {:class Quaternion
+     :w (- (* a1 a2) (* b1 b2) (* c1 c2) (* d1 d2))
+     :x (+ (* a1 b2) (* b1 a2) (* c1 d2) (- (* d1 c2)))
+     :y (+ (* a1 c2) (* c1 a2) (* d1 b2) (- (* b1 d2)))
+     :z (+ (* a1 d2) (* d1 a2) (* b1 c2) (- (* c1 b2)))}))
+
+(defn apply-rotation [p q]
+  (let [x (:x p) y (:y p) z (:z p)
+	a (:w q) b (:x q) c (:y q) d (:z q)
+	t2 (* a b)
+	t3 (* a c)
+	t4 (* a d)
+	t5 (- (* b b))
+	t6 (* b c)
+	t7 (* b d)
+	t8 (- (* c c))
+	t9 (* c d)
+	t10 (- (* d d))]
+    {:class Point
+     :x (+ x (* 2 (+ (* x (+ t8 t10)) (* y (- t6 t4)) (* z (+ t3 t7)))))
+     :y (+ y (* 2 (+ (* x (+ t4 t6)) (* y (+ t5 t10)) (* z (- t9 t2)))))
+     :z (+ z (* 2 (+ (* x (- t7 t3)) (* y (+ t2 t9)) (* z (+ t5 t8)))))}))
+
+(defn add-points [p1 p2]
+  {:class Point 
+   :x (+ (:x p1) (:x p2))
+   :y (+ (:y p1) (:y p2))
+   :z (+ (:z p1) (:z p2))})
+
+(defn subtract-points [p1 p2]
+  {:class Point 
+   :x (- (:x p1) (:x p2))
+   :y (- (:y p1) (:y p2))
+   :z (- (:z p1) (:z p2))})
+
+(defn invert-unit-quaternion [q]
+  (assoc q :w (- (:w q))))
+
+
+;(defn transform-pose [init-pose pose-transform]
+;  (let [p1 (:position init-pose) q1 (:orientation init-pose)
+;	p2 (:position pose-transform) q2 (:orientation pose-transform)]
+;    {:class Pose
+;     :position (add-points p1 (apply-rotation (apply-rotation p2 (invert-unit-quaternion q1))))
+;     :orientation (multiply-quaternions q2 q1)}))
+
+;(defn untransform-pose [init-pose pose-transform]
+;  (let [p1 (:position init-pose) q1 (:orientation init-pose)
+;	p2 (:position pose-transform) q2 (:orientation pose-transform)]
+;    {:class Pose
+;     :position (subtract-points p1 p2)
+;     :orientation (multiply-quaternions (invert-unit-quaternion q2) q1)}))
+
+
+(defn transform-pose [init-pose pose-transform]
+  (let [p1 (:position init-pose) q1 (:orientation init-pose)
+	p2 (:position pose-transform) q2 (:orientation pose-transform)]
+    {:class Pose
+     :position (add-points (apply-rotation q2 p1) p2)
+     :orientation (multiply-quaternions q2 q1)}))
+
+(defn untransform-pose [init-pose pose-transform]
+  (let [p1 (:position init-pose) q1 (:orientation init-pose)
+	p2 (:position pose-transform) q2 (:orientation pose-transform)
+	q2i (invert-unit-quaternion q2)]
+    {:class Pose
+     :position (apply-rotation (subtract-points p1 p2) q2i)
+     :orientation (multiply-quaternions q2i q1)}))
+
+(def *null-transform-pose* 
+     {:class Pose 
+      :position {:class Point :x 0 :y 0 :z 0}
+      :orientation {:class Quaternion :x 0 :y 0 :z 0 :w 1}})
 
 (defmulti get-joint-map :type)
+
 
 ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
 ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;; Base ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
@@ -276,6 +360,22 @@
 ;; TODO: interpolate orientation.
 
 
+(defn map->base-link-transform [base]
+  {:class Pose 
+   :position {:class Point :x (:x base) :y (:y base) :z 0.051}
+   :orientation (axis-angle->quaternion-msg [0 0 1] (:theta base))})
+
+(def *base-link->torso-lift-link-transform*
+     {:class Pose
+      :position {:class Point :x -0.05, :y 0.0, :z 0.7448695339012872}
+      :orientation {:class Quaternion :x 0.0, :y 0.0, :z 0.0, :w 1.0}})
+
+(defn map-pose->tll-pose [map-pose base]
+  (untransform-pose 
+   (untransform-pose map-pose (map->base-link-transform base))
+   *base-link->torso-lift-link-transform*))
+
+
 
 
 
@@ -406,8 +506,9 @@
 ; TODO: not very useful without collision checking of IK solutions.
 (defn inverse-kinematics
   "Returns a final joint map (possibly in collision) or nil for failure.
-   If pose-stamped is in a frame where non-arm joints are relevant, they should be provided."
+   Pose-stamped must be in the torso_lift_link frame."
   [#^NodeHandle nh right? pose-stamped init-joint-map]
+  (assert (= (:frame_id (:header pose-stamped)) "/torso_lift_link"))
   (let [init-joints (seq init-joint-map)]
     (try 
      (into {} (map vector (map first init-joints) 
@@ -432,7 +533,8 @@
   "Returns a lazy seq [in-collision? poses], where poses is a map
    from link names to poses.  Assumes joints in map frame.
    If in_collision is to be accurate, must first publish a collision map
-   to the appropriate topic in the fk_node."
+   to the appropriate topic in the fk_node.  For now, response is in some
+   unknown frame."
  [#^NodeHandle nh joint-map]
    (let [res (call-srv nh "/fk_node/forward_kinematics"
 	      (map-msg {:class ForwardKinematics$Request
@@ -451,6 +553,15 @@
     (put-single-message "/fk_node/collision_map" 
       (map-msg (world->collision-map world)) 1)
     (robot-forward-kinematics nh robot)))
+
+(defn safe-inverse-kinematics 
+  ([#^NodeHandle nh robot world tries]
+     (put-single-message "/fk_node/collision_map" 
+       (map-msg (world->collision-map world)) 1)
+     (loop [tries tries]
+       (when (> tries 0)
+	 
+     
 
 
 ; (inverse-kinematics nh true {:class PoseStamped :header *tll-header* :pose {:class Pose :position {:class Point :x 0.53 :y -0.02 :z -0.38} :orientation {:class Quaternion :x 0.0 :y 0.0 :z 0.0 :w 1.0}}} (:joint-angle-map (get-current-arm-state nh true)))
@@ -514,8 +625,8 @@
        :header *tll-header*
        :joint_name name
        :value          [value]
-       :toleranceAbove [tol]
-       :toleranceBelow [tol]})))
+       :tolerance_above [tol]
+       :tolerance_below [tol]})))
 
   
 
@@ -540,14 +651,18 @@
   ([right? frame [x y z] [ax ay az] angle]
      (encode-pose-constraint right? frame [x y z] [ax ay az] angle [true true true] [true true true]))
   ([right? frame [x y z] [ax ay az] angle [x? y? z?] [roll? pitch? yaw?]]
+     (assert (= frame "/map"))
+   (let [tol {:class Point :x 0.001 :y 0.001 :z 0.001}]
   {:class PoseConstraint :type (encode-pose-constraint-type [x? y? z?] [roll? pitch? yaw?])
-   :position_distance 0.001 :orientation_distance 0.001 :orientation_importance 0.5
+   :orientation_importance 0.5
+   :position_tolerance_above tol :position_tolerance_below tol
+   :orientation_tolerance_above tol :orientation_tolerance_below tol
    :link_name (str (if right? "r" "l") "_gripper_palm_link")
    :pose {:class PoseStamped
 	  :header {:class Header :frame_id frame}
 	  :pose   {:class Pose 
-		   :position    {:class Point :x x :y y :z y}
-		   :orientation (axis-angle->quaternion-msg [ax ay az] angle)}}}))
+		   :position    {:class Point :x x :y y :z z}
+		   :orientation (axis-angle->quaternion-msg [ax ay az] angle)}}})))
   
 (defn plan-arm-motion
   "joint constraints are passed as map from name to either value,  
@@ -556,6 +671,10 @@
    Init-joints should include base and torso, in general."
   [#^NodeHandle nh right? world robot-state joint-constraints pose-constraints]
   (put-single-message "collision_map_future" (map-msg (world->collision-map world)) 1)
+;  (println "\n\n\n\n\n\n\n\n" right?)
+;  (println (doall (map make-kinematic-joint (get-joint-map robot-state))))
+;  (println "\n\n\n")
+  (println pose-constraints)
   (call-srv nh "/plan_kinematic_path"
    (map-msg 
      {:class MotionPlan$Request :times 1 :allowed_time 0.5
@@ -571,8 +690,8 @@
   (if (empty? (:states (:path plan)))
       (println "No plan was found")
     (println 
-     (str (if (:unsafe plan) "unsafe ") 
-	  (if (:approximate plan) (str "approximate, with distance " (:distance plan) " "))
+     (str ;(if (:unsafe plan) "unsafe ") 
+	  (if (> (:approximate plan) 0) (str "approximate, with distance " (:distance plan) " "))
 	  "plan with " (count (:states (:path plan))) " states, time " (last (:times (:path plan)))
 	  " found."))))
 

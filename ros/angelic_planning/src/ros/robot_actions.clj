@@ -325,8 +325,8 @@
 (defn simple-search [nh init-plans env goal-pred max-samples]
   (last 
    (sort-by second
-    (for [plan (mapcat #(robot-action-primitive-refinements nh % env max-samples)
-		       init-plans)
+    (for [plan (doall (mapcat #(robot-action-primitive-refinements nh % env max-samples)
+		       init-plans))
 	  :let [[result rew] (robot-primitive-result nh plan env)]
 	  :when (goal-pred result)]
       [plan rew]))))
