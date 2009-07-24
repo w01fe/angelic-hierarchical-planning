@@ -226,6 +226,17 @@
 
 (defmulti get-joint-map :type)
 
+(defn make-point [[x y z]]
+  {:class Point :x x :y y :z z})
+
+(defn make-quaternion [[x y z w]]
+  {:class Quaternion :x x :y y :z z :w w})
+
+(defn make-pose [[x y z] [qx qy qz qw]]
+  {:class Pose 
+   :position (make-point [x y z])
+   :orientation (make-quaternion [qx qy qz qw])})
+
 
 ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
 ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;; Base ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
@@ -350,10 +361,11 @@
 		    (map-msg {:class MakeNavPlan$Request
 			:start (base-state->pose-stamped (base-state->disc initial-base-state res minc maxc))
 			:goal  (base-state->pose-stamped (base-state->disc final-base-state res minc maxc))}))]
-      (when (= 1 (:plan_found result))
+      (if (= 1 (:plan_found result))
 ;	(println result)
 	(for [ps (:path result)]
-	  (base-state->cont (pose-stamped->base-state ps) res minc maxc))))))
+	  (base-state->cont (pose-stamped->base-state ps) res minc maxc))
+	(println "Failed to find base plan.")))))
 
 ;(defn motion-plan->
 
@@ -370,10 +382,13 @@
       :position {:class Point :x -0.05, :y 0.0, :z 0.7448695339012872}
       :orientation {:class Quaternion :x 0.0, :y 0.0, :z 0.0, :w 1.0}})
 
-(defn map-pose->tll-pose [map-pose base]
-  (untransform-pose 
-   (untransform-pose map-pose (map->base-link-transform base))
-   *base-link->torso-lift-link-transform*))
+(defn map-pose->tll-pose-stamped [map-pose base]
+  {:class PoseStamped
+   :header *tll-header*
+   :pose 
+   (untransform-pose 
+    (untransform-pose map-pose (map->base-link-transform base))
+    *base-link->torso-lift-link-transform*)})
 
 
 
@@ -504,6 +519,7 @@
 
 ; TODO: random joint configs.
 ; TODO: not very useful without collision checking of IK solutions.
+; Pose is for something like, but not exactly, palm link.
 (defn inverse-kinematics
   "Returns a final joint map (possibly in collision) or nil for failure.
    Pose-stamped must be in the torso_lift_link frame."
@@ -574,25 +590,27 @@
   "Find an IK solution respecting the collision space.  Pass
    world if you want its collision map published.
    Other initial joint configurations will be randomly generated."
-  [#^NodeHandle nh right? pose-stamped robot world random-retries]
+  ([#^NodeHandle nh right? pose-stamped robot world random-retries]
+     (safe-inverse-kinematics nh right? pose-stamped robot world random-retries false))
+  ([#^NodeHandle nh right? pose-stamped robot world random-retries start-random?]
      (when world
        (put-single-message "/fk_node/collision_map" 
 	 (map-msg (world->collision-map world)) 1))
      (let [all-joints (get-joint-map robot)]
       (loop [tries random-retries 
-	    init-joints (:joint-angle-map ((if right? :rarm :larm) robot))]
+	    init-joints (if start-random? (random-arm-joint-map nh right?)
+			    (:joint-angle-map ((if right? :rarm :larm) robot)))]
 ;       (println init-joints)
-       (or (when-let [sol (inverse-kinematics nh right? pose-stamped init-joints)]
-	     (prn sol)
-	     (println)
-	     (print "Found IK solution ... ")
+       (or (if-let [sol (inverse-kinematics nh right? pose-stamped init-joints)]
 	     (let [collision (first (forward-kinematics nh (merge all-joints sol)))]
-	       (println (if collision "" " not ") "in collision.") 
+	       (println "Found IK solution ..."
+			(if collision "" " not ") "in collision.") 
 	       (when (not collision)
-		 sol)))
+		 sol))
+	     (println "Failed to find IK solution"))
 	   (when (> tries 0)
-	     (println "IK failed; retrying with random initial joints.")
-	     (recur (dec tries) (random-arm-joint-map nh right?)))))))
+;	     (println "IK failed; retrying with random initial joints.")
+	     (recur (dec tries) (random-arm-joint-map nh right?))))))))
 	 
      
 
@@ -704,7 +722,7 @@
 ;  (println "\n\n\n\n\n\n\n\n" right?)
 ;  (println (doall (map make-kinematic-joint (get-joint-map robot-state))))
 ;  (println "\n\n\n")
-  (println pose-constraints)
+;  (println pose-constraints)
   (call-srv nh "/plan_kinematic_path"
    (map-msg 
      {:class MotionPlan$Request :times 1 :allowed_time 0.5

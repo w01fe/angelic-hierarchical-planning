@@ -47,8 +47,8 @@
   ([nh] (make-current-robot-env nh (get-initial-world 0.1 0.1 0)))
   ([nh world] (make-robot-env (get-current-robot-state nh) world)))
 
-(def *base-cost-multiplier* -5)
-(def *arm-cost-multiplier* -1)
+(def *base-cost-multiplier* -1)
+(def *arm-cost-multiplier* -4)
 (def *torso-cost-multiplier* -4)
 (def *gripper-cost-multiplier* -20)
 
@@ -102,6 +102,7 @@
 	(sample-robot-action-primitive-refinement nh ref env))))
 
 (defn robot-action-primitive-refinements [nh a env max-samples]
+;  (println a)
   (if (robot-action-primitive? a) 
       [a]
     (mapcat #(robot-action-primitive-refinements nh % env max-samples)
@@ -145,14 +146,15 @@
 
 (defmethod robot-hla-discrete-refinements? ::RobotHLASeq [a]
   (robot-hla-discrete-refinements?
-   (first (find #(not (robot-action-primitive? %)) (:actions a)))))
+   (first (filter #(not (robot-action-primitive? %)) (:actions a)))))
 
 (defmethod robot-hla-refinements ::RobotHLASeq [nh a env]
   (loop [pre-actions [] env env post-actions (:actions a)]
     (assert (not (empty? post-actions)))
+    (when env
     (if (robot-action-primitive? (first post-actions))
         (recur (conj pre-actions (first post-actions))
-	       (robot-primitive-result nh (first post-actions) env)
+	       (first (robot-primitive-result nh (first post-actions) env))
 	       (next post-actions))
       (if (not (robot-hla-discrete-refinements? (first post-actions)))
 	  (filter identity
@@ -162,43 +164,27 @@
 	   (concat 
 	    pre-actions 
 	    (get-action-seq ref)
-	    (next post-actions))))))))
+	    (next post-actions)))))))))
 
 
 (defmethod sample-robot-hla-refinement ::RobotHLASeq [nh a env]
   (loop [pre-actions [] env env post-actions (:actions a)]
     (assert (not (empty? post-actions)))
+    (when env
     (if (robot-action-primitive? (first post-actions))
         (recur (conj pre-actions (first post-actions))
-	       (robot-primitive-result nh (first post-actions) env)
+	       (first (robot-primitive-result nh (first post-actions) env))
 	       (next post-actions))
       (when-let [ref (sample-robot-hla-refinement nh (first post-actions) env)]
 	(make-robot-action-seq 
 	 (concat 
 	  pre-actions 
-	  (get-action-seq ref))
-	 (next post-actions))))))
-
-;(defmethod sample-robot-action-primitive-refinement ::RobotHLASeq [nh a env]
-;  (loop [pre-actions [] env env post-actions (:actions a)]
-;    (cond (empty? post-actions) 
-;            pre-actions
-;	  (robot-action-primitive? (first post-actions))
-;	    (recur (conj pre-actions (first post-actions))
-;		   (robot-primitive-result nh (first post-actions) env)
-;		   (next post-actions))
-;	  :else 
-;	    (let [next-ref (sample-robot-action-primitive-refinement nh (first post-actions) env)]
-;	      (when next-ref
-;		(recur pre-actions env 
-;		       (concat (get-action-seq next-ref)
-;			       (next post-actions))))))))
-		   
+	  (get-action-seq ref)
+	  (next post-actions))))))))
 
 
 
-
-;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;; Base ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
+;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;; Base - Point ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
 
 (derive ::BaseAction ::RobotPrimitive)
 
@@ -210,11 +196,51 @@
 (defmethod robot-primitive-result ::BaseAction [nh action env]
   (let [sol (plan-base-motion nh (:world env) (:base (:robot env)) (:goal action) [[0 0] [40 40]])]
     (when (seq sol)
-      [(assoc-in env [:robot :base] (:goal action)) (* *base-cost-multiplier* (count sol))])))
+      [(assoc-in env [:robot :base] (:goal action)) (* *base-cost-multiplier* 
+						       (world-2d-res (:world env))
+						       (count sol))])))
 
 (defmethod execute-robot-primitive ::BaseAction [nh action]
   (println "Executing move_base action")
   (move-base-to-state nh (:goal action)))
+
+
+;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;; Base - Region ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
+
+;; Regions
+
+(defmulti sample-region :type)
+
+(defn make-interval-region [[a b]]
+  (assert (>= b a))
+  {:type ::IntervalRegion :interval [a b]})
+
+(defmethod sample-region ::IntervalRegion [r]
+  (rand-double (:interval r)))
+
+
+(defn make-base-rect-region [[minx maxx] [miny maxy] [mina maxa]]
+  {:type ::BaseRectRegion
+   :intervals [(make-interval-region [minx maxx])
+	       (make-interval-region [miny maxy])
+	       (make-interval-region [mina maxa])]})
+
+(defmethod sample-region ::BaseRectRegion [r]
+  (map sample-region (:intervals r)))
+
+(derive ::BaseRegionAction ::RobotHLA)
+
+(defstruct base-region-action :type :goal-region)
+
+(defn make-base-region-action 
+  "Goal-region should be a base-region of some sort"
+  [goal-region]
+  (struct base-region-action ::BaseRegionAction goal-region))
+
+(defmethod robot-hla-discrete-refinements? ::BaseRegionAction [a] false)
+
+(defmethod sample-robot-hla-refinement ::BaseRegionAction [nh a env]
+  (make-base-action (apply make-robot-base-state (sample-region (:goal-region a)))))
 
 
 ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;; Gripper ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;  
@@ -272,6 +298,30 @@
 ; Eventually should use IK, but need access to collision space first (TODO)
 ; TODO: cost for approximation?
 
+
+(derive ::ArmPoseAction ::RobotHLA)
+
+(defstruct arm-pose-action :type :right? :pose)
+
+(defn make-arm-pose-action [right? map-gripper-pose]
+  (struct arm-pose-action ::ArmPoseAction right? map-gripper-pose))
+
+(defmethod robot-hla-discrete-refinements? ::ArmPoseAction [a] false)
+
+(defmethod sample-robot-hla-refinement ::ArmPoseAction [nh a env]
+;  (println env)
+;  (println (:base (:robot env)))
+;  (println (map-pose->tll-pose-stamped (:pose a) (:base (:robot env))))
+  (let [r?  (:right? a)
+	ik  (safe-inverse-kinematics 
+	     nh r? 
+	     (map-pose->tll-pose-stamped (:pose a) (:base (:robot env)))
+	     (:robot env) (:world env) 0 true)]
+    (when ik
+      (make-arm-joint-action (make-robot-arm-state r? false ik)))))
+
+
+(comment ; Old version, before IK worked
 (derive ::ArmPoseAction ::RobotHLA)
 
 (defstruct arm-pose-action :type :pose-constraint)
@@ -288,7 +338,7 @@
     (when (and (seq (:states (:path sol))));  (not (:approximate sol))) ;TODO ??
       (make-arm-joint-action 
        (make-robot-arm-state r? false
-	 (apply hash-map (interleave (:names (:path sol)) (:vals (last (:states (:path sol)))))))))))
+	 (apply hash-map (interleave (:names (:path sol)) (:vals (last (:states (:path sol))))))))))))
 
 
 
@@ -321,6 +371,7 @@
 ; samples at most n refinements for each continuous action.  Returns a primitive
 ; plan + reward.
 
+(defn p [x] (println x) x)
 
 (defn simple-search [nh init-plans env goal-pred max-samples]
   (last 
@@ -329,9 +380,11 @@
 		       init-plans))
 	  :let [[result rew] (robot-primitive-result nh plan env)]
 	  :when (goal-pred result)]
-      [plan rew]))))
+      (p [plan rew])))))
       
-  
+
+(defn get-default-env [nh]
+  (make-robot-env (get-current-robot-state nh) (get-initial-world 0.1 0.1 0)))
 
 ; (make-robot-action-seq [(make-base-action (make-robot-base-state 20 20 0)) (make-arm-action *larm-up-state*) (make-torso-action (make-robot-torso-state 0.3)) (make-gripper-action (make-robot-gripper-state true 0.05 nil))])
 ; (:robot (first (robot-primitive-result nh (make-robot-action-seq [(make-base-action (make-robot-base-state 20 20 0)) (make-arm-action *larm-up-state*) (make-torso-action (make-robot-torso-state 0.3)) (make-gripper-action (make-robot-gripper-state true 0.05 nil))]) (make-robot-env (get-current-robot-state nh) (get-initial-world 0.1 0.1 0)))))
@@ -340,7 +393,7 @@
 
 ; (simple-search nh [(make-arm-pose-action (encode-pose-constraint true "/torso_lift_link" [0.2 0.6 0.8] [0 0 1] 0))] (make-current-robot-env nh) (constantly true) 5)
 
-
+; (simple-search nh [(make-base-action (make-robot-base-state 25 25 0)) (make-arm-pose-action true (make-pose [25.5 24.8 1.0] [0 0 0 1]))] (get-default-env nh) (constantly true) 3)
 
 (set! *warn-on-reflection* false)
 

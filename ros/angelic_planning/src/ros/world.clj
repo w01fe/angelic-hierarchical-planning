@@ -406,7 +406,8 @@
 	#^bytes fdata (make-array Byte/TYPE (* fwidth fheight))]
     (doseq [{:keys [xyz rpy def]} (vals w)]
       (assert (= (:type def) :rendered))
-      (let [costmap (:2d-costmap def)
+      (assert (= rpy [0 0 0]))
+      (let [costmap (translate-costmap (:2d-costmap def) xyz)
 	    {:keys [minx miny width height data]} costmap
 	    minx (int minx) miny (int miny) width (int width) height (int height)
 	    #^bytes data data]
