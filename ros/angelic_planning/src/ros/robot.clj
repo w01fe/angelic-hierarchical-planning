@@ -427,7 +427,7 @@
     false))
 
 (defn set-gripper-separation [#^NodeHandle nh right? sep]
-  (put-single-message (str (if right? "r" "l") "_gripper_position_controller/set_command")
+  (put-single-message nh (str (if right? "r" "l") "_gripper_position_controller/set_command")
 		      (map-msg {:class Float64 :data (double sep)})))
 
 (defmulti move-gripper-to-state (fn [nh gs] (:type gs)))
@@ -474,7 +474,7 @@
 (defn move-arm-directly-to-state [#^NodeHandle nh arm-state]
   (let [right? (isa? (:type arm-state) ::Right)
 	{:keys [jointnames jointpositions]} (get-current-arm-state-msg nh right?)]
-    (call-srv (str "/" (if right? "r" "l") "_arm_joint_trajectory_controller/TrajectoryStart")
+    (call-srv nh (str "/" (if right? "r" "l") "_arm_joint_trajectory_controller/TrajectoryStart")
       (map-msg
        {:class TrajectoryStart$Request :hastiming 0 :requesttiming 0
 	:traj {:class JointTraj
@@ -566,7 +566,7 @@
  ([#^NodeHandle nh robot]
     (forward-kinematics nh (get-joint-map robot)))
  ([#^NodeHandle nh robot world]
-    (put-single-message "/fk_node/collision_map" 
+    (put-single-message nh "/fk_node/collision_map" 
       (map-msg (world->collision-map world)) 1)
     (robot-forward-kinematics nh robot)))
 
@@ -594,7 +594,7 @@
      (safe-inverse-kinematics nh right? pose-stamped robot world random-retries false))
   ([#^NodeHandle nh right? pose-stamped robot world random-retries start-random?]
      (when world
-       (put-single-message "/fk_node/collision_map" 
+       (put-single-message nh "/fk_node/collision_map" 
 	 (map-msg (world->collision-map world)) 1))
      (let [all-joints (get-joint-map robot)]
       (loop [tries random-retries 
@@ -718,7 +718,7 @@
    pose constraints are lists of PoseConstraints maps -- no shortcuts for now.
    Init-joints should include base and torso, in general."
   [#^NodeHandle nh right? world robot-state joint-constraints pose-constraints]
-  (put-single-message "collision_map_future" (map-msg (world->collision-map world)) 1)
+  (put-single-message nh "collision_map_future" (map-msg (world->collision-map world)) 1)
 ;  (println "\n\n\n\n\n\n\n\n" right?)
 ;  (println (doall (map make-kinematic-joint (get-joint-map robot-state))))
 ;  (println "\n\n\n")

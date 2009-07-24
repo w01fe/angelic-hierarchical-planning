@@ -97,14 +97,14 @@
 (defmulti sample-robot-action-primitive-refinement (fn [nh a env] (:type a)))
 
 (defmethod sample-robot-action-primitive-refinement ::RobotHLA [nh a env]
-  (if (robot-action-primitive? a) a
+  (if (robot-action-primitive? a) (when (robot-primitive-result nh a env) a)
       (when-let [ref (sample-robot-hla-refinement nh a env)]
 	(sample-robot-action-primitive-refinement nh ref env))))
 
 (defn robot-action-primitive-refinements [nh a env max-samples]
 ;  (println a)
   (if (robot-action-primitive? a) 
-      [a]
+      (when (robot-primitive-result nh a env) [a])
     (mapcat #(robot-action-primitive-refinements nh % env max-samples)
 	    (if (robot-hla-discrete-refinements? a)
 	        (robot-hla-refinements nh a)
