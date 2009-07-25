@@ -347,6 +347,8 @@
     (make-robot-base-state (+ minx (* res (:x state))) 
 			   (+ miny (* res (:y state))) (:theta state))))
 
+; Assume costmap does not change.
+(def *last-window* (atom nil))
 (defn plan-base-motion
   [#^NodeHandle nh world initial-base-state final-base-state window]
   (let [res         (world-2d-res world) 
@@ -354,10 +356,13 @@
 	slop        (map #(mod (- %2 (+ %1 (/ res 2))) res) minc [(:x final-base-state) (:y final-base-state)]) 
 	minc        (map + minc slop)]
 ;    (println slop minc)
-    (call-srv nh "/navfn_node/set_costmap" 
-	      (map-msg (world->costmap world minc maxc)))
+    (when-not (= window @*last-window*) ; Assume costmap is static.
+      (println "Setting costmap")
+      (call-srv  nh "/navfn_node/set_costmap" 
+		(map-msg (world->costmap world minc maxc)))
+      (reset! *last-window* window))
     (let [result 
-	  (call-srv nh "/navfn_node/make_plan" 
+	  (call-srv-cached nh "/navfn_node/make_plan" 
 		    (map-msg {:class MakeNavPlan$Request
 			:start (base-state->pose-stamped (base-state->disc initial-base-state res minc maxc))
 			:goal  (base-state->pose-stamped (base-state->disc final-base-state res minc maxc))}))]
@@ -461,7 +466,7 @@
 ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;; Get, move to state ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
 
 (defn get-current-arm-state-msg [nh right?]
-  (call-srv nh (str "/" (if right? "r" "l") 
+  (call-srv-cached nh (str "/" (if right? "r" "l") 
 		    "_arm_joint_trajectory_controller/TrajectoryQuery" )
 	    (map-msg {:class TrajectoryQuery$Request :trajectoryid -1})))
 
@@ -474,7 +479,7 @@
 (defn move-arm-directly-to-state [#^NodeHandle nh arm-state]
   (let [right? (isa? (:type arm-state) ::Right)
 	{:keys [jointnames jointpositions]} (get-current-arm-state-msg nh right?)]
-    (call-srv nh (str "/" (if right? "r" "l") "_arm_joint_trajectory_controller/TrajectoryStart")
+    (call-srv-cached nh (str "/" (if right? "r" "l") "_arm_joint_trajectory_controller/TrajectoryStart")
       (map-msg
        {:class TrajectoryStart$Request :hastiming 0 :requesttiming 0
 	:traj {:class JointTraj
@@ -528,7 +533,7 @@
   (let [init-joints (seq init-joint-map)]
     (try 
      (into {} (map vector (map first init-joints) 
-       (:solution (call-srv nh (str "/pr2_ik_" (if right? "right" "left") "_arm/ik_service")  
+       (:solution (call-srv-cached nh (str "/pr2_ik_" (if right? "right" "left") "_arm/ik_service")  
 		    (map-msg 
 		     {:class IKService$Request
 		      :data {:class IKRequest
@@ -552,7 +557,7 @@
    to the appropriate topic in the fk_node.  For now, response is in some
    unknown frame."
  [#^NodeHandle nh joint-map]
-   (let [res (call-srv nh "/fk_node/forward_kinematics"
+   (let [res (call-srv-cached nh "/fk_node/forward_kinematics"
 	      (map-msg {:class ForwardKinematics$Request
 			:joints (map make-kinematic-joint joint-map)}))]
 ;     (println res)
@@ -560,14 +565,17 @@
     (cons (> (:in_collision res) 0)
 	  (lazy-seq [(apply hash-map (interleave (:link_names res) (:link_poses res)))]))))
 
+
+
+
 (defn robot-forward-kinematics
   "Like forward-kinematics, but takes a robot state and possibly world state,
    if a collision map is to be published."
  ([#^NodeHandle nh robot]
     (forward-kinematics nh (get-joint-map robot)))
  ([#^NodeHandle nh robot world]
-    (put-single-message nh "/fk_node/collision_map" 
-      (map-msg (world->collision-map world)) 1)
+    (put-single-message-cached nh "/fk_node/collision_map" 
+      (map-msg (world->collision-map world)) )
     (robot-forward-kinematics nh robot)))
 
 (defn rand-double [[mn mx]]
@@ -583,7 +591,7 @@
 	  :let [limits (*robot-joint-limits* joint)]]
       [joint (rand-double 
 	      (or limits
-		 (do (println "Warning: no limits for joint" joint)
+		 (do ;(println "Warning: no limits for joint" joint)
 		     [0 (* 2 Math/PI)])))])))
 
 (defn safe-inverse-kinematics 
@@ -594,8 +602,8 @@
      (safe-inverse-kinematics nh right? pose-stamped robot world random-retries false))
   ([#^NodeHandle nh right? pose-stamped robot world random-retries start-random?]
      (when world
-       (put-single-message nh "/fk_node/collision_map" 
-	 (map-msg (world->collision-map world)) 1))
+       (put-single-message-cached nh "/fk_node/collision_map" 
+	 (map-msg (world->collision-map world))))
      (let [all-joints (get-joint-map robot)]
       (loop [tries random-retries 
 	    init-joints (if start-random? (random-arm-joint-map nh right?)
@@ -718,12 +726,12 @@
    pose constraints are lists of PoseConstraints maps -- no shortcuts for now.
    Init-joints should include base and torso, in general."
   [#^NodeHandle nh right? world robot-state joint-constraints pose-constraints]
-  (put-single-message nh "collision_map_future" (map-msg (world->collision-map world)) 1)
+  (put-single-message-cached nh "collision_map_future" (map-msg (world->collision-map world)))
 ;  (println "\n\n\n\n\n\n\n\n" right?)
 ;  (println (doall (map make-kinematic-joint (get-joint-map robot-state))))
 ;  (println "\n\n\n")
 ;  (println pose-constraints)
-  (call-srv nh "/plan_kinematic_path"
+  (call-srv-cached nh "/plan_kinematic_path"
    (map-msg 
      {:class MotionPlan$Request :times 1 :allowed_time 0.5
       :params (if right? *rarm-params* *larm-params*)
