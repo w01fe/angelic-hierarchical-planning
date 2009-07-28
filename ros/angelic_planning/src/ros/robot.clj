@@ -48,7 +48,7 @@
 	  [roslib.msg Header]
 	  [std_msgs.msg ColorRGBA Float64]
 	  [robot_msgs.msg
-	     OccGrid MapMetaData 
+	     ; OccGrid MapMetaData 
 	     Point PointStamped Vector3 Quaternion
 	     Velocity AngularVelocity Acceleration AngularAcceleration 
 	     Pose PoseDot PoseDDot PoseStamped PoseWithRatesStamped]
@@ -236,6 +236,14 @@
   {:class Pose 
    :position (make-point [x y z])
    :orientation (make-quaternion [qx qy qz qw])})
+
+(defn pose-position [pose]
+  (let [{{:keys [x y z]} :position} pose]
+    [x y z]))
+
+(defn pose-aa [pose]
+  (quaternion-msg->axis-angle (:orientation pose)))
+
 
 
 ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
@@ -581,18 +589,36 @@
 (defn rand-double [[mn mx]]
   (+ mn (rand (- mx mn))))
 
+(def get-arm-joint-names 
+    (memoize (fn [nh right?] 
+	       (keys (:joint-angle-map (get-current-arm-state nh right?))))))
+
 (defn random-arm-joint-map [nh right?]
   (when-not *robot-joint-limits* (get-robot-xml))
 ;    (doseq [joint (keys (:joint-angle-map (get-current-arm-state nh right?)))
 ;	  :let [limits (*robot-joint-limits* joint)]]
 ;      (println joint limits))
     (into {}
-    (for [joint (keys (:joint-angle-map (get-current-arm-state nh right?)))
+    (for [joint (get-arm-joint-names nh right?)
 	  :let [limits (*robot-joint-limits* joint)]]
       [joint (rand-double 
 	      (or limits
 		 (do ;(println "Warning: no limits for joint" joint)
 		     [0 (* 2 Math/PI)])))])))
+
+(defn feasible-ik-pose? 
+  "Is it physically possible to reach the given pose?  If no, we won't
+   bother trying to call IK."
+  [right? pose-stamped]
+  (let [pos (pose-position (:pose pose-stamped))
+	[x y z] pos]
+     (println pos (l2-distance [0 0 0] pos))
+    (cond (< y 0) 
+            (println "Skipping IK; can't reach behind robot.")
+	  (> (l2-distance [0 0 0] pos) 0.9)
+	    (println "Skipping IK; can't reach more than 0.9 meters away.")
+	  ; ...
+          :else true)))
 
 (defn safe-inverse-kinematics 
   "Find an IK solution respecting the collision space.  Pass
@@ -601,6 +627,7 @@
   ([#^NodeHandle nh right? pose-stamped robot world random-retries]
      (safe-inverse-kinematics nh right? pose-stamped robot world random-retries false))
   ([#^NodeHandle nh right? pose-stamped robot world random-retries start-random?]
+   (when (feasible-ik-pose? nh pose-stamped) ;; TODO: replace with opt desc.
      (when world
        (put-single-message-cached nh "/fk_node/collision_map" 
 	 (map-msg (world->collision-map world))))
@@ -618,7 +645,7 @@
 	     (println "Failed to find IK solution"))
 	   (when (> tries 0)
 ;	     (println "IK failed; retrying with random initial joints.")
-	     (recur (dec tries) (random-arm-joint-map nh right?))))))))
+	     (recur (dec tries) (random-arm-joint-map nh right?)))))))))
 	 
      
 
@@ -827,7 +854,7 @@
 	  [roslib.msg Header]
 	  [std_msgs.msg ColorRGBA Float64]
 	  [robot_msgs.msg
-	     OccGrid MapMetaData 
+	     ;OccGrid MapMetaData 
 	     Point PointStamped Vector3 Quaternion
 	     Velocity AngularVelocity Acceleration AngularAcceleration 
 	     Pose PoseDot PoseDDot PoseStamped PoseWithRatesStamped]
