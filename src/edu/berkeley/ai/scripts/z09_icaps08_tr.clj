@@ -170,10 +170,13 @@
 	      *offline*) 
       [:type :graph? :ref-choice :algorithm ] 
       :instance-num y-axis
-      {:term "solid color size 3,2"
+      {:term "solid dashed size 3,2"
        :ylog "t" :key "12,100000" :yrange "[10:200000]" :xlabel "Problem Number" :ylabel y-label
-       :title "Offline Warehouse World" } 
-      (constantly {:lw 4})
+       :title "Offline Warehouse World" 
+       } 
+      (let [c (util/counter-from 0)]
+	(fn [& args] (let [v ([1 2 3] (c))]  {:lw 3 :pt v :lt v})))
+;      (constantly {:lw 4 :pt [2 3 4]})
       (fn [[type graph ref-choice alg]]
 	(cond (= alg :ahss) "AHSS" (= type :hierarchy) "AHA*" :else "Graph A*"))
       identity)
@@ -190,12 +193,14 @@
 	    (fn [m] [(:run m) (y-axis m)])]]))  
       [:type :graph? :ref-choice :algorithm :switches]
       :size :ref-count 
-      {:term "solid color size 3,2"
+      {:term "solid dashed size 3,2"
        :ylog "t" :xlog "t" :key "45,100000"
        :title "Offline Nav Switch"
        :xlabel "Board size (per side)" :ylabel y-label 
        :xrange "[5:1000]" :yrange "[50:200000]"} 
-      (constantly {:lw 4})
+      (let [c (util/counter-from 0)]
+	(fn [& args] (let [v ([1 2 3] (c))]  {:lw 3 :pt v :lt v})))
+;      (constantly {:lw 4})
       (fn [[type graph ref-choice alg]]
 	(cond (= alg :ahss) "AHSS" (= type :hierarchy) "AHA*" :else "Graph A*"))
       identity)
@@ -302,11 +307,13 @@
 	 [[:cost combiner-fn (datasets/ds-fn [cost] cost)]]) 
        [:algorithm :type :ref-choice] 
        :max-refs :cost 
-       {:term "solid color size 3,2" :xrange "[0:5000]" :yrange "[70:3000]" :key "3000, 1800"  
+       {:term "solid dashed size 3,2" :xrange "[0:5000]" :yrange "[70:3000]" :key "3000, 1800"  
 	:title (str "Online Warehouse World") :ylog "t"
 	:xlabel "Allowed refinements per env step" 
 	:ylabel "Cost to reach goal (avg of 7 instances)"} 
-      (constantly {:lw 4})
+      (let [c (util/counter-from 0)]
+	(fn [& args] (let [v ([1 2 3] (c))]  {:lw 3 :pt v :lt v})))
+;      (constantly {:lw 4})
       (fn [[alg type ref-choice]]
 	(cond (= alg :ahss) "AHSS" (= type :hierarchy) "AHLRTA*" :else "LRTA*"))
       identity)
@@ -324,13 +331,15 @@
 	[[:cost (fn [& args] (apply util/geometric-mean args)) (datasets/ds-fn [cost] cost)]]) 
       [:algorithm :type :ref-choice] 
       :max-refs :cost 
-      {:term "solid color size 3,2" :xrange (str "[10:" maxx "]")
+      {:term "solid dashed size 3,2" :xrange (str "[10:" maxx "]")
        ;:xlog "t" 
        :key keyloc 
        :title (str "Online Nav Switch " sz "x" sz ", 20 switches") 
        :xlabel "Allowed refinements per env step"
        :ylabel "Cost to reach goal (avg of 3 random instances)" } 
-      (constantly {:lw 4})
+;      (constantly {:lw 4})
+      (let [c (util/counter-from 0)]
+	(fn [& args] (let [v ([1 2 3] (c))]  {:lw 3 :pt v :lt v})))
       (fn [[alg type ref-choice]]
 	(cond (= alg :ahss) "AHSS" (= type :hierarchy) "AHLRTA*" :else "LRTA*"))
       identity)
