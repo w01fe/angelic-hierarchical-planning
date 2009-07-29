@@ -37,13 +37,9 @@
 
 (import-ros)
 
-(defmsgs [ros.pkg
-	   [roslib.msg     Header]
-	   [robot_msgs.msg Point32 Vector3 Quaternion Transform TransformStamped]
-	   [tf_node.msg        StartStaticTransform StopStaticTransform]
-	  [mapping_msgs.msg OrientedBoundingBox CollisionMap]])
+(defmsgs [mapping_msgs CollisionMap])
 
-(defsrvs [ros.pkg.navfn.srv SetCostmap])
+(defsrvs [navfn SetCostmap])
 
 
 ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;; Method defs ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;

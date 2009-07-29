@@ -26,7 +26,10 @@ PACKAGES="roslib
  	    fk_node
 	    "
 
-CP=/home/jawolfe/ros/ros/core/experimental/rosjava/bin
+CP=`rospack find rosjava`/src
+
+cd $CP
+find . -name "*.java" | xargs javac -cp $CP
 
 if [ -n "$1" ]
   then
