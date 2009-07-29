@@ -44,38 +44,24 @@
 
 (def nh (.createNodeHandle *ros*))
 
-(defmsgs [ros.pkg
-	  [roslib.msg Header]
-	  [std_msgs.msg ColorRGBA Float64]
-	  [robot_msgs.msg
-	     ; OccGrid MapMetaData 
-	     Point PointStamped Vector3 Quaternion
-	     Velocity AngularVelocity Acceleration AngularAcceleration 
-	     Pose PoseDot PoseDDot PoseStamped PoseWithRatesStamped]
-	  [robot_actions.msg ActionStatus] 
-	  [nav_robot_actions.msg MoveBaseState]
-	  [motion_planning_msgs.msg 
+(defmsgs  [std_msgs Float64]
+	  [robot_msgs PointStamped PoseStamped PoseWithRatesStamped]
+	  [nav_robot_actions MoveBaseState]
+	  [motion_planning_msgs 
 	   JointConstraint PoseConstraint KinematicConstraints
-	   KinematicSpaceParameters KinematicJoint KinematicState KinematicPath ]
-	  [manipulation_msgs.msg JointTrajPoint JointTraj IKRequest ]
-;	 [topological_map.msg Cell Connector ConnectorEdge MapRegion]
-	  [visualization_msgs.msg Polyline]
-	  [pr2_robot_actions.msg MoveArmGoal MoveArmState]
-	  [mechanism_msgs.msg JointState ActuatorState MechanismState]
-	  ])
+	   KinematicSpaceParameters KinematicJoint KinematicState KinematicPath]
+	  [manipulation_msgs JointTraj IKRequest]
+	  [pr2_robot_actions MoveArmGoal MoveArmState]
+	  [mechanism_msgs    MechanismState]
+	  )
 
-
-
-(defsrvs [ros.pkg
-	  [pr2_mechanism_controllers.srv TrajectoryStart TrajectoryQuery TrajectoryCancel]
-	  [motion_planning_srvs.srv MotionPlan]
-	  [manipulation_srvs.srv    IKService]
-	  [tf_node.srv              TransformPoint TransformPose]
-	  [navfn.srv SetCostmap MakeNavPlan]
-	  [fk_node.srv              ForwardKinematics]
-;	  [robot_srvs.srv StaticMap]
-;	  [topological_map.srv GetTopologicalMap]
-	  ])
+(defsrvs  [pr2_mechanism_controllers TrajectoryStart TrajectoryQuery TrajectoryCancel]
+	  [motion_planning_srvs MotionPlan]
+	  [manipulation_srvs    IKService]
+	  [tf_node              TransformPoint TransformPose]
+	  [navfn                SetCostmap MakeNavPlan]
+	  [fk_node              ForwardKinematics]
+	  )
 
 
 
@@ -850,7 +836,7 @@
 
 (comment
 (do (use 'ros.ros 'ros.world 'ros.robot :reload-all) (import-ros)
-(defmsgs [ros.pkg
+(defmsgs 
 	  [roslib.msg Header]
 	  [std_msgs.msg ColorRGBA Float64]
 	  [robot_msgs.msg
