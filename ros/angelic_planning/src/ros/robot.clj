@@ -30,7 +30,7 @@
 
 
 (ns ros.robot
-  (:use   clojure.xml ros.ros ros.actions ros.world)
+  (:use   clojure.xml ros.ros ros.actions ros.world ros.geometry)
 	  )
   
 (set! *warn-on-reflection* true)
@@ -42,7 +42,7 @@
 ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;; Msgs, Helpers, Etc ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
 ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
 
-(def nh (.createNodeHandle *ros*))
+;(def nh (.createNodeHandle *ros*))
 
 (defmsgs  [std_msgs Float64]
 	  [robot_msgs PointStamped PoseStamped PoseWithRatesStamped]
@@ -75,7 +75,7 @@
   (def *robot-xml* 
        (parse (with-node-handle [nh] 
 		(java.io.ByteArrayInputStream. 
-		 (.getBytes (.getStringParam nh "/robotdesc/pr2") "UTF-8")))))
+		 (.getBytes (.getStringParam nh "/robot_description") "UTF-8")))))
   (def *robot-joint-limits*
        (into {}
 	 (for [joint (:content *robot-xml*)
@@ -91,144 +91,13 @@
 (defn get-current-mechanism-state [#^NodeHandle nh]
   (get-single-message nh "/mechanism_state" (MechanismState.)))
 
-(def *tll-header* {:class Header :frame_id "/torso_lift_link"})
-(def *bl-header* {:class Header :frame_id "/base_link"})
-(def *map-header* {:class Header :frame_id "/map"})
+(def *tll-header* {:frame_id "/torso_lift_link"})
+(def *bl-header*  {:frame_id "/base_link"})
+(def *map-header* {:frame_id "/map"})
 
 
-(defn l2-distance [v1 v2]
-   (Math/sqrt (reduce + (map #(let [x (- (double %1) (double %2))] (* x x)) v1 v2))))
-
-
-(defn angle->quaternion [rads]
-  {:class Quaternion :x 0 :y 0 :z (Math/sin (double (/ rads 2))) 
-   :w (Math/cos (double (/ rads 2)))})
-
-(defn quaternion->angle [orientation]
-  (assert (< (Math/abs (double (:x orientation))) 0.001))
-  (assert (< (Math/abs (double (:y orientation))) 0.001))
-  (let [r (* 2 (Math/atan2 (double (:z orientation)) (double (:w orientation))))]
-    (if (< r 0) (+ r (* Math/PI 2)) r)))
-
-(defn axis-angle->quaternion [[x y z] a]
-  (let [n (l2-distance [x y z] [0 0 0])
-	s (Math/sin (double (/ a 2.0)))
-	d (/ s n)]
-    [(* x d) (* y d) (* z d) (Math/cos (double (/ a 2.0)))]))
-
-(defn axis-angle->quaternion-msg [[x y z] a]
-  (let [n (l2-distance [x y z] [0 0 0])
-	s (Math/sin (double (/ a 2.0)))
-	d (/ s n)]
-    {:class Quaternion
-     :x (* x d)
-     :y (* y d)
-     :z (* z d)
-     :w (Math/cos (double (/ a 2.0)))}))
-
-(defn quaternion-msg->axis-angle [msg]
-  (let [a (* 2 (Math/acos (double (:w msg))))
-	s (Math/sqrt (- 1 (double (* (:w msg) (:w msg)))))]
-    (if (< s 0.0001)
-        [[0 0 1] a]
-      [[(/ (:x msg) s) (/ (:y msg) s) (/ (:z msg) s)] a])))
-
-(defn multiply-quaternions [q1 q2]
-  (let [a1 (:w q1) b1 (:x q1) c1 (:y q1) d1 (:z q1)
-	a2 (:w q2) b2 (:x q2) c2 (:y q2) d2 (:z q2)]
-    {:class Quaternion
-     :w (- (* a1 a2) (* b1 b2) (* c1 c2) (* d1 d2))
-     :x (+ (* a1 b2) (* b1 a2) (* c1 d2) (- (* d1 c2)))
-     :y (+ (* a1 c2) (* c1 a2) (* d1 b2) (- (* b1 d2)))
-     :z (+ (* a1 d2) (* d1 a2) (* b1 c2) (- (* c1 b2)))}))
-
-(defn apply-rotation [p q]
-  (let [x (:x p) y (:y p) z (:z p)
-	a (:w q) b (:x q) c (:y q) d (:z q)
-	t2 (* a b)
-	t3 (* a c)
-	t4 (* a d)
-	t5 (- (* b b))
-	t6 (* b c)
-	t7 (* b d)
-	t8 (- (* c c))
-	t9 (* c d)
-	t10 (- (* d d))]
-    {:class Point
-     :x (+ x (* 2 (+ (* x (+ t8 t10)) (* y (- t6 t4)) (* z (+ t3 t7)))))
-     :y (+ y (* 2 (+ (* x (+ t4 t6)) (* y (+ t5 t10)) (* z (- t9 t2)))))
-     :z (+ z (* 2 (+ (* x (- t7 t3)) (* y (+ t2 t9)) (* z (+ t5 t8)))))}))
-
-(defn add-points [p1 p2]
-  {:class Point 
-   :x (+ (:x p1) (:x p2))
-   :y (+ (:y p1) (:y p2))
-   :z (+ (:z p1) (:z p2))})
-
-(defn subtract-points [p1 p2]
-  {:class Point 
-   :x (- (:x p1) (:x p2))
-   :y (- (:y p1) (:y p2))
-   :z (- (:z p1) (:z p2))})
-
-(defn invert-unit-quaternion [q]
-  (assoc q :w (- (:w q))))
-
-
-;(defn transform-pose [init-pose pose-transform]
-;  (let [p1 (:position init-pose) q1 (:orientation init-pose)
-;	p2 (:position pose-transform) q2 (:orientation pose-transform)]
-;    {:class Pose
-;     :position (add-points p1 (apply-rotation (apply-rotation p2 (invert-unit-quaternion q1))))
-;     :orientation (multiply-quaternions q2 q1)}))
-
-;(defn untransform-pose [init-pose pose-transform]
-;  (let [p1 (:position init-pose) q1 (:orientation init-pose)
-;	p2 (:position pose-transform) q2 (:orientation pose-transform)]
-;    {:class Pose
-;     :position (subtract-points p1 p2)
-;     :orientation (multiply-quaternions (invert-unit-quaternion q2) q1)}))
-
-
-(defn transform-pose [init-pose pose-transform]
-  (let [p1 (:position init-pose) q1 (:orientation init-pose)
-	p2 (:position pose-transform) q2 (:orientation pose-transform)]
-    {:class Pose
-     :position (add-points (apply-rotation q2 p1) p2)
-     :orientation (multiply-quaternions q2 q1)}))
-
-(defn untransform-pose [init-pose pose-transform]
-  (let [p1 (:position init-pose) q1 (:orientation init-pose)
-	p2 (:position pose-transform) q2 (:orientation pose-transform)
-	q2i (invert-unit-quaternion q2)]
-    {:class Pose
-     :position (apply-rotation (subtract-points p1 p2) q2i)
-     :orientation (multiply-quaternions q2i q1)}))
-
-(def *null-transform-pose* 
-     {:class Pose 
-      :position {:class Point :x 0 :y 0 :z 0}
-      :orientation {:class Quaternion :x 0 :y 0 :z 0 :w 1}})
 
 (defmulti get-joint-map :type)
-
-(defn make-point [[x y z]]
-  {:class Point :x x :y y :z z})
-
-(defn make-quaternion [[x y z w]]
-  {:class Quaternion :x x :y y :z z :w w})
-
-(defn make-pose [[x y z] [qx qy qz qw]]
-  {:class Pose 
-   :position (make-point [x y z])
-   :orientation (make-quaternion [qx qy qz qw])})
-
-(defn pose-position [pose]
-  (let [{{:keys [x y z]} :position} pose]
-    [x y z]))
-
-(defn pose-aa [pose]
-  (quaternion-msg->axis-angle (:orientation pose)))
 
 
 
@@ -257,9 +126,8 @@
 
 (defn base-state->pose-stamped [base-state]
   {:class PoseStamped
-   :header {:class Header :frame_id "/map"}
-   :pose   {:class Pose
-	    :position {:class Point :x (:x base-state) :y (:y base-state) :z 0}
+   :header {:frame_id "/map"}
+   :pose   {:position {:x (:x base-state) :y (:y base-state) :z 0}
 	    :orientation (angle->quaternion (:theta base-state))}})
 
 
@@ -271,43 +139,9 @@
 
 
 
-
-(defn- point-distance [p1 p2]
-  (let [vecs (map #(map % [:x :y :z]) [p1 p2])]
-    (Math/sqrt (double (apply + (apply map #(* (- %1 %2) (- %1 %2)) vecs))))))
-
-(defn- orientation-distance [o1 o2]
-  (let [a  (* 2 (Math/acos (apply + (apply map * (map #(map % [:x :y :z :w]) [o1 o2])))))]
-    (if (< a (Math/PI)) a (- (* 2 Math/PI) a))))
-
-(defn- pose-distance [p1 p2 angle-wt]
-  (let [pd (point-distance (:position p1) (:position p2))
-	od (orientation-distance (:orientation p1) (:orientation p2))]
-  ;  (println pd od)
-    (+ pd (* angle-wt od)))) 
-
-
-;(defn move-base-to-pose-stamped 
-;  "Moves the base to the given pose-stamped, by invoking move_base.
-;   If wait-for-dist? is non-nil, blocks until the robot is within this distance of the goal."
-;  ([nh pose]
-;     (move-base-to-pose-stamped nh pose nil))
-;  ([#^NodeHandle nh pose wait-for-dist?]
-;     (put-single-message nh "/move_base/activate" (map-msg pose) 1) 		      
-;     (when wait-for-dist? (println "wait...")
-;	   (while (> (pose-distance pose (:pos (get-current-base-pose nh)) 1.0) wait-for-dist?)
-;	     (Thread/sleep 100)))))
-
-;(defn move-base-to-state
-;  "Like move-base-to-pose-stamped, but takes a robot-base-state"
-;  ([nh state]
-;     (move-base-to-state nh state nil))
-;  ([nh state wait-for-dist?]
-;     (move-base-to-pose-stamped nh (base-state->pose-stamped state) wait-for-dist?)))
-
+ 
 (defn move-base-to-pose-stamped 
-  "Moves the base to the given pose-stamped, by invoking move_base.
-   If wait-for-dist? is non-nil, blocks until the robot is within this distance of the goal."
+  "Moves the base to the given pose-stamped, by invoking move_base."
   ([#^NodeHandle nh pose]
      (run-action nh "/move_base" (map-msg pose) (MoveBaseState.))))
 
@@ -350,11 +184,11 @@
 	slop        (map #(mod (- %2 (+ %1 (/ res 2))) res) minc [(:x final-base-state) (:y final-base-state)]) 
 	minc        (map + minc slop)]
 ;    (println slop minc)
-    (when-not (= window @*last-window*) ; Assume costmap is static.
+    (when-not (= [nh window] @*last-window*) ; Assume costmap is static.
       (println "Setting costmap")
       (call-srv  nh "/navfn_node/set_costmap" 
 		(map-msg (world->costmap world minc maxc)))
-      (reset! *last-window* window))
+      (reset! *last-window* [nh window]))
     (let [result 
 	  (call-srv-cached nh "/navfn_node/make_plan" 
 		    (map-msg {:class MakeNavPlan$Request
@@ -373,12 +207,12 @@
 
 (defn map->base-link-transform [base]
   {:class Pose 
-   :position {:class Point :x (:x base) :y (:y base) :z 0.051}
+   :position    {:x (:x base) :y (:y base) :z 0.051}
    :orientation (axis-angle->quaternion-msg [0 0 1] (:theta base))})
 
 (def *base-link->torso-lift-link-transform*
      {:class Pose
-      :position {:class Point :x -0.05, :y 0.0, :z 0.7448695339012872}
+      :position {:x -0.05, :y 0.0, :z 0.7448695339012872}
       :orientation {:class Quaternion :x 0.0, :y 0.0, :z 0.0, :w 1.0}})
 
 (defn map-pose->tll-pose-stamped [map-pose base]
@@ -427,7 +261,7 @@
 
 (defn set-gripper-separation [#^NodeHandle nh right? sep]
   (put-single-message nh (str (if right? "r" "l") "_gripper_position_controller/set_command")
-		      (map-msg {:class Float64 :data (double sep)})))
+		      (map-msg Float64 {:data (double sep)})))
 
 (defmulti move-gripper-to-state (fn [nh gs] (:type gs)))
 (defmethod move-gripper-to-state ::Left [nh state] (set-gripper-separation nh false (:separation state))) 
@@ -462,7 +296,7 @@
 (defn get-current-arm-state-msg [nh right?]
   (call-srv-cached nh (str "/" (if right? "r" "l") 
 		    "_arm_joint_trajectory_controller/TrajectoryQuery" )
-	    (map-msg {:class TrajectoryQuery$Request :trajectoryid -1})))
+	    (map-msg TrajectoryQuery$Request {:trajectoryid -1})))
 
 (defn get-current-arm-state [nh right?]
   (let [{:keys [jointnames jointpositions]} (get-current-arm-state-msg nh right?)]
@@ -474,11 +308,10 @@
   (let [right? (isa? (:type arm-state) ::Right)
 	{:keys [jointnames jointpositions]} (get-current-arm-state-msg nh right?)]
     (call-srv-cached nh (str "/" (if right? "r" "l") "_arm_joint_trajectory_controller/TrajectoryStart")
-      (map-msg
-       {:class TrajectoryStart$Request :hastiming 0 :requesttiming 0
-	:traj {:class JointTraj
-	       :points (for [state [jointpositions (map (:joint-angle-map arm-state) jointnames)]]
-			 {:class JointTrajPoint :positions state :time 0})}}))))
+      (map-msg TrajectoryStart$Request
+       {:hastiming 0 :requesttiming 0
+	:traj {:points (for [state [jointpositions (map (:joint-angle-map arm-state) jointnames)]]
+			 {:positions state :time 0})}}))))
 
 
 
@@ -525,18 +358,24 @@
   [#^NodeHandle nh right? pose-stamped init-joint-map]
   (assert (= (:frame_id (:header pose-stamped)) "/torso_lift_link"))
   (let [init-joints (seq init-joint-map)]
+;    (map-msg 
+;		     {:class IKService$Request
+;		      :data {:joint_names (map first init-joints)
+;			     :positions   (map second init-joints)
+;			     :pose_stamped pose-stamped}})))
     (try 
      (into {} (map vector (map first init-joints) 
        (:solution (call-srv-cached nh (str "/pr2_ik_" (if right? "right" "left") "_arm/ik_service")  
 		    (map-msg 
 		     {:class IKService$Request
-		      :data {:class IKRequest
-			     :joint_names (map first init-joints)
+		      :data {:joint_names (map first init-joints)
 			     :positions   (map second init-joints)
 			     :pose_stamped pose-stamped}})))))
      (catch RosException e
        nil
        ))))
+
+
 
 
 (defn make-kinematic-joint [[joint-name joint-position]]
@@ -670,8 +509,8 @@
 (def *shared-arm-params*
      {:class KinematicSpaceParameters
       :distance_metric "L2Square" :planner_id      ""
-      :volumeMin       {:class PointStamped :header *map-header* :point {:class Point :x 0 :y 0 :z 0}}
-      :volumeMax       {:class PointStamped :header *map-header* :point {:class Point :x 0 :y 0 :z 0}}})
+      :volumeMin       {:header *map-header* :point {:x 0 :y 0 :z 0}}
+      :volumeMax       {:header *map-header* :point {:x 0 :y 0 :z 0}}})
 (def *larm-params* (assoc *shared-arm-params* :model_id "left_arm"))
 (def *rarm-params* (assoc *shared-arm-params* :model_id "right_arm"))
 
@@ -727,10 +566,8 @@
    :position_tolerance_above tol :position_tolerance_below tol
    :orientation_tolerance_above tol :orientation_tolerance_below tol
    :link_name (str (if right? "r" "l") "_gripper_palm_link")
-   :pose {:class PoseStamped
-	  :header {:class Header :frame_id frame}
-	  :pose   {:class Pose 
-		   :position    {:class Point :x x :y y :z z}
+   :pose {:header {:frame_id frame}
+	  :pose   {:position    {:x x :y y :z z}
 		   :orientation (axis-angle->quaternion-msg [ax ay az] angle)}}})))
   
 (defn plan-arm-motion
@@ -750,8 +587,7 @@
       :params (if right? *rarm-params* *larm-params*)
       :start_state      (doall (map make-kinematic-joint (get-joint-map robot-state)))
       :path_constraints *no-constraints*
-      :goal_constraints {:class KinematicConstraints 
-			 :pose_constraint (vec pose-constraints)
+      :goal_constraints {:pose_constraint (vec pose-constraints)
 			 :joint_constraint (vec (map parse-joint-constraint joint-constraints))}})))
 
 
@@ -771,8 +607,7 @@
   (run-action nh (str "/move_" (if (isa? (:type arm-state) ::Right) "right" "left") "_arm") 
     (map-msg {:class MoveArmGoal 
 	      :path_constraints *no-constraints*
-	      :goal_constraints {:class KinematicConstraints 
-				 :pose_constraint  []
+	      :goal_constraints {:pose_constraint  []
 				 :joint_constraint (vec (map parse-joint-constraint 
 							     (:joint-angle-map arm-state)))}})
     (MoveArmState.)))
@@ -833,42 +668,32 @@
 
 
 
+; (do (use 'ros.ros 'ros.world 'ros.geometry 'ros.robot 'ros.robot-actions :reload-all) (import-ros) (import-all-msgs-and-srvs))
 
-(comment
-(do (use 'ros.ros 'ros.world 'ros.robot :reload-all) (import-ros)
-(defmsgs 
-	  [roslib.msg Header]
-	  [std_msgs.msg ColorRGBA Float64]
-	  [robot_msgs.msg
-	     ;OccGrid MapMetaData 
-	     Point PointStamped Vector3 Quaternion
-	     Velocity AngularVelocity Acceleration AngularAcceleration 
-	     Pose PoseDot PoseDDot PoseStamped PoseWithRatesStamped]
-	  [robot_actions.msg ActionStatus] 
-	  [nav_robot_actions.msg MoveBaseState]
-	  [motion_planning_msgs.msg 
-	   JointConstraint PoseConstraint KinematicConstraints
-	   KinematicSpaceParameters KinematicJoint KinematicState KinematicPath ]
-	  [manipulation_msgs.msg JointTrajPoint JointTraj IKRequest ]
-;	 [topological_map.msg Cell Connector ConnectorEdge MapRegion]
-	  [visualization_msgs.msg Polyline]
-	  [pr2_robot_actions.msg MoveArmGoal MoveArmState]
-	  [mechanism_msgs.msg JointState ActuatorState MechanismState]
-	  ])
-
-
-
-(defsrvs [ros.pkg
-	  [pr2_mechanism_controllers.srv TrajectoryStart TrajectoryQuery TrajectoryCancel]
-	  [motion_planning_srvs.srv MotionPlan]
-	  [manipulation_srvs.srv    IKService]
-	  [tf_node.srv              TransformPoint TransformPose]
-	  [navfn.srv SetCostmap MakeNavPlan]
-;	  [robot_srvs.srv StaticMap]
-;	  [topological_map.srv GetTopologicalMap]
-	  ]))
 
 ; (call-srv "/tf_node/transform_point" (map-msg {:class TransformPoint$Request :target_frame "/map" :pin {:class PointStamped :header {:class Header :frame_id "/odom" :stamp (.subtract (.now *ros*) (Duration. 0.1))} :point {:class Point :x 0 :y 0 :z 0}} :fixed_frame "" :target_time (Time.)}))
 
 ; (count (:times (:path (plan-arm-motion nh true (get-initial-world 0.1 0.1 0) (assoc (get-current-robot-state nh)  :base (make-robot-base-state 8 9 0) :torso (make-robot-torso-state 0.2)) (:joint-angle-map *rarm-tucked-state*) nil))))
-)
+
+
+
+
+
+
+;(defn move-base-to-pose-stamped 
+;  "Moves the base to the given pose-stamped, by invoking move_base.
+;   If wait-for-dist? is non-nil, blocks until the robot is within this distance of the goal."
+;  ([nh pose]
+;     (move-base-to-pose-stamped nh pose nil))
+;  ([#^NodeHandle nh pose wait-for-dist?]
+;     (put-single-message nh "/move_base/activate" (map-msg pose) 1) 		      
+;     (when wait-for-dist? (println "wait...")
+;	   (while (> (pose-distance pose (:pos (get-current-base-pose nh)) 1.0) wait-for-dist?)
+;	     (Thread/sleep 100)))))
+
+;(defn move-base-to-state
+;  "Like move-base-to-pose-stamped, but takes a robot-base-state"
+;  ([nh state]
+;     (move-base-to-state nh state nil))
+;  ([nh state wait-for-dist?]
+;     (move-base-to-pose-stamped nh (base-state->pose-stamped state) wait-for-dist?)))

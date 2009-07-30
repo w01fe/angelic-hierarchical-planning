@@ -337,11 +337,6 @@
        :def {:type :cylinder :radius 2 :height 5}}}})
    
 
-;(defn get-initial-world [d3-res d2-res d2-pad]
-;  (pre-render-world 
-;   {"cup"   {:xyz [10 10 0.6875] :rpy [0 0 0] :def (get-cup)}
-;    "table" {:xyz [10 10 0]    :rpy [0 0 0] :def (get-desk)}}
-;   d3-res d2-res d2-pad))
 
 (def *gazebo-offset* 25.65)
 (defn get-initial-world [d3-res d2-res d2-pad]
@@ -419,7 +414,7 @@
 		(recur (inc x) (inc fx))))
 	    (recur (inc y) (inc fy))))))
     {:class SetCostmap$Request
-     :costs (seq fdata)
+     :costs fdata
      :height fheight
      :width fwidth}))
 

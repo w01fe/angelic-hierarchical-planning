@@ -55,7 +55,9 @@ do
   cd $DIR
   if [ -n "$1" ]
   then
-    make clean
+#    make clean
+    rm -r msg/java
+    rm -r srv/java
   fi
   make
 

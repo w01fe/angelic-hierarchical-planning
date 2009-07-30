@@ -57,6 +57,15 @@
    (envs/make-simple-condition goal-pred true)))
 
 
+;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;; Valuations ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
+
+; Use explicit valuations for primitive actions.
+; HLAs use RobotValuations
+; Basically environments, but objects and robot parts may be regions rather than points
+; For now, just focus on robot base and arm;
+  ; Base may be in a region
+  ; Arm may be
+
 ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;; Hierarchy ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
    
 ; Need optimistic descriptions for high-level actions ...

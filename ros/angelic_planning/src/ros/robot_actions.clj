@@ -309,9 +309,6 @@
 (defmethod robot-hla-discrete-refinements? ::ArmPoseAction [a] false)
 
 (defmethod sample-robot-hla-refinement ::ArmPoseAction [nh a env]
-;  (println env)
-;  (println (:base (:robot env)))
-;  (println (map-pose->tll-pose-stamped (:pose a) (:base (:robot env))))
   (let [r?  (:right? a)
 	ik  (safe-inverse-kinematics 
 	     nh r? 
@@ -321,24 +318,6 @@
       (make-arm-joint-action (make-robot-arm-state r? false ik)))))
 
 
-(comment ; Old version, before IK worked
-(derive ::ArmPoseAction ::RobotHLA)
-
-(defstruct arm-pose-action :type :pose-constraint)
-
-(defn make-arm-pose-action [pose-constraint]
-  (struct arm-pose-action ::ArmPoseAction pose-constraint))
-
-(defmethod robot-hla-discrete-refinements? ::ArmPoseAction [a] false)
-
-(defmethod sample-robot-hla-refinement ::ArmPoseAction [nh a env]
-  (let [r?  (.startsWith #^String (:link_name (:pose-constraint a)) "r")
-	sol (plan-arm-motion nh r? (:world env) (:robot env) nil [(:pose-constraint a)])]
-    (print "Result for pose action: ") (describe-motion-plan sol)
-    (when (and (seq (:states (:path sol))));  (not (:approximate sol))) ;TODO ??
-      (make-arm-joint-action 
-       (make-robot-arm-state r? false
-	 (apply hash-map (interleave (:names (:path sol)) (:vals (last (:states (:path sol))))))))))))
 
 
 
@@ -397,3 +376,30 @@
 
 (set! *warn-on-reflection* false)
 
+
+
+
+
+
+
+
+
+
+(comment ; Old version, before IK worked
+(derive ::ArmPoseAction ::RobotHLA)
+
+(defstruct arm-pose-action :type :pose-constraint)
+
+(defn make-arm-pose-action [pose-constraint]
+  (struct arm-pose-action ::ArmPoseAction pose-constraint))
+
+(defmethod robot-hla-discrete-refinements? ::ArmPoseAction [a] false)
+
+(defmethod sample-robot-hla-refinement ::ArmPoseAction [nh a env]
+  (let [r?  (.startsWith #^String (:link_name (:pose-constraint a)) "r")
+	sol (plan-arm-motion nh r? (:world env) (:robot env) nil [(:pose-constraint a)])]
+    (print "Result for pose action: ") (describe-motion-plan sol)
+    (when (and (seq (:states (:path sol))));  (not (:approximate sol))) ;TODO ??
+      (make-arm-joint-action 
+       (make-robot-arm-state r? false
+	 (apply hash-map (interleave (:names (:path sol)) (:vals (last (:states (:path sol))))))))))))
