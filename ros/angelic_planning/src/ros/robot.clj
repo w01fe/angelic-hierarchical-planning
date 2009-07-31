@@ -42,7 +42,6 @@
 ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;; Msgs, Helpers, Etc ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
 ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
 
-;(def nh (.createNodeHandle *ros*))
 
 (defmsgs  [std_msgs Float64]
 	  [robot_msgs PointStamped PoseStamped PoseWithRatesStamped]
@@ -657,8 +656,8 @@
 
 
 
-; (do (use 'ros.ros 'ros.world 'ros.geometry 'ros.robot 'ros.robot-actions :reload-all) (import-ros) (import-all-msgs-and-srvs))
-
+; (do (use 'ros.ros 'ros.world 'ros.geometry 'ros.robot 'ros.robot-actions 'ros.robot-hierarchy :reload) (import-ros) (import-all-msgs-and-srvs))
+; (def nh (make-node-handle))
 
 ; (call-srv "/tf_node/transform_point" (map-msg {:class TransformPoint$Request :target_frame "/map" :pin {:class PointStamped :header {:class Header :frame_id "/odom" :stamp (.subtract (.now *ros*) (Duration. 0.1))} :point {:class Point :x 0 :y 0 :z 0}} :fixed_frame "" :target_time (Time.)}))
 

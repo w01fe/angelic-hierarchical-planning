@@ -30,7 +30,7 @@
 
 
 (ns ros.robot-actions
-  (:use   clojure.xml ros.ros ros.world ros.robot)
+  (:use   clojure.xml ros.ros ros.world ros.robot ros.geometry)
 	  )
   
 (set! *warn-on-reflection* true)
@@ -230,8 +230,8 @@
 (defmethod sample-robot-hla-refinement ::BaseRegionAction [nh a env]
   (make-base-action (apply make-robot-base-state (sample-region (:goal-region a)))))
 
-(defmethod robot-action-name ::BaseAction [a]
-  ['base-to-region (:intervals (:goal-region a))])
+(defmethod robot-action-name ::BaseRegionAction [a]
+  ['base-to-region (region-name (:goal-region a))])
 
 ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;; Gripper ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;  
 
@@ -285,7 +285,7 @@
 (defmethod robot-action-name ::ArmJointAction [a]
   (vec
    (cons (if (isa? (:class (:goal a)) :ros.robot/Right) 'right-arm-to 'left-arm-to)
-	 (map second (sort-by first (seq (:joint-angle-map (:goal action))))))))
+	 (map second (sort-by first (seq (:joint-angle-map (:goal a))))))))
 
 
 

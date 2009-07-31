@@ -424,7 +424,8 @@
 	graph?      (util/safe-get alt :graph?)
 	plan        (:plan node)
 	ref-node    ((util/safe-get alt :ref-choice-fn) node)]
-    (util/print-debug 3  "About to refine " (search/node-str node) " at " (hla-name (:hla ref-node)))
+    (when ref-node 
+      (util/print-debug 3  "About to refine " (search/node-str node) " at " (hla-name (:hla ref-node))))
     (when (and ref-node
 	       (or (not (util/safe-get alt :recheck-graph?))
 		   (not (when (plan-prunable? alt node) 

@@ -32,9 +32,7 @@
 (ns ros.robot-hierarchy
   (:require
    [ros.robot :as robot] [ros.robot-actions :as ra]
-   [edu.berkeley.ai]
    [edu.berkeley.ai [util :as util] [envs :as envs]] 
-   [edu.berkeley.ai.envs.states :as states]
    [edu.berkeley.ai.angelic :as angelic]
    [edu.berkeley.ai.angelic.hierarchies :as hierarchies])
   )
@@ -63,7 +61,7 @@
 
 
 (defn make-abstract-robot-state [base torso larm rarm lgripper rgripper]
-  (struct robot-state ::AbstractRobotState base torso larm rarm lgripper rgripper))
+  (struct robot/robot-state ::AbstractRobotState base torso larm rarm lgripper rgripper))
 
 (defn robot-state->abstract-robot-state [s]
   (assoc s :class ::AbstractRobotState))
@@ -73,7 +71,7 @@
 
 
 (defn make-abstract-robot-env [robot world]
-  (struct robot-env ::AbstractRobotEnv robot world))
+  (struct ra/robot-env ::AbstractRobotEnv robot world))
 
 
 
@@ -88,7 +86,7 @@
 (defn make-angelic-robot-env [robot-env goal-pred]
   (envs/make-environment
    robot-env
-   (states/make-state-set str)
+   (envs/make-state-set str)
    (make-dummy-action-space)
    (envs/make-simple-condition goal-pred true)))
 
@@ -102,7 +100,9 @@
       angelic/*pessimal-valuation*
     {:class ::AbstractRobotValuation :abstract-env-map abstract-env-map}))
 
-(defmethod valuation-max-reward ::AbstractRobotValuation [val]
+(derive ::AbstractRobotValuation ::angelic/Valuation)
+
+(defmethod angelic/valuation-max-reward ::AbstractRobotValuation [val]
   (apply max (vals (:abstract-env-map val))))
 
 
@@ -110,10 +110,10 @@
    
 
 
-(defstruct angelic-robot-action class :robot-action :hierarchy)
+(defstruct angelic-robot-action :class :robot-action :hierarchy)
 
 (defn make-angelic-robot-action [robot-action hierarchy]
-  {:class ::AngelicRobotAction robot-action hierarchy})
+  (struct angelic-robot-action ::AngelicRobotAction robot-action hierarchy))
 
 (derive ::AngelicRobotTLA ::AngelicRobotAction)
 (defn make-angelic-top-level-robot-action [initial-plans hierarchy]
@@ -139,8 +139,8 @@
 (defmethod hierarchies/hla-primitive? ::AngelicRobotAction [hla]
   (ra/robot-action-primitive? (:robot-action hla)))
 
-(defmethod hierarchies/hla-primitive? ::AngelicRobotTLA [a] true )
-(defmethod hierarchies/hla-primitive? ::AngelicRobotFinish [a] false)
+(defmethod hierarchies/hla-primitive? ::AngelicRobotTLA [a] false )
+(defmethod hierarchies/hla-primitive? ::AngelicRobotFinish [a] true)
 
 
 (defmethod hierarchies/hla-primitive ::AngelicRobotAction [hla]
@@ -162,7 +162,9 @@
 
 
 (defmethod hierarchies/hla-name ::AngelicRobotAction       [hla] 
-  (robot-action-name (:robot-action hla)))
+;  (println hla)
+;  (println (:robot-action hla))
+  (ra/robot-action-name (:robot-action hla)))
 (defmethod hierarchies/hla-name ::AngelicRobotTLA    [hla] '[top-level])
 (defmethod hierarchies/hla-name ::AngelicRobotFinish [hla] '[finish])
 
@@ -183,23 +185,32 @@
 	    (let [num-refs (util/safe-get (:sample-depths h) (:class a))]
 	      (filter identity
 		      (take num-refs
-			    (repeatedly #(sample-robot-hla-refinement (:nh h) a env))))))]
+			    (repeatedly #(ra/sample-robot-hla-refinement (:nh h) a env))))))]
       (for [action (ra/get-action-seq plan)]
-	(make-angelic-robot-action action h)))))
+	(do 
+;	  (println (:class action))
+	  (make-angelic-robot-action action h))))))
       
 (defmethod hierarchies/hla-immediate-refinements [::AngelicRobotTLA ::angelic/ExplicitValuation]
   [hla opt-val]
   (let [h (util/safe-get hla :hierarchy)]
     (for [plan (util/safe-get hla :initial-plans)]
       (for [action plan]
-	(make-angelic-robot-action action h)))))
+	(do 
+;	  (println (:class action))
+	(make-angelic-robot-action action h))))))
 
-
+;(defmethod hierarchies/hla-immediate-refinements [::AngelicRobotFinish ::angelic/Valuation]
+;  [hla opt-val]
+;  nil)
 
 (defn- make-primitive-description [hla]
   {:class ::RobotPrimitiveDescription :hla hla})
 
-(defmethod angelic/progress-valuation [::ExplicitValuation ::RobotPrimitiveDescription]
+(defmethod angelic/progress-valuation [::angelic/PessimalValuation ::RobotPrimitiveDescription] [val desc]
+  angelic/*pessimal-valuation*)
+
+(defmethod angelic/progress-valuation [::angelic/ExplicitValuation ::RobotPrimitiveDescription]
   [val desc]
   (let [hla (:hla desc)
 	a (:robot-action hla)
@@ -210,7 +221,10 @@
         (angelic/make-explicit-valuation {next-env (+ rew-so-far step-rew)})
       angelic/*pessimal-valuation*)))
 
-(defmethod angelic/progress-valuation [::ExplicitValuation ::RobotFinishDescription]
+(defmethod angelic/progress-valuation [::angelic/PessimalValuation ::RobotFinishDescription] [val desc]
+  angelic/*pessimal-valuation*)
+
+(defmethod angelic/progress-valuation [::angelic/ExplicitValuation ::RobotFinishDescription]
   [val desc]
   (let [goal-pred (:goal-pred desc) 
 	[env rew-so-far] (util/safe-singleton (angelic/explicit-valuation-map val))]
@@ -218,7 +232,7 @@
         (angelic/make-explicit-valuation {angelic/*finish-state* rew-so-far})
       angelic/*pessimal-valuation*)))
 
-(defmethod angelic/progress-valuation [::ConditionalValuation ::RobotFinishDescription]
+(defmethod angelic/progress-valuation [::angelic/ConditionalValuation ::RobotFinishDescription]
   [val desc]
   (assert (= (:condition val) envs/*true-condition*))
   (angelic/make-explicit-valuation {angelic/*finish-state* (angelic/valuation-max-reward val)}))
@@ -230,13 +244,13 @@
 
 (defmethod hierarchies/hla-optimistic-description ::AngelicRobotAction [hla]
   (let [a (:robot-action hla)]
-    (if (isa? (:class a) :ra/RobotPrimitive)
+    (if (isa? (:class a) ::ra/RobotPrimitive)
         (make-primitive-description hla)
       (angelic/make-optimal-description))))
 
 (defmethod hierarchies/hla-pessimistic-description ::AngelicRobotAction [hla]
   (let [a (:robot-action hla)]
-    (if (isa? (:class a) :ra/RobotPrimitive)
+    (if (isa? (:class a) ::ra/RobotPrimitive)
         (make-primitive-description hla)
       angelic/*pessimal-description*)))
 

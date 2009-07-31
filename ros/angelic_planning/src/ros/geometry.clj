@@ -191,6 +191,7 @@
 
 ;; Regions
 
+(defmulti region-name :class)
 
 (defn rand-double [[mn mx]]
   (+ mn (rand (- mx mn))))
@@ -204,6 +205,8 @@
 (defmethod sample-region ::IntervalRegion [r]
   (rand-double (:interval r)))
 
+(defmethod region-name ::IntervalRegion [r]
+  (:interval r))
 
 (defn make-base-rect-region [[minx maxx] [miny maxy] [mina maxa]]
   {:class ::BaseRectRegion
@@ -214,6 +217,8 @@
 (defmethod sample-region ::BaseRectRegion [r]
   (map sample-region (:intervals r)))
 
+(defmethod region-name ::BaseRectRegion [r]
+  (vec (map region-name (:intervals r))))
 
 
 
