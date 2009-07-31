@@ -1,5 +1,4 @@
 (ns edu.berkeley.ai.envs.states.binary
- (:refer-clojure)
  (:use [edu.berkeley.ai.envs.states :as states])
  (:require [edu.berkeley.ai.util :as util] )
  )

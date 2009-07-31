@@ -94,7 +94,8 @@
      (let [pos [(util/desymbolize (first (strips/get-strips-state-pred-val state 'atx)) 1)
 		(util/desymbolize (first (strips/get-strips-state-pred-val state 'aty)) 1)]
 	   hor? (contains? state '[horiz])]
-	(util/str-join "\n"
+       (str pos hor?)
+	#_(util/str-join "\n"
 	  (for [y (range height)]
 	    (apply str
 	      (for [x (range width)]

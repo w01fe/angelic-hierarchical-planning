@@ -1,7 +1,6 @@
-(ns edu.berkeley.ai.util
- (:refer-clojure)
- (:use clojure.test)
- (:require [edu.berkeley.ai.util contrib macros seqs sets maps probability files misc numeric polytopes queues disjoint-sets graphs propositions hybrid timing pdf charts datasets graphviz])
+(ns edu.berkeley.ai.util.load_all
+ (:require edu.berkeley.ai.util 
+		   [edu.berkeley.ai.util queues disjoint-sets graphs propositions hybrid pdf charts datasets graphviz])
  ) 
 
 

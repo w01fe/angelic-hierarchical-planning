@@ -1,10 +1,6 @@
-(ns edu.berkeley.ai.envs
- (:refer-clojure)
- (:require [edu.berkeley.ai.util :as util] 
-           [edu.berkeley.ai.util.propositions :as props]
-           [edu.berkeley.ai.envs init [states :as states] conditions actions envs])
- )
-
+(ns edu.berkeley.ai.envs.load_all
+ (:require edu.berkeley.ai.envs 
+	   edu.berkeley.ai.envs.states.load_all))
 
 
 

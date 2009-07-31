@@ -262,6 +262,15 @@
 	     (experiments/read-experiment-set-results (make-online-experiment-set) 
 						      *run-folder*)))))))
 
+(defn read-full-online-results []
+  (def *online* 
+      (doall 
+       (map #(into {} (assoc % :printed nil  ))
+	    (cons (assoc (:parameters (nth (make-online-experiment-set) 679))
+		    :output [nil -10000] :ms 100000)
+	    (experiments/experiment-set-results->dataset 
+	     (experiments/read-experiment-set-results (make-online-experiment-set) 
+						      *run-folder*)))))))
 
 ; 10 runs failed hard by exceeding 1-day time limit:
  ; flat-hierarchy with 3k, 4k, 5k refs on 500x500, all 3 runs

@@ -1,4 +1,21 @@
-(in-ns 'edu.berkeley.ai.angelic)
+(ns edu.berkeley.ai.angelic
+	 (:require  [edu.berkeley.ai [util :as util] [envs :as envs]]
+	            [edu.berkeley.ai.domains.strips :as strips])
+	 )
+
+
+; Impelmenters of progression are expected to increment the appropriate counters:
+
+(def *op-counter* (util/sref 0))
+(def *pp-counter* (util/sref 0))
+
+(defn reset-op-counter [] (util/sref-set! *op-counter* 0))
+(defn reset-pp-counter [] (util/sref-set! *pp-counter* 0))
+
+(defn reset-progression-counters [] (reset-op-counter) (reset-pp-counter))
+
+
+
 
 ;;;; Valuations represent a mapping from states to reward (e.g., value functions).
 ; Descriptions are transition functions on valuations.

@@ -1,5 +1,4 @@
-(ns edu.berkeley.ai.domains
- (:refer-clojure)
+(ns edu.berkeley.ai.domains.load_all
  (:require [edu.berkeley.ai.domains strips 
 	     ;hybrid-strips 
 	    nav-switch warehouse discrete-road-trip 

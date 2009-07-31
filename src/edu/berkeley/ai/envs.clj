@@ -1,4 +1,7 @@
-(in-ns 'edu.berkeley.ai.envs)
+(ns edu.berkeley.ai.envs
+ (:require [edu.berkeley.ai.util :as util] 
+           [edu.berkeley.ai.util.propositions :as props])
+ )
 
 (defmulti #^{:doc "Get metafied initial state"}   get-initial-state :class)
 (defmulti #^{:doc "Get instance of state-space"}  get-state-space   :class)
@@ -28,6 +31,8 @@
 
 (defmethod get-goal          ::Environment [env]
   (:goal env))
+
+(defmulti #^{:doc "Get string rep of state"}      state-str (fn [env elt] (:class env)))
 
 (defmethod state-str  ::Environment [env state] (state-str (get-state-space env) state))  
 
@@ -92,3 +97,7 @@
 
 (defmulti #^{:doc "Get the expected number of distinct values for arg-pos allowed by pred, given inst-pos vars instantiated."}
   expected-domain-size (fn [inst pred arg-pos inst-pos] (:class inst)))
+
+;; Load containing files.
+(doseq [f '[states actions conditions]]
+   (load-file (str "envs/" f ".clj")))

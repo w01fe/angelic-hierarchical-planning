@@ -2,7 +2,9 @@
 ; Search space != state space, in general
 ; state-space search problems are a special case (of course)
 
-(in-ns 'edu.berkeley.ai.search)
+(ns edu.berkeley.ai.search
+	(:require [edu.berkeley.ai [util :as util] [envs :as envs]]))  
+ 
 
 ;;;;;;;;;;;;;;;;;; Interface for search nodes
 

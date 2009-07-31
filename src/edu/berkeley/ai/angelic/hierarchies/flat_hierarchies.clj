@@ -1,4 +1,6 @@
-(in-ns 'edu.berkeley.ai.angelic.hierarchies)
+(ns edu.berkeley.ai.angelic.hierarchies.flat_hierarchies
+	[:use edu.berkeley.ai.angelic.hierarchies]
+		)
 
 ;; Flat hierarchies, which adapt either ordinary domains or STRIPS domains (mostly for efficiency comparison) for hierarchical search.  
 ; In particular, Act --> [Prim Act] or [] (reg. of if at goal)
