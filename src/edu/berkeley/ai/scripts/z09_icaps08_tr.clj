@@ -409,6 +409,39 @@
 
 
 
+; More online nav instances, for posterity
+
+(defn make-extended-online-experiment-set []
+  (make-icaps-tr-experiment-set "online-extra-nav" 1000000
+    [:product
+     [:max-primitives [nil]]
+     [:domain [] [[:nav-switch 
+		    [:product
+		     [:heuristic [`nav-switch/make-flat-nav-switch-heuristic]]
+		     [:hierarchy [`nav-switch/*nav-switch-hierarchy*]]
+		     [:size     [100 500]]
+		     [:switches [20]] ; 0.10]]
+		     [:run      [1 2 3 4 5 6 7 8 9 10]]
+		     [:high-level-hla-set ['#{act go}]]
+		     [:ref-level-map [nil]]
+		     ]]]]
+     [:algorithm [:ahlrta-star]]
+     [:algorithm-fn [`online/ahlrta-star-search]]
+     [:max-steps [10000]]
+     [:max-refs  [10 20 50 100 200 300 400 500 750 1000 1500 2000 3000 4000 5000]]
+     [:type [] [[:flat-hierarchy
+		 [:ref-choice [] [[:first-gap [:choice-fn [`alts/first-gap-choice-fn]]]]]]
+		[:hierarchy 
+		 [:ref-choice [] [[:first-gap [:choice-fn [`alts/first-gap-choice-fn]]]]]]]]
+     [:graph?         [:full]]
+     [:recheck-graph? [true]]
+     ]))
+
+
+
+
+
+
 
 
 
@@ -462,6 +495,7 @@
   (plot (ds->chart (ds-derive (ds-fn [output] (- (or (second output) -20000))) (filter (ds-fn [ms size max-primitives ref-level-map] (and ms (not ref-level-map)  (not max-primitives) (= size 500))) (filter (ds-fn [domain] (= domain :nav-switch)) *online*)) :cost) [:algorithm :type :ref-choice ] :max-refs :cost {:ylog "t" :xlog "t" :key "7000, 6000"} {}))
 
   )
+
 
 
 

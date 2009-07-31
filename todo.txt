@@ -1,5 +1,8 @@
 ;;;;;;;;;;;;;;;; Implement
 
+Actually have two distinct finish states ... ish (one for explicit
+			val, one for dnf val.)
+
 Look at HLA order! 
 
 PUT BACK pruning in construct-immediate-refinement!
