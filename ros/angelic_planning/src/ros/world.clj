@@ -44,14 +44,14 @@
 
 ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;; Method defs ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
 
-(defmulti render-boundary-points (fn [obj res] (:type obj)))
+(defmulti render-boundary-points (fn [obj res] (:class obj)))
 
 
 (defstruct costmap :minx :miny :res :width :height :data :dx :dy) 
 ; all are integers, data is bytes, dx and dy are double offsets from nearest grid point.
 
 ; hard-rad and sort-rad are integers.
-(defmulti render-2d-costmap (fn [obj res hard-rad soft-rad] (:type obj)))
+(defmulti render-2d-costmap (fn [obj res hard-rad soft-rad] (:class obj)))
 
 
 
@@ -78,12 +78,12 @@
 
 
 (defn render-object [obj res3 res2 inflate-hard inflate-soft]
-  {:type :rendered :name (:name obj) :xyz [0 0 0] :rpy [0 0 0] :def obj
+  {:class :rendered :name (:name obj) :xyz [0 0 0] :rpy [0 0 0] :def obj
    :3d-res res3 :3d-points (render-boundary-points obj res3)
    :2d-costmap            (render-2d-costmap obj res2 inflate-hard inflate-soft)
    :2d-res res2 :2d-hard-rad inflate-hard :2d-soft-rad inflate-soft})
 
-(defmulti object-def :type)
+(defmulti object-def :class)
 (defmethod object-def :box       [obj] obj)
 (defmethod object-def :cylinder  [obj] obj)
 (defmethod object-def :composite [obj] obj)
@@ -119,7 +119,7 @@
 (defn do-transform [t]
   (let [{:keys [xyz rpy def]} t]
     (assert (= rpy [0 0 0]))
-    (assert (= (:type def) :rendered))
+    (assert (= (:class def) :rendered))
     (assoc def
       :xyz        (map + (:xyz def) xyz)
       :3d-points  (translate-points (:3d-points def) xyz)
@@ -309,32 +309,32 @@
 (def *voxel-res* 0.01)
 
 (defn get-cup []
-  {:type :cylinder :name "cup"
+  {:class :cylinder :name "cup"
    :radius 0.025 
    :height 0.075})
 
 (defn get-desk [] 
-  {:type :composite :name "table"
+  {:class :composite :name "table"
    :parts
      {"table-top"
       {:xyz  [0 0 0.6] :rpy  [0 0 0]
-       :def {:type :box :name "table-top" :size [0.75 1.5 0.10]}}
+       :def {:class :box :name "table-top" :size [0.75 1.5 0.10]}}
       "table-leg" 
       {:xyz  [0 0 0.3] :rpy  [0 0 0]
-       :def {:type :box :name "table-leg" :size [0.05 0.05 0.60]}}
+       :def {:class :box :name "table-leg" :size [0.05 0.05 0.60]}}
       "table-base"
       {:xyz  [0 0 0.6] :rpy  [0 0 0]
-       :def {:type :box :name "table-base" :size [0.5 0.8 0.05]}}}})
+       :def {:class :box :name "table-base" :size [0.5 0.8 0.05]}}}})
 
 (defn get-weird []
-  {:type :composite :name "weird"
+  {:class :composite :name "weird"
    :parts 
      {"rect"
       {:xyz [0 0 0] :rpy [0 0 0]
-       :def {:type :box :name "rect" :size [6 4 1]}}
+       :def {:class :box :name "rect" :size [6 4 1]}}
       "circ"
       {:xyz [3 2 2] :rpy [0 0 0]
-       :def {:type :cylinder :radius 2 :height 5}}}})
+       :def {:class :cylinder :radius 2 :height 5}}}})
    
 
 
@@ -361,7 +361,7 @@
   (mapcat 
    (fn [{:keys [xyz rpy def]}]
      (assert (= rpy [0 0 0]))
-     (assert (= (:type def) :rendered))
+     (assert (= (:class def) :rendered))
      (let [res    (safe-get* def :3d-res)
 	   extent {:class Point32 :x res :y res :z res}
 	   axis   {:class Point32 :x 0 :y 0 :z 0}]
@@ -396,7 +396,7 @@
 	fheight (int (- fmaxy fminy))
 	#^bytes fdata (make-array Byte/TYPE (* fwidth fheight))]
     (doseq [{:keys [xyz rpy def]} (vals w)]
-      (assert (= (:type def) :rendered))
+      (assert (= (:class def) :rendered))
       (assert (= rpy [0 0 0]))
       (let [costmap (translate-costmap (:2d-costmap def) xyz)
 	    {:keys [minx miny width height data]} costmap

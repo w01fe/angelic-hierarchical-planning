@@ -146,13 +146,23 @@
 (defn make-point [[x y z]]
   {:class Point :x x :y y :z z})
 
+(defn decode-point [p]
+  [(:x p) (:y p) (:z p)])
+
 (defn make-quaternion [[x y z w]]
   {:class Quaternion :x x :y y :z z :w w})
+
+(defn decode-quaternion [p]
+  [(:x p) (:y p) (:z p) (:w p)])
 
 (defn make-pose [[x y z] [qx qy qz qw]]
   {:class Pose 
    :position    (make-point [x y z])
    :orientation (make-quaternion [qx qy qz qw])})
+
+(defn decode-pose [p]
+  [(decode-point (:position p))
+   (decode-quaternion (:orientation p))])
 
 (defn pose-position [pose]
   (let [{{:keys [x y z]} :position} pose]
@@ -175,6 +185,34 @@
 	od (orientation-distance (:orientation p1) (:orientation p2))]
   ;  (println pd od)
     (+ pd (* angle-wt od)))) 
+
+
+
+
+;; Regions
+
+
+(defn rand-double [[mn mx]]
+  (+ mn (rand (- mx mn))))
+
+(defmulti sample-region :class)
+
+(defn make-interval-region [[a b]]
+  (assert (>= b a))
+  {:class ::IntervalRegion :interval [a b]})
+
+(defmethod sample-region ::IntervalRegion [r]
+  (rand-double (:interval r)))
+
+
+(defn make-base-rect-region [[minx maxx] [miny maxy] [mina maxa]]
+  {:class ::BaseRectRegion
+   :intervals [(make-interval-region [minx maxx])
+	       (make-interval-region [miny maxy])
+	       (make-interval-region [mina maxa])]})
+
+(defmethod sample-region ::BaseRectRegion [r]
+  (map sample-region (:intervals r)))
 
 
 

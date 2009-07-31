@@ -97,7 +97,7 @@
 
 
 
-(defmulti get-joint-map :type)
+(defmulti get-joint-map :class)
 
 
 
@@ -106,7 +106,7 @@
 ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
 
 
-(defstruct robot-base-state    :type :x :y :theta)
+(defstruct robot-base-state    :class :x :y :theta)
 
 (defn make-robot-base-state [x y theta]
   (struct robot-base-state ::BaseState x y theta))
@@ -237,7 +237,7 @@
 (derive ::RightGripperState ::GripperState)
 (derive ::RightGripperState ::Right)
 
-(defstruct robot-gripper-state :type :separation :holding)
+(defstruct robot-gripper-state :class :separation :holding)
 
 (defn make-robot-gripper-state [right? sep holding]
   (struct robot-gripper-state (if right? ::RightGripperState ::LeftGripperState) sep holding))
@@ -246,7 +246,7 @@
 
 (defmethod get-joint-map ::GripperState [obj]
   (let [sep (:separation obj)
-	cr (if (isa? (:type obj) ::Right) "r" "l")]
+	cr (if (isa? (:class obj) ::Right) "r" "l")]
     (into {} (concat [[(str cr "_gripper_joint") sep]
 		      [(str cr "_gripper_float_joint") 0.0]]
 		     (for [finger ["l" "r"]
@@ -263,7 +263,7 @@
   (put-single-message nh (str (if right? "r" "l") "_gripper_position_controller/set_command")
 		      (map-msg Float64 {:data (double sep)})))
 
-(defmulti move-gripper-to-state (fn [nh gs] (:type gs)))
+(defmulti move-gripper-to-state (fn [nh gs] (:class gs)))
 (defmethod move-gripper-to-state ::Left [nh state] (set-gripper-separation nh false (:separation state))) 
 (defmethod move-gripper-to-state ::Right [nh state] (set-gripper-separation nh true (:separation state))) 
 
@@ -283,7 +283,7 @@
 (derive ::RightArmState ::ArmState)
 (derive ::RightArmState ::Right)
 
-(defstruct robot-arm-state     :type :tucked? :joint-angle-map) ;:gripper-state
+(defstruct robot-arm-state     :class :tucked? :joint-angle-map) ;:gripper-state
 
 (defn make-robot-arm-state [right? tucked? joint-angle-map]
   (struct robot-arm-state (if right? ::RightArmState ::LeftArmState) tucked? joint-angle-map))
@@ -305,12 +305,13 @@
 
 
 (defn move-arm-directly-to-state [#^NodeHandle nh arm-state]
-  (let [right? (isa? (:type arm-state) ::Right)
+  (let [right? (isa? (:class arm-state) ::Right)
 	{:keys [jointnames jointpositions]} (get-current-arm-state-msg nh right?)]
     (call-srv-cached nh (str "/" (if right? "r" "l") "_arm_joint_trajectory_controller/TrajectoryStart")
       (map-msg TrajectoryStart$Request
        {:hastiming 0 :requesttiming 0
-	:traj {:points (for [state [jointpositions (map (:joint-angle-map arm-state) jointnames)]]
+	:traj {:names jointnames
+	       :points (for [state [jointpositions (map (:joint-angle-map arm-state) jointnames)]]
 			 {:positions state :time 0})}}))))
 
 
@@ -411,8 +412,7 @@
       (map-msg (world->collision-map world)) )
     (robot-forward-kinematics nh robot)))
 
-(defn rand-double [[mn mx]]
-  (+ mn (rand (- mx mn))))
+
 
 (def get-arm-joint-names 
     (memoize (fn [nh right?] 
@@ -420,9 +420,6 @@
 
 (defn random-arm-joint-map [nh right?]
   (when-not *robot-joint-limits* (get-robot-xml))
-;    (doseq [joint (keys (:joint-angle-map (get-current-arm-state nh right?)))
-;	  :let [limits (*robot-joint-limits* joint)]]
-;      (println joint limits))
     (into {}
     (for [joint (get-arm-joint-names nh right?)
 	  :let [limits (*robot-joint-limits* joint)]]
@@ -476,24 +473,6 @@
 
 
 ; (inverse-kinematics nh true {:class PoseStamped :header *tll-header* :pose {:class Pose :position {:class Point :x 0.53 :y -0.02 :z -0.38} :orientation {:class Quaternion :x 0.0 :y 0.0 :z 0.0 :w 1.0}}} (:joint-angle-map (get-current-arm-state nh true)))
-
-
-;
-;  (def *rarm-joint-limits*
-;       (into {}
-;	 (for [j (map first (get-arm-joints true))]
-;	   [j
-;	    (if-let [p (get *robot-joint-limits* j)]
-;	        (vec (map read-string p))
-;	      [(- Math/PI) Math/PI])])))
-;  (def *larm-joint-limits*
-;       (into {}
-;	 (for [j (map first (get-arm-joints false))]
-;	   [j
-;	    (if-let [p (get *robot-joint-limits* j)]
-;	        (vec (map read-string p))
-;	      [(- Math/PI) Math/PI])])))
-
 
 
 ;(defn move-arm-directly-to-pose [nh right? pose-stamped ]
@@ -561,7 +540,7 @@
   ([right? frame [x y z] [ax ay az] angle [x? y? z?] [roll? pitch? yaw?]]
      (assert (= frame "/map"))
    (let [tol {:class Point :x 0.001 :y 0.001 :z 0.001}]
-  {:class PoseConstraint :type (encode-pose-constraint-type [x? y? z?] [roll? pitch? yaw?])
+  {:class PoseConstraint :class (encode-pose-constraint-type [x? y? z?] [roll? pitch? yaw?])
    :orientation_importance 0.5
    :position_tolerance_above tol :position_tolerance_below tol
    :orientation_tolerance_above tol :orientation_tolerance_below tol
@@ -604,7 +583,7 @@
 (defn move-arm-to-state 
   "Actually move arm to state using move_arm action, with replanning, synchronously"
   [#^NodeHandle nh arm-state]
-  (run-action nh (str "/move_" (if (isa? (:type arm-state) ::Right) "right" "left") "_arm") 
+  (run-action nh (str "/move_" (if (isa? (:class arm-state) ::Right) "right" "left") "_arm") 
     (map-msg {:class MoveArmGoal 
 	      :path_constraints *no-constraints*
 	      :goal_constraints {:pose_constraint  []
@@ -620,7 +599,7 @@
 ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;; Torso ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
 ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
 
-(defstruct robot-torso-state   :type :height)
+(defstruct robot-torso-state   :class :height)
 
 (defn make-robot-torso-state [height]
   (struct robot-torso-state ::TorsoState height))
@@ -645,7 +624,7 @@
 
 ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;; Robot ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
 
-(defstruct robot-state         :type :base :torso :larm :rarm :lgripper :rgripper)
+(defstruct robot-state         :class :base :torso :larm :rarm :lgripper :rgripper)
 (defn make-robot-state [base torso larm rarm lgripper rgripper]
   (struct robot-state ::RobotState base torso larm rarm lgripper rgripper))
 
@@ -660,6 +639,16 @@
   
 (defmethod get-joint-map ::RobotState [obj]
   (apply merge (map #(get-joint-map (% obj)) [:base :torso :larm :rarm :lgripper :rgripper])))
+
+
+
+
+
+
+
+;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
+;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;; Abstract States ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
+;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
 
 
 

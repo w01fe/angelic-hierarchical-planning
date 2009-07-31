@@ -31,7 +31,8 @@
 
 (ns ros.robot-hierarchy
   (:require
-   [ros.robot-actions :as ra]
+   [ros.robot :as robot] [ros.robot-actions :as ra]
+   [edu.berkeley.ai]
    [edu.berkeley.ai [util :as util] [envs :as envs]] 
    [edu.berkeley.ai.envs.states :as states]
    [edu.berkeley.ai.angelic :as angelic]
@@ -39,7 +40,42 @@
   )
   
 
-;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;; Environment ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
+;;;;;;;;;;;;;;;;;;;;;;;;;;;;; Abstract state, robot, env  ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
+
+
+(defstruct abstract-robot-base-state    :class :base-region)
+
+(defn make-abstract-robot-base-state [base-region]
+  (struct abstract-robot-base-state ::AbstractBaseState base-region))
+
+
+(defstruct abstract-robot-arm-state :class)
+
+
+
+(derive ::AbstractLeftArmState ::AbstractArmState)
+(derive ::AbstractLeftArmState ::robot/Left)
+(derive ::AbstractRightArmState ::AbstractArmState)
+(derive ::AbstractRightArmState ::robot/Right)
+
+(defn make-abstract-robot-arm-state [right?]
+  (struct abstract-robot-arm-state (if right? ::AbstractRightArmState ::AbstractLeftArmState)))
+
+
+(defn make-abstract-robot-state [base torso larm rarm lgripper rgripper]
+  (struct robot-state ::AbstractRobotState base torso larm rarm lgripper rgripper))
+
+(defn robot-state->abstract-robot-state [s]
+  (assoc s :class ::AbstractRobotState))
+
+
+
+
+
+(defn make-abstract-robot-env [robot world]
+  (struct robot-env ::AbstractRobotEnv robot world))
+
+
 
 ; Wrapper for env defined in robot-env.
 ; Environment is just a robot-env 
@@ -59,74 +95,164 @@
 
 ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;; Valuations ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
 
-; Use explicit valuations for primitive actions.
-; HLAs use RobotValuations
-; Basically environments, but objects and robot parts may be regions rather than points
-; For now, just focus on robot base and arm;
-  ; Base may be in a region
-  ; Arm may be
+(defn make-abstract-robot-valuation 
+  "An abstract-robot-valuations is a map from abstract-robot-envs to rewards."
+  [abstract-env-map]
+  (if (empty? abstract-env-map)
+      angelic/*pessimal-valuation*
+    {:class ::AbstractRobotValuation :abstract-env-map abstract-env-map}))
+
+(defmethod valuation-max-reward ::AbstractRobotValuation [val]
+  (apply max (vals (:abstract-env-map val))))
+
 
 ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;; Hierarchy ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
    
-; Need optimistic descriptions for high-level actions ...
 
-(defn make-angelic-robot-hierarchy [env]
-;  ...
- )
 
-(defmethod hierarchies/hla-primitive? ::ra/RobotAction [a]
-  (ra/robot-action-primitive? a))
+(defstruct angelic-robot-action class :robot-action :hierarchy)
 
-  
+(defn make-angelic-robot-action [robot-action hierarchy]
+  {:class ::AngelicRobotAction robot-action hierarchy})
 
-(defmethod hierarchies/hla-environment                        ::NavRegionsHLA [hla]
-  (util/safe-get hla :env))
+(derive ::AngelicRobotTLA ::AngelicRobotAction)
+(defn make-angelic-top-level-robot-action [initial-plans hierarchy]
+  {:class ::AngelicRobotTLA :initial-plans initial-plans :hierarchy hierarchy})
 
-(defmethod hierarchies/hla-default-optimistic-valuation-type  ::NavRegionsHLA [hla]
+(derive ::AngelicRobotFinish ::AngelicRobotAction)
+(defn make-angelic-finish-action [goal-pred hierarchy]
+  {:class ::AngelicRobotFinish :goal-pred goal-pred :hierarchy hierarchy
+   :description {:class ::RobotFinishDescription :goal-pred goal-pred}})
+
+
+
+(defn make-angelic-robot-hierarchy 
+  "Goal-pred should work on either abstract or concrete env."
+  [nh initial-plans env goal-pred sample-depths]
+  (let [h {:class ::AngelicRobotHierarchy 
+	   :nh nh :angelic-env (make-angelic-robot-env env goal-pred) 
+	   :sample-depths sample-depths}]
+    [(make-angelic-top-level-robot-action initial-plans h)
+     (make-angelic-finish-action goal-pred h)]))
+
+
+(defmethod hierarchies/hla-primitive? ::AngelicRobotAction [hla]
+  (ra/robot-action-primitive? (:robot-action hla)))
+
+(defmethod hierarchies/hla-primitive? ::AngelicRobotTLA [a] true )
+(defmethod hierarchies/hla-primitive? ::AngelicRobotFinish [a] false)
+
+
+(defmethod hierarchies/hla-primitive ::AngelicRobotAction [hla]
+  (assert (ra/robot-action-primitive? (:robot-action hla)))
+  (:robot-action hla))
+
+(defmethod hierarchies/hla-primitive ::AngelicRobotFinish [a] :noop)
+
+
+(defmethod hierarchies/hla-environment ::AngelicRobotAction [a]
+  (:angelic-env (:hierarchy a)))
+
+
+(defmethod hierarchies/hla-default-optimistic-valuation-type  ::AngelicRobotAction [hla]
   ::angelic/ExplicitValuation)
 
-(defmethod hierarchies/hla-default-pessimistic-valuation-type ::NavRegionsHLA [hla]
+(defmethod hierarchies/hla-default-pessimistic-valuation-type ::AngelicRobotAction [hla]
   ::angelic/ExplicitValuation)
 
 
-(defmethod hierarchies/hla-name ::NavRegionsAct       [hla] '[act])
-(defmethod hierarchies/hla-name ::NavRegionsTraverse  [hla] ['traverse (:src hla) (:dst hla)])
-(defmethod hierarchies/hla-name ::NavRegionsNav       [hla] ['nav (:dst hla)])
-(defmethod hierarchies/hla-name ::NavRegionsPrimitive [hla] (:name (:primitive hla)))
-(defmethod hierarchies/hla-name ::NavRegionsFinish    [hla] '[finish])
+(defmethod hierarchies/hla-name ::AngelicRobotAction       [hla] 
+  (robot-action-name (:robot-action hla)))
+(defmethod hierarchies/hla-name ::AngelicRobotTLA    [hla] '[top-level])
+(defmethod hierarchies/hla-name ::AngelicRobotFinish [hla] '[finish])
 
-(defmethod hierarchies/hla-hierarchical-preconditions ::NavRegionsHLA [hla] 
+
+(defmethod hierarchies/hla-hierarchical-preconditions ::AngelicRobotAction [hla] 
   envs/*true-condition*)
 
-; hierarchy : nav (square/connector)
-;           : traverse (from in-connector to out-connector)
 
-; initial-plan: either nav(dst) or nav(some conn), traverse(some final conn), nav(dst)
+(defmethod hierarchies/hla-immediate-refinements [::AngelicRobotAction ::angelic/ExplicitValuation]
+  [hla opt-val]
+  (let [a (:robot-action hla)
+	h (:hierarchy hla)
+	[env rew-so-far] (util/safe-singleton (angelic/explicit-valuation-map opt-val))]
+    (assert (= (:class env) ::ra/RobotEnv))
+    (for [plan 
+	  (if (ra/robot-hla-discrete-refinements? a)
+	    (ra/robot-hla-refinements (:nh h) a env)
+	    (let [num-refs (util/safe-get (:sample-depths h) (:class a))]
+	      (filter identity
+		      (take num-refs
+			    (repeatedly #(sample-robot-hla-refinement (:nh h) a env))))))]
+      (for [action (ra/get-action-seq plan)]
+	(make-angelic-robot-action action h)))))
+      
+(defmethod hierarchies/hla-immediate-refinements [::AngelicRobotTLA ::angelic/ExplicitValuation]
+  [hla opt-val]
+  (let [h (util/safe-get hla :hierarchy)]
+    (for [plan (util/safe-get hla :initial-plans)]
+      (for [action plan]
+	(make-angelic-robot-action action h)))))
 
-(defmethod hierarchies/hla-immediate-refinements 
-  [::NavRegionsAct ::angelic/ExplicitValuation]            [hla opt-val]
-  (let [cpos (util/safe-singleton (keys (angelic/explicit-valuation-map opt-val)))
-	env  (:env hla)
-	connect (util/safe-get-in hla [:primitives 'connect])
-	{:keys [goal-pos region-fn region-connectors connector-dists connector-targets]} env]
-    (concat
-     (when (= (region-fn cpos) (region-fn goal-pos))
-       [[(make-nav-hla hla goal-pos)]])
-     (if (find connector-targets cpos)  ; already at connector
-         (for [[connector rew] (connector-dists cpos)
-	       :when (or (= (region-fn (connector-targets connector)) (region-fn goal-pos))
-			 (seq (connector-dists (connector-targets connector))))]
-	   [(make-traverse-hla hla cpos connector rew) connect hla])
-       (for [connector (region-connectors (region-fn cpos))
-	     :when (or (= (region-fn (connector-targets connector)) (region-fn goal-pos))
-		       (seq (connector-dists (connector-targets connector))))]
-	 [(make-nav-hla hla connector) connect hla])))))
+
+
+(defn- make-primitive-description [hla]
+  {:class ::RobotPrimitiveDescription :hla hla})
+
+(defmethod angelic/progress-valuation [::ExplicitValuation ::RobotPrimitiveDescription]
+  [val desc]
+  (let [hla (:hla desc)
+	a (:robot-action hla)
+	h (:hierarchy hla)
+	[env rew-so-far] (util/safe-singleton (angelic/explicit-valuation-map val))]
+    (assert (= (:class env) ::ra/RobotEnv))
+    (if-let [[next-env step-rew] (ra/robot-primitive-result (:nh h) a env)]
+        (angelic/make-explicit-valuation {next-env (+ rew-so-far step-rew)})
+      angelic/*pessimal-valuation*)))
+
+(defmethod angelic/progress-valuation [::ExplicitValuation ::RobotFinishDescription]
+  [val desc]
+  (let [goal-pred (:goal-pred desc) 
+	[env rew-so-far] (util/safe-singleton (angelic/explicit-valuation-map val))]
+    (if (goal-pred env)
+        (angelic/make-explicit-valuation {angelic/*finish-state* rew-so-far})
+      angelic/*pessimal-valuation*)))
+
+(defmethod angelic/progress-valuation [::ConditionalValuation ::RobotFinishDescription]
+  [val desc]
+  (assert (= (:condition val) envs/*true-condition*))
+  (angelic/make-explicit-valuation {angelic/*finish-state* (angelic/valuation-max-reward val)}))
 
 
 
-(defmethod hierarchies/hla-optimistic-description             ::NavRegionsHLA [hla]
-  (util/safe-get hla :optimistic-description))
 
-(defmethod hierarchies/hla-pessimistic-description            ::NavRegionsHLA [hla]
-  (util/safe-get hla :pessimistic-description))
+
+
+(defmethod hierarchies/hla-optimistic-description ::AngelicRobotAction [hla]
+  (let [a (:robot-action hla)]
+    (if (isa? (:class a) :ra/RobotPrimitive)
+        (make-primitive-description hla)
+      (angelic/make-optimal-description))))
+
+(defmethod hierarchies/hla-pessimistic-description ::AngelicRobotAction [hla]
+  (let [a (:robot-action hla)]
+    (if (isa? (:class a) :ra/RobotPrimitive)
+        (make-primitive-description hla)
+      angelic/*pessimal-description*)))
+
+(defmethod hierarchies/hla-optimistic-description ::AngelicRobotTLA [hla]
+  (angelic/make-optimal-description))
+
+(defmethod hierarchies/hla-pessimistic-description ::AngelicRobotTLA [hla]
+  angelic/*pessimal-description*)
+
+(defmethod hierarchies/hla-optimistic-description ::AngelicRobotFinish [hla]
+  (:description hla))
+
+(defmethod hierarchies/hla-pessimistic-description ::AngelicRobotFinish [hla]
+  (:description hla))
+
+
+
+
 

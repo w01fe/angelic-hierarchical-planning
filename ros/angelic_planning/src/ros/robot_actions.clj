@@ -38,7 +38,7 @@
 
 ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;; Environment ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
 
-(defstruct robot-env  :type :robot :world)
+(defstruct robot-env  :class :robot :world)
 
 (defn make-robot-env [robot world]
   (struct robot-env ::RobotEnv robot world))
@@ -59,28 +59,30 @@
 
 (defmulti robot-primitive-result 
   "Take an action and env and return [new-env step-reward], or nil if impossible"
-  (fn [nh action env] (:type action)))
+  (fn [nh action env] (:class action)))
 
 (defmulti execute-robot-primitive 
   "Try to execute this action in the environment, and return true iff succeeded."
-  (fn [nh action] (:type action)))
+  (fn [nh action] (:class action)))
 
-(defmulti robot-action-primitive? :type)
+(defmulti robot-action-name :class)
+
+(defmulti robot-action-primitive? :class)
 (defmethod robot-action-primitive? ::RobotHLA       [a] false)
 (defmethod robot-action-primitive? ::RobotPrimitive [a] true)
 
 
 (defmulti robot-hla-discrete-refinements? 
   "Are there a finite number of refinements of this HLA?"
-  (fn [a] (:type a)))
+  (fn [a] (:class a)))
 
 (defmulti robot-hla-refinements 
   "Return a lazy (often infinite) sequence of immediate refinements."
-  (fn [nh a env] (:type a)))
+  (fn [nh a env] (:class a)))
 
 (defmulti sample-robot-hla-refinement
   "Return a single random refinement, or nil for failure."
-  (fn [nh a env] (:type a)))
+  (fn [nh a env] (:class a)))
 
 
 (defmethod robot-hla-refinements ::RobotHLA [nh a env]
@@ -94,7 +96,7 @@
     (when (seq refs)
       (nth refs (rand-int (count refs))))))
 
-(defmulti sample-robot-action-primitive-refinement (fn [nh a env] (:type a)))
+(defmulti sample-robot-action-primitive-refinement (fn [nh a env] (:class a)))
 
 (defmethod sample-robot-action-primitive-refinement ::RobotHLA [nh a env]
   (if (robot-action-primitive? a) (when (robot-primitive-result nh a env) a)
@@ -121,14 +123,17 @@
 (derive ::RobotHLASeq       ::RobotHLA)
 
 
-(defstruct robot-action-seq :type :actions)
+(defstruct robot-action-seq :class :actions)
 
 (defn make-robot-action-seq [actions]
   (struct robot-action-seq 
 	  (if (every? robot-action-primitive? actions) ::RobotPrimitiveSeq ::RobotHLASeq) 
 	  actions))
 
-(defmulti get-action-seq :type)
+(defmethod robot-action-name ::RobotActionSeq [a]
+  (map robot-action-name (:actions a)))
+
+(defmulti get-action-seq :class)
 (defmethod get-action-seq ::RobotAction [a] [a])
 (defmethod get-action-seq ::RobotActionSeq [a] (:actions a))
 
@@ -188,7 +193,7 @@
 
 (derive ::BaseAction ::RobotPrimitive)
 
-(defstruct base-action :type :goal)
+(defstruct base-action :class :goal)
 
 (defn make-base-action [goal]
   (struct base-action ::BaseAction goal))
@@ -204,33 +209,16 @@
   (println "Executing move_base action")
   (move-base-to-state nh (:goal action)))
 
+(defmethod robot-action-name ::BaseAction [a]
+  (let [{:keys [x y theta]} (:goal a)]
+    ['base-to x y theta]))
+
 
 ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;; Base - Region ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
 
-;; Regions
-
-(defmulti sample-region :type)
-
-(defn make-interval-region [[a b]]
-  (assert (>= b a))
-  {:type ::IntervalRegion :interval [a b]})
-
-(defmethod sample-region ::IntervalRegion [r]
-  (rand-double (:interval r)))
-
-
-(defn make-base-rect-region [[minx maxx] [miny maxy] [mina maxa]]
-  {:type ::BaseRectRegion
-   :intervals [(make-interval-region [minx maxx])
-	       (make-interval-region [miny maxy])
-	       (make-interval-region [mina maxa])]})
-
-(defmethod sample-region ::BaseRectRegion [r]
-  (map sample-region (:intervals r)))
-
 (derive ::BaseRegionAction ::RobotHLA)
 
-(defstruct base-region-action :type :goal-region)
+(defstruct base-region-action :class :goal-region)
 
 (defn make-base-region-action 
   "Goal-region should be a base-region of some sort"
@@ -242,19 +230,21 @@
 (defmethod sample-robot-hla-refinement ::BaseRegionAction [nh a env]
   (make-base-action (apply make-robot-base-state (sample-region (:goal-region a)))))
 
+(defmethod robot-action-name ::BaseAction [a]
+  ['base-to-region (:intervals (:goal-region a))])
 
 ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;; Gripper ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;  
 
 
 (derive ::GripperAction ::RobotPrimitive)
 
-(defstruct gripper-action :type :goal)
+(defstruct gripper-action :class :goal)
 
 (defn make-gripper-action [goal]
   (struct gripper-action ::GripperAction goal))
 
 (defmethod robot-primitive-result ::GripperAction [nh action env]
-  (let [field  (if (isa? (:type (:goal action)) :ros.robot/Right) :rgripper :lgripper)]
+  (let [field  (if (isa? (:class (:goal action)) :ros.robot/Right) :rgripper :lgripper)]
     [(assoc-in env [:robot field] (:goal action))
      (* *gripper-cost-multiplier*
 	(Math/abs (double (- (:separation (:goal action)) (:separation (field (:robot env)))))))]))
@@ -263,6 +253,9 @@
   (println "Executing move_gripper action (directly via trajectory controller)")
   (move-gripper-to-state nh (:goal action)))
 
+(defmethod robot-action-name ::GripperAction [a]
+  [(if (isa? (:class (:goal a)) :ros.robot/Right) 'right-gripper-to 'left-gripper-to)
+   (:separation (:goal a))])
 
 
 ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;; Arm - Joints  ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;  
@@ -271,13 +264,13 @@
 
 (derive ::ArmJointAction ::RobotPrimitive)
 
-(defstruct arm-joint-action :type :goal)
+(defstruct arm-joint-action :class :goal)
 
 (defn make-arm-joint-action [goal]
   (struct arm-joint-action ::ArmJointAction goal))
 
 (defmethod robot-primitive-result ::ArmJointAction [nh action env]
-  (let [r?  (isa? (:type (:goal action)) :ros.robot/Right)
+  (let [r?  (isa? (:class (:goal action)) :ros.robot/Right)
 	sol (plan-arm-motion nh r? (:world env) (:robot env) (:joint-angle-map (:goal action)) nil)
 	times (:times (:path sol))]
     (print "Result for joint action: ") (describe-motion-plan sol)
@@ -288,6 +281,11 @@
 (defmethod execute-robot-primitive ::ArmJointAction [nh action]
   (println "Executing move_arm action (synchronously, using move_arm)")
   (move-arm-to-state nh (:goal action)))
+
+(defmethod robot-action-name ::ArmJointAction [a]
+  (vec
+   (cons (if (isa? (:class (:goal a)) :ros.robot/Right) 'right-arm-to 'left-arm-to)
+	 (map second (sort-by first (seq (:joint-angle-map (:goal action))))))))
 
 
 
@@ -301,7 +299,7 @@
 
 (derive ::ArmPoseAction ::RobotHLA)
 
-(defstruct arm-pose-action :type :right? :pose)
+(defstruct arm-pose-action :class :right? :pose)
 
 (defn make-arm-pose-action [right? map-gripper-pose]
   (struct arm-pose-action ::ArmPoseAction right? map-gripper-pose))
@@ -317,7 +315,10 @@
     (when ik
       (make-arm-joint-action (make-robot-arm-state r? false ik)))))
 
-
+(defmethod robot-action-name ::ArmPoseAction [a]
+  (vec 
+   (cons (if (:right? a) 'right-arm-to-pose 'left-arm-to-pose)
+	 (decode-pose (:pose a)))))
 
 
 
@@ -327,7 +328,7 @@
 
 (derive ::TorsoAction ::RobotPrimitive)
 
-(defstruct torso-action :type :goal)
+(defstruct torso-action :class :goal)
 
 (defn make-torso-action [goal]
   (struct torso-action ::TorsoAction goal))
@@ -341,6 +342,8 @@
   (println "Executing move_torso action (directly via trajectory controller)")
   (move-torso-to-state nh (:goal action)))
 
+(defmethod robot-action-name ::TorsoAction [a]
+  ['torso-to (:height (:goal a))])
 
 
 
@@ -388,7 +391,7 @@
 (comment ; Old version, before IK worked
 (derive ::ArmPoseAction ::RobotHLA)
 
-(defstruct arm-pose-action :type :pose-constraint)
+(defstruct arm-pose-action :class :pose-constraint)
 
 (defn make-arm-pose-action [pose-constraint]
   (struct arm-pose-action ::ArmPoseAction pose-constraint))
