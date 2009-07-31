@@ -1,4 +1,5 @@
 (ns edu.berkeley.ai.angelic
+  (:import [java.util HashMap])
 	 (:require  [edu.berkeley.ai [util :as util] [envs :as envs]]
 	            [edu.berkeley.ai.domains.strips :as strips])
 	 )
@@ -157,7 +158,6 @@
 
 (derive ::PropositionalValuation ::Valuation)
 
-(import '[java.util HashMap])
 
 (defn clause->pred-maps [conjunctive-clause]
   (let [true-map (HashMap.) poss-map (HashMap.)]

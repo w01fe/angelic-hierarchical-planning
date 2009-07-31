@@ -1,6 +1,6 @@
 (ns edu.berkeley.ai.envs
  (:require [edu.berkeley.ai.util :as util] 
-           [edu.berkeley.ai.util.propositions :as props])
+           [edu.berkeley.ai.util [propositions :as props] [hybrid :as hybrid]])
  )
 
 (defmulti #^{:doc "Get metafied initial state"}   get-initial-state :class)
@@ -64,6 +64,28 @@
       (+ reward-so-far reward)]]))
 
 
+
+;::PropositionalEnvironment
+
+(derive ::PropositionalEnvironment ::Environment)
+
+(defmulti #^{:doc "Get the ::PropositionalDomain associated with this ::PropositionalEnvironment"}
+  get-domain :class)
+
+(defmulti #^{:doc "Get the expected number of distinct values for arg-pos allowed by pred, given inst-pos vars instantiated."}
+  expected-domain-size (fn [inst pred arg-pos inst-pos] (:class inst)))
+
+
+
+
+;; Load containing files.
+
+(doseq [f '[conditions states actions]]
+   (load (str "envs/" f)))
+
+
+
+
 ;; Useful sanity check
 
 
@@ -86,18 +108,3 @@
 	  (util/assert-is (satisfies-condition? state goal))
 	  (util/assert-is (= reward (:reward ^state)))
 	  [act-seq reward state-seq])))))
-
-
-;::PropositionalEnvironment
-
-(derive ::PropositionalEnvironment ::Environment)
-
-(defmulti #^{:doc "Get the ::PropositionalDomain associated with this ::PropositionalEnvironment"}
-  get-domain :class)
-
-(defmulti #^{:doc "Get the expected number of distinct values for arg-pos allowed by pred, given inst-pos vars instantiated."}
-  expected-domain-size (fn [inst pred arg-pos inst-pos] (:class inst)))
-
-;; Load containing files.
-(doseq [f '[states actions conditions]]
-   (load-file (str "envs/" f ".clj")))

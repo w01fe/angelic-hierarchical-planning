@@ -1,8 +1,8 @@
 (ns edu.berkeley.ai.envs.states.explicit
- (:use [edu.berkeley.ai.envs.states :as states])
+ (:require [edu.berkeley.ai.envs :as envs])
  )
 
-(derive ::ExplicitStateSet ::edu.berkeley.ai.envs.states/StateSpace)
+(derive ::ExplicitStateSet ::envs/StateSpace)
 
 (defstruct explicit-state-set :class :states)
 
@@ -11,12 +11,12 @@
   (struct explicit-state-set ::ExplicitStateSet (apply sorted-set states)))
 
 
-(defmethod list-states ::ExplicitStateSet [state-set]
+(defmethod envs/list-states ::ExplicitStateSet [state-set]
   (:states state-set))
 
-(defmethod canonicalize ::ExplicitStateSet [state-set]
+(defmethod envs/canonicalize ::ExplicitStateSet [state-set]
   state-set)
 
-(defmethod set-contains? ::ExplicitStateSet [state-set elt] 
+(defmethod envs/set-contains? ::ExplicitStateSet [state-set elt] 
   (contains? (:states state-set) elt))
 

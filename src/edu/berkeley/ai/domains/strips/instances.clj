@@ -123,7 +123,6 @@
 ; MAYBE: optimize compilation speed (actually hard to do, I tried)
 ; Single pass through actions, make single ordering? (ditto)
 
-(import '(java.util HashMap HashSet Arrays ArrayList))
 (set! *warn-on-reflection* true)
 
 ; Idea: make table, for each atom, set of pos and neg actions?
@@ -282,7 +281,6 @@
    (util/safe-get action :cost)
    nil))
 
-(import '(java.util HashMap))
 
 (defn flatten-strips-instance [instance]
   (let [forward-map  (HashMap.),

@@ -1,3 +1,3 @@
 (ns edu.berkeley.ai.envs.states.load_all
-  (:require binary explicit))
+  (:require [edu.berkeley.ai.envs.states binary explicit]))
 

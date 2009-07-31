@@ -3,7 +3,8 @@
 ; state-space search problems are a special case (of course)
 
 (ns edu.berkeley.ai.search
-	(:require [edu.berkeley.ai [util :as util] [envs :as envs]]))  
+  (:require [edu.berkeley.ai [util :as util] [envs :as envs]]
+	    [edu.berkeley.ai.util.queues :as queues]))  
  
 
 ;;;;;;;;;;;;;;;;;; Interface for search nodes

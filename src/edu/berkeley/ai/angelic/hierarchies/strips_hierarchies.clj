@@ -6,7 +6,8 @@
         [edu.berkeley.ai.util.propositions :as props]
         [edu.berkeley.ai.domains.strips :as strips]
         [edu.berkeley.ai.angelic.ncstrips-descriptions :as ncstrips]
-	[edu.berkeley.ai.search.smart-csps :as smart-csps]
+	[edu.berkeley.ai.domains.strips.smart-csps :as smart-csps]
+	[edu.berkeley.ai.angelic.hierarchies.flat-hierarchies :as flat-hierarchies]
         )
   )
 
@@ -162,9 +163,9 @@
   (make-flat-act-optimistic-description-schema (second desc)))
 
 (defmethod instantiate-description-schema ::FlatActOptimisticDescriptionSchema [desc instance]
-  (make-flat-act-optimistic-description (envs/get-goal instance) (:upper-reward-fn desc)))
+  (flat-hierarchies/make-flat-act-optimistic-description (envs/get-goal instance) (:upper-reward-fn desc)))
 
-(defmethod ground-description :edu.berkeley.ai.angelic.hierarchies/FlatActOptimisticDescription [desc var-map] desc)
+(defmethod ground-description :edu.berkeley.ai.angelic.hierarchies.flat-hierarchies/FlatActOptimisticDescription [desc var-map] desc)
 
 
 ; Immediate refinements are [name pos-prec neg-prec unk-types expansion]
@@ -215,7 +216,7 @@
 ;; Grounded STRIPS HLAs and hierarchies (here, actual grounding done JIT, not cached)
 ; Immediate refinements are [name pos-prec neg-prec CSP (not unk-types) expansion !!!]
 
-(derive ::StripsHLA :angelic.hierarchies/HLA)
+;(derive ::StripsHLA ::HLA)
 (derive ::StripsPrimitiveHLA ::StripsHLA)
 (derive ::StripsNoopHLA ::StripsPrimitiveHLA)
 

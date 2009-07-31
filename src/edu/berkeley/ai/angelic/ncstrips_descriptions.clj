@@ -1,10 +1,11 @@
 (ns edu.berkeley.ai.angelic.ncstrips-descriptions
   (:refer-clojure)
   (:use edu.berkeley.ai.angelic)
+  (:import [java.util ArrayList])
   (:require [edu.berkeley.ai.util :as util] 
             [edu.berkeley.ai.util.propositions :as props]
             [edu.berkeley.ai.domains.strips :as strips]
-	    [edu.berkeley.ai.search.smart-csps :as smart-csps])
+	    [edu.berkeley.ai.domains.strips.smart-csps :as smart-csps])
   )
 
 ;;; NCStrips descriptions
@@ -192,7 +193,7 @@
 
 (defstruct ncstrips-description :class :effects)
 
-(import '(java.util ArrayList))
+
 
 (comment ; old version without hack for discrete-road-trip
 (defn- get-csp-results [csp pos neg var-map pred-maps]

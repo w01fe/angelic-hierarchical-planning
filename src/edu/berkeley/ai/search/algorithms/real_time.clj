@@ -1,7 +1,10 @@
 (ns edu.berkeley.ai.search.algorithms.real-time
   (:refer-clojure)
-  (:use [edu.berkeley.ai.search :as search])
-  (:require [edu.berkeley.ai [util :as util] [envs :as envs]])
+  (:use [edu.berkeley.ai.search])
+  (:import [java.util HashMap])
+  (:require 
+   [edu.berkeley.ai [util :as util] [envs :as envs]]
+   [edu.berkeley.ai.search.state-space :as state-space])
   )
 ;;; Textbook algorithms for fully observable, deterministic problems
 ;;; with countable state spaces and finite action spaces.
@@ -33,7 +36,6 @@
 	 (refinements-depth (env->search-node env) search-depth))))))
 
 
-(import '(java.util HashMap))
 
 ; TODO: Various versions for search strategies, alpha pruning, etc.
 (defn lrta-star "Korf's classic LRTA* with a fixed depth limit. Only for state-space search."
@@ -43,7 +45,7 @@
      env 
      max-steps
      (fn [env]
-       (let [node (ss-node env)
+       (let [node (state-space/ss-node env)
 	     nodes (map-leaf-refinements-depth 
 		     node
 		     #(when-let [r (and (not= node %) (.get m (:state %)))]

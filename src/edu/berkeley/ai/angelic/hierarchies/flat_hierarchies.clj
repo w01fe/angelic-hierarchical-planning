@@ -1,6 +1,7 @@
-(ns edu.berkeley.ai.angelic.hierarchies.flat_hierarchies
-	[:use edu.berkeley.ai.angelic.hierarchies]
-		)
+(ns edu.berkeley.ai.angelic.hierarchies.flat-hierarchies
+  (:use edu.berkeley.ai.angelic edu.berkeley.ai.angelic.hierarchies)
+  (:require [edu.berkeley.ai [util :as util] [envs :as envs]])
+  )
 
 ;; Flat hierarchies, which adapt either ordinary domains or STRIPS domains (mostly for efficiency comparison) for hierarchical search.  
 ; In particular, Act --> [Prim Act] or [] (reg. of if at goal)
@@ -17,12 +18,12 @@
    (instantiate-hierarchy (make-flat-hierarchy-schema upper-reward-fn) env)))
 
 (defstruct flat-act-hla :class :env :opt-desc :action-space)
-(derive ::FlatActHLA ::HLA)
+;(derive ::FlatActHLA ::HLA)
 (defn- make-flat-act-hla [env opt-desc action-space]
   (struct flat-act-hla ::FlatActHLA env opt-desc action-space))
 
 (defstruct flat-primitive-hla :class :action :env)
-(derive ::FlatPrimitiveHLA ::HLA)
+;(derive ::FlatPrimitiveHLA ::HLA)
 (defn- make-flat-primitive-hla [env action]
   (struct flat-primitive-hla ::FlatPrimitiveHLA action env))
 

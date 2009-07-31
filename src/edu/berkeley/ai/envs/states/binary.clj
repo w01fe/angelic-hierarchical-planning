@@ -1,13 +1,14 @@
 (ns edu.berkeley.ai.envs.states.binary
- (:use [edu.berkeley.ai.envs.states :as states])
- (:require [edu.berkeley.ai.util :as util] )
- )
+ (:require 
+  [edu.berkeley.ai.envs :as envs]
+  [edu.berkeley.ai.util :as util]))
+ 
 
 
 
 ;; Binary state spaces
 
-(derive ::BinaryStateSpace ::edu.berkeley.ai.envs.states/StateSpace)
+(derive ::BinaryStateSpace ::envs/StateSpace)
 
 (defstruct binary-state-space :class :vars :str-fn) 
 
@@ -20,14 +21,16 @@
     (struct binary-state-space ::BinaryStateSpace var-set str-fn))))
 
 
-(defmethod list-states ::BinaryStateSpace [state-set]
+(defmethod envs/list-states ::BinaryStateSpace [state-set]
   (util/power-set (:vars state-set)))
 
-(defmethod canonicalize ::BinaryStateSpace [state-set]
+(defmethod envs/canonicalize ::BinaryStateSpace [state-set]
   state-set)  
 
-(defmethod set-contains? ::BinaryStateSpace [state-set elt]
+(defmethod envs/set-contains? ::BinaryStateSpace [state-set elt]
   (every? (:vars state-set) elt))
+
+
 
 
 

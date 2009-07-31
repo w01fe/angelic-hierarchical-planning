@@ -1,8 +1,7 @@
 (ns edu.berkeley.ai.domains.discrete-road-trip
- (:use clojure.test )
+ (:import [java.util HashSet])
  (:require [edu.berkeley.ai [util :as util] [envs :as envs]] 
 	   [edu.berkeley.ai.util.graphs :as graphs]
-           [edu.berkeley.ai.envs.states :as states]
            [edu.berkeley.ai.domains.strips :as strips]
 	   [edu.berkeley.ai.angelic :as angelic]
 	   [edu.berkeley.ai.angelic.dnf-valuations :as dv])
@@ -109,7 +108,7 @@
 (defn make-drt-act-description [fn all-dnf] (struct drt-act-description ::DRTActDescription fn all-dnf))
 
 
-(import '[java.util HashSet])
+
 
 (defmethod angelic/instantiate-description-schema ::DRTActDescriptionSchema [desc instance]
   (let [goal-atoms   (util/safe-get instance :goal-atoms)

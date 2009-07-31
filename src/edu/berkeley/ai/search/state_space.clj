@@ -6,10 +6,10 @@
 ; The currently implemented version of consistency enforcement is incorrect. 
 ; See Mero 1984.  In fact, it can't be done without reopening nodes.  See http://www.ise.bgu.ac.il/faculty/felner/research/incaaai.pdf.  So, forget it.  
 
-(ns 'edu.berkeley.ai.search.state-space
-	(:use edu.berkeley.ai.search)
- 	(:require [edu.berkeley.ai [util :as util] [envs :as envs]]              
-          [edu.berkeley.ai.util.queues :as queues]))
+(ns edu.berkeley.ai.search.state-space
+   (:use edu.berkeley.ai.search)
+   (:require [edu.berkeley.ai [util :as util] [envs :as envs]]              
+	     ))
 
 
 ;;; An auxillary data structure to hold cached features of env, heuristics.
@@ -25,7 +25,7 @@
 
 ;;; Main node data structure
 
-(derive ::StateSpaceNode ::Node)
+(derive ::StateSpaceNode ::edu.berkeley.ai.search/Node)
 
 (defstruct state-space-node :class :search-space :state)
 

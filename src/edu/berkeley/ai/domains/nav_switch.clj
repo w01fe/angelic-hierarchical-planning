@@ -1,7 +1,5 @@
 (ns edu.berkeley.ai.domains.nav-switch
- (:use clojure.test )
  (:require [edu.berkeley.ai [util :as util] [envs :as envs]] 
-           [edu.berkeley.ai.envs.states :as states]
            [edu.berkeley.ai.domains.strips :as strips])
  )
 
@@ -30,7 +28,7 @@
       (util/assert-is (legal-coord?- coord height width)))
     (envs/make-environment 
      (struct nav-switch-state initial-pos initial-hor?)
-     (states/make-state-set
+     (envs/make-state-set
       (fn [state]
 	(util/str-join "\n"
 	  (for [y (range height)]
@@ -147,33 +145,6 @@
 	      (util/abs (- (util/desymbolize (first (strips/get-strips-state-pred-val state 'aty)) 1) goal-y)))))))
 
 
-(defn- get-and-check-sol [env]
-  (map :name
-    (first
-     (envs/check-solution env
-       (edu.berkeley.ai.search.algorithms.textbook/a-star-search 
-	(edu.berkeley.ai.search/make-initial-state-space-node 
-	 env   
-	 (constantly 0)))))))
-
-(deftest flat-nav-switch
-  (testing "non-strips"
-    (is (= ['left 'flip 'down]
-     (get-and-check-sol 
-      (make-nav-switch-env 2 2 [[0 0]] [1 0] true [0 1])))))
-  (testing "strips"
-    (is (= '[[good-left x1 x0] [flip-v x0 y0] [good-down y0 y1]]
-     (get-and-check-sol
-      (make-nav-switch-strips-env 2 2 [[0 0]] [1 0] true [0 1]))))
-    (is (= '[[good-left x1 x0] [flip-v x0 y0] [good-down y0 y1]]
-     (get-and-check-sol
-      (strips/constant-predicate-simplify
-       (make-nav-switch-strips-env 2 2 [[0 0]] [1 0] true [0 1])))))
-    (is (= '[[good-left x1 x0] [flip-v x0 y0] [good-down y0 y1]]
-     (get-and-check-sol
-      (strips/flatten-strips-instance
-       (strips/constant-predicate-simplify
-	(make-nav-switch-strips-env 2 2 [[0 0]] [1 0] true [0 1]))))))))
 
 
 
