@@ -270,3 +270,8 @@
 
 
 
+(comment 
+
+ (aha-star-search (alt-node (make-angelic-robot-hierarchy nh [[(make-base-region-action (make-base-rect-region [26.5 27.3] [25 26] [0 (* 2 Math/PI)])) (make-arm-pose-action false (make-pose [27.43 25.44 0.7] [0 0 0 1]))]] (get-default-env nh) (constantly true) {:ros.robot-actions/BaseRegionAction 10 :ros.robot-actions/ArmPoseAction 5}) {:graph? false :cache? false :ref-choice-fn first-choice-fn}))
+
+ )

@@ -187,6 +187,9 @@
 	  (get-action-seq ref)
 	  (next post-actions))))))))
 
+(defn execute-robot-plan [nh actions]
+  (execute-robot-primitive nh (make-robot-action-seq actions)))
+
 
 
 ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;; Base - Point ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
@@ -278,9 +281,14 @@
       [(assoc-in env [:robot (if r? :rarm :larm)] (:goal action)) 
        (* *arm-cost-multiplier* (last times))])))
 
+;; TODO:use move_arm
+;(defmethod execute-robot-primitive ::ArmJointAction [nh action]
+;  (println "Executing move_arm action (synchronously, using move_arm)")
+;  (move-arm-to-state nh (:goal action)))
+
 (defmethod execute-robot-primitive ::ArmJointAction [nh action]
-  (println "Executing move_arm action (synchronously, using move_arm)")
-  (move-arm-to-state nh (:goal action)))
+  (println "Executing move_arm action (synchronously, using trajectory controller)")
+  (move-arm-directly-to-state nh (:goal action)))
 
 (defmethod robot-action-name ::ArmJointAction [a]
   (vec

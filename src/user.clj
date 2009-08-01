@@ -41,6 +41,14 @@
 ;   util envs search search.algorithms.textbook angelic angelic.hierarchies domains.nav-switch domains.strips  angelic.dnf-valuations angelic.ncstrips-descriptions angelic.hierarchies.strips-hierarchies util.queues util.graphs domains.warehouse  domains.discrete-road-trip domains.road-trip angelic.hierarchies.abstract-lookahead-trees angelic.hierarchies.abstract-lookahead-graphs #_ angelic.hierarchies.clause-graphs angelic.hierarchies.offline-algorithms angelic.hierarchies.online-algorithms scripts.experiments scripts.cluster #_ scripts.z09-aij scripts.z09-icaps08-tr scripts.z09-aima util.datasets util.charts util.graphviz scripts.timing-warehouse scripts.timing-nav-switch ))
 ; domains.hybrid-strips domains.hybrid-blocks
 
+(defmacro uros []
+  `(do
+     (uall)
+     (use 'ros.ros 'ros.world 'ros.geometry 'ros.robot 'ros.robot-actions 'ros.robot-hierarchy) 
+     (~'import-ros) 
+     (~'import-all-msgs-and-srvs)
+     (def nh (~'make-node-handle))))
+
 (comment 
 (defn lr [] (require '[ros ros nav] :reload-all))
 

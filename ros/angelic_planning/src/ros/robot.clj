@@ -303,15 +303,50 @@
 
 
 
-(defn move-arm-directly-to-state [#^NodeHandle nh arm-state]
-  (let [right? (isa? (:class arm-state) ::Right)
-	{:keys [jointnames jointpositions]} (get-current-arm-state-msg nh right?)]
-    (call-srv-cached nh (str "/" (if right? "r" "l") "_arm_joint_trajectory_controller/TrajectoryStart")
+(defn start-trajectory [#^NodeHandle nh srv-prefix joint-traj]
+  (safe-get*
+   (call-srv-cached nh (str srv-prefix "/TrajectoryStart")
       (map-msg TrajectoryStart$Request
        {:hastiming 0 :requesttiming 0
-	:traj {:names jointnames
-	       :points (for [state [jointpositions (map (:joint-angle-map arm-state) jointnames)]]
-			 {:positions state :time 0})}}))))
+	:traj joint-traj}))
+   :trajectoryid))
+
+(defonce *good-traj-outcomes* 
+  (set (map int [TrajectoryQuery$Response/State_Done])))
+
+(defonce *bad-traj-outcomes* 
+  (set (map int [TrajectoryQuery$Response/State_Deleted
+		 TrajectoryQuery$Response/State_Failed
+		 TrajectoryQuery$Response/State_Canceled
+		 ])))
+
+(defn wait-for-trajectory [#^NodeHandle nh srv-prefix traj-id]
+  (print "Waiting for trajectory" traj-id "...")
+  (loop []
+   (let [outcome (int (:done (call-srv (str srv-prefix "/TrajectoryQuery")
+				      (map-msg TrajectoryQuery$Request
+					       {:trajectoryid traj-id}))))]
+    (cond (*good-traj-outcomes* outcome) (do (println outcome) true)
+	  (*bad-traj-outcomes* outcome) (do (println outcome) false)
+	  :else (do (print outcome)
+		    (Thread/sleep 100)
+		    (recur))))))
+
+
+
+(defn move-arm-directly-to-state 
+  ([#^NodeHandle nh arm-state]
+     (move-arm-directly-to-state nh arm-state true))
+  ([#^NodeHandle nh arm-state wait?]
+    (let [right? (isa? (:class arm-state) ::Right)
+	  {:keys [jointnames jointpositions]} (get-current-arm-state-msg nh right?)
+	  srv-prefix (str "/" (if right? "r" "l") "_arm_joint_trajectory_controller")
+	  id (start-trajectory nh srv-prefix
+	       {:names jointnames
+		:points (for [state [jointpositions (map (:joint-angle-map arm-state) jointnames)]]
+			  {:positions state :time 0})})]
+      (or (and (not wait?) [srv-prefix id])
+	  (wait-for-trajectory nh srv-prefix id)))))
 
 
 
@@ -336,15 +371,20 @@
 
 
 (defn throw-arms [#^NodeHandle nh]
-  (doseq [s [*larm-up-state* *rarm-up-state*]] (move-arm-directly-to-state nh s)))
+  (for [[p id] (doall (for [s [*larm-up-state* *rarm-up-state*]]
+		    (move-arm-directly-to-state nh s false)))]
+    (wait-for-trajectory nh p id))) 
+
 
 (defn tuck-arms [#^NodeHandle nh]
-  (move-arm-directly-to-state nh *rarm-tucked-state*)
-  (Thread/sleep 4000)
-  (move-arm-directly-to-state nh *larm-tucked-state*))
+  (for [[p id] [(move-arm-directly-to-state nh *rarm-tucked-state* false)
+		(do (Thread/sleep 4000)
+		    (move-arm-directly-to-state nh *larm-tucked-state* false))]]
+    (wait-for-trajectory nh p id)))
+  
 
 (defn throw-and-tuck-arms [#^NodeHandle nh]
-  (throw-arms nh) (Thread/sleep 10000) (tuck-arms nh))
+  (throw-arms nh) (tuck-arms nh))
 
 
 ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;; Kinematics ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
