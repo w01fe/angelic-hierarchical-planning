@@ -221,7 +221,20 @@
   (vec (map region-name (:intervals r))))
 
 
-
+(comment 
+(defn make-linear-spline-trajectory 
+  ([init-joints final-joints]
+     (make-linear-spline-trajectory init-joints final-joints 0.2))
+  ([init-joints final-joints time]
+;     (println init-joints final-joints)
+     (assert (= (set (keys init-joints)) (set (keys final-joints))))
+     (let [kys (keys init-joints)]
+       {:class SplineTraj :header *tll-header* :names kys
+	:segments [{:duration (Time. (double time))
+		    :a (map final-joints kys)
+		    ;:b (map #(/ (- (final-joints %) (init-joints %)) (double time)) kys)
+		    :b (repeat 6 0.0) :c (repeat 6 0.0) :d (repeat 6 0.0) :e (repeat 6 0.0) :f (repeat 6 0.0)}]})))
+ )
 
 
 (set! *warn-on-reflection* false)

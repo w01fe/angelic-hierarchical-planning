@@ -3,6 +3,7 @@
 PACKAGES="roslib
 	    std_msgs
             geometry_msgs
+            sensor_msgs
 	    robot_msgs
             robot_srvs
 	    robot_actions
@@ -76,4 +77,4 @@ do
 done
 
 
-# rosmake move_arm move_base tf_node pr2_gazebo fake_localization map_server 2dnav_gazebo teleop_base 2dnav_pr2 tabletop_scripts mechanism_control ompl_planning map_server fk_node
+# rosmake move_arm move_base tf_node pr2_gazebo fake_localization map_server 2dnav_gazebo teleop_base 2dnav_pr2 3dnav_pr2 tabletop_scripts mechanism_control ompl_planning map_server fk_node
