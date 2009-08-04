@@ -2,6 +2,7 @@
 
 PACKAGES="roslib
 	    std_msgs
+            geometry_msgs
 	    robot_msgs
             robot_srvs
 	    robot_actions

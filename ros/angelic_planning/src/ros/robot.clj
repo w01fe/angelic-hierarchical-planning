@@ -44,7 +44,7 @@
 
 
 (defmsgs  [std_msgs Float64]
-	  [robot_msgs PointStamped PoseStamped PoseWithRatesStamped]
+	  [geometry_msgs PointStamped PoseStamped PoseWithRatesStamped]
 	  [nav_robot_actions MoveBaseState]
 	  [motion_planning_msgs 
 	   JointConstraint PoseConstraint KinematicConstraints

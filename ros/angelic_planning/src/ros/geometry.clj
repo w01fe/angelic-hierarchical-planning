@@ -38,7 +38,7 @@
 (import-ros)
 
 
-(defmsgs  [robot_msgs PointStamped PoseStamped PoseWithRatesStamped])
+(defmsgs  [geometry_msgs PointStamped PoseStamped PoseWithRatesStamped])
 
 
 
