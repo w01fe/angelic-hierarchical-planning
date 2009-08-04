@@ -221,6 +221,11 @@
         (angelic/make-explicit-valuation {next-env (+ rew-so-far step-rew)})
       angelic/*pessimal-valuation*)))
 
+;; TODO !!
+(defmethod angelic/progress-valuation [::angelic/ConditionalValuation ::RobotPrimitiveDescription] [val desc]
+  val)
+
+
 (defmethod angelic/progress-valuation [::angelic/PessimalValuation ::RobotFinishDescription] [val desc]
   angelic/*pessimal-valuation*)
 

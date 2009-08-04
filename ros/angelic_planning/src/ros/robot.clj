@@ -50,7 +50,7 @@
 	   JointConstraint PoseConstraint KinematicConstraints
 	   KinematicSpaceParameters KinematicJoint KinematicState KinematicPath]
 	  [manipulation_msgs JointTraj IKRequest]
-	  [pr2_robot_actions MoveArmGoal MoveArmState]
+	  [pr2_robot_actions MoveArmGoal MoveArmState ActuateGripperState]
 	  [mechanism_msgs    MechanismState]
 	  )
 
@@ -260,7 +260,7 @@
 
 (defn set-gripper-separation [#^NodeHandle nh right? sep]
   (put-single-message nh (str (if right? "r" "l") "_gripper_position_controller/set_command")
-		      (map-msg Float64 {:data (double sep)})))
+		      (map-msg Float64 {:data (double sep)}) 1))
 
 (defmulti move-gripper-to-state (fn [nh gs] (:class gs)))
 (defmethod move-gripper-to-state ::Left [nh state] (set-gripper-separation nh false (:separation state))) 
@@ -362,23 +362,27 @@
 
 (def *larm-tucked-state*  
   (make-robot-arm-state false true 
-    (into {} [["l_shoulder_pan_joint" 4.57763671875E-5] ["l_shoulder_lift_joint" 1.050065517425537] ["l_upper_arm_roll_joint" 1.5704517364501953] ["l_elbow_flex_joint" -2.0499651432037354] ["l_forearm_roll_joint" -1.5006138710305095E-5] ["l_wrist_flex_joint" 0.10002660751342773] ["l_wrist_roll_joint" -4.604033892974218E-4]])))
+    {"l_shoulder_lift_joint" 0.900306510925293, "l_wrist_flex_joint" 0.10485601425170898, "l_wrist_roll_joint" -0.07251530140638351, "l_elbow_flex_joint" -1.281473660469055, "l_forearm_roll_joint" -0.13328810036182404, "l_upper_arm_roll_joint" 1.399874210357666, "l_shoulder_pan_joint" 0.0091785430908203}
+    ;(into {} [["l_shoulder_pan_joint" 4.57763671875E-5] ["l_shoulder_lift_joint" 1.050065517425537] ["l_upper_arm_roll_joint" 1.5704517364501953] ["l_elbow_flex_joint" -2.0499651432037354] ["l_forearm_roll_joint" -1.5006138710305095E-5] ["l_wrist_flex_joint" 0.10002660751342773] ["l_wrist_roll_joint" -4.604033892974218E-4]])
+    ))
 
 (def *rarm-tucked-state*
   (make-robot-arm-state true true  
-    (into {} [["r_shoulder_pan_joint" -4.7210945922415704E-5] ["r_shoulder_lift_joint" 1.3463068008422852] ["r_upper_arm_roll_joint" -1.5700957775115967] ["r_elbow_flex_joint" -1.57080078125] ["r_forearm_roll_joint" -1.3014320575166494E-4] ["r_wrist_flex_joint" 0.0999908447265625] ["r_wrist_roll_joint" 2.1505355834960382E-4]])))
+    {"r_wrist_flex_joint" 0.10194683074951172, "r_wrist_roll_joint" 2.2315979003905862E-4, "r_shoulder_lift_joint" 1.2862510108947754, "r_elbow_flex_joint" -1.5709961652755737, "r_forearm_roll_joint" -9.14452102733776E-5, "r_upper_arm_roll_joint" -1.5699418783187866, "r_shoulder_pan_joint" -1.8587072554510087E-4}
+    ;(into {} [["r_shoulder_pan_joint" -4.7210945922415704E-5] ["r_shoulder_lift_joint" 1.3463068008422852] ["r_upper_arm_roll_joint" -1.5700957775115967] ["r_elbow_flex_joint" -1.57080078125] ["r_forearm_roll_joint" -1.3014320575166494E-4] ["r_wrist_flex_joint" 0.0999908447265625] ["r_wrist_roll_joint" 2.1505355834960382E-4]])
+    ))
 
 
 
 (defn throw-arms [#^NodeHandle nh]
-  (for [[p id] (doall (for [s [*larm-up-state* *rarm-up-state*]]
+  (doseq [[p id] (doall (for [s [*larm-up-state* *rarm-up-state*]]
 		    (move-arm-directly-to-state nh s false)))]
     (wait-for-trajectory nh p id))) 
 
 
 (defn tuck-arms [#^NodeHandle nh]
-  (for [[p id] [(move-arm-directly-to-state nh *rarm-tucked-state* false)
-		(do (Thread/sleep 4000)
+  (doseq [[p id] [(move-arm-directly-to-state nh *rarm-tucked-state* false)
+		(do (Thread/sleep 6000)
 		    (move-arm-directly-to-state nh *larm-tucked-state* false))]]
     (wait-for-trajectory nh p id)))
   

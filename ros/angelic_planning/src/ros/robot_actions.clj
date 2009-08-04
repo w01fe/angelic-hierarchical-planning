@@ -254,7 +254,8 @@
 
 (defmethod execute-robot-primitive ::GripperAction [nh action]
   (println "Executing move_gripper action (directly via trajectory controller)")
-  (move-gripper-to-state nh (:goal action)))
+  (move-gripper-to-state nh (:goal action))
+  (Thread/sleep 1500))
 
 (defmethod robot-action-name ::GripperAction [a]
   [(if (isa? (:class (:goal a)) :ros.robot/Right) 'right-gripper-to 'left-gripper-to)
@@ -296,6 +297,32 @@
 	 (map second (sort-by first (seq (:joint-angle-map (:goal a))))))))
 
 
+;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;; Arm - Tuck  ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
+
+(derive ::TuckArmsAction ::RobotPrimitive)
+(derive ::ThrowArmsAction ::RobotPrimitive)
+
+(defn make-tuck-arms-action [] {:class ::TuckArmsAction}) 
+(defn make-throw-arms-action [] {:class ::ThrowArmsAction})
+
+;; For now, assume these will always succeed with constant cost, for simplicity
+(defonce *tuck-reward* -6)
+(defonce *throw-reward* -6)
+
+(defmethod robot-primitive-result ::TuckArmsAction [nh action env]
+  [(update-in env [:robot] #(assoc % :rarm *rarm-tucked-state* :larm *larm-tucked-state*))
+   *tuck-reward*])
+(defmethod robot-primitive-result ::ThrowArmsAction [nh action env]
+  [(update-in env [:robot] #(assoc % :rarm *rarm-up-state* :larm *larm-up-state*))
+   *throw-reward*])
+
+(defmethod execute-robot-primitive ::TuckArmsAction  [nh action] 
+  (println "Tucking arms...")
+  (tuck-arms nh))
+
+(defmethod execute-robot-primitive ::ThrowArmsAction [nh action] 
+  (println "Throwing arms...")
+  (throw-arms nh))
 
 
 ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;; Arm - Pose  ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
@@ -332,7 +359,7 @@
 
 ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;; Torso ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;  
 
-; TODO: no collision checking
+; TODO: no collision checking; no integration with map->tll-pose-stamped
 
 (derive ::TorsoAction ::RobotPrimitive)
 
