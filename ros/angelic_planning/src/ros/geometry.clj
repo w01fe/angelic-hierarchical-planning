@@ -126,7 +126,7 @@
   (let [p1 (:position init-pose) q1 (:orientation init-pose)
 	p2 (:position pose-transform) q2 (:orientation pose-transform)]
     {:class Pose
-     :position (add-points (apply-rotation q2 p1) p2)
+     :position (add-points (apply-rotation p1 q2) p2)
      :orientation (multiply-quaternions q2 q1)}))
 
 (defn untransform-pose [init-pose pose-transform]
@@ -135,7 +135,7 @@
 	q2i (invert-unit-quaternion q2)]
     {:class Pose
      :position (apply-rotation (subtract-points p1 p2) q2i)
-     :orientation (multiply-quaternions q2i q1)}))
+     :orientation (multiply-quaternions q2i q1)}))`
 
 (def *null-transform-pose* 
      {:class Pose 

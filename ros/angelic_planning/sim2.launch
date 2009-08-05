@@ -21,7 +21,7 @@
  
   <node pkg="tf_node" type="tf_node" />
   <node pkg="navfn" type="navfn_node" />
- <!-- <include file="$(find angelic_planning)/future_ompl_planning.launch"/>  -->
+  <include file="$(find angelic_planning)/future_ompl_planning.launch"/>
 
   <node pkg="fk_node" type="fk_node" respawn="true" output="screen">
     <remap from="robot_description" to="robot_description" />

@@ -50,7 +50,7 @@
 (def *base-cost-multiplier* -1)
 (def *arm-cost-multiplier* -4)
 (def *torso-cost-multiplier* -4)
-(def *gripper-cost-multiplier* -20)
+(def *gripper-cost* -20)
 
 ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;; Actions ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
 
@@ -247,19 +247,24 @@
   (struct gripper-action ::GripperAction goal))
 
 (defmethod robot-primitive-result ::GripperAction [nh action env]
-  (let [field  (if (isa? (:class (:goal action)) :ros.robot/Right) :rgripper :lgripper)]
+  (let [field  (if (isa? (:class (:goal action)) :ros.robot/Right) :rgripper :lgripper)
+;	was-open? (:open? (field (:robot env)))
+;	will-open? (:open (:goal action))
+	]
     [(assoc-in env [:robot field] (:goal action))
-     (* *gripper-cost-multiplier*
-	(Math/abs (double (- (:separation (:goal action)) (:separation (field (:robot env)))))))]))
+     *gripper-cost*]))
+;     (* *gripper-cost*
+;	(if (or (and was-open? (not will-open?)) (and (not was-open?) will-open?)) 1 0))]))
+;	(Math/abs (double (- (:separation (:goal action)) (:separation (field (:robot env)))))))]))
 
 (defmethod execute-robot-primitive ::GripperAction [nh action]
-  (println "Executing move_gripper action (directly via trajectory controller)")
+  (println "Executing move_gripper action (via actuate gripper action)")
   (move-gripper-to-state nh (:goal action))
   (Thread/sleep 1500))
 
 (defmethod robot-action-name ::GripperAction [a]
   [(if (isa? (:class (:goal a)) :ros.robot/Right) 'right-gripper-to 'left-gripper-to)
-   (:separation (:goal a))])
+   (:open? (:goal a))])
 
 
 ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;; Arm - Joints  ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;  
@@ -327,10 +332,7 @@
 
 ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;; Arm - Pose  ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
 
-; Arm pose action tries to achieve a given pose for the end-effector.
-; Eventually should use IK, but need access to collision space first (TODO)
-; TODO: cost for approximation?
-
+; Attempt to move the arm to a particular pose
 
 (derive ::ArmPoseAction ::RobotHLA)
 
@@ -355,6 +357,10 @@
    (cons (if (:right? a) 'right-arm-to-pose 'left-arm-to-pose)
 	 (decode-pose (:pose a)))))
 
+
+;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;; Arm - Grasp  ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
+
+; Attempt to move the arm to a position where a given object can be grasped. 
 
 
 ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;; Torso ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;  

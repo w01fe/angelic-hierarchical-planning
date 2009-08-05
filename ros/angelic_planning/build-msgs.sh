@@ -32,6 +32,8 @@ CP=`rospack find rosjava`/src
 
 cd $CP
 find . -name "*.java" | xargs javac -cp $CP
+cd ..
+make
 
 if [ -n "$1" ]
   then
@@ -61,7 +63,7 @@ do
     rm -r msg/java
     rm -r srv/java
   fi
-  make
+#  make
 
   for sub in "msg" "srv"
   do
@@ -77,4 +79,4 @@ do
 done
 
 
-# rosmake move_arm move_base tf_node pr2_gazebo fake_localization map_server 2dnav_gazebo teleop_base 2dnav_pr2 3dnav_pr2 tabletop_scripts mechanism_control ompl_planning map_server fk_node
+# rosmake move_arm move_base tf_node pr2_gazebo fake_localization map_server 2dnav_gazebo teleop_base 2dnav_pr2 3dnav_pr2 tabletop_scripts mechanism_control ompl_planning map_server fk_node joint_waypoint_controller

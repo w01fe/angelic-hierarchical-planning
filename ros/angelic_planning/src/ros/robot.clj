@@ -118,7 +118,7 @@
   (assert (#{"map" "/map"} (:frame_id (:header pose-stamped))))
   (let [pose (condp = (:class pose-stamped)
 	       PoseStamped          (:pose pose-stamped)
-	       PoseWithRatesStamped (:pos pose-stamped))]
+	       PoseWithRatesStamped (:pose (:pose_with_rates pose-stamped)))]
     (make-robot-base-state
      (:x (:position pose))
      (:y (:position pose))
@@ -237,15 +237,20 @@
 (derive ::RightGripperState ::GripperState)
 (derive ::RightGripperState ::Right)
 
-(defstruct robot-gripper-state :class :separation :holding)
+(defstruct robot-gripper-state :class :open? :force :holding)
 
-(defn make-robot-gripper-state [right? sep holding]
-  (struct robot-gripper-state (if right? ::RightGripperState ::LeftGripperState) sep holding))
+(defn make-robot-gripper-state 
+  ([right? open?]
+     (make-robot-gripper-state right? open? 100 false))
+  ([right? open? force holding]
+     (when open? (assert (not holding)))
+     (struct robot-gripper-state (if right? ::RightGripperState ::LeftGripperState) 
+	     open? (Math/abs (double force)) holding)))
 
 (def *gripper-mul* 5.55) ; Multiplier for weird gripper joints
 
 (defmethod get-joint-map ::GripperState [obj]
-  (let [sep (:separation obj)
+  (let [sep (if (:open? obj) 0.0885 0.0)
 	cr (if (isa? (:class obj) ::Right) "r" "l")]
     (into {} (concat [[(str cr "_gripper_joint") sep]
 		      [(str cr "_gripper_float_joint") 0.0]]
@@ -255,17 +260,21 @@
 
 (defn get-current-gripper-state [nh right?]
   (make-robot-gripper-state right? 
-    (:position (first (filter #(= (:name %) (str (if right? "r" "l") "_gripper_joint"))
+    (>
+     (:position (first (filter #(= (:name %) (str (if right? "r" "l") "_gripper_joint"))
 			      (:joint_states (get-current-mechanism-state nh)))))
-    false))
+     0.06)
+    ))
 
-(defn set-gripper-separation [#^NodeHandle nh right? sep]
-  (put-single-message nh (str (if right? "r" "l") "_gripper_position_controller/set_command")
-		      (map-msg Float64 {:data (double sep)}) 1))
+(defn apply-gripper-force [#^NodeHandle nh right? force]
+  (put-single-message nh (str "/actuate_gripper_" (if right? "right" "left") "_arm/activate")
+		      (map-msg Float64 {:data force}) 1))
 
-(defmulti move-gripper-to-state (fn [nh gs] (:class gs)))
-(defmethod move-gripper-to-state ::Left [nh state] (set-gripper-separation nh false (:separation state))) 
-(defmethod move-gripper-to-state ::Right [nh state] (set-gripper-separation nh true (:separation state))) 
+(defn move-gripper-to-state 
+  ([nh gs]
+     (apply-gripper-force nh (isa? (:class gs) ::Right) (* (:force gs) (if (:open? gs) 1 -1)))))
+
+
 
 
 
@@ -295,38 +304,46 @@
 
 (defn get-current-arm-state-msg [nh right?]
   (call-srv-cached nh (str "/" (if right? "r" "l") 
-		    "_arm_trajectory_controller/QuerySplineTrajectory" )
-	    (map-msg QuerySplineTraj$Request {:trajectory_id (QuerySplineTraj$Request/Query_Joint_Names)})))
+		    "_arm_joint_waypoint_controller/TrajectoryQuery" )
+	    (map-msg TrajectoryQuery$Request {:trajectoryid (TrajectoryQuery$Request/Query_Joint_Names)})))
 
 (defn get-current-arm-state [nh right?]
-  (let [{:keys [joint_names joint_positions]} (get-current-arm-state-msg nh right?)]
-    (make-robot-arm-state right? false (apply hash-map (interleave joint_names joint_positions)))))
+  (let [{:keys [jointnames jointpositions]} (get-current-arm-state-msg nh right?)]
+    (make-robot-arm-state right? false (apply array-map (interleave jointnames jointpositions)))))
 
 
+(defn make-joint-trajectory [init-joints final-joints]
+  (assert (= (set (keys init-joints)) (set (keys final-joints))))
+  (let [ks (keys init-joints)]
+    {:class JointTraj :names ks 
+     :points (map (fn [m t] {:positions (map m ks) :time t}) [init-joints final-joints] [0 0.2])}))
+   
 
-(defn start-trajectory [#^NodeHandle nh srv-prefix spline-traj]
+(defn start-trajectory [#^NodeHandle nh srv-prefix traj]
+  (println traj)
+;  (throw (RuntimeException.))
   (safe-get*
-   (call-srv-cached nh (str srv-prefix "/SetSplineTrajectory")
-      (map-msg SetSplineTraj$Request {:spline spline-traj}))
-   :trajectory_id))
+   (call-srv-cached nh (str srv-prefix "/TrajectoryStart")
+      (map-msg TrajectoryStart$Request {:traj traj :hastiming 0 :requesttiming 0}))
+   :trajectoryid))
 
 (defonce *good-traj-outcomes* 
-  (set (map int [QuerySplineTraj$Response/State_Done])))
+  (set (map int [TrajectoryQuery$Response/State_Done])))
 
 (defonce *bad-traj-outcomes* 
-  (set (map int [QuerySplineTraj$Response/State_Deleted
-		 QuerySplineTraj$Response/State_Failed
-		 QuerySplineTraj$Response/State_Canceled
-		 QuerySplineTraj$Response/State_Does_Not_Exist
+  (set (map int [TrajectoryQuery$Response/State_Deleted
+		 TrajectoryQuery$Response/State_Failed
+		 TrajectoryQuery$Response/State_Canceled
+;		 TrajectoryQuery$Response/State_Does_Not_Exist
 		 ])))
 
 (defn wait-for-trajectory [#^NodeHandle nh srv-prefix traj-id]
   (print "Waiting for trajectory" traj-id "...")
   (loop []
-   (let [outcome (int (:trajectory_status 
-		       (call-srv (str srv-prefix "/QuerySplineTrajectory")
-				      (map-msg QuerySplineTraj$Request
-					       {:trajectory_id traj-id}))))]
+   (let [outcome (int (:done 
+		       (call-srv (str srv-prefix "/TrajectoryQuery")
+				      (map-msg TrajectoryQuery$Request
+					       {:trajectoryid traj-id}))))]
     (cond (*good-traj-outcomes* outcome) (do (println outcome) true)
 	  (*bad-traj-outcomes* outcome) (do (println outcome) false)
 	  :else (do (print outcome)
@@ -340,10 +357,10 @@
      (move-arm-directly-to-state nh arm-state true))
   ([#^NodeHandle nh arm-state wait?]
     (let [right? (isa? (:class arm-state) ::Right)
-	  srv-prefix (str "/" (if right? "r" "l") "_arm_trajectory_controller")
+	  srv-prefix (str "/" (if right? "r" "l") "_arm_joint_waypoint_controller")
 	  id (start-trajectory nh srv-prefix
-	       (make-linear-spline-trajectory (:joint-angle-map (get-current-arm-state nh right?)) 
-					      (:joint-angle-map arm-state) 10))]
+	       (make-joint-trajectory (:joint-angle-map (get-current-arm-state nh right?)) 
+				      (:joint-angle-map arm-state) ))]
       (or (and (not wait?) [srv-prefix id])
 	  (wait-for-trajectory nh srv-prefix id)))))
 
@@ -361,7 +378,9 @@
 
 (def *larm-tucked-state*  
   (make-robot-arm-state false true 
-    {"l_shoulder_lift_joint" 0.900306510925293, "l_wrist_flex_joint" 0.10485601425170898, "l_wrist_roll_joint" -0.07251530140638351, "l_elbow_flex_joint" -1.281473660469055, "l_forearm_roll_joint" -0.13328810036182404, "l_upper_arm_roll_joint" 1.399874210357666, "l_shoulder_pan_joint" 0.0091785430908203}
+    {"l_shoulder_pan_joint" -2.0302917619119398E-5, "l_shoulder_lift_joint" 0.899528980255127, "l_upper_arm_roll_joint" 1.5699524879455566, "l_elbow_flex_joint" -1.5509047508239746, "l_forearm_roll_joint" 1.9216537475585938E-4, "l_wrist_flex_joint" 0.10045289993286133, "l_wrist_roll_joint" -4.171816981397593E-4}
+    ;{"l_shoulder_pan_joint" 0.0 "l_shoulder_lift_joint" 0.90, "l_upper_arm_roll_joint" 1.57 "l_elbow_flex_joint" -1.55, "l_forearm_roll_joint" 0.0 "l_wrist_flex_joint" 0.0, "l_wrist_roll_joint" 0.0, }
+    ;{"l_shoulder_lift_joint" 0.900306510925293, "l_wrist_flex_joint" 0.10485601425170898, "l_wrist_roll_joint" -0.07251530140638351, "l_elbow_flex_joint" -1.281473660469055, "l_forearm_roll_joint" -0.13328810036182404, "l_upper_arm_roll_joint" 1.399874210357666, "l_shoulder_pan_joint" 0.0091785430908203}
     ;(into {} [["l_shoulder_pan_joint" 4.57763671875E-5] ["l_shoulder_lift_joint" 1.050065517425537] ["l_upper_arm_roll_joint" 1.5704517364501953] ["l_elbow_flex_joint" -2.0499651432037354] ["l_forearm_roll_joint" -1.5006138710305095E-5] ["l_wrist_flex_joint" 0.10002660751342773] ["l_wrist_roll_joint" -4.604033892974218E-4]])
     ))
 
@@ -381,7 +400,7 @@
 
 (defn tuck-arms [#^NodeHandle nh]
   (doseq [[p id] [(move-arm-directly-to-state nh *rarm-tucked-state* false)
-		(do (Thread/sleep 6000)
+		(do (Thread/sleep 1000)
 		    (move-arm-directly-to-state nh *larm-tucked-state* false))]]
     (wait-for-trajectory nh p id)))
   
@@ -397,7 +416,7 @@
 ; Pose is for something like, but not exactly, palm link.
 (defn inverse-kinematics
   "Returns a final joint map (possibly in collision) or nil for failure.
-   Pose-stamped must be in the torso_lift_link frame."
+   Pose-stamped must be a pose of a *_gripper_palm_link, in the torso_lift_link frame."
   [#^NodeHandle nh right? pose-stamped init-joint-map]
   (assert (= (:frame_id (:header pose-stamped)) "/torso_lift_link"))
   (let [init-joints (seq init-joint-map)]
@@ -425,13 +444,13 @@
   {:class KinematicJoint :header (assoc *map-header* :stamp (.subtract (.now *ros*) (Duration. 0.1)))
    :joint_name joint-name :value (if (coll? joint-position) (vec (map double joint-position)) [(double joint-position)])})
 
+(def *fk-z-offset* 0.09412233491155875)
 
 (defn forward-kinematics
   "Returns a lazy seq [in-collision? poses], where poses is a map
    from link names to poses.  Assumes joints in map frame.
    If in_collision is to be accurate, must first publish a collision map
-   to the appropriate topic in the fk_node.  For now, response is in some
-   unknown frame."
+   to the appropriate topic in the fk_node.  Response is in base link."
  [#^NodeHandle nh joint-map]
    (let [res (call-srv-cached nh "/fk_node/forward_kinematics"
 	      (map-msg {:class ForwardKinematics$Request
@@ -439,7 +458,9 @@
 ;     (println res)
      (assert (= (count (:link_names res)) (count (:link_poses res))))
     (cons (> (:in_collision res) 0)
-	  (lazy-seq [(apply hash-map (interleave (:link_names res) (:link_poses res)))]))))
+	  (lazy-seq [(apply hash-map (interleave (:link_names res) 
+						 (for [pose (:link_poses res)]
+						   (update-in pose [:position :z] #(- % *fk-z-offset* )))))]))))
 
 
 
@@ -495,13 +516,14 @@
      (when world
        (put-single-message-cached nh "/fk_node/collision_map" 
 	 (map-msg (world->collision-map world))))
+     (println "Sent map!")
      (let [all-joints (get-joint-map robot)]
       (loop [tries random-retries 
 	    init-joints (if start-random? (random-arm-joint-map nh right?)
 			    (:joint-angle-map ((if right? :rarm :larm) robot)))]
 ;       (println init-joints)
-       (or (if-let [sol (inverse-kinematics nh right? pose-stamped init-joints)]
-	     (let [collision (first (forward-kinematics nh (merge all-joints sol)))]
+       (or (if-let [sol (time (inverse-kinematics nh right? pose-stamped init-joints))]
+	     (let [collision (first (time (forward-kinematics nh (merge all-joints sol))))]
 	       (println "Found IK solution ..."
 			(if collision "" " not ") "in collision.") 
 	       (when (not collision)
@@ -597,14 +619,16 @@
    pose constraints are lists of PoseConstraints maps -- no shortcuts for now.
    Init-joints should include base and torso, in general."
   [#^NodeHandle nh right? world robot-state joint-constraints pose-constraints]
-  (put-single-message-cached nh "collision_map_future" (map-msg (world->collision-map world)))
+  (println "Putting collision map")
+  (put-single-message-cached nh "/collision_map_future" (map-msg (world->collision-map world)))
 ;  (println "\n\n\n\n\n\n\n\n" right?)
 ;  (println (doall (map make-kinematic-joint (get-joint-map robot-state))))
 ;  (println "\n\n\n")
 ;  (println pose-constraints)
-  (call-srv-cached nh "/plan_kinematic_path"
+    (println "Calling plan service")
+  (call-srv-cached nh "/future_ompl_planning/plan_kinematic_path"
    (map-msg 
-     {:class GetMotionPlan$Request :times 1 :allowed_time 0.5
+     {:class GetMotionPlan$Request :times 1 :allowed_time 0.5 :planner_id ""
       :params (if right? *rarm-params* *larm-params*)
       :start_state      (doall (map make-kinematic-joint (get-joint-map robot-state)))
       :path_constraints *no-constraints*

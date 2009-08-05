@@ -364,7 +364,7 @@
      (assert (= (:class def) :rendered))
      (let [res    (safe-get* def :3d-res)
 	   extent {:class Point32 :x res :y res :z res}
-	   axis   {:class Point32 :x 0 :y 0 :z 0}]
+	   axis   {:class Point32 :x 0 :y 0 :z 1}]
        (for [[x y z] (translate-points (safe-get* def :3d-points) xyz)]
 	 {:class OrientedBoundingBox
 	  :center {:class Point32 :x x :y y :z z}
