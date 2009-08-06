@@ -332,7 +332,7 @@
 
 ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;; Arm - Pose  ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
 
-; Attempt to move the arm to a particular pose
+; Attempt to move the arm (i.e. palm link to a particular pose
 
 (derive ::ArmPoseAction ::RobotHLA)
 
@@ -361,6 +361,27 @@
 ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;; Arm - Grasp  ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
 
 ; Attempt to move the arm to a position where a given object can be grasped. 
+
+(derive ::ArmGraspAction ::RobotHLA)
+
+(defstruct arm-grasp-action :class :right? :cx :cy :minz :maxz :radius)
+
+(defn make-arm-grasp-action [right? cx cy minz maxz radius]
+  (struct arm-grasp-action ::ArmGraspAction right? cx cy minz maxz radius))
+
+(defmethod robot-hla-discrete-refinements? ::ArmGraspAction [a] false)
+
+;; TODO: use base pose of robot to assist in sampling feasible poses.
+(defmethod sample-robot-hla-refinement ::ArmGraspAction [nh a env]
+  (let [{:keys [cx cy minz maxz radius]} a]
+    
+
+(defmethod robot-action-name ::ArmGraspAction [a]
+  (vec 
+   (cons (if (:right? a) 'right-arm-to-grasp 'left-arm-to-grasp)
+	 [(:cx a) (:cy a) [(:minz a) (:maxz a)]] (:radius a))))
+
+   
 
 
 ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;; Torso ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;  
