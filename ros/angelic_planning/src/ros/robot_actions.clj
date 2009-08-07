@@ -371,11 +371,20 @@
 
 (defmethod robot-hla-discrete-refinements? ::ArmGraspAction [a] false)
 
+(def *grasp-distance* 0.10)
+
 ;; TODO: use base pose of robot to assist in sampling feasible poses.
 (defmethod sample-robot-hla-refinement ::ArmGraspAction [nh a env]
-  (let [{:keys [cx cy minz maxz radius]} a]
-    
-
+  (let [{:keys [cx cy minz maxz radius]} a
+	angle (double (rand-double [0 (* 2 Math/PI)]))
+	z     (double (rand-double [minz maxz]))
+	slop  0.0 ;(max 0 (- 0.10 radius))
+	dist  (double (+ *grasp-distance* (rand-double [(- slop) slop])))]
+    (make-arm-pose-action (:right? a)
+     {:class ros.pkg.geometry_msgs.msg.Pose
+      :position {:x (- cx (* dist (Math/cos angle))) :y  (- cy (* dist (Math/sin angle))) :z z}
+      :orientation (angle->quaternion angle)})))
+	           
 (defmethod robot-action-name ::ArmGraspAction [a]
   (vec 
    (cons (if (:right? a) 'right-arm-to-grasp 'left-arm-to-grasp)

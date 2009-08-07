@@ -31,6 +31,7 @@
 
 (ns ros.robot
   (:use   clojure.xml ros.ros ros.actions ros.world ros.geometry)
+    (:require [edu.berkeley.ai.util :as util])
 	  )
   
 (set! *warn-on-reflection* true)
@@ -152,7 +153,18 @@
 
 
 
-(defn move-forward 
+(defn move-base-forward-unsafe 
+  "Directly moves using base controllers, without invoking planning"
+  [#^NodeHandle nh distance]
+  (let [pub (.advertise nh "/cmd_vel" (PoseDot.) 1)] 
+    (dotimes [_ (Math/abs (int steps))] 
+      (Thread/sleep 100) 
+      (.publish pub (map-msg {:class PoseDot :vel {:class Velocity :vx (* 0.5 (Math/signum (double steps)) 2) :vy 0 :vz 0} 
+			      :ang_vel {:class AngularVelocity :vx 0 :vy 0 :vz 0}})))
+    (.shutdown pub)))
+
+(comment
+(defn move-base-forward-unsafe 
   "Directly moves using base controllers, without invoking planning"
   [#^NodeHandle nh steps]
   (let [pub (.advertise nh "/cmd_vel" (PoseDot.) 1)] 
@@ -160,6 +172,21 @@
       (Thread/sleep 100) 
       (.publish pub (map-msg {:class PoseDot :vel {:class Velocity :vx (* 0.5 (Math/signum (double steps)) 2) :vy 0 :vz 0} 
 			      :ang_vel {:class AngularVelocity :vx 0 :vy 0 :vz 0}})))
+    (.shutdown pub)))
+ )
+
+(defn spin-base-unsafe 
+  "Spins base at a specified vecocity (pos = ccw) for a specified time."
+  [#^NodeHandle nh vel secs]
+  (let [pub (.advertise nh "/cmd_vel" (PoseDot.) 1)
+	sw  (util/start-stopwatch)
+	msg (map-msg PoseDot {:vel {:vx 0 :vy 0 :vz 0}
+			      :ang_vel {:vx 0 :vy 0 :vz vel}})]
+    (loop []
+      (.publish pub msg)
+      (when (util/within-time-limit? sw secs)
+	(Thread/sleep 100) 
+	(recur)))
     (.shutdown pub)))
 
 
@@ -320,7 +347,7 @@
    
 
 (defn start-trajectory [#^NodeHandle nh srv-prefix traj]
-  (println traj)
+;  (println traj)
 ;  (throw (RuntimeException.))
   (safe-get*
    (call-srv-cached nh (str srv-prefix "/TrajectoryStart")
@@ -337,32 +364,44 @@
 ;		 TrajectoryQuery$Response/State_Does_Not_Exist
 		 ])))
 
-(defn wait-for-trajectory [#^NodeHandle nh srv-prefix traj-id]
+(defn wait-for-trajectory 
+  "Wait for a given trajectory, at most max-seconds.  Returns false
+   for success, and an error code (Response code, or :timeout) on failure."
+  ([#^NodeHandle nh srv-prefix traj-id]
+     (wait-for-trajectory nh srv-prefix traj-id 1000))
+  ([#^NodeHandle nh srv-prefix traj-id max-seconds]
   (print "Waiting for trajectory" traj-id "...")
-  (loop []
-   (let [outcome (int (:done 
-		       (call-srv (str srv-prefix "/TrajectoryQuery")
+  (let [sw (util/start-stopwatch)]
+   (loop []
+     (let [outcome (int (:done 
+		       (call-srv-cached nh (str srv-prefix "/TrajectoryQuery")
 				      (map-msg TrajectoryQuery$Request
 					       {:trajectoryid traj-id}))))]
-    (cond (*good-traj-outcomes* outcome) (do (println outcome) true)
-	  (*bad-traj-outcomes* outcome) (do (println outcome) false)
-	  :else (do (print outcome)
-		    (Thread/sleep 100)
-		    (recur))))))
+      (cond (*good-traj-outcomes* outcome) (do (println outcome) false)
+	    (*bad-traj-outcomes* outcome) (do (println outcome) outcome)
+	    :else (if (util/within-time-limit? sw max-seconds) 
+	  	      (do (print outcome)  
+			  (Thread/sleep 100)
+		  	  (recur))
+		    (do (println "Timeout, interruping ...")
+			(call-srv-cached nh (str srv-prefix "/TrajectoryCancel")
+					 (map-msg TrajectoryCancel$Request {:trajectoryid traj-id}))
+			:timeout
+		      ))))))))
 
 
 
 (defn move-arm-directly-to-state 
   ([#^NodeHandle nh arm-state]
-     (move-arm-directly-to-state nh arm-state true))
-  ([#^NodeHandle nh arm-state wait?]
+     (move-arm-directly-to-state nh arm-state 10))
+  ([#^NodeHandle nh arm-state wait-secs]
     (let [right? (isa? (:class arm-state) ::Right)
 	  srv-prefix (str "/" (if right? "r" "l") "_arm_joint_waypoint_controller")
 	  id (start-trajectory nh srv-prefix
 	       (make-joint-trajectory (:joint-angle-map (get-current-arm-state nh right?)) 
 				      (:joint-angle-map arm-state) ))]
-      (or (and (not wait?) [srv-prefix id])
-	  (wait-for-trajectory nh srv-prefix id)))))
+      (or (and (not wait-secs) [srv-prefix id])
+	  (wait-for-trajectory nh srv-prefix id wait-secs)))))
 
 
 
