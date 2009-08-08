@@ -315,10 +315,14 @@
 (defonce *throw-reward* -6)
 
 (defmethod robot-primitive-result ::TuckArmsAction [nh action env]
-  [(update-in env [:robot] #(assoc % :rarm *rarm-tucked-state* :larm *larm-tucked-state*))
+  [(update-in env [:robot] 
+	      #(assoc % :rarm (arm-joint-state true "tucked" true)
+		        :larm (arm-joint-state false "tucked" true)))
    *tuck-reward*])
 (defmethod robot-primitive-result ::ThrowArmsAction [nh action env]
-  [(update-in env [:robot] #(assoc % :rarm *rarm-up-state* :larm *larm-up-state*))
+  [(update-in env [:robot] 
+	      #(assoc % :rarm (arm-joint-state true "up")
+		        :larm (arm-joint-state true "up")))
    *throw-reward*])
 
 (defmethod execute-robot-primitive ::TuckArmsAction  [nh action] 

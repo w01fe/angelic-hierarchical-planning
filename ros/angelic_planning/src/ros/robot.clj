@@ -380,6 +380,47 @@
 
 ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;; Get, move to state ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
 
+;;; Known trajectories, etc. ;;;
+
+
+(def *arm-joints*
+  ["shoulder_pan_joint" "shoulder_lift_joint" "upper_arm_roll_joint" 
+   "elbow_flex_joint" "forearm_roll_joint" "wrist_flex_joint" "wrist_roll_joint"])
+
+(def *larm-joints* (map #(str "l_" %) *arm-joints*))
+(def *rarm-joints* (map #(str "r_" %) *arm-joints*))
+
+
+
+(def *larm-joint-states*
+     {"up"                [1.033456 -0.218231 0.115697 -1.082723 -2.929992 0.107283 -1.695491]
+      "tucked"            [-0.000020 0.899529 1.569952 -1.550905 0.000192 0.100453 -0.000417]})
+
+(def *rarm-joint-states*
+     {"up"                [-1.060668 -0.336501 -0.099800 -0.974440 3.106211 0.139013 2.735894]
+      "tucked"            [-0.000186 1.286251 -1.569942 -1.570996 -0.000091 0.101947 0.000223]
+      "home"              [0.39146 0.770561 -0.593027 -1.99714 0.742525 1.60109 2.63896]
+      "grasp_bar"         [-0.112613 -0.215548 -2.5479 0.002441 -0.14698 0.263452 2.53254]
+      "grasp_bar_low"     [-0.0888183 -0.150892 -0.134794 -0.0605298 2.96289 0.268543 -3.0757]
+      "grasp_big_table"   [-0.00313992 -0.0117858 -0.105762 -0.0776116 3.08055 0.10099 -3.01161]
+      "grasp_small_table" [-0.250178 0.0616681 -0.109955 -0.118579 3.04295 0.184788 -3.0405]
+      "grasp_counter"     [-0.356016 -0.188573 -0.0260828 -0.719335 -3.05293 0.870881 -2.97632]
+      "drop"              [0.00685727 0.412504 -0.0828579 -1.51335 -3.08632 1.05988 -2.91744]
+      })
+
+(defn arm-joint-state 
+  ([right? name]
+     (arm-joint-state right? name false))
+  ([right? name tucked?]
+     (make-robot-arm-state right? tucked? 
+      (into {} (map vector 
+		    (if right? *rarm-joints* *larm-joints*)
+		    (safe-get* (if right? *rarm-joint-states* *larm-joint-states*) name))))))
+
+
+;;; Using known states ;;;
+
+
 (defn get-current-arm-state-msg [nh right?]
   (call-srv-cached nh (str "/" (if right? "r" "l") 
 		    "_arm_joint_waypoint_controller/TrajectoryQuery" )
@@ -395,6 +436,29 @@
   (let [ks (keys init-joints)]
     {:class JointTraj :names ks 
      :points (map (fn [m t] {:positions (map m ks) :time t}) [init-joints final-joints] [0 0.2])}))
+
+
+(defn arm-l2-distance [j1 j2]
+  (Math/sqrt (double (apply + (map #(* % %) 
+    (for [[v1 v2 roll?] (map vector j1 j2 [false false false false true false true])]
+      (let [diff (Math/abs (double (- v1 v2)))]
+	(if roll? (if (> diff Math/PI) (- (* 2 Math/PI) diff) diff) diff))))))))
+
+ ;; TODO: handle wraparound
+(defn make-smooth-joint-trajectory [init-joints final-joints step-l2 step-time]
+  (assert (= (set (keys init-joints)) (set (keys final-joints))))
+  (let [ks (keys init-joints)
+	j1 (map init-joints ks)
+	j2 (map final-joints ks)
+	jd (map - j2 j1)
+	total-dist (arm-l2-distance j1 j2)
+	steps (inc (int (/ total-dist step-l2)))
+	step-dist (/ total-dist steps)
+	step-time (* step-time (/ step-dist step-l2))]
+    {:class JointTraj :names ks 
+     :points 
+       (for [t (range (inc steps))]
+	 {:positions (map + j1 (map #(* % (/ t steps)) jd)) :time (* step-time t)})}))
    
 
 (defn start-trajectory [#^NodeHandle nh srv-prefix traj]
@@ -441,66 +505,87 @@
 		      ))))))))
 
 
+(defn execute-arm-trajectory [#^NodeHandle nh traj wait-secs]
+  (let [right? (condp = (first (first (:names traj))) \r true \l false)
+	srv-prefix (str "/" (if right? "r" "l") "_arm_joint_waypoint_controller")
+	id (start-trajectory nh srv-prefix traj)]
+    (or (and (not wait-secs) [srv-prefix id])
+	(wait-for-trajectory nh srv-prefix id wait-secs))))
 
 (defn move-arm-directly-to-state 
   ([#^NodeHandle nh arm-state]
      (move-arm-directly-to-state nh arm-state 10))
   ([#^NodeHandle nh arm-state wait-secs]
-    (let [right? (isa? (:class arm-state) ::Right)
-	  srv-prefix (str "/" (if right? "r" "l") "_arm_joint_waypoint_controller")
-	  id (start-trajectory nh srv-prefix
-	       (make-joint-trajectory (:joint-angle-map (get-current-arm-state nh right?)) 
-				      (:joint-angle-map arm-state) ))]
-      (or (and (not wait-secs) [srv-prefix id])
-	  (wait-for-trajectory nh srv-prefix id wait-secs)))))
+     (execute-arm-trajectory nh 
+       (make-smooth-joint-trajectory (:joint-angle-map (get-current-arm-state nh 
+						        (isa? (:class arm-state) ::Right))) 
+				     (:joint-angle-map arm-state)
+				      0.2 0.01)
+       wait-secs)))
 
+(defn read-path-file [f] (map #(read-string (str "[" % "]")) (util/read-lines f)))
+
+(def *drop-traj* (read-path-file "/u/isucan/paths/discard"))
+
+(defn encode-arm-trajectory [right? traj timestep]
+  {:class JointTraj :names (if right? *rarm-joints* *larm-joints*)
+   :points (for [[t joints] (util/indexed traj)] {:positions joints :time (* t timestep)})})
+
+(defn encode-normalized-arm-trajectory [right? traj speed]
+  (let [pairs     (partition 2 1 traj)
+	distances (map (fn [[x y]] (arm-l2-distance x y)) pairs)
+	path-distances (util/reductions + distances)]
+;    (println distances path-distances)
+    {:class JointTraj :names (if right? *rarm-joints* *larm-joints*)
+     :points (cons {:positions (first traj) :time 0}
+		   (for [[[prev cur] dist path-dist] (map vector pairs distances path-distances) 
+			 :when (> dist 0.00001)]
+		     {:positions cur :time (/ path-dist speed)}))}))
+
+
+;TODO: handle wraparound! (also above!)
+#_(defn encode-smoothed-arm-trajectory [right? traj res speed]
+  (let [norm (encode-normalized-arm-trajectory right? traj speed)]
+    (assoc-in norm [:points]
+      (fn [points]
+	(cons (first points)
+	  (rest 
+	   (loop [i -1 cur-sum 0 cur-dist res next-sum 0 next-dist 0 traj traj traj-out []]
+	     (let [[first-traj & rest-traj] traj]
+	       (if (empty? rest-traj) (conj traj-out first-traj)
+		 (let [second-traj (first rest-traj)]
+		   (let [dist (arm-l2-distance first-traj second-traj)]
+		     (assert (< (+ next-dist dist) (* 2 res)))
+		     (if (> (+ cur-dist dist) (* 2 res))
+		         (recur (inc i) 
+				(map + next-sum ...) (+ next-dist dist)
+				... ...
+				rest-traj
+				(conj traj-out ...))
+		       (recur i
+			      (map + cur-sum ...) (+ cur-dist dist)
+			      (map + next-sum ...) (+ next-dist dist)
+			      rest-traj traj-out)))))))))))))
+
+    
+  
 
 
 ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;  Tuck and untuck  ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
-
-(def *arm-joints*
-  ["shoulder_pan_joint" "shoulder_lift_joint" "upper_arm_roll_joint" 
-   "elbow_flex_joint" "forearm_roll_joint" "wrist_flex_joint" "wrist_roll_joint"])
-
-(def *larm-joints* (map #(str "l_" %) *arm-joints*))
-(def *rarm-joints* (map #(str "r_" %) *arm-joints*))
-
-(def *larm-joint-states*
-     {"up"      [1.033456 -0.218231 0.115697 -1.082723 -2.929992 0.107283 -1.695491]
-      "tucked"  [-0.000020 0.899529 1.569952 -1.550905 0.000192 0.100453 -0.000417]})
-
-(def *rarm-joint-states*
-     {"up"      [-1.060668 -0.336501 -0.099800 -0.974440 3.106211 0.139013 2.735894]
-      "tucked"  [-0.000186 1.286251 -1.569942 -1.570996 -0.000091 0.101947 0.000223]})
-
-(defn joint-state 
-  ([right? name]
-     (joint-state right? name false))
-  ([right? name tucked?]
-     (make-robot-arm-state right? tucked? 
-      (into {} (map vector 
-		    (if right? *rarm-joints* *larm-joints*)
-		    (safe-get* (if right? *rarm-joint-states* *larm-joint-states*) name))))))
-
-
-(def *larm-up-state*     (joint-state false "up"))
-(def *larm-tucked-state* (joint-state false "tucked") true)
-(def *larm-up-state*     (joint-state false "up"))
-(def *larm-tucked-state* (joint-state false "tucked") true)
 
 
 
 
 (defn throw-arms [#^NodeHandle nh]
-  (doseq [[p id] (doall (for [s [*larm-up-state* *rarm-up-state*]]
-		    (move-arm-directly-to-state nh s false)))]
+  (doseq [[p id] (doall (for [r? [false true]]
+		    (move-arm-directly-to-state nh (arm-joint-state r? "up") false)))]
     (wait-for-trajectory nh p id))) 
 
 
 (defn tuck-arms [#^NodeHandle nh]
-  (doseq [[p id] [(move-arm-directly-to-state nh *rarm-tucked-state* false)
+  (doseq [[p id] [(move-arm-directly-to-state nh (arm-joint-state true "tucked" true) false)
 		(do (Thread/sleep 1000)
-		    (move-arm-directly-to-state nh *larm-tucked-state* false))]]
+		    (move-arm-directly-to-state nh (arm-joint-state false "tucked" true) false))]]
     (wait-for-trajectory nh p id)))
   
 
