@@ -52,7 +52,8 @@
 	   JointConstraint PoseConstraint KinematicConstraints
 	   KinematicSpaceParameters KinematicJoint KinematicState KinematicPath]
 	  [manipulation_msgs JointTraj IKRequest]
-	  [pr2_robot_actions MoveArmGoal MoveArmState ActuateGripperState]
+	  [move_arm MoveArmGoal MoveArmState]
+	  [pr2_robot_actions  ActuateGripperState]
 	  [mechanism_msgs    MechanismState]
 	  )
 
@@ -151,29 +152,66 @@
   ([nh state]
      (move-base-to-pose-stamped nh (base-state->pose-stamped state))))
 
+(defn move-base-forward
+  "Moves base forward using move_base."
+  [#^NodeHandle nh distance]
+  (let [{:keys [x y theta]} (get-current-base-state nh)
+	theta (double theta)]
+    (move-base-to-state nh (make-robot-base-state (+ x (* distance (Math/cos theta)))
+						  (+ y (* distance (Math/sin theta)))
+						  theta))))
+		       
+
+(defn move-base-unsafe 
+  "Custom interface for moving base directly, without move_base."
+  [#^NodeHandle nh command-fn goal-fn]
+  (let [current-pose (atom nil)
+	pub (.advertise nh "/cmd_vel" (PoseDot.) 1)
+	sub (.subscribe nh "/base_pose_ground_truth" (PoseWithRatesStamped.)
+			(sub-cb [m] (reset! current-pose (:pose (:pose_with_rates m)))) 1)]
+    (print "Waiting for pose...")
+    (while (not @current-pose)
+      (print ".")
+      (.spinOnce nh)
+      (Thread/sleep 10))
+    (let [init-pose @current-pose
+	  init-pos (:position init-pose)
+	  zero     {:vx 0 :vy 0 :vz 0}]
+      (loop []
+	(when (not (goal-fn init-pose @current-pose))
+	  (.publish pub (map-msg PoseDot (update-in 
+					  (update-in 
+					   (command-fn init-pose @current-pose)
+					   [:vel] #(merge zero %))
+					   [:ang_vel] #(merge zero %))))
+	  (Thread/sleep 100)
+	  (.spinOnce nh)
+	  (recur)))
+      (.publish pub (map-msg PoseDot {:vel zero :ang_vel zero}))
+      (println "Stopping: traveled" (point-distance init-pos (:position @current-pose)))
+      (Thread/sleep 4000)
+      (.spinOnce nh)
+      (println "Stopping: traveled" (point-distance init-pos (:position @current-pose))))
+
+    (.shutdown sub)
+    (.shutdown pub)))
 
 
 (defn move-base-forward-unsafe 
   "Directly moves using base controllers, without invoking planning"
   [#^NodeHandle nh distance]
-  (let [pub (.advertise nh "/cmd_vel" (PoseDot.) 1)] 
-    (dotimes [_ (Math/abs (int steps))] 
-      (Thread/sleep 100) 
-      (.publish pub (map-msg {:class PoseDot :vel {:class Velocity :vx (* 0.5 (Math/signum (double steps)) 2) :vy 0 :vz 0} 
-			      :ang_vel {:class AngularVelocity :vx 0 :vy 0 :vz 0}})))
-    (.shutdown pub)))
+   (move-base-unsafe nh
+    (fn [init-pose current-pose]
+      (let [dist (- distance (point-distance (:position init-pose) (:position current-pose)))]
+	{:vel {:vx (if (> dist 0.1) 0.5 (* dist 3))}}))
+    (fn [init-pose current-pose]
+      (let [dist (- distance (point-distance (:position init-pose) (:position current-pose)))]
+	(< dist 0.005)))))
 
-(comment
-(defn move-base-forward-unsafe 
-  "Directly moves using base controllers, without invoking planning"
-  [#^NodeHandle nh steps]
-  (let [pub (.advertise nh "/cmd_vel" (PoseDot.) 1)] 
-    (dotimes [_ (Math/abs (int steps))] 
-      (Thread/sleep 100) 
-      (.publish pub (map-msg {:class PoseDot :vel {:class Velocity :vx (* 0.5 (Math/signum (double steps)) 2) :vy 0 :vz 0} 
-			      :ang_vel {:class AngularVelocity :vx 0 :vy 0 :vz 0}})))
-    (.shutdown pub)))
- )
+(defn norm-angle [a]
+  (cond (> a Math/PI) (- a (* 2 Math/PI))
+	(< a (- Math/PI)) (+ a (* 2 Math/PI))
+	:else a))
 
 (defn spin-base-unsafe 
   "Spins base at a specified vecocity (pos = ccw) for a specified time."
@@ -188,6 +226,19 @@
 	(Thread/sleep 100) 
 	(recur)))
     (.shutdown pub)))
+
+(defn spin-base-to-angle-unsafe
+  "Spins base to a desired angle, with no collision checking."
+  [#^NodeHandle nh angle]
+  (move-base-unsafe nh 
+    (fn [init-pose current-pose]
+      (let [ac (quaternion->angle (:orientation current-pose))
+	    norm-diff (double (norm-angle (- angle ac)))]
+	{:ang_vel {:vz (if (> (Math/abs norm-diff) 0.1) 0.5 (* norm-diff 3))}}))
+    (fn [init-pose current-pose]
+      (let [ac (quaternion->angle (:orientation current-pose))
+	    norm-diff (double (norm-angle (- angle ac)))]
+	(< (Math/abs norm-diff) 0.005)))))
 
 
 (defn base-state->disc [state res minc maxc]
@@ -407,27 +458,36 @@
 
 ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;  Tuck and untuck  ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
 
-(def *larm-up-state*
-  (make-robot-arm-state false false 
-    (into {} [["l_shoulder_pan_joint" 1.0334563255310059] ["l_shoulder_lift_joint" -0.21823130548000336] ["l_upper_arm_roll_joint" 0.11569690704345703] ["l_elbow_flex_joint" -1.0827234983444214] ["l_forearm_roll_joint" -2.9299917221069336] ["l_wrist_flex_joint" 0.10728263854980463] ["l_wrist_roll_joint" -1.6954907178878784]])))
+(def *arm-joints*
+  ["shoulder_pan_joint" "shoulder_lift_joint" "upper_arm_roll_joint" 
+   "elbow_flex_joint" "forearm_roll_joint" "wrist_flex_joint" "wrist_roll_joint"])
 
-(def *rarm-up-state*
-  (make-robot-arm-state true false   
-    (into {} [["r_shoulder_pan_joint" -1.0606677532196045] ["r_shoulder_lift_joint" -0.33650094270706177] ["r_upper_arm_roll_joint" -0.0998004600405693] ["r_elbow_flex_joint" -0.9744399189949036] ["r_forearm_roll_joint" 3.1062114238739014] ["r_wrist_flex_joint" 0.1390128135681152] ["r_wrist_roll_joint" 2.7358944416046143]])))
+(def *larm-joints* (map #(str "l_" %) *arm-joints*))
+(def *rarm-joints* (map #(str "r_" %) *arm-joints*))
 
-(def *larm-tucked-state*  
-  (make-robot-arm-state false true 
-    {"l_shoulder_pan_joint" -2.0302917619119398E-5, "l_shoulder_lift_joint" 0.899528980255127, "l_upper_arm_roll_joint" 1.5699524879455566, "l_elbow_flex_joint" -1.5509047508239746, "l_forearm_roll_joint" 1.9216537475585938E-4, "l_wrist_flex_joint" 0.10045289993286133, "l_wrist_roll_joint" -4.171816981397593E-4}
-    ;{"l_shoulder_pan_joint" 0.0 "l_shoulder_lift_joint" 0.90, "l_upper_arm_roll_joint" 1.57 "l_elbow_flex_joint" -1.55, "l_forearm_roll_joint" 0.0 "l_wrist_flex_joint" 0.0, "l_wrist_roll_joint" 0.0, }
-    ;{"l_shoulder_lift_joint" 0.900306510925293, "l_wrist_flex_joint" 0.10485601425170898, "l_wrist_roll_joint" -0.07251530140638351, "l_elbow_flex_joint" -1.281473660469055, "l_forearm_roll_joint" -0.13328810036182404, "l_upper_arm_roll_joint" 1.399874210357666, "l_shoulder_pan_joint" 0.0091785430908203}
-    ;(into {} [["l_shoulder_pan_joint" 4.57763671875E-5] ["l_shoulder_lift_joint" 1.050065517425537] ["l_upper_arm_roll_joint" 1.5704517364501953] ["l_elbow_flex_joint" -2.0499651432037354] ["l_forearm_roll_joint" -1.5006138710305095E-5] ["l_wrist_flex_joint" 0.10002660751342773] ["l_wrist_roll_joint" -4.604033892974218E-4]])
-    ))
+(def *larm-joint-states*
+     {"up"      [1.033456 -0.218231 0.115697 -1.082723 -2.929992 0.107283 -1.695491]
+      "tucked"  [-0.000020 0.899529 1.569952 -1.550905 0.000192 0.100453 -0.000417]})
 
-(def *rarm-tucked-state*
-  (make-robot-arm-state true true  
-    {"r_wrist_flex_joint" 0.10194683074951172, "r_wrist_roll_joint" 2.2315979003905862E-4, "r_shoulder_lift_joint" 1.2862510108947754, "r_elbow_flex_joint" -1.5709961652755737, "r_forearm_roll_joint" -9.14452102733776E-5, "r_upper_arm_roll_joint" -1.5699418783187866, "r_shoulder_pan_joint" -1.8587072554510087E-4}
-    ;(into {} [["r_shoulder_pan_joint" -4.7210945922415704E-5] ["r_shoulder_lift_joint" 1.3463068008422852] ["r_upper_arm_roll_joint" -1.5700957775115967] ["r_elbow_flex_joint" -1.57080078125] ["r_forearm_roll_joint" -1.3014320575166494E-4] ["r_wrist_flex_joint" 0.0999908447265625] ["r_wrist_roll_joint" 2.1505355834960382E-4]])
-    ))
+(def *rarm-joint-states*
+     {"up"      [-1.060668 -0.336501 -0.099800 -0.974440 3.106211 0.139013 2.735894]
+      "tucked"  [-0.000186 1.286251 -1.569942 -1.570996 -0.000091 0.101947 0.000223]})
+
+(defn joint-state 
+  ([right? name]
+     (joint-state right? name false))
+  ([right? name tucked?]
+     (make-robot-arm-state right? tucked? 
+      (into {} (map vector 
+		    (if right? *rarm-joints* *larm-joints*)
+		    (safe-get* (if right? *rarm-joint-states* *larm-joint-states*) name))))))
+
+
+(def *larm-up-state*     (joint-state false "up"))
+(def *larm-tucked-state* (joint-state false "tucked") true)
+(def *larm-up-state*     (joint-state false "up"))
+(def *larm-tucked-state* (joint-state false "tucked") true)
+
 
 
 
@@ -537,7 +597,7 @@
   (let [pos (pose-position (:pose pose-stamped))
 	[x y z] pos]
      (println pos (l2-distance [0 0 0] pos))
-    (cond (< y 0) 
+    (cond (< x 0) 
             (println "Skipping IK; can't reach behind robot.")
 	  (> (l2-distance [0 0 0] pos) 0.9)
 	    (println "Skipping IK; can't reach more than 0.9 meters away.")
@@ -590,7 +650,7 @@
 
 (def *shared-arm-params*
      {:class KinematicSpaceParameters
-      :distance_metric "L2Square" :planner_id      ""
+      :distance_metric "L2Square" :planner_id      "" :contacts nil
       :volumeMin       {:header *map-header* :point {:x 0 :y 0 :z 0}}
       :volumeMax       {:header *map-header* :point {:x 0 :y 0 :z 0}}})
 (def *larm-params* (assoc *shared-arm-params* :model_id "left_arm"))

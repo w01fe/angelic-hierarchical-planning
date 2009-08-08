@@ -371,7 +371,7 @@
 
 (defmethod robot-hla-discrete-refinements? ::ArmGraspAction [a] false)
 
-(def *grasp-distance* 0.10)
+(def *grasp-distance* 0.20)
 
 ;; TODO: use base pose of robot to assist in sampling feasible poses.
 (defmethod sample-robot-hla-refinement ::ArmGraspAction [nh a env]

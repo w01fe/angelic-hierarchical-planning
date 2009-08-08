@@ -6,7 +6,7 @@
   <depend package="rosjava"/>
   <depend package="rosclj"/>
   <depend package="tf_node"/>
-  <depend package="tabletop_manipulation"/>
+  <depend package="3dnav_pr2"/>
   <depend package="ompl_planning"/>
   <depend package="2dnav_pr2"/>
   <depend package="move_base"/>

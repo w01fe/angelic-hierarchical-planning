@@ -15,15 +15,16 @@ PACKAGES="roslib
 	    mechanism_msgs
             pr2_msgs
             plugs_msgs
+            mapping_msgs
             motion_planning_msgs
 	    motion_planning_srvs
             pr2_robot_actions
             manipulation_msgs
 	    manipulation_srvs
 	    pr2_mechanism_controllers
+            move_arm
             tf
 	    tf_node
-	    mapping_msgs
  	    navfn
  	    fk_node
 	    "
