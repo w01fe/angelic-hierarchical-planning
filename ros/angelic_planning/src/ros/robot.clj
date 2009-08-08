@@ -154,6 +154,21 @@
 	 (while (not @a) (.spinOnce nh))
 	 @a))))
 
+(let [mem (atom {})]
+  (def get-current-base-odom
+     (fn [#^NodeHandle nh]
+       (let [a 
+	     (or (@mem nh)
+		 (let [a (atom nil)]
+		   (.subscribe nh "/robot_pose_ekf/odom_combined" 
+			       (PoseWithCovariance.)
+			       (sub-cb [m] (reset! a m)) 1)
+		   (swap! mem assoc nh a)
+		   a))]
+	 (.spinOnce nh)
+	 (while (not @a) (.spinOnce nh))
+	 @a))))
+
 (defn get-current-base-state [#^NodeHandle nh]
   (pose-stamped->base-state (get-current-base-pose nh)))
 
@@ -183,35 +198,25 @@
 (defn move-base-unsafe 
   "Custom interface for moving base directly, without move_base."
   [#^NodeHandle nh command-fn goal-fn]
-  (let [current-pose (atom nil)
-	pub (.advertise nh "/cmd_vel" (PoseDot.) 1)
-	sub (.subscribe nh "/base_pose_ground_truth" (PoseWithRatesStamped.)
-			(sub-cb [m] (reset! current-pose (:pose (:pose_with_rates m)))) 1)]
-    (print "Waiting for pose...")
-    (while (not @current-pose)
-      (print ".")
-      (.spinOnce nh)
-      (Thread/sleep 10))
-    (let [init-pose @current-pose
+  (let [pub (.advertise nh "/cmd_vel" (PoseDot.) 1)]
+    (let [init-pose (:pose (get-current-base-odom nh))
 	  init-pos (:position init-pose)
 	  zero     {:vx 0 :vy 0 :vz 0}]
       (loop []
-	(when (not (goal-fn init-pose @current-pose))
+	(let [current-pose (:pose (get-current-base-odom nh))]
+  	 (when (not (goal-fn init-pose current-pose))
 	  (.publish pub (map-msg PoseDot (update-in 
 					  (update-in 
-					   (command-fn init-pose @current-pose)
+					   (command-fn init-pose current-pose)
 					   [:vel] #(merge zero %))
 					   [:ang_vel] #(merge zero %))))
 	  (Thread/sleep 100)
-	  (.spinOnce nh)
-	  (recur)))
+	  (recur))))
       (.publish pub (map-msg PoseDot {:vel zero :ang_vel zero}))
-      (println "Stopping: traveled" (point-distance init-pos (:position @current-pose)))
-      (Thread/sleep 4000)
-      (.spinOnce nh)
-      (println "Stopping: traveled" (point-distance init-pos (:position @current-pose))))
-
-    (.shutdown sub)
+      (println "Stopping: traveled" (point-distance init-pos (:position (:pose (get-current-base-odom nh)))))
+;      (Thread/sleep 4000)
+;      (println "Stopping: traveled" (point-distance init-pos (:position (:pose (get-current-base-odom nh))))))
+      )
     (.shutdown pub)))
 
 
@@ -225,7 +230,8 @@
    (move-base-unsafe nh
     (fn [init-pose current-pose]
       (let [dist (- distance (point-distance (:position init-pose) (:position current-pose)))]
-	{:vel {coord (* dir (if (> dist 0.1) 0.5 (* dist 3)))}}))
+	(println "commanding" (* dir (if (> dist 0.1) 0.2 (* dist 3))))
+	{:vel {coord (* dir (if (> dist 0.1) 0.2 (* dist 3)))}}))
     (fn [init-pose current-pose]
       (let [dist (- distance (point-distance (:position init-pose) (:position current-pose)))]
 	(< (Math/abs (double dist)) 0.005))))))
@@ -249,6 +255,9 @@
 	(recur)))
     (.shutdown pub)))
 
+;; TODO: fix to use pose info
+;; TODO: fix normalization
+;(spin-base-to nh (- (* 1.5 (Math/PI)) 0.15))
 (defn spin-base-to
   "Spins base to a desired angle, with no collision checking."
   [#^NodeHandle nh angle]
@@ -256,11 +265,11 @@
     (fn [init-pose current-pose]
       (let [ac (quaternion->angle (:orientation current-pose))
 	    norm-diff (double (norm-angle (- angle ac)))]
-	{:ang_vel {:vz (if (> (Math/abs norm-diff) 0.1) 0.5 (* norm-diff 3))}}))
+	{:ang_vel {:vz (if (> (Math/abs norm-diff) 0.1) 0.5 (* norm-diff 4))}}))
     (fn [init-pose current-pose]
       (let [ac (quaternion->angle (:orientation current-pose))
 	    norm-diff (double (norm-angle (- angle ac)))]
-	(< (Math/abs norm-diff) 0.005)))))
+	(< (Math/abs norm-diff) 0.05)))))
 
 
 (defn base-state->disc [state res minc maxc]
@@ -375,13 +384,15 @@
      (apply-gripper-force nh (isa? (:class gs) ::Right) (* (:force gs) (if (:open? gs) 1 -1)))))
 
 
+; Bottles - 45 (everything)
 
 
-
-
-
-
-
+(comment 
+(defn open [] (move-gripper-to-state nh (make-robot-gripper-state nh true)))
+(defn close [] (move-gripper-to-state nh (make-robot-gripper-state nh false 0.45 nil)))
+(defn fw [x] (move-base-rel nh :vx x))
+(defn r  [x] (move-base-rel nh :vy x))
+)
 ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
 ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;; Arms ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
 ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
@@ -771,6 +782,7 @@
 
 (def *shared-arm-params*
      {:class KinematicSpaceParameters
+      :contacts nil
       :distance_metric "L2Square" :planner_id      "" :contacts nil
       :volumeMin       {:header *map-header* :point {:x 0 :y 0 :z 0}}
       :volumeMax       {:header *map-header* :point {:x 0 :y 0 :z 0}}})
@@ -888,6 +900,7 @@
   [#^NodeHandle nh arm-state]
   (run-action nh (str "/move_" (if (isa? (:class arm-state) ::Right) "right" "left") "_arm") 
     (map-msg {:class MoveArmGoal 
+	      :contacts nil
 	      :path_constraints *no-constraints*
 	      :goal_constraints {:pose_constraint  []
 				 :joint_constraint (vec (map parse-joint-constraint 
