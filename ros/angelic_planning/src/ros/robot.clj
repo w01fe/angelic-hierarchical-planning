@@ -45,7 +45,8 @@
 
 
 (defmsgs  [std_msgs Float64]
-	  [geometry_msgs PointStamped PoseStamped PoseWithRatesStamped]
+	  [geometry_msgs PointStamped PoseStamped PoseWithRatesStamped
+	    PoseWithCovariance]
 	  [robot_msgs PoseDot]
 	  [nav_robot_actions MoveBaseState]
 	  [motion_planning_msgs 
@@ -107,6 +108,8 @@
 ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;; Base ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
 ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
 
+(def *current-base-pose* (atom nil))
+(def *base-pose-sub* (atom nil))
 
 (defstruct robot-base-state    :class :x :y :theta)
 
@@ -119,6 +122,7 @@
 (defn pose-stamped->base-state [pose-stamped]
   (assert (#{"map" "/map"} (:frame_id (:header pose-stamped))))
   (let [pose (condp = (:class pose-stamped)
+	       PoseWithCovariance   (:pose pose-stamped)
 	       PoseStamped          (:pose pose-stamped)
 	       PoseWithRatesStamped (:pose (:pose_with_rates pose-stamped)))]
     (make-robot-base-state
@@ -133,8 +137,22 @@
 	    :orientation (angle->quaternion (:theta base-state))}})
 
 
-(defn get-current-base-pose [#^NodeHandle nh]
-  (get-single-message nh "/base_pose_ground_truth" (PoseWithRatesStamped.)))
+;(defn get-current-base-pose [#^NodeHandle nh]
+;  (get-single-message nh "/base_pose_ground_truth" (PoseWithRatesStamped.)))
+
+(let [mem (atom {})]
+  (def get-current-base-pose 
+     (fn [#^NodeHandle nh]
+       (let [a 
+	     (or (@mem nh)
+		 (let [a (atom nil)]
+		   (.subscribe nh "/amcl_pose" (PoseWithCovariance.)
+				      (sub-cb [m] (reset! a m)) 1)
+		   (swap! mem assoc nh a)
+		   a))]
+	 (.spinOnce nh)
+	 (while (not @a) (.spinOnce nh))
+	 @a))))
 
 (defn get-current-base-state [#^NodeHandle nh]
   (pose-stamped->base-state (get-current-base-pose nh)))
@@ -197,23 +215,27 @@
     (.shutdown pub)))
 
 
-(defn move-base-forward-unsafe 
-  "Directly moves using base controllers, without invoking planning"
-  [#^NodeHandle nh distance]
+(defn move-base-rel
+  "Directly moves using base controllers (unsafe), without invoking planning"
+  [#^NodeHandle nh coord distance]
+  (assert (#{:vx :vy} coord))
+  (let [distance (double distance)
+	dir (Math/signum distance)
+	distance (Math/abs distance)]
    (move-base-unsafe nh
     (fn [init-pose current-pose]
       (let [dist (- distance (point-distance (:position init-pose) (:position current-pose)))]
-	{:vel {:vx (if (> dist 0.1) 0.5 (* dist 3))}}))
+	{:vel {coord (* dir (if (> dist 0.1) 0.5 (* dist 3)))}}))
     (fn [init-pose current-pose]
       (let [dist (- distance (point-distance (:position init-pose) (:position current-pose)))]
-	(< dist 0.005)))))
+	(< (Math/abs (double dist)) 0.005))))))
 
 (defn norm-angle [a]
   (cond (> a Math/PI) (- a (* 2 Math/PI))
 	(< a (- Math/PI)) (+ a (* 2 Math/PI))
 	:else a))
 
-(defn spin-base-unsafe 
+(defn spin-base
   "Spins base at a specified vecocity (pos = ccw) for a specified time."
   [#^NodeHandle nh vel secs]
   (let [pub (.advertise nh "/cmd_vel" (PoseDot.) 1)
@@ -227,7 +249,7 @@
 	(recur)))
     (.shutdown pub)))
 
-(defn spin-base-to-angle-unsafe
+(defn spin-base-to
   "Spins base to a desired angle, with no collision checking."
   [#^NodeHandle nh angle]
   (move-base-unsafe nh 
@@ -386,6 +408,7 @@
 (def *arm-joints*
   ["shoulder_pan_joint" "shoulder_lift_joint" "upper_arm_roll_joint" 
    "elbow_flex_joint" "forearm_roll_joint" "wrist_flex_joint" "wrist_roll_joint"])
+(def *arm-joint-wraps* [false false false false true false true])
 
 (def *larm-joints* (map #(str "l_" %) *arm-joints*))
 (def *rarm-joints* (map #(str "r_" %) *arm-joints*))
@@ -417,6 +440,21 @@
 		    (if right? *rarm-joints* *larm-joints*)
 		    (safe-get* (if right? *rarm-joint-states* *larm-joint-states*) name))))))
 
+(defn arm-l2-distance [j1 j2]
+  (Math/sqrt (double (apply + (map #(* % %) 
+    (for [[v1 v2 roll?] (map vector j1 j2 *arm-joint-wraps*)]
+      (let [diff (Math/abs (double (- v1 v2)))]
+	(if roll? (if (> diff Math/PI) (- (* 2 Math/PI) diff) diff) diff))))))))
+
+
+(defn interpolate-arm-joint [v1 v2 w wrap?]
+  (let [dist (double (- v2 v1))]
+    (if (or (not wrap?) (< (Math/abs dist) Math/PI))
+        (+ v1 (* dist w))
+      (norm-angle (- v1 (* (- (* 2 Math/PI) dist) w))))))
+
+(defn interpolate-arm-joints [j1 j2 w]
+  (map (fn [v1 v2 wrap?] (interpolate-arm-joint v1 v2 w wrap?)) j1 j2 *arm-joint-wraps*))
 
 ;;; Using known states ;;;
 
@@ -438,11 +476,7 @@
      :points (map (fn [m t] {:positions (map m ks) :time t}) [init-joints final-joints] [0 0.2])}))
 
 
-(defn arm-l2-distance [j1 j2]
-  (Math/sqrt (double (apply + (map #(* % %) 
-    (for [[v1 v2 roll?] (map vector j1 j2 [false false false false true false true])]
-      (let [diff (Math/abs (double (- v1 v2)))]
-	(if roll? (if (> diff Math/PI) (- (* 2 Math/PI) diff) diff) diff))))))))
+
 
  ;; TODO: handle wraparound
 (defn make-smooth-joint-trajectory [init-joints final-joints step-l2 step-time]
@@ -458,7 +492,9 @@
     {:class JointTraj :names ks 
      :points 
        (for [t (range (inc steps))]
-	 {:positions (map + j1 (map #(* % (/ t steps)) jd)) :time (* step-time t)})}))
+	 {:positions (interpolate-arm-joints j1 j2 (/ t steps))
+	    ;(map + j1 (map #(* % (/ t steps)) jd)) 
+	  :time (* step-time t)})}))
    
 
 (defn start-trajectory [#^NodeHandle nh srv-prefix traj]
@@ -797,12 +833,29 @@
 	  :pose   {:position    {:x x :y y :z z}
 		   :orientation (axis-angle->quaternion-msg [ax ay az] angle)}}})))
   
+(def *upright-rgripper-constraint*
+  (let [tolv 0.5
+	tol {:x tolv :y tolv :z tolv}]
+   {:joint_constraint nil
+    :pose_constraint 
+     [{:type (+ PoseConstraint/ORIENTATION_R PoseConstraint/ORIENTATION_P)
+       :link_name "r_gripper_palm_link"
+       :pose {:header *bl-header* :pose (make-pose [0 0 0] [0 0 0 1])}
+       :orientation_importance 1.0
+       :orientation_tolerance_above tol
+       :orientation_tolerance_below tol
+       :position_tolerance_above tol
+       :position_tolerance_below tol}]}))
+       
+
 (defn plan-arm-motion
   "joint constraints are passed as map from name to either value,  
    which will use this tolerance, or interval, or joint_constraint map.
    pose constraints are lists of PoseConstraints maps -- no shortcuts for now.
    Init-joints should include base and torso, in general."
-  [#^NodeHandle nh right? world robot-state joint-constraints pose-constraints]
+  ([#^NodeHandle nh right? world robot-state joint-constraints pose-constraints]
+     (plan-arm-motion nh right? world robot-state joint-constraints pose-constraints *no-constraints*))
+  ([#^NodeHandle nh right? world robot-state joint-constraints pose-constraints path-constraints]
   (println "Putting collision map")
   (put-single-message-cached nh "/collision_map_future" (map-msg (world->collision-map world)))
 ;  (println "\n\n\n\n\n\n\n\n" right?)
@@ -815,9 +868,9 @@
      {:class GetMotionPlan$Request :times 1 :allowed_time 0.5 :planner_id ""
       :params (if right? *rarm-params* *larm-params*)
       :start_state      (doall (map make-kinematic-joint (get-joint-map robot-state)))
-      :path_constraints *no-constraints*
+      :path_constraints path-constraints
       :goal_constraints {:pose_constraint (vec pose-constraints)
-			 :joint_constraint (vec (map parse-joint-constraint joint-constraints))}})))
+			 :joint_constraint (vec (map parse-joint-constraint joint-constraints))}}))))
 
 
 (defn describe-motion-plan [plan]
