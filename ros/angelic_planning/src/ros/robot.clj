@@ -424,15 +424,15 @@
 
 
 (defn open-gripper [nh]
-  (apply-gripper-force nh true -100)
+  (apply-gripper-force nh true 100)
   (unattach-bottle nh)
   )
 
 (defn close-gripper 
-  ([nh] (close-gripper nh 45))
-  ([nh force] 
+  ([nh] (close-gripper nh 45 false))
+  ([nh force empty?] 
      (apply-gripper-force nh true (- force))
-     (attach-bottle nh)
+     (when-not empty? (attach-bottle nh))
      ))
 
 
@@ -1125,6 +1125,22 @@
 (defn find-bottles [nh z]
   (:pts (call-srv nh "/find_bottles" (map-msg FindBottles$Request {:z z}))))
 
+(defn wait-for-bottle [nh z]
+  (laser-slow)
+  (Thread/sleep 2000)
+  (loop [bottles (find-bottles nh z)]
+    (if (empty? bottles)
+        (do (print ".")
+	    (Thread/sleep 100)
+	    (recur (find-bottles nh z)))
+      (do (future-call laser-fast)
+	  (let [bottles (map #(decode-point (:point %)) bottles)]
+	    (println "Got bottles" bottles)
+	    (util/first-maximal-element 
+	     #(- 100 (Math/abs (double (second %))))
+	     bottles)
+	    )))))
+
 (defn compute-base-grasp-rect 
   "Given a rectangular table and point in map frame, compute a good base state along x edge.
    Return nil if no pose is thought feasible"
@@ -1177,12 +1193,15 @@
    (do (pt (open-gripper nh)) true)
    (do (Thread/sleep 3000) (final-approach nh obj) true)
    (do (pt (close-gripper nh)) true)
-   (do (Thread/sleep 3000) (move-base-rel nh :vx -0.2) true)
+   (do (Thread/sleep 3000) (move-base-rel nh :vx -0.3) true)
    (pt (move-arm-to-state nh (arm-joint-state true "home") true))))
 
 (defn grasp-rviz [nh]
   (let [[obj-map obj-bl] (get-rviz-points nh true)]
     (grasp-object nh obj-bl)))
+
+(defn grasp-nearest [nh ht]
+  (grasp-object nh (wait-for-bottle nh ht)))
 
 
 
@@ -1200,13 +1219,13 @@
 		
 ;  TODO: add timeout
 ;; TODO: add preempt
-
 ;; TODO: attach bottles
 ;; TODO: ignore result of arm action.
 ;  TODO: integrate with find_bottles
-;  TODO: extend scrips.
-    ; Smart script for grasping - move base + ask for new point, if needed.
 
+;;  TODO: extend scrips.
+    ; Smart script for grasping - move base + ask for new point, if needed.
+;; TODO: fix rotate-toa-angle
 
 ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
 ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;     States      ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
@@ -1326,7 +1345,7 @@
 	  (move-arm-to-pos ~'nh ~'j ~'upright?)))
              
      (defn ~'open [] (open-gripper ~'nh))
-     (defn ~'close ([] (~'close 45)) ([~'f] (close-gripper ~'nh ~'f)))
+     (defn ~'close ([] (~'close 45)) ([~'f] (close-gripper ~'nh ~'f false)))
 
      (defn ~'home [] (~'go-arm-plan "home"))
      
