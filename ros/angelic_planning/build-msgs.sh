@@ -80,4 +80,4 @@ do
 done
 
 
-# rosmake move_arm move_base tf_node pr2_gazebo fake_localization map_server 2dnav_gazebo teleop_base 2dnav_pr2 3dnav_pr2 tabletop_scripts mechanism_control ompl_planning map_server fk_node joint_waypoint_controller
+#  rosmake move_arm move_base tf_node pr2_gazebo fake_localization map_server 2dnav_gazebo teleop_base 2dnav_pr2 3dnav_pr2  mechanism_control ompl_planning map_server fk_node joint_waypoint_controller

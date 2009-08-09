@@ -378,10 +378,15 @@
    :header {:class Header :frame_id "/map" :stamp (.subtract (.now *ros*) (Duration. 0.1))}
    :boxes  (world-boxes w)})
 
-(def *empty-collision-map*
+
+
+(defn make-empty-collision-map []
   {:class CollisionMap 
    :header {:class Header :frame_id "/map" :stamp (.subtract (.now *ros*) (Duration. 0.1))}
    :boxes []})
+
+;(def *kitchen-boxes*
+
 
 (defn world-2d-res [w]
   (let [res (map #(:2d-res (:def %)) (vals w))]

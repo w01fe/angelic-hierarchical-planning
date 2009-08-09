@@ -51,14 +51,15 @@
 	  [nav_robot_actions MoveBaseState]
 	  [motion_planning_msgs 
 	   JointConstraint PoseConstraint KinematicConstraints
-	   KinematicSpaceParameters KinematicJoint KinematicState KinematicPath]
+	   KinematicSpaceParameters KinematicJoint KinematicState KinematicPath
+	   ]
 	  [manipulation_msgs JointTraj IKRequest]
 	  [move_arm MoveArmGoal MoveArmState]
 	  [pr2_robot_actions  ActuateGripperState]
 	  [mechanism_msgs    MechanismState]
 	  )
 
-(defsrvs  [motion_planning_msgs GetMotionPlan]
+(defsrvs  [motion_planning_msgs GetMotionPlan FindBottles]
           [pr2_mechanism_controllers TrajectoryStart TrajectoryQuery TrajectoryCancel]
 	  [manipulation_srvs    IKService ]
 	  [tf_node              TransformPoint TransformPose]
@@ -120,8 +121,10 @@
   {"base_joint" [(:x obj) (:y obj) (:theta obj)]})
 
 (defn pose-stamped->base-state [pose-stamped]
-  (assert (#{"map" "/map"} (:frame_id (:header pose-stamped))))
+  (when-not (= (:class pose-stamped) Pose)
+    (assert (#{"map" "/map"} (:frame_id (:header pose-stamped)))))
   (let [pose (condp = (:class pose-stamped)
+	       Pose                 pose-stamped
 	       PoseWithCovariance   (:pose pose-stamped)
 	       PoseStamped          (:pose pose-stamped)
 	       PoseWithRatesStamped (:pose (:pose_with_rates pose-stamped)))]
@@ -147,7 +150,9 @@
 	     (or (@mem nh)
 		 (let [a (atom nil)]
 		   (.subscribe nh "/amcl_pose" (PoseWithCovariance.)
-				      (sub-cb [m] (reset! a m)) 1)
+				      (sub-cb [m] (reset! a (:pose m))) 1)
+;		   (.subscribe nh "/base_pose_ground_truth" (PoseWithRatesStamped.)
+;				      (sub-cb [m] (reset! a (:pose (:pose_with_rates m)))) 1)
 		   (swap! mem assoc nh a)
 		   a))]
 	 (.spinOnce nh)
@@ -160,9 +165,10 @@
        (let [a 
 	     (or (@mem nh)
 		 (let [a (atom nil)]
-		   (.subscribe nh "/robot_pose_ekf/odom_combined" 
-			       (PoseWithCovariance.)
-			       (sub-cb [m] (reset! a m)) 1)
+		   (.subscribe nh "/robot_pose_ekf/odom_combined" (PoseWithCovariance.)
+			       (sub-cb [m] (reset! a (:pose m))) 1)
+;		   (.subscribe nh "/base_pose_ground_truth" (PoseWithRatesStamped.)
+;				      (sub-cb [m] (reset! a (:pose (:pose_with_rates m)))) 1)		   
 		   (swap! mem assoc nh a)
 		   a))]
 	 (.spinOnce nh)
@@ -199,11 +205,11 @@
   "Custom interface for moving base directly, without move_base."
   [#^NodeHandle nh command-fn goal-fn]
   (let [pub (.advertise nh "/cmd_vel" (PoseDot.) 1)]
-    (let [init-pose (:pose (get-current-base-odom nh))
+    (let [init-pose (get-current-base-odom nh)
 	  init-pos (:position init-pose)
 	  zero     {:vx 0 :vy 0 :vz 0}]
       (loop []
-	(let [current-pose (:pose (get-current-base-odom nh))]
+	(let [current-pose (get-current-base-odom nh)]
   	 (when (not (goal-fn init-pose current-pose))
 	  (.publish pub (map-msg PoseDot (update-in 
 					  (update-in 
@@ -213,9 +219,9 @@
 	  (Thread/sleep 100)
 	  (recur))))
       (.publish pub (map-msg PoseDot {:vel zero :ang_vel zero}))
-      (println "Stopping: traveled" (point-distance init-pos (:position (:pose (get-current-base-odom nh)))))
+      (println "Stopping: traveled" (point-distance init-pos (:position (get-current-base-odom nh))))
 ;      (Thread/sleep 4000)
-;      (println "Stopping: traveled" (point-distance init-pos (:position (:pose (get-current-base-odom nh))))))
+;      (println "Stopping: traveled" (point-distance init-pos (:position (get-current-base-odom nh)))))
       )
     (.shutdown pub)))
 
@@ -230,16 +236,19 @@
    (move-base-unsafe nh
     (fn [init-pose current-pose]
       (let [dist (- distance (point-distance (:position init-pose) (:position current-pose)))]
-	(println "commanding" (* dir (if (> dist 0.1) 0.2 (* dist 3))))
+;	(println dist)
+;	(println "commanding" (* dir (if (> dist 0.1) 0.2 (* dist 3))))
 	{:vel {coord (* dir (if (> dist 0.1) 0.2 (* dist 3)))}}))
     (fn [init-pose current-pose]
       (let [dist (- distance (point-distance (:position init-pose) (:position current-pose)))]
 	(< (Math/abs (double dist)) 0.005))))))
 
 (defn norm-angle [a]
-  (cond (> a Math/PI) (- a (* 2 Math/PI))
-	(< a (- Math/PI)) (+ a (* 2 Math/PI))
+  (cond (> a (+ Math/PI 0.0000001)) (recur (- a (* 2 Math/PI)))
+	(< a (- -0.0000001 Math/PI)) (recur (+ a (* 2 Math/PI)))
 	:else a))
+
+
 
 (defn spin-base
   "Spins base at a specified vecocity (pos = ccw) for a specified time."
@@ -261,15 +270,20 @@
 (defn spin-base-to
   "Spins base to a desired angle, with no collision checking."
   [#^NodeHandle nh angle]
-  (move-base-unsafe nh 
+  (let [init-pose-angle (quaternion->angle (:orientation (get-current-base-pose nh)))
+	init-odom-angle (quaternion->angle (:orientation (get-current-base-odom nh)))
+	angle (+ init-odom-angle (- angle init-pose-angle))]
+    (println angle)
+   (move-base-unsafe nh 
     (fn [init-pose current-pose]
       (let [ac (quaternion->angle (:orientation current-pose))
 	    norm-diff (double (norm-angle (- angle ac)))]
-	{:ang_vel {:vz (if (> (Math/abs norm-diff) 0.1) 0.5 (* norm-diff 4))}}))
+	(println norm-diff)
+	{:ang_vel {:vz (if (> (Math/abs norm-diff) 0.1) (* (Math/signum norm-diff) 0.5) (* norm-diff 4))}}))
     (fn [init-pose current-pose]
       (let [ac (quaternion->angle (:orientation current-pose))
 	    norm-diff (double (norm-angle (- angle ac)))]
-	(< (Math/abs norm-diff) 0.05)))))
+	(< (Math/abs norm-diff) 0.01))))))
 
 
 (defn base-state->disc [state res minc maxc]
@@ -387,12 +401,7 @@
 ; Bottles - 45 (everything)
 
 
-(comment 
-(defn open [] (move-gripper-to-state nh (make-robot-gripper-state nh true)))
-(defn close [] (move-gripper-to-state nh (make-robot-gripper-state nh false 0.45 nil)))
-(defn fw [x] (move-base-rel nh :vx x))
-(defn r  [x] (move-base-rel nh :vy x))
-)
+
 ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
 ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;; Arms ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
 ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
@@ -447,9 +456,12 @@
      (arm-joint-state right? name false))
   ([right? name tucked?]
      (make-robot-arm-state right? tucked? 
-      (into {} (map vector 
-		    (if right? *rarm-joints* *larm-joints*)
-		    (safe-get* (if right? *rarm-joint-states* *larm-joint-states*) name))))))
+      (if (map? name) name
+	(into {} (map vector 
+		      (if right? *rarm-joints* *larm-joints*)
+		      (if (string? name)
+			  (safe-get* (if right? *rarm-joint-states* *larm-joint-states*) name)
+			name)))))))
 
 (defn arm-l2-distance [j1 j2]
   (Math/sqrt (double (apply + (map #(* % %) 
@@ -525,7 +537,7 @@
 		 TrajectoryQuery$Response/State_Canceled
 ;		 TrajectoryQuery$Response/State_Does_Not_Exist
 		 ])))
-
+ 
 (defn wait-for-trajectory 
   "Wait for a given trajectory, at most max-seconds.  Returns false
    for success, and an error code (Response code, or :timeout) on failure."
@@ -563,11 +575,13 @@
   ([#^NodeHandle nh arm-state]
      (move-arm-directly-to-state nh arm-state 10))
   ([#^NodeHandle nh arm-state wait-secs]
+     (move-arm-directly-to-state nh arm-state wait-secs 1.0))
+  ([#^NodeHandle nh arm-state wait-secs speed-mul]
      (execute-arm-trajectory nh 
        (make-smooth-joint-trajectory (:joint-angle-map (get-current-arm-state nh 
 						        (isa? (:class arm-state) ::Right))) 
 				     (:joint-angle-map arm-state)
-				      0.2 0.01)
+				      0.2 (/ 0.01 speed-mul))
        wait-secs)))
 
 (defn read-path-file [f] (map #(read-string (str "[" % "]")) (util/read-lines f)))
@@ -834,12 +848,27 @@
   ([right? frame [x y z] [ax ay az] angle]
      (encode-pose-constraint right? frame [x y z] [ax ay az] angle [true true true] [true true true]))
   ([right? frame [x y z] [ax ay az] angle [x? y? z?] [roll? pitch? yaw?]]
-     (assert (= frame "/map"))
+   (assert (= frame "/map"))
    (let [tol {:class Point :x 0.001 :y 0.001 :z 0.001}]
-  {:class PoseConstraint :class (encode-pose-constraint-type [x? y? z?] [roll? pitch? yaw?])
+  {:class PoseConstraint :type (encode-pose-constraint-type [x? y? z?] [roll? pitch? yaw?])
    :orientation_importance 0.5
    :position_tolerance_above tol :position_tolerance_below tol
    :orientation_tolerance_above tol :orientation_tolerance_below tol
+   :link_name (str (if right? "r" "l") "_gripper_palm_link")
+   :pose {:header {:frame_id frame}
+	  :pose   {:position    {:x x :y y :z z}
+		   :orientation (axis-angle->quaternion-msg [ax ay az] angle)}}})))
+
+(defn encode-pose-constraint-bl 
+  ([right? frame [x y z] [ax ay az] angle]
+     (encode-pose-constraint-bl right? frame [x y z] [ax ay az] angle [true true true] [true true true]))
+  ([right? frame [x y z] [ax ay az] angle [x? y? z?] [roll? pitch? yaw?]]
+   (let [tol {:class Point :x 0.01 :y 0.01 :z 0.01}
+	 otol {:class Point :x 0.1 :y 0.1 :z 0.1}]
+  {:class PoseConstraint :type (encode-pose-constraint-type [x? y? z?] [roll? pitch? yaw?])
+   :orientation_importance 0.5
+   :position_tolerance_above tol :position_tolerance_below tol
+   :orientation_tolerance_above otol :orientation_tolerance_below otol
    :link_name (str (if right? "r" "l") "_gripper_palm_link")
    :pose {:header {:frame_id frame}
 	  :pose   {:position    {:x x :y y :z z}
@@ -897,17 +926,30 @@
 
 (defn move-arm-to-state 
   "Actually move arm to state using move_arm action, with replanning, synchronously"
-  [#^NodeHandle nh arm-state]
-  (run-action nh (str "/move_" (if (isa? (:class arm-state) ::Right) "right" "left") "_arm") 
+  ([#^NodeHandle nh arm-state] (move-arm-to-state nh arm-state false))
+  ([#^NodeHandle nh arm-state upright?]
+   (run-action nh (str "/move_" (if (isa? (:class arm-state) ::Right) "right" "left") "_arm") 
     (map-msg {:class MoveArmGoal 
 	      :contacts nil
-	      :path_constraints *no-constraints*
+	      :path_constraints (if upright? *upright-rgripper-constraint* *no-constraints*)
 	      :goal_constraints {:pose_constraint  []
 				 :joint_constraint (vec (map parse-joint-constraint 
 							     (:joint-angle-map arm-state)))}})
-    (MoveArmState.)))
+    (MoveArmState.))))
 
-
+(defn move-arm-to-pos
+  ([nh pos] (move-arm-to-pos nh pos false))
+  ([nh pos upright?]
+;     (println "GO")
+   (run-action nh "/move_right_arm"
+     (map-msg {:class MoveArmGoal 
+	      :contacts nil
+	      :path_constraints (if upright? *upright-rgripper-constraint* *no-constraints*)
+	      :goal_constraints 
+	       {:pose_constraint  
+		 [(encode-pose-constraint-bl true "/base_link" pos [0 0 1] 0)]
+		:joint_constraint []}})
+    (MoveArmState.))))
 
 
 
@@ -960,18 +1002,247 @@
 
 
 
+;;;;;;;;; Laser ;;;;;;;;
+
+(defn laser-slow [] (util/sh "roslaunch" "/u/jawolfe/angel/ros/angelic_planning/laser_slow.launch"))
+(defn laser-fast [] (util/sh "roslaunch" "/u/jawolfe/angel/ros/angelic_planning/laser_fast.launch"))
+
+
 
 
 ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
-;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;; Abstract States ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
+;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;; Choosing grasp positions ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
 ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
 
+(defn get-gripper-pose [nh]
+  (decode-pose 
+  (:pose (:pout 
+   (call-srv nh "/tf_node/transform_pose" 
+    (map-msg TransformPose$Request
+      {:target_frame "/base_link"
+       :target_time (Time.);(.subtract (.now *ros*) (Duration. 0.3))
+       :pin {:header {:frame_id "/r_gripper_palm_link" :stamp (.subtract (.now *ros*) (Duration. 0.1))}	     
+	     :pose {:position {:x 0 :y 0 :z 0} :orientation {:x 0 :y 0 :z 0 :w 1}}}
+       :fixed_frame ""}))))))
 
+(def *rviz-point-map* (atom nil))
+(def *rviz-point-base* (atom nil))
+
+
+(defn setup-rviz-points [#^NodeHandle nh]
+  (println "Starting point collection...")
+  (.subscribe nh "/selected_point" (PointStamped.)
+	     (sub-cb [m]
+	       (println "Got new rviz point!")
+	       (assert (= (:frame_id (:header m)) "/map"))
+	       (reset! *rviz-point-map* (decode-point (:point m)))
+	       (reset! *rviz-point-base*
+		(decode-point (:point (:pout 
+		  (call-srv nh "/tf_node/transform_point"
+		   (map-msg TransformPoint$Request
+			    {:target_frame "/base_link"
+			     :target_time (Time.);(.subtract (.now *ros*) (Duration. 0.3))
+			     :pin {:header {:frame_id "/map" :stamp (.subtract (.now *ros*) (Duration. 0.3))}
+				   :point (:point m)}
+			     :fixed_frame ""})
+		   
+		   ))))))
+	     1))
+
+(let [mem (atom {})]
+  (def get-rviz-points
+     (fn [#^NodeHandle nh wait?]
+       (when-not (@mem nh) 
+	 (do
+	   (setup-rviz-points nh)
+	   (swap! mem assoc nh true)))
+       (when wait? (reset! *rviz-point-map* nil))
+       (.spinOnce nh)
+       (when wait?
+	 (while (not @*rviz-point-map*)
+	   (.spinOnce nh)))
+       (when @*rviz-point-map*
+	 [@*rviz-point-map* @*rviz-point-base*]))))
+
+
+
+(defn find-bottles [nh z]
+  (:pts (call-srv nh "/find_bottles" (map-msg FindBottles$Request {:z z}))))
+
+(defn compute-base-grasp-rect 
+  "Given a rectangular table and point in map frame, compute a good base state along x edge.
+   Return nil if no pose is thought feasible"
+  [[[minx maxx] [miny maxy] tz] [x y z]]
+  (assert (and (<= minx x maxx) (<= miny y maxy)))
+  (let [min? (< (Math/abs (double (- miny y))) (Math/abs (double (- maxy y))))
+	[dir edge] (if min? [-1 miny] [1 maxy])]
+    (when (< (Math/abs (double (- edge y))) 0.5)
+      (make-robot-base-state (- x (* dir 0.1)) (+ y (* dir 1.0)) (if min? 0 Math/PI)))))
+
+(defn base-to-grasp-rect [nh table obj]
+  (when-let [rect (compute-base-grasp-rect table obj)]
+    (= :success (move-base-to-state nh rect))
+    ))
+
+(defn compute-grasp-point [[x y z]]
+  "Compute a good point for the gripper to grasp (palm link) given object coords in base link."
+  (when (and (> x 0.4) (< x 1.5) (> y -0.5) (< y 0.5))
+    [(- x 0.4) y z]));(+ z 0.12)]))
+
+(defn arm-to-grasp "obj in base-link" [nh obj]
+  (when-let [grasp-point (compute-grasp-point obj)]
+    (= :success (move-arm-to-pos nh grasp-point))))
+  
+(defn approx-= [x y tol] (< (Math/abs (double (- x y))) tol))
+
+(defn final-approach "obj in base-link" [nh [objx objy objz]]
+  (let [[[gx gy gz] [ox oy oz ow]] (get-gripper-pose nh)]
+;    (println ox gx)
+    (assert (approx-= gy objy 0.05))
+    (assert (approx-= ow 1.0 0.10))
+    (move-base-rel nh :vx (- objx gx 0.17))
+    true
+    ))
+  
+(defn grasp-object "obj in base-link" [nh obj]
+  (and 
+   (arm-to-grasp nh obj)
+   (move-gripper-to-state nh (make-robot-gripper-state true true))
+   (do (Thread/sleep 3000) (final-approach nh obj))
+   (move-gripper-to-state nh (make-robot-gripper-state true false 45 nil))))
+
+(defn move-and-grasp-object [nh table obj-map obj-bl]
+  (and (base-to-grasp-rect nh table obj-map)
+       (grasp-object nh obj-bl)))
+
+(defn grasp-rviz [nh table]
+  (let [[obj-map obj-bl] (get-rviz-points nh true)]
+    (move-and-grasp-object nh table obj-map obj-bl)))
+
+;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
+;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;     States      ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
+;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
+
+(defn get-gripper-map-point 
+  ([nh] (get-gripper-map-point nh "r_gripper_r_finger_tip_link"))
+  ([nh frame]
+   (decode-point (:point (:pout 
+   (call-srv nh "/tf_node/transform_point" 
+    (map-msg TransformPoint$Request
+      {:target_frame "/map"
+       :target_time (Time.);(.subtract (.now *ros*) (Duration. 0.3))
+       :pin {:header {:frame_id frame :stamp (.subtract (.now *ros*) (Duration. 0.3))}	     
+	     :point {:x 0 :y 0 :z 0}}
+       :fixed_frame ""})))))))
+
+(defn get-base-map-pose 
+  ([nh] (get-base-map-pose nh "/base_link"))
+  ([nh frame]
+  (vec (map  (pose-stamped->base-state 
+  (:pose (:pout 
+   (call-srv nh "/tf_node/transform_pose" 
+    (map-msg TransformPose$Request
+      {:target_frame "/map"
+       :target_time (Time.);(.subtract (.now *ros*) (Duration. 0.3))
+       :pin {:header {:frame_id frame :stamp (.subtract (.now *ros*) (Duration. 0.3))}	     
+	     :pose {:position {:x 0 :y 0 :z 0} :orientation {:x 0 :y 0 :z 0 :w 1}}}
+       :fixed_frame ""})))))
+   [:x :y :theta])))
+  )
+
+(defn decode-base-state [s]
+  (vec (map s [:x :y :theta])))
+
+(def *base-poses*
+ {"bottle1"  
+  "bottle2"  
+  "bottle3"  
+  "bottle4"  nil
+  "bottle5"  [4.909466889875168 11.530285568135294 4.710902006993992]
+  "bottle6"  [4.786408482748747 11.540439761096412 4.753068777678795]
+  "sink"    
+  "trash"    [3.8471729012735567 11.465790341533662 4.748530929654799] ;fix
+  "view-bar"         []
+  "view-big-table"   []
+  "view-small-table" [3.3843519644305093 13.019782651099014 1.4314826658466109] ;fix []
+  "view-counter"     []
+  "view-people"      []
+  })
+
+(def *table-points*
+ {"bar"         []
+  "big-table"   [[8.107930729270592 12.590753975438648 0.7504400841281565]
+		 [5.643550208321604 12.735583218902011 0.7459262958011553]
+		 [5.44249991101204 13.943733031758114 0.9640788781381608]
+		 [8.115098958185198 13.844665767230687 0.8689017040839769]]
+                ; 
+  "small-table" []
+  "counter"     []})
+
+; These are in palm link "r_gripper_palm_link"
+(def *gripper-points*
+ {"bottle1" 
+  "bottle2" 
+  "bottle3" 
+  "bottle4" 
+  "bottle5" 
+  "bottle6"
+  "sink"
+  "trash"
+  })
+
+(def *big-table* [[5.50 8.11] [12.6 13.9] 0.75])
+
+; backwards ...
+(def *sim-table* [[23.94 26.94] [27.3 28.8] 0.75])
+(def *sim-cup* [25.65 28.50])
+
+;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
+;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;; REPL helpers ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
+;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
+
+;(defn mnh [] (make-node-handle))
+
+(defmacro lazy []
+  `(do 
+     (defn ~'f [~'x] (move-base-rel ~'nh :vx ~'x))
+     (defn ~'l [~'x] (move-base-rel ~'nh :vy ~'x))
+     (defn ~'b [~'x] (move-base-rel ~'nh :vx (- ~'x)))
+     (defn ~'r [~'x] (move-base-rel ~'nh :vy (- ~'x)))
+
+     (defn ~'go-base [~'s] 
+       (move-base-to-state ~'nh (if (string? ~'s) (apply make-robot-base-state (safe-get* *base-poses* ~'s)) ~'s)))
+     
+     (defn ~'go-arm 
+       ([~'j] (~'go-arm ~'j 1.0))  
+       ([~'j ~'speed-mul]
+	  (move-arm-directly-to-state ~'nh (arm-joint-state true ~'j) 10 (* 0.1 ~'speed-mul))))
+     (defn ~'go-arm-traj 
+       ([~'j] (~'go-arm-traj ~'j 1.0))
+       ([~'j speed-mul#]
+	  (execute-arm-trajectory ~'nh 
+	    (if (map? ~'j) ~'j
+	      (encode-normalized-arm-trajectory true ~'j (* speed-mul# 3)))
+	    10)))
+     (defn ~'go-arm-plan 
+       ([~'j] (~'go-arm-plan ~'j false))
+       ([~'j ~'upright?]
+	  (move-arm-to-state ~'nh (arm-joint-state true ~'j) ~'upright?)))
+     (defn ~'go-arm-pos
+       ([~'j] (~'go-arm-pos ~'j false))
+       ([~'j ~'upright?]
+	  (move-arm-to-pos ~'nh ~'j ~'upright?)))
+             
+     (defn ~'open [] (move-gripper-to-state ~'nh (make-robot-gripper-state true true)))
+     (defn ~'close ([] (~'close 45)) ([~'f] (move-gripper-to-state ~'nh (make-robot-gripper-state true false ~'f nil))))
+     
+     ;(defn ~'restart []  (.shutdown ~'nh) (def ~'nh (make-node-handle)))
+     ))
 
 
 (set! *warn-on-reflection* false)
 
-
+; (do (.shutdown nh) (def nh (make-node-handle)))
 
 ; (do (use 'ros.ros 'ros.world 'ros.geometry 'ros.robot 'ros.robot-actions 'ros.robot-hierarchy :reload) (import-ros) (import-all-msgs-and-srvs))
 ; (def nh (make-node-handle))
@@ -1002,3 +1273,20 @@
 ;     (move-base-to-state nh state nil))
 ;  ([nh state wait-for-dist?]
 ;     (move-base-to-pose-stamped nh (base-state->pose-stamped state) wait-for-dist?)))
+
+
+;  mapping_msgs::AttachedObject ao;
+;            ao.header.frame_id = obj.object_pose.header.frame_id;
+;            ao.header.stamp = ros::Time::now();
+;            ao.link_name = "r_wrist_roll_link";
+;            ao.objects.push_back(obj.object);
+;            ao.poses.push_back(obj.object_pose.pose);
+;            pubAttach.publish(ao);;
+
+
+;      mapping_msgs::AttachedObject ao;
+;            ao.header.stamp = ros::Time::now();
+;            ao.header.frame_id = "r_wrist_roll_link";
+;            ao.link_name = "r_wrist_roll_link";
+;            pubAttach.publish(ao);
+;            return true;
