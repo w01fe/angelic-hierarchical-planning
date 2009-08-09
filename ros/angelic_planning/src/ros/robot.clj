@@ -44,7 +44,7 @@
 ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
 
 
-(defmsgs  [std_msgs Float64]
+(defmsgs  [std_msgs Float64 Empty]
 	  [geometry_msgs PointStamped PoseStamped PoseWithRatesStamped
 	    PoseWithCovariance]
 	  [robot_msgs PoseDot]
@@ -57,6 +57,7 @@
 	  [move_arm MoveArmGoal MoveArmState]
 	  [pr2_robot_actions  ActuateGripperState]
 	  [mechanism_msgs    MechanismState]
+	  [mapping_msgs      AttachedObject Object]
 	  )
 
 (defsrvs  [motion_planning_msgs GetMotionPlan FindBottles]
@@ -351,6 +352,30 @@
 
 
 
+;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;     Attach object ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
+
+(defn attach-bottle [nh]
+  (put-single-message-cached nh "/attach_object" 
+    (map-msg AttachedObject
+     {:header {:frame_id "r_gripper_palm_link" :stamp (.now nh)}
+      :link_name "r_gripper_palm_link"
+      :objects [{:type ros.pkg.mapping_msgs.msg.Object/CYLINDER
+		 :dimensions [0.15 0.30]
+		 :triangles []
+		 :vertices []}]
+      :poses   [(make-pose [0.16 0 0] [0 0 0 1])]}) 
+    ))
+
+(defn unattach-bottle [nh]
+  (put-single-message-cached nh "/attach_object"
+    (map-msg AttachedObject
+     {:header {:frame_id "r_gripper_palm_link"}
+      :link_name "r_gripper_palm_link"
+      :objects []
+      :poses []}) 
+    ))
+
+
 ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
 ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;; Gripper ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
 ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
@@ -398,7 +423,17 @@
      (apply-gripper-force nh (isa? (:class gs) ::Right) (* (:force gs) (if (:open? gs) 1 -1)))))
 
 
-; Bottles - 45 (everything)
+(defn open-gripper [nh]
+  (apply-gripper-force nh true -100)
+  (unattach-bottle nh)
+  )
+
+(defn close-gripper 
+  ([nh] (close-gripper nh 45))
+  ([nh force] 
+     (apply-gripper-force nh true (- force))
+     (attach-bottle nh)
+     ))
 
 
 
@@ -587,6 +622,9 @@
 (defn read-path-file [f] (map #(read-string (str "[" % "]")) (util/read-lines f)))
 
 (def *drop-traj* (read-path-file "/u/isucan/paths/discard"))
+(def *drop-traj2* (read-path-file "/u/isucan/paths/drop_new"))
+
+
 
 (defn encode-arm-trajectory [right? traj timestep]
   {:class JointTraj :names (if right? *rarm-joints* *larm-joints*)
@@ -629,7 +667,17 @@
 			      rest-traj traj-out)))))))))))))
 
     
-  
+(defn do-throw [nh n]
+  (let [throw (read-path-file (str "/u/jawolfe/paths/throw" n))]
+    (apply-gripper-force nh true 20)
+    (move-arm-directly-to-state nh 
+      (make-robot-arm-state true false
+       (into {} (map vector *rarm-joints* (first throw)))) 10 100 #_0.3)
+    ;(apply-gripper-force nh true 30)
+    #_(execute-arm-trajectory nh  
+      (encode-normalized-arm-trajectory true throw 100)
+      10)))
+
 
 
 ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;  Tuck and untuck  ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
@@ -928,14 +976,15 @@
   "Actually move arm to state using move_arm action, with replanning, synchronously"
   ([#^NodeHandle nh arm-state] (move-arm-to-state nh arm-state false))
   ([#^NodeHandle nh arm-state upright?]
-   (run-action nh (str "/move_" (if (isa? (:class arm-state) ::Right) "right" "left") "_arm") 
+   (run-action nh (str "/move_" (if (isa? (:class arm-state) ::Right) "right" "left") "_arm")  
     (map-msg {:class MoveArmGoal 
 	      :contacts nil
 	      :path_constraints (if upright? *upright-rgripper-constraint* *no-constraints*)
 	      :goal_constraints {:pose_constraint  []
 				 :joint_constraint (vec (map parse-joint-constraint 
 							     (:joint-angle-map arm-state)))}})
-    (MoveArmState.))))
+    (MoveArmState.)
+    (Duration. 20.0))))
 
 (defn move-arm-to-pos
   ([nh pos] (move-arm-to-pos nh pos false))
@@ -949,8 +998,12 @@
 	       {:pose_constraint  
 		 [(encode-pose-constraint-bl true "/base_link" pos [0 0 1] 0)]
 		:joint_constraint []}})
-    (MoveArmState.))))
+    (MoveArmState.)
+    (Duration. 20.0))))
 
+
+(defn preempt-arm [nh]
+  (put-single-message nh "/move_right_arm/preempt" (Empty.) 1))
 
 
 ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
@@ -1028,6 +1081,17 @@
 (def *rviz-point-map* (atom nil))
 (def *rviz-point-base* (atom nil))
 
+(defn transform-point [nh src-frame trg-frame nice-point]
+  (decode-point 
+   (:point (:pout 
+     (call-srv nh "/tf_node/transform_point"
+	       (map-msg TransformPoint$Request
+			{:target_frame trg-frame
+			 :target_time (Time.);(.subtract (.now *ros*) (Duration. 0.3))
+			 :pin {:header {:frame_id src-frame :stamp (.subtract (.now *ros*) (Duration. 0.3))}
+			       :point (make-point nice-point)}
+			 :fixed_frame ""})
+	       )))))
 
 (defn setup-rviz-points [#^NodeHandle nh]
   (println "Starting point collection...")
@@ -1036,22 +1100,13 @@
 	       (println "Got new rviz point!")
 	       (assert (= (:frame_id (:header m)) "/map"))
 	       (reset! *rviz-point-map* (decode-point (:point m)))
-	       (reset! *rviz-point-base*
-		(decode-point (:point (:pout 
-		  (call-srv nh "/tf_node/transform_point"
-		   (map-msg TransformPoint$Request
-			    {:target_frame "/base_link"
-			     :target_time (Time.);(.subtract (.now *ros*) (Duration. 0.3))
-			     :pin {:header {:frame_id "/map" :stamp (.subtract (.now *ros*) (Duration. 0.3))}
-				   :point (:point m)}
-			     :fixed_frame ""})
-		   
-		   ))))))
+	       (reset! *rviz-point-base* (transform-point nh "/map" "/base_link" (decode-point (:point m)))))
 	     1))
 
 (let [mem (atom {})]
   (def get-rviz-points
      (fn [#^NodeHandle nh wait?]
+       (future-call laser-slow)
        (when-not (@mem nh) 
 	 (do
 	   (setup-rviz-points nh)
@@ -1061,6 +1116,7 @@
        (when wait?
 	 (while (not @*rviz-point-map*)
 	   (.spinOnce nh)))
+       (future-call laser-fast)
        (when @*rviz-point-map*
 	 [@*rviz-point-map* @*rviz-point-base*]))))
 
@@ -1077,21 +1133,30 @@
   (let [min? (< (Math/abs (double (- miny y))) (Math/abs (double (- maxy y))))
 	[dir edge] (if min? [-1 miny] [1 maxy])]
     (when (< (Math/abs (double (- edge y))) 0.5)
-      (make-robot-base-state (- x (* dir 0.1)) (+ y (* dir 1.0)) (if min? 0 Math/PI)))))
+      (make-robot-base-state (- x (* dir 0.1)) (+ y (* dir 1.0)) (+ (/ Math/PI 2) (if min? 0 Math/PI))))))
 
 (defn base-to-grasp-rect [nh table obj]
   (when-let [rect (compute-base-grasp-rect table obj)]
+    (println "Trying to move to" rect)
     (= :success (move-base-to-state nh rect))
     ))
+
+(defn base-rviz [nh table]
+  (let [[obj-map obj-bl] (get-rviz-points nh true)]
+    (base-to-grasp-rect nh table obj-map)))
+
+
 
 (defn compute-grasp-point [[x y z]]
   "Compute a good point for the gripper to grasp (palm link) given object coords in base link."
   (when (and (> x 0.4) (< x 1.5) (> y -0.5) (< y 0.5))
-    [(- x 0.4) y z]));(+ z 0.12)]))
+    [(- x 0.26) y z]));(+ z 0.12)]))
 
 (defn arm-to-grasp "obj in base-link" [nh obj]
-  (when-let [grasp-point (compute-grasp-point obj)]
-    (= :success (move-arm-to-pos nh grasp-point))))
+  (if-let [grasp-point (compute-grasp-point obj)]
+    (do (println "Grasping to" grasp-point)
+	(= :success (move-arm-to-pos nh grasp-point)))
+    (println "Failed to get grasp point for" obj)))
   
 (defn approx-= [x y tol] (< (Math/abs (double (- x y))) tol))
 
@@ -1100,24 +1165,48 @@
 ;    (println ox gx)
     (assert (approx-= gy objy 0.05))
     (assert (approx-= ow 1.0 0.10))
-    (move-base-rel nh :vx (- objx gx 0.17))
+    (move-base-rel nh :vx (- objx gx 0.16))
     true
     ))
   
+(defn pt [x] (println x) x)
+
 (defn grasp-object "obj in base-link" [nh obj]
   (and 
-   (arm-to-grasp nh obj)
-   (move-gripper-to-state nh (make-robot-gripper-state true true))
-   (do (Thread/sleep 3000) (final-approach nh obj))
-   (move-gripper-to-state nh (make-robot-gripper-state true false 45 nil))))
+   (do (pt (arm-to-grasp nh obj)) true)
+   (do (pt (open-gripper nh)) true)
+   (do (Thread/sleep 3000) (final-approach nh obj) true)
+   (do (pt (close-gripper nh)) true)
+   (do (Thread/sleep 3000) (move-base-rel nh :vx -0.2) true)
+   (pt (move-arm-to-state nh (arm-joint-state true "home") true))))
 
-(defn move-and-grasp-object [nh table obj-map obj-bl]
-  (and (base-to-grasp-rect nh table obj-map)
-       (grasp-object nh obj-bl)))
-
-(defn grasp-rviz [nh table]
+(defn grasp-rviz [nh]
   (let [[obj-map obj-bl] (get-rviz-points nh true)]
-    (move-and-grasp-object nh table obj-map obj-bl)))
+    (grasp-object nh obj-bl)))
+
+
+
+;(defn move-and-grasp-object [nh table obj-map obj-bl]
+;  (and (base-to-grasp-rect nh table obj-map)
+;       (grasp-object nh obj-bl)))
+(defn move-and-grasp-rviz [nh table]
+  (let [[obj-map obj-bl] (get-rviz-points nh true)
+	obj-odom (transform-point nh "/map" "/odom" obj-map)]
+    (if (base-to-grasp-rect nh table obj-map)
+        (let [obj-bl-new (do (Thread/sleep 1000) (transform-point nh "/odom" "/base_link" obj-odom))]
+	  (grasp-object nh obj-bl-new))
+      (println "Base movement failed; not attempting grasp."))))
+
+		
+;  TODO: add timeout
+;; TODO: add preempt
+
+;; TODO: attach bottles
+;; TODO: ignore result of arm action.
+;  TODO: integrate with find_bottles
+;  TODO: extend scrips.
+    ; Smart script for grasping - move base + ask for new point, if needed.
+
 
 ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
 ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;     States      ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
@@ -1161,7 +1250,8 @@
   "bottle5"  [4.909466889875168 11.530285568135294 4.710902006993992]
   "bottle6"  [4.786408482748747 11.540439761096412 4.753068777678795]
   "sink"    
-  "trash"    [3.8471729012735567 11.465790341533662 4.748530929654799] ;fix
+  "trash"    [3.5361214867946433 11.34070696450406 4.693141702363712]
+      ;[3.4471729012735567 11.465790341533662 4.748530929654799] ;fix
   "view-bar"         []
   "view-big-table"   []
   "view-small-table" [3.3843519644305093 13.019782651099014 1.4314826658466109] ;fix []
@@ -1203,6 +1293,8 @@
 
 ;(defn mnh [] (make-node-handle))
 
+
+
 (defmacro lazy []
   `(do 
      (defn ~'f [~'x] (move-base-rel ~'nh :vx ~'x))
@@ -1222,7 +1314,7 @@
        ([~'j speed-mul#]
 	  (execute-arm-trajectory ~'nh 
 	    (if (map? ~'j) ~'j
-	      (encode-normalized-arm-trajectory true ~'j (* speed-mul# 3)))
+	      (encode-normalized-arm-trajectory true ~'j (* speed-mul# 1)))
 	    10)))
      (defn ~'go-arm-plan 
        ([~'j] (~'go-arm-plan ~'j false))
@@ -1233,10 +1325,19 @@
        ([~'j ~'upright?]
 	  (move-arm-to-pos ~'nh ~'j ~'upright?)))
              
-     (defn ~'open [] (move-gripper-to-state ~'nh (make-robot-gripper-state true true)))
-     (defn ~'close ([] (~'close 45)) ([~'f] (move-gripper-to-state ~'nh (make-robot-gripper-state true false ~'f nil))))
+     (defn ~'open [] (open-gripper ~'nh))
+     (defn ~'close ([] (~'close 45)) ([~'f] (close-gripper ~'nh ~'f)))
+
+     (defn ~'home [] (~'go-arm-plan "home"))
      
-     ;(defn ~'restart []  (.shutdown ~'nh) (def ~'nh (make-node-handle)))
+     (defn ~'trash []  
+       (~'go-base "trash") 
+       (~'go-arm-traj *drop-traj2*)
+       (~'open)
+       (Thread/sleep 1000)
+       (~'go-arm-plan "home"))
+     
+     (defn ~'reset []  (.shutdown ~'nh) (def ~'nh (make-node-handle)))
      ))
 
 
@@ -1275,18 +1376,3 @@
 ;     (move-base-to-pose-stamped nh (base-state->pose-stamped state) wait-for-dist?)))
 
 
-;  mapping_msgs::AttachedObject ao;
-;            ao.header.frame_id = obj.object_pose.header.frame_id;
-;            ao.header.stamp = ros::Time::now();
-;            ao.link_name = "r_wrist_roll_link";
-;            ao.objects.push_back(obj.object);
-;            ao.poses.push_back(obj.object_pose.pose);
-;            pubAttach.publish(ao);;
-
-
-;      mapping_msgs::AttachedObject ao;
-;            ao.header.stamp = ros::Time::now();
-;            ao.header.frame_id = "r_wrist_roll_link";
-;            ao.link_name = "r_wrist_roll_link";
-;            pubAttach.publish(ao);
-;            return true;
