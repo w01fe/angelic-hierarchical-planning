@@ -300,6 +300,22 @@
 	    norm-diff (double (norm-angle (- angle ac)))]
 	(< (Math/abs norm-diff) 0.01))))))
 
+(defn spin-base-rel
+  "Spins base by a desired angle, with no collision checking."
+  [#^NodeHandle nh angle]
+  (let [init-odom-angle (quaternion->angle (:orientation (get-current-base-odom nh)))
+	angle (+ init-odom-angle angle)]
+   (move-base-unsafe nh 
+    (fn [init-pose current-pose]
+      (let [ac (quaternion->angle (:orientation current-pose))
+	    norm-diff (double (norm-angle (- angle ac)))]
+	(println norm-diff)
+	{:ang_vel {:vz (if (> (Math/abs norm-diff) 0.1) (* (Math/signum norm-diff) 0.5) (* norm-diff 4))}}))
+    (fn [init-pose current-pose]
+      (let [ac (quaternion->angle (:orientation current-pose))
+	    norm-diff (double (norm-angle (- angle ac)))]
+	(< (Math/abs norm-diff) 0.01))))))
+
 (defn spin-base-from-bar [nh]
   (spin-base-to nh (* Math/PI 0.5)))
 
@@ -688,14 +704,14 @@
     
 (defn do-throw [nh n]
   (let [throw (read-path-file (str "/u/jawolfe/paths/throw" n))]
-    (apply-gripper-force nh true 20)
+;    (apply-gripper-force nh true 20)
     (move-arm-directly-to-state nh 
       (make-robot-arm-state true false
-       (into {} (map vector *rarm-joints* (first throw)))) 10 100 #_0.3)
-    ;(apply-gripper-force nh true 30)
-    #_(execute-arm-trajectory nh  
+       (into {} (map vector *rarm-joints* (first throw)))) 30 100 #_0.3)
+    (apply-gripper-force nh true 30)
+    (execute-arm-trajectory nh  
       (encode-normalized-arm-trajectory true throw 100)
-      10)))
+      30))) 
 
 
 
@@ -1023,6 +1039,9 @@
 
 (defn preempt-arm [nh]
   (put-single-message nh "/move_right_arm/preempt" (Empty.) 1))
+
+(defn preempt-base [nh]
+  (put-single-message nh "/move_base/preempt" (Empty.) 1))
 
 
 ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
@@ -1364,6 +1383,7 @@
      (defn ~'face-window [] (spin-base-from-bar ~'nh))
      (defn ~'face-patio [] (spin-base-to ~'nh Math/PI))
      (defn ~'face-me [] (spin-base-to ~'nh 0))
+     (defn ~'spin-tip [] (spin-base-rel ~'nh (/ Math/PI 6)))
 
      (defn ~'trash []  
        (~'go-base "trash") 
@@ -1372,6 +1392,8 @@
        (Thread/sleep 1000)
        (~'go-arm-plan "home"))
      
+     (defn ~'stop [] (preempt-arm ~'nh) (preempt-base ~'nh))
+
      (defn ~'reset []  (.shutdown ~'nh) (def ~'nh (make-node-handle)))
      ))
 
