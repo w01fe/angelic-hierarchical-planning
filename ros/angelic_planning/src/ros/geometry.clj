@@ -52,8 +52,8 @@
    :x 0 :y 0 :z (Math/sin (double (/ rads 2))) :w (Math/cos (double (/ rads 2)))})
 
 (defn quaternion->angle [orientation]
-  (assert (< (Math/abs (double (:x orientation))) 0.01))
-  (assert (< (Math/abs (double (:y orientation))) 0.01))
+  (assert (< (Math/abs (double (:x orientation))) 0.05))
+  (assert (< (Math/abs (double (:y orientation))) 0.05))
   (let [r (* 2 (Math/atan2 (double (:z orientation)) (double (:w orientation))))]
     (if (< r 0) (+ r (* Math/PI 2)) r)))
 
