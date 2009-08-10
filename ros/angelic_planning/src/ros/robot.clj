@@ -219,13 +219,15 @@
 (defn move-base-unsafe 
   "Custom interface for moving base directly, without move_base."
   [#^NodeHandle nh command-fn goal-fn]
-  (let [pub (.advertise nh "/cmd_vel" (PoseDot.) 1)]
+  (let [pub (.advertise nh "/cmd_vel" (PoseDot.) 1)
+	sw  (util/start-stopwatch)]
     (let [init-pose (get-current-base-odom nh)
 	  init-pos (:position init-pose)
 	  zero     {:vx 0 :vy 0 :vz 0}]
       (loop []
 	(let [current-pose (get-current-base-odom nh)]
-  	 (when (not (goal-fn init-pose current-pose))
+  	 (when (and (util/within-time-limit? sw 5.0)
+		    (not (goal-fn init-pose current-pose)))
 	  (.publish pub (map-msg PoseDot (update-in 
 					  (update-in 
 					   (command-fn init-pose current-pose)
@@ -715,7 +717,7 @@
 ;    (apply-gripper-force nh true 20)
     (move-arm-directly-to-state nh 
       (make-robot-arm-state true false
-       (into {} (map vector *rarm-joints* (first throw)))) 10 100 #_0.3)
+       (into {} (map vector *rarm-joints* (first throw)))) 2 100 #_0.3)
     (apply-gripper-force nh true 30)
     (execute-arm-trajectory nh  
       (encode-normalized-arm-trajectory true throw 1000)
@@ -1236,23 +1238,25 @@
     true
     ))
 
-(defn point-head [nh bl-point] 
+(defn look-at [#^NodeHandle nh bl-point] 
   (put-single-message nh "/head_controller/point_head" 
     (map-msg PointStamped {:header {:frame_id "/base_link" :stamp (.now nh)} 
 			   :point (make-point bl-point)}) 1))
-  
+
+(defn look-forward [nh] (look-at nh [1 0 1.2]))  
+
 (defn pt [x] (println x) x)
 
 (defn grasp-object "obj in base-link" [nh obj]
   (and 
-   (do (point-head nh obj) true)
+   (do (look-at nh obj) true)
    (do (pt (arm-to-grasp nh obj)) true)
    (do (pt (open-gripper nh)) true)
    (do (Thread/sleep 3000) (final-approach nh obj) true)
    (do (pt (close-gripper nh)) true)
    (do (Thread/sleep 3000) (move-base-rel nh :vx -0.3) true)
    (pt (move-arm-to-state nh (arm-joint-state true "home") true 60.0))
-   (do (point-head nh [1 0 1.2]) true)))
+   (do (look-forward nh) true)))
 
 (defn grasp-rviz [nh]
   (let [[obj-map obj-bl] (get-rviz-points nh true)]
@@ -1296,25 +1300,28 @@
   (spin-base-to-bar nh)
   (Thread/sleep 1000)
   (let [[x y] (get-trash-point nh)]
-    (do (assert (< (Math/abs (- x 0.75)) 0.3))
+    (do (assert (< (Math/abs (double (- x 0.75))) 0.3))
 	(move-base-rel nh :vx (- x 0.75)))))
 
 (defn servo-to-sink [nh]
   (spin-base-to-bar nh)
   (Thread/sleep 1000)
   (let [[x y] (get-trash-point nh)]
-    (do (assert (< (Math/abs (- x 0.65)) 0.3))
+    (do (assert (< (Math/abs (double (- x 0.65))) 0.3))
 	(move-base-rel nh :vx (- x 0.65)))))
 
 (defn servo-to-bar [nh]
   (spin-base-to-bar nh)
   (Thread/sleep 1000)
   (let [[x y] (get-trash-point nh)]
-    (do (assert (< (Math/abs (- x 0.75)) 0.3))
+    (do (assert (< (Math/abs (double (- x 0.75))) 0.3))
 	(move-base-rel nh :vx (- x 0.75)))))
 
 ;*dump-traj2*
 
+(defn move-gripper-rel [nh [dx dy dz] upright?]
+  (let [[x y z] (transform-point nh "/r_gripper_palm_link" "/base_link" [0 0 0])]
+    (move-arm-to-pos nh [(+ x dx) (+ y dy) (+ z dz)] upright? 10.0)))
 
 
 
@@ -1395,6 +1402,24 @@
 
 ;(defn mnh [] (make-node-handle))
 
+(defn shake-drink [nh]
+  (let [cs (get-current-arm-state nh true)
+	a  (/ Math/PI 8) 
+	t  1.25
+	ns (update-in cs  [:joint-angle-map "r_wrist_roll_joint"] - a)
+	ps (update-in cs  [:joint-angle-map "r_wrist_roll_joint"] + a)]
+    (move-arm-directly-to-state nh ns t 10)
+    (move-arm-directly-to-state nh ps t 10)
+    (move-arm-directly-to-state nh ns t 10)
+    (move-arm-directly-to-state nh ps t 10)
+    (move-arm-directly-to-state nh cs t 10)))
+
+(defn look-around [nh]
+  (look-at nh [0 -2 1.2])
+  (Thread/sleep 1000)
+  (look-at nh [1 0 1.2])
+  (Thread/sleep 1000)
+  (look-at nh [0 -2 1.2]))
 
 
 ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;; Sink ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;

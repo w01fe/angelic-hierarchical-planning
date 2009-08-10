@@ -22,7 +22,7 @@
 (go-arm-plan "grasp_counter" true)
 (go-arm-plan "grasp_bar_low" true)
 
-
+ 
 ; sink
 (go-base "sink")
 (laser-slow)
@@ -43,3 +43,10 @@
 (home)
 
 ; Counter - 43 in.
+
+(move-gripper-rel nh [0 0 0.1] true)
+
+(shake-drink nh)
+
+(look-around nh) 
+(look-forward nh)
