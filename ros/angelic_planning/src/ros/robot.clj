@@ -243,7 +243,8 @@
 
 (defn move-base-rel
   "Directly moves using base controllers (unsafe), without invoking planning"
-  [#^NodeHandle nh coord distance]
+  ([#^NodeHandle nh coord distance] (move-base-rel nh coord distance 1.0))
+  ([#^NodeHandle nh coord distance speed]
   (assert (#{:vx :vy} coord))
   (let [distance (double distance)
 	dir (Math/signum distance)
@@ -253,10 +254,10 @@
       (let [dist (- distance (point-distance (:position init-pose) (:position current-pose)))]
 ;	(println dist)
 ;	(println "commanding" (* dir (if (> dist 0.1) 0.2 (* dist 3))))
-	{:vel {coord (* dir (if (> dist 0.1) 0.2 (* dist 3)))}}))
+	{:vel {coord (* dir (if (> dist 0.1) (* speed 0.2) (* dist speed 3)))}}))
     (fn [init-pose current-pose]
       (let [dist (- distance (point-distance (:position init-pose) (:position current-pose)))]
-	(< (Math/abs (double dist)) 0.005))))))
+	(< (Math/abs (double dist)) 0.005)))))))
 
 (defn norm-angle [a]
   (cond (> a (+ Math/PI 0.0000001)) (recur (- a (* 2 Math/PI)))
@@ -659,6 +660,9 @@
 (def *drop-traj* (read-path-file "/u/isucan/paths/discard"))
 ;(def *drop-traj2* (read-path-file "/u/isucan/paths/drop_new"))
 (def *drop-traj2* (read-path-file "/u/jawolfe/paths/drop_traj3"))
+
+(def *serve-high* (read-path-file "/u/jawolfe/paths/serve_high"))
+(def *serve-low* (read-path-file "/u/jawolfe/paths/serve_low"))
 
 
 
@@ -1223,7 +1227,7 @@
 ;    (println ox gx)
     (assert (approx-= gy objy 0.05))
     (assert (approx-= ow 1.0 0.10))
-    (move-base-rel nh :vx (- objx gx 0.15))
+    (move-base-rel nh :vx (- objx gx 0.15) 1.0 #_0.5)
     true
     ))
   
@@ -1287,7 +1291,7 @@
   (spin-base-to-bar nh)
   (Thread/sleep 1000)
   (let [[x y] (get-trash-point nh)]
-    (do (assert (< (Math/abs (- x 0.65)) 0.2))
+    (do (assert (< (Math/abs (- x 0.65)) 0.3))
 	(move-base-rel nh :vx (- x 0.65)))))
 
 ;*dump-traj2*
