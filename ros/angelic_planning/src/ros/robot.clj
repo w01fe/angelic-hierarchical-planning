@@ -254,7 +254,7 @@
       (let [dist (- distance (point-distance (:position init-pose) (:position current-pose)))]
 ;	(println dist)
 ;	(println "commanding" (* dir (if (> dist 0.1) 0.2 (* dist 3))))
-	{:vel {coord (* dir (if (> dist 0.1) (* speed 0.2) (* dist speed 3)))}}))
+	{:vel {coord (* dir (if (> dist 0.1) (* speed 0.2) (* (max dist 0) speed 3)))}}))
     (fn [init-pose current-pose]
       (let [dist (- distance (point-distance (:position init-pose) (:position current-pose)))]
 	(< (Math/abs (double dist)) 0.005)))))))
@@ -1322,10 +1322,10 @@
   (vec (map s [:x :y :theta])))
 
 (def *base-poses*
- {"bottle1"  
-  "bottle2"  
-  "bottle3"  
-  "bottle4"  
+ {"bottle1"  [6.409466889875168 11.530285568135294 4.710902006993992]
+  "bottle2"  [6.209466889875168 11.530285568135294 4.710902006993992]
+  "bottle3"  [5.809466889875168 11.530285568135294 4.710902006993992]
+  "bottle4"  [5.609466889875168 11.530285568135294 4.710902006993992]
   "bottle5"  [4.909466889875168 11.530285568135294 4.710902006993992]
   "bottle6"  [4.786408482748747 11.540439761096412 4.753068777678795]
   "sink"     [9.775719015305087 7.97835357846113 4.7050955900786775]
