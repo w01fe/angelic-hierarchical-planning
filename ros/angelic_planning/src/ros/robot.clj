@@ -1175,7 +1175,7 @@
 
 (defn wait-for-bottle [nh z]
   (laser-slow)
-  (Thread/sleep 2000)
+;  (Thread/sleep 2000)
   (loop [bottles (find-bottles nh z)]
     (if (empty? bottles)
         (do (print ".")
@@ -1239,9 +1239,9 @@
     ))
 
 (defn look-at [#^NodeHandle nh bl-point] 
-  (put-single-message nh "/head_controller/point_head" 
+  (put-single-message-cached nh "/head_controller/point_head" 
     (map-msg PointStamped {:header {:frame_id "/base_link" :stamp (.now nh)} 
-			   :point (make-point bl-point)}) 1))
+			   :point (make-point bl-point)})))
 
 (defn look-forward [nh] (look-at nh [1 0 1.2]))  
 
@@ -1321,7 +1321,7 @@
 
 (defn move-gripper-rel [nh [dx dy dz] upright?]
   (let [[x y z] (transform-point nh "/r_gripper_palm_link" "/base_link" [0 0 0])]
-    (move-arm-to-pos nh [(+ x dx) (+ y dy) (+ z dz)] upright? 10.0)))
+    (move-arm-to-pos nh [(+ x dx) (+ y dy) (+ z dz)] upright? 30.0)))
 
 
 
@@ -1405,21 +1405,27 @@
 (defn shake-drink [nh]
   (let [cs (get-current-arm-state nh true)
 	a  (/ Math/PI 8) 
-	t  1.25
+	t  0.3
 	ns (update-in cs  [:joint-angle-map "r_wrist_roll_joint"] - a)
 	ps (update-in cs  [:joint-angle-map "r_wrist_roll_joint"] + a)]
-    (move-arm-directly-to-state nh ns t 10)
-    (move-arm-directly-to-state nh ps t 10)
-    (move-arm-directly-to-state nh ns t 10)
-    (move-arm-directly-to-state nh ps t 10)
-    (move-arm-directly-to-state nh cs t 10)))
+    (move-arm-directly-to-state nh ns t 100)
+    (move-arm-directly-to-state nh ps t 100)
+    (move-arm-directly-to-state nh ns t 100)
+    (move-arm-directly-to-state nh ps t 100)
+    (move-arm-directly-to-state nh cs t 100)))
 
 (defn look-around [nh]
   (look-at nh [0 -2 1.2])
   (Thread/sleep 1000)
-  (look-at nh [1 0 1.2])
+  (look-at nh [2 -2 1.2])
   (Thread/sleep 1000)
-  (look-at nh [0 -2 1.2]))
+  (look-at nh [2 0 1.2])
+  (Thread/sleep 1000)
+  (look-at nh [2 2 1.2])
+  (Thread/sleep 1000)
+  (look-at nh [0 2 1.2])
+  (Thread/sleep 1000)
+  (look-at nh [2 0 1.2]))
 
 
 ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;; Sink ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
@@ -1447,10 +1453,10 @@
      (defn ~'go-base [~'s] 
        (move-base-to-state ~'nh (if (string? ~'s) (apply make-robot-base-state (safe-get* *base-poses* ~'s)) ~'s)))
      
-    ; (defn ~'go-arm 
-    ;   ([~'j] (~'go-arm ~'j 1.0))  
-    ;   ([~'j ~'speed-mul]
-;	  (move-arm-directly-to-state ~'nh (arm-joint-state true ~'j) 10 (* 0.1 ~'speed-mul))))
+     (defn ~'go-arm-ru 
+       ([~'j] (~'go-arm-ru ~'j 1.0))  
+       ([~'j ~'speed-mul]
+	  (move-arm-directly-to-state ~'nh (arm-joint-state true ~'j) 10 (* 0.1 ~'speed-mul))))
      (defn ~'go-arm-traj 
        ([~'j] (~'go-arm-traj ~'j 1.0))
        ([~'j speed-mul#]
@@ -1473,7 +1479,7 @@
 
      (defn ~'homeu [] (~'go-arm-plan "home"))
      (defn ~'home [] (~'go-arm-plan "home" true))
-;     (defn ~'homeu [] (~'go-arm "home"))
+     (defn ~'homeru [] (~'go-arm-ru "home"))
      
      (defn ~'face-bar [] (spin-base-to-bar ~'nh))
      (defn ~'face-window [] (spin-base-from-bar ~'nh))
