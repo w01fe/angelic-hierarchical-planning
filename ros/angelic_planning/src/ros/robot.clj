@@ -657,7 +657,8 @@
 (defn read-path-file [f] (map #(read-string (str "[" % "]")) (util/read-lines f)))
 
 (def *drop-traj* (read-path-file "/u/isucan/paths/discard"))
-(def *drop-traj2* (read-path-file "/u/isucan/paths/drop_new"))
+;(def *drop-traj2* (read-path-file "/u/isucan/paths/drop_new"))
+(def *drop-traj2* (read-path-file "/u/jawolfe/paths/drop_traj3"))
 
 
 
@@ -707,11 +708,11 @@
 ;    (apply-gripper-force nh true 20)
     (move-arm-directly-to-state nh 
       (make-robot-arm-state true false
-       (into {} (map vector *rarm-joints* (first throw)))) 30 100 #_0.3)
+       (into {} (map vector *rarm-joints* (first throw)))) 10 100 #_0.3)
     (apply-gripper-force nh true 30)
     (execute-arm-trajectory nh  
-      (encode-normalized-arm-trajectory true throw 100)
-      30))) 
+      (encode-normalized-arm-trajectory true throw 1000)
+      10))) 
 
 
 
@@ -1222,7 +1223,7 @@
 ;    (println ox gx)
     (assert (approx-= gy objy 0.05))
     (assert (approx-= ow 1.0 0.10))
-    (move-base-rel nh :vx (- objx gx 0.16))
+    (move-base-rel nh :vx (- objx gx 0.15))
     true
     ))
   
@@ -1269,6 +1270,31 @@
     ; Smart script for grasping - move base + ask for new point, if needed.
 
 
+;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;; Trahs can ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
+
+(defn get-trash-point [nh]
+  (let [p (get-single-message-cached nh "/trash_can" (PointStamped.))]
+    (transform-point nh (:frame_id (:header p)) "/base_link" (decode-point (:point p)))))
+
+(defn servo-to-trash [nh]
+  (spin-base-to-bar nh)
+  (Thread/sleep 1000)
+  (let [[x y] (get-trash-point nh)]
+    (do (assert (< (Math/abs (- x 0.75)) 0.3))
+	(move-base-rel nh :vx (- x 0.75)))))
+
+(defn servo-to-sink [nh]
+  (spin-base-to-bar nh)
+  (Thread/sleep 1000)
+  (let [[x y] (get-trash-point nh)]
+    (do (assert (< (Math/abs (- x 0.65)) 0.2))
+	(move-base-rel nh :vx (- x 0.65)))))
+
+;*dump-traj2*
+
+
+
+
 ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
 ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;     States      ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
 ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
@@ -1298,7 +1324,8 @@
   "bottle4"  
   "bottle5"  [4.909466889875168 11.530285568135294 4.710902006993992]
   "bottle6"  [4.786408482748747 11.540439761096412 4.753068777678795]
-  "sink"     [9.925816301291352 8.226765986011085 4.7293563029386245]
+  "sink"     [9.775719015305087 7.97835357846113 4.7050955900786775]
+             ;[9.925816301291352 8.226765986011085 4.7293563029386245]
   "trash"    [3.5361214867946433 11.34070696450406 4.693141702363712]
       ;[3.4471729012735567 11.465790341533662 4.748530929654799] ;fix
   "view-bar"         []
@@ -1342,6 +1369,19 @@
 
 ;(defn mnh [] (make-node-handle))
 
+;;;;;;;;;;;;;;;;;;;;;;;;;;;;;; Sink ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
+
+;(move-arm-to-pos nh [0.7 0 1.0] true 30)
+; x from trash can is 0.43
+; (move-arm-directly-to-state nh (update-in (get-current-arm-state nh true) [:joint-angle-map "r_wrist_roll_joint"] + Math/PI))
+; (go-arm-plan "home" true)
+
+; (do-throw nh "_new")
+
+; (servo-to-trash nh)
+; (go-arm-traj *drop-traj2*)
+
+; Counter - 43 in.
 
 
 (defmacro lazy []
@@ -1376,14 +1416,17 @@
              
      (defn ~'open [] (open-gripper ~'nh))
      (defn ~'close ([] (~'close 45)) ([~'f] (close-gripper ~'nh ~'f false)))
+     (defn ~'throw [] (do-throw ~'nh "_new"))
 
      (defn ~'home [] (~'go-arm-plan "home"))
+     (defn ~'homes [] (~'go-arm-plan "home" true))
+     (defn ~'homeu [] (~'go-arm "home"))
      
      (defn ~'face-bar [] (spin-base-to-bar ~'nh))
      (defn ~'face-window [] (spin-base-from-bar ~'nh))
      (defn ~'face-patio [] (spin-base-to ~'nh Math/PI))
      (defn ~'face-me [] (spin-base-to ~'nh 0))
-     (defn ~'spin-tip [] (spin-base-rel ~'nh (/ Math/PI 6)))
+     (defn ~'spin-tip [] (spin-base-rel ~'nh (/ Math/PI 5)))
 
      (defn ~'trash []  
        (~'go-base "trash") 
