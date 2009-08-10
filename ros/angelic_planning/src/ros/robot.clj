@@ -254,10 +254,13 @@
       (let [dist (- distance (point-distance (:position init-pose) (:position current-pose)))]
 ;	(println dist)
 ;	(println "commanding" (* dir (if (> dist 0.1) 0.2 (* dist 3))))
-	{:vel {coord (* dir (if (> dist 0.1) (* speed 0.2) (* (max dist 0) speed 3)))}}))
+	{:vel {coord (* dir (cond (> dist 0.1) (* speed 0.2) 
+				  (< dist -0.1) 0
+				  :else (* (max dist 0) speed 3)))}}))
     (fn [init-pose current-pose]
       (let [dist (- distance (point-distance (:position init-pose) (:position current-pose)))]
-	(< (Math/abs (double dist)) 0.005)))))))
+	(or (< (Math/abs (double dist)) 0.005)
+	    (< dist -0.09))))))))
 
 (defn norm-angle [a]
   (cond (> a (+ Math/PI 0.0000001)) (recur (- a (* 2 Math/PI)))
@@ -299,7 +302,7 @@
     (fn [init-pose current-pose]
       (let [ac (quaternion->angle (:orientation current-pose))
 	    norm-diff (double (norm-angle (- angle ac)))]
-	(< (Math/abs norm-diff) 0.01))))))
+	(< (Math/abs norm-diff) 0.03))))))
 
 (defn spin-base-rel
   "Spins base by a desired angle, with no collision checking."
@@ -465,7 +468,7 @@
   )
 
 (defn close-gripper 
-  ([nh] (close-gripper nh 45 false))
+  ([nh] (close-gripper nh 60 false))
   ([nh force empty?] 
      (apply-gripper-force nh true (- force))
      (when-not empty? (attach-bottle nh))
@@ -1179,9 +1182,11 @@
       (do (future-call laser-fast)
 	  (let [bottles (map #(decode-point (:point %)) bottles)]
 	    (println "Got bottles" bottles)
-	    (util/first-maximal-element 
-	     #(- 100 (Math/abs (double (second %))))
-	     bottles)
+	    (update-in 
+	     (util/first-maximal-element 
+	      #(- 100 (Math/abs (double (second %))))
+	      bottles)
+	     [2] - 0.02)
 	    )))))
 
 (defn compute-base-grasp-rect 
@@ -1230,17 +1235,24 @@
     (move-base-rel nh :vx (- objx gx 0.15) 1.0 #_0.5)
     true
     ))
+
+(defn point-head [nh bl-point] 
+  (put-single-message nh "/head_controller/point_head" 
+    (map-msg PointStamped {:header {:frame_id "/base_link" :stamp (.now nh)} 
+			   :point (make-point bl-point)}) 1))
   
 (defn pt [x] (println x) x)
 
 (defn grasp-object "obj in base-link" [nh obj]
   (and 
+   (do (point-head nh obj) true)
    (do (pt (arm-to-grasp nh obj)) true)
    (do (pt (open-gripper nh)) true)
    (do (Thread/sleep 3000) (final-approach nh obj) true)
    (do (pt (close-gripper nh)) true)
    (do (Thread/sleep 3000) (move-base-rel nh :vx -0.3) true)
-   (pt (move-arm-to-state nh (arm-joint-state true "home") true 60.0))))
+   (pt (move-arm-to-state nh (arm-joint-state true "home") true 60.0))
+   (do (point-head nh [1 0 1.2]) true)))
 
 (defn grasp-rviz [nh]
   (let [[obj-map obj-bl] (get-rviz-points nh true)]
@@ -1294,6 +1306,13 @@
     (do (assert (< (Math/abs (- x 0.65)) 0.3))
 	(move-base-rel nh :vx (- x 0.65)))))
 
+(defn servo-to-bar [nh]
+  (spin-base-to-bar nh)
+  (Thread/sleep 1000)
+  (let [[x y] (get-trash-point nh)]
+    (do (assert (< (Math/abs (- x 0.75)) 0.3))
+	(move-base-rel nh :vx (- x 0.75)))))
+
 ;*dump-traj2*
 
 
@@ -1322,12 +1341,15 @@
   (vec (map s [:x :y :theta])))
 
 (def *base-poses*
- {"bottle1"  [6.409466889875168 11.530285568135294 4.710902006993992]
-  "bottle2"  [6.209466889875168 11.530285568135294 4.710902006993992]
-  "bottle3"  [5.809466889875168 11.530285568135294 4.710902006993992]
-  "bottle4"  [5.609466889875168 11.530285568135294 4.710902006993992]
-  "bottle5"  [4.909466889875168 11.530285568135294 4.710902006993992]
-  "bottle6"  [4.786408482748747 11.540439761096412 4.753068777678795]
+ {"bar1"     [6.437874062648721 11.352025609433628 4.669874589982046]
+  "bar2"     [5.661619892642673 11.37858467149445 4.668634133660416]
+  "bar3"     [4.804873093623918 11.504700687986952 4.569583493240115]
+;  "bottle1"  [6.409466889875168 11.530285568135294 4.710902006993992]
+;  "bottle2"  [6.209466889875168 11.530285568135294 4.710902006993992]
+;  "bottle3"  [5.809466889875168 11.530285568135294 4.710902006993992]
+;  "bottle4"  [5.609466889875168 11.530285568135294 4.710902006993992]
+;  "bottle5"  [4.909466889875168 11.530285568135294 4.710902006993992]
+;  "bottle6"  [4.786408482748747 11.540439761096412 4.753068777678795]
   "sink"     [9.775719015305087 7.97835357846113 4.7050955900786775]
              ;[9.925816301291352 8.226765986011085 4.7293563029386245]
   "trash"    [3.5361214867946433 11.34070696450406 4.693141702363712]
@@ -1373,6 +1395,8 @@
 
 ;(defn mnh [] (make-node-handle))
 
+
+
 ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;; Sink ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
 
 ;(move-arm-to-pos nh [0.7 0 1.0] true 30)
@@ -1398,10 +1422,10 @@
      (defn ~'go-base [~'s] 
        (move-base-to-state ~'nh (if (string? ~'s) (apply make-robot-base-state (safe-get* *base-poses* ~'s)) ~'s)))
      
-     (defn ~'go-arm 
-       ([~'j] (~'go-arm ~'j 1.0))  
-       ([~'j ~'speed-mul]
-	  (move-arm-directly-to-state ~'nh (arm-joint-state true ~'j) 10 (* 0.1 ~'speed-mul))))
+    ; (defn ~'go-arm 
+    ;   ([~'j] (~'go-arm ~'j 1.0))  
+    ;   ([~'j ~'speed-mul]
+;	  (move-arm-directly-to-state ~'nh (arm-joint-state true ~'j) 10 (* 0.1 ~'speed-mul))))
      (defn ~'go-arm-traj 
        ([~'j] (~'go-arm-traj ~'j 1.0))
        ([~'j speed-mul#]
@@ -1419,12 +1443,12 @@
 	  (move-arm-to-pos ~'nh ~'j ~'upright? 30.0)))
              
      (defn ~'open [] (open-gripper ~'nh))
-     (defn ~'close ([] (~'close 45)) ([~'f] (close-gripper ~'nh ~'f false)))
+     (defn ~'close ([] (~'close 60)) ([~'f] (close-gripper ~'nh ~'f false)))
      (defn ~'throw [] (do-throw ~'nh "_new"))
 
-     (defn ~'home [] (~'go-arm-plan "home"))
-     (defn ~'homes [] (~'go-arm-plan "home" true))
-     (defn ~'homeu [] (~'go-arm "home"))
+     (defn ~'homeu [] (~'go-arm-plan "home"))
+     (defn ~'home [] (~'go-arm-plan "home" true))
+;     (defn ~'homeu [] (~'go-arm "home"))
      
      (defn ~'face-bar [] (spin-base-to-bar ~'nh))
      (defn ~'face-window [] (spin-base-from-bar ~'nh))
