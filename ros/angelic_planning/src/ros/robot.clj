@@ -1427,6 +1427,17 @@
   (Thread/sleep 1000)
   (look-at nh [2 0 1.2]))
 
+(defn look-r  [nh] (look-at nh [0 -2 1.2]))
+(defn look-dr [nh] (look-at nh [0 -2 0.6]))
+(defn look-rf  [nh] (look-at nh [2 -2 1.2]))
+(defn look-drf [nh] (look-at nh [2 -2 0.6]))
+(defn look-f  [nh] (look-at nh [2 0 1.2]))
+(defn look-df [nh] (look-at nh [2 0 0.6]))
+(defn look-lf  [nh] (look-at nh [2 2 1.2]))
+(defn look-dlf [nh] (look-at nh [2 2 0.6]))
+(defn look-l  [nh] (look-at nh [0 2 1.2]))
+(defn look-dl [nh] (look-at nh [0 2 0.6]))
+  
 
 ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;; Sink ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
 

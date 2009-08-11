@@ -50,3 +50,26 @@
 
 (look-around nh) 
 (look-forward nh)
+
+(go-base "bar3")
+(servo-to-bar nh)
+
+(grasp-rviz nh)
+
+(grasp-nearest nh)
+
+
+(look-l nh)
+(look-dl nh)
+
+(look-lf nh)
+(look-dlf nh)
+
+(look-f nh)
+(look-df nh)
+
+(look-rf nh)
+(look-drf nh)
+
+(look-r nh)
+(look-dr nh)
