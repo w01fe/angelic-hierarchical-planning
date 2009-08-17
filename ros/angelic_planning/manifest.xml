@@ -3,12 +3,13 @@
   <author>Jason Wolfe (jawolfe@willowgarage.com)</author>
   <license>BSD</license>
   <review status="experimental" notes=""/>
-  <depend package="rosjava"/>
   <depend package="rosclj"/>
   <depend package="tf_node"/>
+  <depend package="fk_node"/>
   <depend package="3dnav_pr2"/>
-  <depend package="ompl_planning"/>
   <depend package="2dnav_pr2"/>
+  <depend package="ompl_planning"/>
   <depend package="move_base"/>
+  <depend package="navfn"/>
   <url>http://pr.willowgarage.com/wiki/angelic_planning</url>
 </package>

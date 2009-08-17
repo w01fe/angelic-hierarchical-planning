@@ -41,7 +41,7 @@
 (go-arm-traj *drop-traj2*)
 (open)
 (home)
-
+a
 ; Counter - 43 in.
 
 (move-gripper-rel nh [0 0 0.1] true)

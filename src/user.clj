@@ -47,7 +47,7 @@
      (use 'ros.ros 'ros.world 'ros.geometry 'ros.robot 'ros.robot-actions 'ros.robot-hierarchy) 
      (~'import-ros) 
      (~'import-all-msgs-and-srvs)
-     (def nh (~'make-node-handle))))
+     #_(def nh (~'make-node-handle))))
 
 (comment 
 (defn lr [] (require '[ros ros nav] :reload-all))

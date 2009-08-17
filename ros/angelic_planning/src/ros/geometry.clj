@@ -37,8 +37,8 @@
 
 (import-ros)
 
-
-(defmsgs  [geometry_msgs PointStamped PoseStamped PoseWithRatesStamped])
+(defmsgs  [geometry_msgs PointStamped PoseStamped])
+(defsrvs  [tf_node TransformPoint TransformPose])
 
 
 
@@ -46,6 +46,12 @@
 (defn l2-distance [v1 v2]
    (Math/sqrt (reduce + (map #(let [x (- (double %1) (double %2))] (* x x)) v1 v2))))
 
+
+(defn norm-angle [a]
+  "Normalize the angle to be between -Pi and Pi"
+  (cond (> a (+ Math/PI 0.0000001)) (recur (- a (* 2 Math/PI)))
+	(< a (- -0.0000001 Math/PI)) (recur (+ a (* 2 Math/PI)))
+	:else a))
 
 (defn angle->quaternion [rads]
   {:class Quaternion
@@ -187,6 +193,29 @@
     (+ pd (* angle-wt od)))) 
 
 
+(defn transform-point-tf [nh src-frame trg-frame nice-point]
+  (decode-point 
+   (:point (:pout 
+     (call-srv nh "/tf_node/transform_point"
+	       (map-msg TransformPoint$Request
+			{:target_frame trg-frame
+			 :target_time (Time.);(.subtract (.now *ros*) (Duration. 0.3))
+			 :pin {:header {:frame_id src-frame :stamp (.subtract (.now *ros*) (Duration. 0.3))}
+			       :point (make-point nice-point)}
+			 :fixed_frame ""})
+	       )))))
+
+(defn transform-pose-tf [nh src-frame trg-frame nice-pose]
+  (decode-pose 
+   (:pose (:pout 
+     (call-srv nh "/tf_node/transform_point"
+	       (map-msg TransformPoint$Request
+			{:target_frame trg-frame
+			 :target_time (Time.);(.subtract (.now *ros*) (Duration. 0.3))
+			 :pin {:header {:frame_id src-frame :stamp (.subtract (.now *ros*) (Duration. 0.3))}
+			       :point (make-pose nice-pose)}
+			 :fixed_frame ""})
+	       )))))
 
 
 ;; Regions
@@ -240,3 +269,7 @@
 (set! *warn-on-reflection* false)
 
 
+
+
+
+  
