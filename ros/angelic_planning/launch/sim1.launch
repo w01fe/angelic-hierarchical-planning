@@ -1,7 +1,7 @@
 <launch>
 
   <include file="$(find gazebo)/launch/simple_world.launch"/>
-  <include file="$(find pr2_gazebo)/pr2.launch"/>
+  <include file="$(find pr2_gazebo)/prf.launch"/>
 
   <!-- load map -->
   <node pkg="map_server" type="map_server" args="$(find gazebo_worlds)/Media/materials/textures/map3.png 0.1" respawn="true" machine="three" />

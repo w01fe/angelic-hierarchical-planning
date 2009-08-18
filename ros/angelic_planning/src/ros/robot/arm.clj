@@ -29,7 +29,7 @@
 
 
 
-(in-ns ros.robot)
+(in-ns 'ros.robot)
   
 (defmsgs  [std_msgs Empty]
 	  [geometry_msgs PoseStamped]
@@ -37,7 +37,7 @@
 	   JointConstraint PoseConstraint KinematicConstraints
 	   KinematicSpaceParameters KinematicJoint KinematicState KinematicPath]
 	  [manipulation_msgs JointTraj IKRequest]
-	  [move_arm MoveArmGoal MoveArmState]
+	  [move_arm MoveArmAction]
 	  )
 
 (defsrvs  [motion_planning_msgs GetMotionPlan]
@@ -89,7 +89,7 @@
 (def *larm-joints* (map #(str "l_" %) *arm-joints*))
 (def *rarm-joints* (map #(str "r_" %) *arm-joints*))
 
-(def get-arm-joint-names [right?]
+(defn get-arm-joint-names [right?]
   (if right? *rarm-joints* *larm-joints*))
 
 (def *larm-joint-states*
@@ -162,7 +162,7 @@
 
 (defn- make-kinematic-joint [[joint-name joint-position]]
   {:class KinematicJoint 
-   :header (assoc *map-header* :stamp (.subtract (.now *ros*) (Duration. 0.1)))
+   :header {:frame_id "/map" :stamp (.subtract (.now *ros*) (Duration. 0.1))}
    :joint_name joint-name :value (if (coll? joint-position) 
 				   (vec (map double joint-position)) [(double joint-position)])})
 
@@ -369,8 +369,8 @@
      {:class KinematicSpaceParameters
       :contacts nil
       :distance_metric "L2Square" :planner_id      "" :contacts nil
-      :volumeMin       {:header *map-header* :point {:x 0 :y 0 :z 0}}
-      :volumeMax       {:header *map-header* :point {:x 0 :y 0 :z 0}}})
+      :volumeMin       {:header {:frame_id "/map"} :point {:x 0 :y 0 :z 0}}
+      :volumeMax       {:header {:frame_id "/map"} :point {:x 0 :y 0 :z 0}}})
 (def *larm-params* (assoc *shared-arm-params* :model_id "left_arm"))
 (def *rarm-params* (assoc *shared-arm-params* :model_id "right_arm"))
 
@@ -389,7 +389,7 @@
 		    [(/ (+ mn mx) 2.0) (/ (- mx mn) 2.0)])
 		:else (throw (RuntimeException. "Unknown joint constraitn type.")))]
       {:class JointConstraint 
-       :header *tll-header*
+       :header {:frame_id "/torso_lift_link"}
        :joint_name name
        :value          [value]
        :tolerance_above [tol]
@@ -413,7 +413,7 @@
   "Encode a pose constraint for the gripper, possibly specifying which DOFs to constrain
    (by default, all)."
   ([right? frame [x y z] [ax ay az] angle]
-     (encode-pose-constraint-bl right? frame [x y z] [ax ay az] angle [true true true] [true true true]))
+     (encode-pose-constraint right? frame [x y z] [ax ay az] angle [true true true] [true true true]))
   ([right? frame [x y z] [ax ay az] angle [x? y? z?] [roll? pitch? yaw?]]
    (let [tol {:class Point :x 0.01 :y 0.01 :z 0.01}
 	 otol {:class Point :x 0.1 :y 0.1 :z 0.1}]
@@ -481,32 +481,28 @@
   ([#^NodeHandle nh arm-state] (move-arm-to-state nh arm-state false 60.0))
   ([#^NodeHandle nh arm-state upright? timeout]
      (let [r? (isa? (:class arm-state) ::Right)]
-       (run-action nh (str "/move_" (if r? "right" "left") "_arm")  
-	 (map-msg {:class MoveArmGoal 
-		   :contacts nil
-		   :path_constraints (when upright? [(upright-gripper-path-constraint r?)])
-		   :goal_constraints {:pose_constraint  []
-				      :joint_constraint (vec (map parse-joint-constraint 
-								  (:joint-angle-map arm-state)))}})
-	 (MoveArmState.)
+       (run-action nh (str "/move_" (if r? "right" "left") "_arm") MoveArmAction 
+	 {:contacts nil
+	  :path_constraints  (if upright? (upright-gripper-path-constraint r?) *no-constraints*)
+	  :goal_constraints {:pose_constraint  []
+			     :joint_constraint (vec (map parse-joint-constraint 
+							 (:joint-angle-map arm-state)))}}
 	 (Duration. (double timeout))))))
 
 (defn move-arm-to-pose
   "Use move_arm to move the gripper to a specific pose." 
-  ([nh right? pose] (move-arm-to-pos nh right? pose "/base_link" false 60.0))
+  ([nh right? pose] (move-arm-to-pose nh right? pose "/base_link" false 60.0))
   ([nh right? pose frame upright? timeout]
    (let [pos          (decode-point (:position pose))
 	 [axis angle] (quaternion-msg->axis-angle (:orientation pose))]			   
-    (run-action nh (str "/move_" (if right? "right" "left") "_arm")
-     (map-msg {:class MoveArmGoal 
-	      :contacts nil
-	      :path_constraints (when upright? [(upright-gripper-path-constraint right?)])
-	      :goal_constraints 
-	       {:pose_constraint  
-		 [(encode-pose-constraint true frame (decode-point (:position pose)) axis angle)]
-		:joint_constraint []}})
-    (MoveArmState.)
-    (Duration. (double timeout))))))
+    (run-action nh (str "/move_" (if right? "right" "left") "_arm") MoveArmAction
+	{:contacts nil
+	 :path_constraints  (if upright? (upright-gripper-path-constraint right?) *no-constraints*)
+	 :goal_constraints 
+	 {:pose_constraint  
+	  [(encode-pose-constraint true frame (decode-point (:position pose)) axis angle)]
+	  :joint_constraint []}}
+	(Duration. (double timeout))))))
 
 
 
@@ -528,7 +524,8 @@
 
 
 (defn preempt-arm [nh right?]
-  (put-single-message nh (str "/move_" (if right? "right" "left") "_arm/preempt") (Empty.) 1))
+  (cancel-action-async  nh (str "/move_" (if right? "right" "left") "_arm/preempt")))
+
 
 
 

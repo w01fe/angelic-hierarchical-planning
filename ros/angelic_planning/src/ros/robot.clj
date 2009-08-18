@@ -59,9 +59,9 @@
 				  [:min :max]))]
 	   [(:name (:attrs joint))
 	    (vec (map read-string
-		   (map (:attrs (first (filter #(= (:tag %) :limit) (:content joint)))) [:min :max])))])))
+		   (map (:attrs (first (filter #(= (:tag %) :limit) (:content joint)))) [:min :max])))]))))
    *robot-joint-limits*
-   ))
+   )
 
 
 (defn get-current-mechanism-state [#^NodeHandle nh]
@@ -72,8 +72,8 @@
 
 (defmulti get-joint-map :class)
 
-(load "robot/perception.clj" "robot/base.clj" "robot/arm.clj" 
-      "robot/torso.clj" "robot/gripper.clj" "robot/head.clj")
+(load "robot/perception" "robot/base" "robot/arm" 
+      "robot/torso" "robot/gripper" "robot/head")
 
 (defstruct robot-state         :class :base :torso :larm :rarm :lgripper :rgripper)
 (defn make-robot-state [base torso larm rarm lgripper rgripper]

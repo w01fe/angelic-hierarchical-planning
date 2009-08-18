@@ -294,7 +294,7 @@
 
 (defmethod execute-robot-primitive ::ArmJointAction [nh action]
   (println "Executing move_arm action (synchronously, using trajectory controller)")
-  (move-arm-directly-to-state nh (:goal action)))
+  (move-arm-to-state-unsafe nh (:goal action)))
 
 (defmethod robot-action-name ::ArmJointAction [a]
   (vec

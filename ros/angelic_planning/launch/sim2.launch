@@ -9,19 +9,16 @@
 
   <include file="$(find 2dnav_pr2)/rviz/rviz_move_base.launch"/>
   <include file="$(find 3dnav_pr2)/launch/perception/laser-perception.launch"/> 
-  <include file="$(find 3dnav_pr2)/launch/planning/ompl_planning.launch"/> 
-  <include file="$(find 3dnav_pr2)/launch/actions/left_arm.launch"/> 
+  <include file="$(find 3dnav_pr2)/launch/planning/ompl_chomp_planning.launch"/> 
+<!--  <include file="$(find 3dnav_pr2)/launch/actions/left_arm.launch"/> -->
   <include file="$(find 3dnav_pr2)/launch/actions/right_arm.launch"/> 
-<!--  <include file="$(find ompl_planning)/motion_planning.launch"/> -->
 
-<!--  <node pkg="mechanism_control" type="spawner.py" args="$(find pr2_default_controllers)/l_gripper_position_controller.xml" /> -->
-<!--  <node pkg="mechanism_control" type="spawner.py" args="$(find pr2_default_controllers)/r_gripper_position_controller.xml" /> -->
 <!--  <node pkg="mechanism_control" type="spawner.py" args="$(find pr2_default_controllers)/torso_lift_vel_controller.xml" /> -->
-  <node pkg="mechanism_control" type="spawner.py" args="$(find pr2_default_controllers)/gazebo_head_torso_lift_controller.xml" /> 
+  <node pkg="mechanism_control" type="spawner.py" args="$(find pr2_default_controllers)/head_position_controller.xml" /> 
  
   <node pkg="tf_node" type="tf_node" />
   <node pkg="navfn" type="navfn_node" />
-  <include file="$(find angelic_planning)/future_ompl_planning.launch"/>
+  <include file="$(find angelic_planning)/launch/future_ompl_planning.launch"/>
 
   <node pkg="fk_node" type="fk_node" respawn="true" output="screen">
     <remap from="robot_description" to="robot_description" />

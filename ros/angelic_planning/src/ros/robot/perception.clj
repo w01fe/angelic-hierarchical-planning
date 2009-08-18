@@ -29,7 +29,7 @@
 
 
 
-(in-ns ros.robot)
+(in-ns 'ros.robot)
 
 (defmsgs [geometry_msgs PointStamped])
 ;(defsrvs [motion_planning_msgs FindBottles])
@@ -48,7 +48,7 @@
 	       (println "Got new rviz point!")
 	       (assert (= (:frame_id (:header m)) "/map"))
 	       (reset! *rviz-point-map* (decode-point (:point m)))
-	       (reset! *rviz-point-base* (transform-point nh "/map" "/base_link" (decode-point (:point m)))))
+	       (reset! *rviz-point-base* (transform-point-tf nh "/map" "/base_link" (decode-point (:point m)))))
 	     1))
 
 (let [mem (atom {})]

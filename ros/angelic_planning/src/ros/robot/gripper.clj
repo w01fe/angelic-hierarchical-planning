@@ -29,10 +29,10 @@
 
 
 
-(in-ns ros.robot)
+(in-ns 'ros.robot)
   
-(defmsgs  [std_msgs           Float64]
-          [pr2_robot_actions  ActuateGripperState]
+(defmsgs  [std_msgs          Float64]
+          [move_arm          ActuateGripperAction]
 	  [mapping_msgs      AttachedObject Object]
 	  )
 
@@ -79,23 +79,27 @@
 ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;; Actuating gripper  ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
 
 (defn apply-gripper-force [#^NodeHandle nh right? force]
-  (put-single-message nh (str "/actuate_gripper_" (if right? "right" "left") "_arm/activate")
-		      (map-msg Float64 {:data force}) 1))
+  (start-action-async nh (str "/actuate_gripper_" (if right? "right" "left") "_arm")
+	      ActuateGripperAction {:data force} true))
+
+; Running synchronously results in long lag times...
+;  (run-action nh (str "/actuate_gripper_" (if right? "right" "left") "_arm")
+;	      ActuateGripperAction {:data force}))
 
 (defn move-gripper-to-state 
   ([nh gs]
      (apply-gripper-force nh (isa? (:class gs) ::Right) (* (:force gs) (if (:open? gs) 1 -1)))))
 
 
-(defn open-gripper [nh]
-  (apply-gripper-force nh true 100)
+(defn open-gripper [nh right?]
+  (apply-gripper-force nh right? 100)
 ;  (unattach-bottle nh)
   )
 
 (defn close-gripper 
-  ([nh] (close-gripper nh 60 false))
-  ([nh force empty?] 
-     (apply-gripper-force nh true (- force))
+  ([nh right?] (close-gripper nh right? 60 false))
+  ([nh right? force empty?] 
+     (apply-gripper-force nh right? (- force))
  ;    (when-not empty? (attach-bottle nh))
      ))
 

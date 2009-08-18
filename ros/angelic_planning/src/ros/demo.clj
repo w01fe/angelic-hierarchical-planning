@@ -370,25 +370,6 @@
 ;; TODO: interpolate orientation.
 
 
-(defn map->base-link-transform [base]
-  {:class Pose 
-   :position    {:x (:x base) :y (:y base) :z 0.051}
-   :orientation (axis-angle->quaternion-msg [0 0 1] (:theta base))})
-
-(def *base-link->torso-lift-link-transform*
-     {:class Pose
-      :position {:x -0.05, :y 0.0, :z 0.7448695339012872}
-      :orientation {:class Quaternion :x 0.0, :y 0.0, :z 0.0, :w 1.0}})
-
-(defn map-pose->tll-pose-stamped [map-pose base]
-  {:class PoseStamped
-   :header *tll-header*
-   :pose 
-   (untransform-pose 
-    (untransform-pose map-pose (map->base-link-transform base))
-    *base-link->torso-lift-link-transform*)})
-
-
 
 
 

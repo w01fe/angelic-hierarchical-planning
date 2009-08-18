@@ -29,7 +29,7 @@
 
 
 
-(in-ns ros.robot)
+(in-ns 'ros.robot)
   
 (defmsgs [geometry_msgs PointStamped])
 

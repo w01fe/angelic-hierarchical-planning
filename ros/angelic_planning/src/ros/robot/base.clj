@@ -29,10 +29,10 @@
 
 
 
-(in-ns ros.robot)
+(in-ns 'ros.robot)
   
 (defmsgs [std_msgs Empty]
-         [geometry_msgs PoseWithCovariance PointStamped Twist]
+         [geometry_msgs PoseWithCovarianceStamped PointStamped Twist]
          [nav_robot_actions MoveBaseState])
 
 (defsrvs  [navfn SetCostmap MakeNavPlan])
@@ -83,8 +83,8 @@
        (let [a 
 	     (or (@mem nh)
 		 (let [a (atom nil)]
-		   (.subscribe nh "/amcl_pose" (PoseWithCovariance.)
-				      (sub-cb [m] (reset! a (:pose m))) 1)
+		   (.subscribe nh "/amcl_pose" (PoseWithCovarianceStamped.)
+				      (sub-cb [m] (reset! a (:pose (:pose m)))) 1)
 ;		   (.subscribe nh "/base_pose_ground_truth" (PoseWithRatesStamped.)
 ;				      (sub-cb [m] (reset! a (:pose (:pose_with_rates m)))) 1)
 		   (swap! mem assoc nh a)
@@ -99,8 +99,8 @@
        (let [a 
 	     (or (@mem nh)
 		 (let [a (atom nil)]
-		   (.subscribe nh "/robot_pose_ekf/odom_combined" (PoseWithCovariance.)
-			       (sub-cb [m] (reset! a (:pose m))) 1)
+		   (.subscribe nh "/robot_pose_ekf/odom_combined" (PoseWithCovarianceStamped.)
+			       (sub-cb [m] (reset! a (:pose (:pose m)))) 1)
 ;		   (.subscribe nh "/base_pose_ground_truth" (PoseWithRatesStamped.)
 ;				      (sub-cb [m] (reset! a (:pose (:pose_with_rates m)))) 1)		   
 		   (swap! mem assoc nh a)
@@ -127,7 +127,7 @@
 (defn move-base-to-pose-stamped 
   "Moves the base to the given pose-stamped, by invoking move_base."
   ([#^NodeHandle nh pose]
-     (run-action nh "/move_base" (map-msg pose) (MoveBaseState.))))
+     (run-old-action nh "/move_base" (map-msg pose) (MoveBaseState.))))
 
 (defn move-base-to-state
   "Like move-base-to-pose-stamped, but takes a robot-base-state"
@@ -272,6 +272,27 @@
 ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
 ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;          Miscellanea         ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
 ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
+
+
+
+(defn map->base-link-transform [base]
+  {:class Pose 
+   :position    {:x (:x base) :y (:y base) :z 0.051}
+   :orientation (axis-angle->quaternion-msg [0 0 1] (:theta base))})
+
+(def *base-link->torso-lift-link-transform*
+     {:class Pose
+      :position {:x -0.05, :y 0.0, :z 0.7448695339012872}
+      :orientation {:class Quaternion :x 0.0, :y 0.0, :z 0.0, :w 1.0}})
+
+(defn map-pose->tll-pose-stamped [map-pose base]
+  {:class PoseStamped
+   :header {:frame_id "/torso_lift_link"}
+   :pose 
+   (untransform-pose 
+    (untransform-pose map-pose (map->base-link-transform base))
+    *base-link->torso-lift-link-transform*)})
+
 
 (comment
 
