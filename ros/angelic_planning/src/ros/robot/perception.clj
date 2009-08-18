@@ -32,7 +32,7 @@
 (in-ns 'ros.robot)
 
 (defmsgs [geometry_msgs PointStamped])
-;(defsrvs [motion_planning_msgs FindBottles])
+(defsrvs [find_bottles FindBottles] [tabletop_srvs FindTable])
 
 (defn laser-slow [] (util/sh "roslaunch" "/u/jawolfe/angel/ros/angelic_planning/launch/laser_slow.launch"))
 (defn laser-fast [] (util/sh "roslaunch" "/u/jawolfe/angel/ros/angelic_planning/launch/laser_fast.launch"))
@@ -41,6 +41,7 @@
 (def *rviz-point-map* (atom nil))
 (def *rviz-point-base* (atom nil))
 
+;; This assumes a hacked version of rviz that publishes selected points on the /selected_point topic...
 (defn setup-rviz-points [#^NodeHandle nh]
   (println "Starting point collection...")
   (.subscribe nh "/selected_point" (PointStamped.)
@@ -64,16 +65,17 @@
        (when wait?
 	 (while (not @*rviz-point-map*)
 	   (.spinOnce nh)))
-       (future-call laser-fast)
+ ;      (future-call laser-fast)
        (when @*rviz-point-map*
 	 [@*rviz-point-map* @*rviz-point-base*]))))
 
 
 
-(comment
-
 (defn find-bottles [nh z]
   (:pts (call-srv nh "/find_bottles" (map-msg FindBottles$Request {:z z}))))
+
+(defn find-table-objects [nh]
+  (call-srv nh "/table_object_detector" (map-msg FindTable$Request {})))
 
 (defn wait-for-bottle [nh z]
   (laser-slow)
@@ -92,6 +94,9 @@
 	      bottles)
 	     [2] - 0.02)
 	    )))))
+
+(comment
+
 
 (defn get-trash-point [nh]
   (let [p (get-single-message-cached nh "/trash_can" (PointStamped.))]

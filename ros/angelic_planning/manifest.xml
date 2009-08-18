@@ -11,5 +11,8 @@
   <depend package="ompl_planning"/>
   <depend package="move_base"/>
   <depend package="navfn"/>
+  <depend package="find_bottles"/>
+  <depend package="table_object_detector"/>
+  <depend package="tabletop_srvs"/>
   <url>http://pr.willowgarage.com/wiki/angelic_planning</url>
 </package>

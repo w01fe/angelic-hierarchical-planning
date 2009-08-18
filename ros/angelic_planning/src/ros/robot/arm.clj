@@ -524,7 +524,7 @@
 
 
 (defn preempt-arm [nh right?]
-  (cancel-action-async  nh (str "/move_" (if right? "right" "left") "_arm/preempt")))
+  (cancel-action-async  nh (str "/move_" (if right? "right" "left") "_arm")))
 
 
 

@@ -106,6 +106,8 @@
   [ac goal-id]
   (.publish #^Publisher (:cancel-pub ac) (map-msg goal-id)))
 
+(defn- equal-goals? [#^Time g1 #^Time g2]
+  (and (= (.secs g1) (.secs g2)) (= (.nsecs g1) (.nsecs g2)))) 
 
 (defn execute-action-client 
   "Actually execute an existing action client, waiting at most Duration
@@ -123,7 +125,10 @@
 		   :goal_id goal-id
 		   :goal goal-msg}))
        (while (and (not (.hasElapsed start-time duration))
-		   (.isEmpty result-q))
+		   (or (.isEmpty result-q)
+		       (and (not (equal-goals? start-time (:id (:goal_id (:status (msg-map (.peek result-q)))))))
+			    (do (.pop result-q) true))))
+		       
 	 (.spinOnce nh))
        (if (.hasElapsed start-time duration)
 	   (do (println "preempting!")

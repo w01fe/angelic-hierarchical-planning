@@ -56,12 +56,13 @@
 
 
 (defn pose->base-state [pose-stamped]
-  (when-not (= (:class pose-stamped) Pose)
+  (when-not (or (= (:class pose-stamped) Pose) (not (map? pose-stamped)))
     (assert (#{"map" "/map"} (:frame_id (:header pose-stamped)))))
   (let [pose (condp = (:class pose-stamped)
 	       Pose                 pose-stamped
 	       PoseWithCovariance   (:pose pose-stamped)
 	       PoseStamped          (:pose pose-stamped)
+	       nil                  (do (assert (not (map? pose-stamped))) (apply make-pose pose-stamped))
 	       ;PoseWithRatesStamped (:pose (:pose_with_rates pose-stamped))
 	       )]
     (make-robot-base-state
@@ -115,7 +116,7 @@
 (defn get-current-base-state-tf
   ([nh] (get-current-base-state-tf nh "/base_link"))
   ([nh frame]
-     (pose->base-state (transform-pose-tf nh frame "/map" [[0 0 0] [0 0 0 1]]))))
+     (apply make-pose (pose->base-state (transform-pose-tf nh frame "/map" [[0 0 0] [0 0 0 1]])))))
 
 
 
