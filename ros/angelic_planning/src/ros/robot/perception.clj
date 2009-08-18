@@ -34,8 +34,8 @@
 (defmsgs [geometry_msgs PointStamped])
 ;(defsrvs [motion_planning_msgs FindBottles])
 
-(defn laser-slow [] (util/sh "roslaunch" "/u/jawolfe/angel/ros/angelic_planning/laser_slow.launch"))
-(defn laser-fast [] (util/sh "roslaunch" "/u/jawolfe/angel/ros/angelic_planning/laser_fast.launch"))
+(defn laser-slow [] (util/sh "roslaunch" "/u/jawolfe/angel/ros/angelic_planning/launch/laser_slow.launch"))
+(defn laser-fast [] (util/sh "roslaunch" "/u/jawolfe/angel/ros/angelic_planning/launch/laser_fast.launch"))
   
 
 (def *rviz-point-map* (atom nil))
