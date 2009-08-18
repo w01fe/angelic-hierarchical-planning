@@ -350,9 +350,9 @@
 
 
 (defn tuck-arms [#^NodeHandle nh]
-  (doseq [[p id] [(move-arm-to-state-unsafe nh (arm-joint-state true "tucked" true) false)
+  (doseq [[p id] [(move-arm-to-state-unsafe nh (arm-joint-state true "tucked") false)
 		(do (Thread/sleep 1000)
-		    (move-arm-to-state-unsafe nh (arm-joint-state false "tucked" true) false))]]
+		    (move-arm-to-state-unsafe nh (arm-joint-state false "tucked" ) false))]]
     (wait-for-trajectory nh p id)))
   
 

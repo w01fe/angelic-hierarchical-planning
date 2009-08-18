@@ -354,7 +354,7 @@
 	     (map-pose->tll-pose-stamped (:pose a) (:base (:robot env)))
 	     (:robot env) (:world env) 0 true)]
     (when ik
-      (make-arm-joint-action (make-robot-arm-state r? false ik)))))
+      (make-arm-joint-action (make-robot-arm-state r? ik)))))
 
 (defmethod robot-action-name ::ArmPoseAction [a]
   (vec 
@@ -479,5 +479,5 @@
     (print "Result for pose action: ") (describe-motion-plan sol)
     (when (and (seq (:states (:path sol))));  (not (:approximate sol))) ;TODO ??
       (make-arm-joint-action 
-       (make-robot-arm-state r? false
+       (make-robot-arm-state r? 
 	 (apply hash-map (interleave (:names (:path sol)) (:vals (last (:states (:path sol))))))))))))
