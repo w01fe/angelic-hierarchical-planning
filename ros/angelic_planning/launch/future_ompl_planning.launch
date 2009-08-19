@@ -4,6 +4,7 @@
     <remap from="robot_description" to="robot_description" />
     <remap from="collision_map" to="collision_map_future" />
     <remap from="collision_map_update" to="collision_map_future_update" />
+    <remap from="attach_object" to="attach_object_future" />
     <param name="refresh_interval_collision_map" type="double" value="5.0" />
     <param name="refresh_interval_kinematic_state" type="double" value="1.0" />
     <param name="bounding_planes" type="string" value="0 0 1 -0.01" />

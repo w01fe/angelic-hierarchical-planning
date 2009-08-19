@@ -113,10 +113,8 @@
 (defn get-current-base-state [#^NodeHandle nh]
   (pose->base-state (get-current-base-pose nh)))
 
-(defn get-current-base-state-tf
-  ([nh] (get-current-base-state-tf nh "/base_link"))
-  ([nh frame]
-     (apply make-pose (pose->base-state (transform-pose-tf nh frame "/map" [[0 0 0] [0 0 0 1]])))))
+(defn get-current-base-state-tf [nh] 
+  (pose->base-state (transform-pose-tf nh "/base_link" "/map" [[0 0 0] [0 0 0 1]])))
 
 
 

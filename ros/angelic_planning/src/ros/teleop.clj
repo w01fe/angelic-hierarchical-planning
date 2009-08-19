@@ -28,90 +28,156 @@
 ;//////////////////////////////////////////////////////////////////////////////
 
 
+(use 'ros.ros 'ros.actions 'ros.world 'ros.geometry 'ros.robot)
 
-(ns ros.teleop
-  (:use   clojure.xml ros.ros ros.actions ros.world ros.geometry ros.robot)
-    (:require [edu.berkeley.ai.util :as util])
-	  )
+;(ns ros.teleop
+;  (:use   clojure.xml ros.ros ros.actions ros.world ros.geometry ros.robot)
+;    (:require [edu.berkeley.ai.util :as util])
+;	  )
   
 (set! *warn-on-reflection* true)
 
 (import-ros)
 
+(def nh (make-node-handle))
+
+(defn reset []
+  (.shutdown #^NodeHandle nh)
+  (def nh (make-node-handle)))
+
 
 ;; Head 
 
-(defn look-r  [nh] (look-at nh [0 -2 1.2]))
-(defn look-dr [nh] (look-at nh [0 -2 0.6]))
-(defn look-rf  [nh] (look-at nh [2 -2 1.2]))
-(defn look-drf [nh] (look-at nh [2 -2 0.6]))
-(defn look-f  [nh] (look-at nh [2 0 1.2]))
-(defn look-df [nh] (look-at nh [2 0 0.6]))
-(defn look-lf  [nh] (look-at nh [2 2 1.2]))
-(defn look-dlf [nh] (look-at nh [2 2 0.6]))
-(defn look-l  [nh] (look-at nh [0 2 1.2]))
-(defn look-dl [nh] (look-at nh [0 2 0.6]))
+(defn look-r  [] (look-at nh [0 -2 1.2]))
+(defn look-dr [] (look-at nh [0 -2 0.6]))
+(defn look-rf  [] (look-at nh [2 -2 1.2]))
+(defn look-drf [] (look-at nh [2 -2 0.6]))
+(defn look-f  [] (look-at nh [2 0 1.2]))
+(defn look-df [] (look-at nh [2 0 0.6]))
+(defn look-lf  [] (look-at nh [2 2 1.2]))
+(defn look-dlf [] (look-at nh [2 2 0.6]))
+(defn look-l  [] (look-at nh [0 2 1.2]))
+(defn look-dl [] (look-at nh [0 2 0.6]))
   
 
 ;; Base
 
-(defn forward [nh x] (move-base-rel nh :x x))
-(defn back    [nh x] (move-base-rel nh :x (- x)))
-(defn left    [nh x] (move-base-rel nh :y x))
-(defn right   [nh x] (move-base-rel nh :y (- x)))
+(defn forward [x] (move-base-rel nh :x x))
+(defn back    [x] (move-base-rel nh :x (- x)))
+(defn left    [x] (move-base-rel nh :y x))
+(defn right   [x] (move-base-rel nh :y (- x)))
 
-(defn move-base [nh [x y theta]]
+(defn move-base [[x y theta]]
   (move-base-to-state nh (make-robot-base-state x y theta)))
 
 ; Arm
 
-(defn move-arm-xzy [nh right? xyz]
+(defn move-arm-xzy [right? xyz]
   (move-arm-to-pose nh right? (make-pose xyz [0 0 0 1])))
 
 
 
-;; move arm into grasping position using rviz
+;; move arm into grasping position using rviz or perception.
 
+
+
+(defn compute-pregrasp-point [[x y z]]
+  "Compute a good point for the gripper to grasp (palm link) given object coords in base link."
+  (when (and (> x 0.4) (< x 1.5) (> y -0.5) (< y 0.5))
+    [(- x 0.26 ) y z]))
+
+(defn arm-to-pregrasp "obj in base-link" [right? obj]
+  (if-let [grasp-point (compute-pregrasp-point obj)]
+    (do (println "Grasping to" grasp-point)
+;	(= :success (first 
+	  (move-arm-to-pose nh right? 
+	    (make-pose grasp-point [0 0 0 1]) "/base_link" false 20.0));))
+    (println "Failed to get grasp point for" obj)))
 
 (defn compute-grasp-point [[x y z]]
   "Compute a good point for the gripper to grasp (palm link) given object coords in base link."
   (when (and (> x 0.4) (< x 1.5) (> y -0.5) (< y 0.5))
-    [(- x 0.26) y z]));(+ z 0.12)]))
+    [(- x 0.15 ) y z]))
 
-(defn arm-to-grasp "obj in base-link" [nh right? obj]
+(defn arm-to-grasp "obj in base-link" [right? obj]
   (if-let [grasp-point (compute-grasp-point obj)]
     (do (println "Grasping to" grasp-point)
-	(= :success (first (move-arm-to-pose nh right? (make-pose grasp-point [0 0 0 1]) "/base_link" false 20.0))))
+	;(= :success (first 
+	 (move-arm-to-grasp nh right? 
+	   (make-pose grasp-point [0 0 0 1]) "/base_link" false 40.0));))
     (println "Failed to get grasp point for" obj)))
+
+;(defn pt [x] (println x) x)
+
+
+; Grasp 1: servoing using base
 
 (defn approx-= [x y tol] (< (Math/abs (double (- x y))) tol))
 
-(defn final-approach "obj in base-link" [nh right? [objx objy objz]]
+(defn final-approach-base "obj in base-link" [right? [objx objy objz]]
   (let [[[gx gy gz] [ox oy oz ow]] (get-arm-pose nh right?)]
-;    (println ox gx)
     (assert (approx-= gy objy 0.05))
     (assert (approx-= ow 1.0 0.10))
     (move-base-rel nh :x (- objx gx 0.15) 1.0 #_0.5)
     true
     ))
 
-(defn pt [x] (println x) x)
+(defn grasp-object-base [right? obj]
+  (open-gripper nh right?)
+  (println (arm-to-pregrasp right? obj))
+  (println (final-approach-base right? obj))
+  (close-gripper nh right?)
+  (Thread/sleep 3000)
+  (move-base-rel nh :x -0.3)
+  (move-arm-to-state nh (arm-joint-state true "home") false #_ true 60.0))
 
+; Grasp 2: servoing using arm
+
+(defn final-approach-arm "obj in base-link" [right? [objx objy objz]]
+  (let [[[gx gy gz] [ox oy oz ow]] (get-arm-pose nh right?)]
+    (assert (approx-= gy objy 0.05))
+    (assert (approx-= ow 1.0 0.10))
+    (move-arm-rel-unsafe nh right? [(- objx gx 0.15) 0.0 0.0] 30.0 1.0)
+    true
+    ))
+
+(defn grasp-object-arm [right? obj]
+  (open-gripper nh right?)
+  (println (arm-to-pregrasp right? obj))
+  (println (final-approach-arm right? obj))
+  (close-gripper nh right?)
+  (Thread/sleep 3000)
+  (move-arm-rel-unsafe nh right? [-0.2 0 0])
+  (move-arm-to-state nh (arm-joint-state true "home") false #_ true 60.0))
+
+; Grasp 3: trying to do things right ...
+
+
+(defn grasp-object-direct [right? obj]
+  (open-gripper nh right?)
+  (println (arm-to-grasp right? obj))
+  (close-gripper nh right?)
+  (Thread/sleep 3000)
+  (move-arm-rel-unsafe nh right? [-0.2 0 0])
+  (move-arm-to-state nh (arm-joint-state true "home") #_ false true 60.0))
+  
+
+(comment 
 (defn grasp-object "obj in base-link" [nh right? obj]
   (and 
   ; (do (look-at nh obj) true)
    (do (pt (open-gripper nh right?)) true)
    (do (pt (arm-to-grasp nh right? obj)) true)
-   (do (final-approach nh right? obj) true)
-   (do (pt (close-gripper nh)) true)
-   (do (Thread/sleep 3000) (move-base-rel nh :x -0.3) true)
-   (pt (move-arm-to-state nh (arm-joint-state true "home") true 60.0))
+;   (do (final-approach nh right? obj) true)
+;   (do (pt (close-gripper nh right?)) true)
+;   (do (Thread/sleep 3000) (move-base-rel nh :x -0.3) true)
+;   (pt (move-arm-to-state nh (arm-joint-state true "home") true 60.0))
 ;   (do (look-forward nh) true)))
-   ))
+   )))
 
-(defn grasp-rviz [nh right?]
-  (let [[obj-map obj-bl] (get-rviz-points nh true)]
-    (grasp-object nh right? obj-bl)))
+;(defn grasp-rviz [nh right?]
+;  (let [[obj-map obj-bl] (get-rviz-points nh true)]
+;    (grasp-object nh right? obj-bl)))
 
 (comment 
 

@@ -34,8 +34,22 @@
 (defmsgs [geometry_msgs PointStamped])
 (defsrvs [find_bottles FindBottles] [tabletop_srvs FindTable])
 
-(defn laser-slow [] (util/sh "roslaunch" "/u/jawolfe/angel/ros/angelic_planning/launch/laser_slow.launch"))
-(defn laser-fast [] (util/sh "roslaunch" "/u/jawolfe/angel/ros/angelic_planning/launch/laser_fast.launch"))
+(def *laser-state* (atom nil))
+
+(defn laser-slow 
+  (if (= @*laser-state* :slow) 
+      (println "Laser should already be slow...")
+    (do (util/sh "roslaunch" "/u/jawolfe/angel/ros/angelic_planning/launch/laser_slow.launch")
+	(reset! *laser-state* :slow)
+	(println "Laser is now slow."))))
+
+(defn laser-fast [] 
+  (if (= @*laser-state* :fast) 
+      (println "Laser should already be fast...")
+    (do (util/sh "roslaunch" "/u/jawolfe/angel/ros/angelic_planning/launch/laser_fast.launch")
+	(reset! *laser-state* :fast)
+	(println "Laser is now fast."))))
+
   
 
 (def *rviz-point-map* (atom nil))
@@ -74,9 +88,6 @@
 (defn find-bottles [nh z]
   (:pts (call-srv nh "/find_bottles" (map-msg FindBottles$Request {:z z}))))
 
-(defn find-table-objects [nh]
-  (call-srv nh "/table_object_detector" (map-msg FindTable$Request {})))
-
 (defn wait-for-bottle [nh z]
   (laser-slow)
 ;  (Thread/sleep 2000)
@@ -85,7 +96,7 @@
         (do (print ".")
 	    (Thread/sleep 100)
 	    (recur (find-bottles nh z)))
-      (do (future-call laser-fast)
+      (do ;(future-call laser-fast)
 	  (let [bottles (map #(decode-point (:point %)) bottles)]
 	    (println "Got bottles" bottles)
 	    (update-in 
@@ -94,6 +105,45 @@
 	      bottles)
 	     [2] - 0.02)
 	    )))))
+
+
+(defn find-table-objects [nh]
+  (:table (call-srv nh "/table_object_detector" (map-msg FindTable$Request {}))))
+
+(defn wait-for-table-object [nh]
+  (laser-slow)
+;  (Thread/sleep 2000)
+  (loop [table (find-table-objects nh)]
+    (if (empty? (:objects table))
+        (do (print ".")
+	    (Thread/sleep 100)
+	    (recur (find-table-objects nh)))
+      (do (assert (= (:frame_id (:header table)) "/base_link")) 
+	  (let [bottles (map (fn [obj] (map #(decode-point (% obj)) [:min_bound :center :max_bound])) 
+			     (:objects table))]
+	    (println "Got bottles" bottles)
+	    ; ...
+
+	    (second (util/first-maximal-element 
+		      #(- 100 (Math/abs (double (second (second %)))))
+		      bottles))
+	    )))))
+
+(defn find-object-rviz [nh]
+  "Get the position of an object by waiting for the user to click on a point in rviz"
+  (second (get-rviz-points nh true)))
+
+(defn find-object-bottle [nh z]
+  "Get the position of an object by using find_bottles"
+  (wait-for-bottle nh z))
+
+(defn find-object-table [nh]
+  "Get the position of an object by using the table-object-detector"
+  (wait-for-table-object nh))
+
+
+; Right now, nothing sets laser to fast...
+; Height of table in green room is 0.75.
 
 (comment
 

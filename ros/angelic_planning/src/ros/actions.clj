@@ -116,7 +116,7 @@
   ([ac goal-msg #^Duration duration]
      (let [#^NodeHandle nh (:node-handle ac)
 	   start-time (.now nh)
-	   goal-id    {:class :GoalID :stamp start-time :id start-time}
+	   goal-id    {:class GoalID :stamp start-time :id start-time}
 	   result-q   #^Subscriber$QueueingCallback (:result-cb ac)]
        (.clear result-q)
        (.publish #^Publisher (:goal-pub ac)

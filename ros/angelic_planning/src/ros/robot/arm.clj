@@ -130,7 +130,7 @@
   (let [dist (double (- v2 v1))]
     (if (or (not wrap?) (< (Math/abs dist) Math/PI))
         (+ v1 (* dist w))
-      (norm-angle (- v1 (* (- (* 2 Math/PI) dist) w))))))
+      (norm-angle (- v1 (* (- (* 2 Math/PI) (Math/abs dist)) (Math/signum dist) w))))))
 
 (defn interpolate-arm-joints [j1 j2 w]
   (map (fn [v1 v2 wrap?] (interpolate-arm-joint v1 v2 w wrap?)) j1 j2 *arm-joint-wraps*))
@@ -335,8 +335,31 @@
        (make-smooth-joint-trajectory (:joint-angle-map (get-current-arm-state nh 
 						        (isa? (:class arm-state) ::Right))) 
 				     (:joint-angle-map arm-state)
-				      0.2 (/ 0.01 speed-mul))
+				      0.2 (/ 0.3 speed-mul))
        wait-secs)))
+
+
+
+(defn get-arm-pose 
+  "Get the current pose of the gripper palm link in the specified frame (base_link by default)."
+  ([nh right?] (get-arm-pose nh right? "/base_link"))
+  ([nh right? frame]
+     (transform-pose-tf nh (str (if right? "r" "l") "_gripper_palm_link") 
+			frame [[0 0 0] [0 0 0 1]])))
+
+(defn move-arm-rel-unsafe
+  "Move the gripper to a new position relative to the current one, keeping orientation."
+  ([nh right? [dx dy dz]] (move-arm-rel-unsafe nh right? [dx dy dz] 10 1.0))
+  ([nh right? [dx dy dz] timeout speed-mul] 
+  (let [[[x y z] q]  (get-arm-pose nh right? "/torso_lift_link")
+	ik           (inverse-kinematics nh right? 
+			{:header {:frame_id "/torso_lift_link"}
+			 :pose   {:position {:x (+ x dx) :y (+ y dy) :z (+ z dz)}
+				  :orientation (make-quaternion q)}}
+			(:joint-angle-map (get-current-arm-state nh right?)))]
+    (if (not ik) (println "Couldn't find IK solution; not moving")
+      (move-arm-to-state-unsafe nh (make-robot-arm-state right? ik) timeout speed-mul)))))
+
 
 
 
@@ -489,6 +512,19 @@
 							 (:joint-angle-map arm-state)))}}
 	 (Duration. (double timeout))))))
 
+(defn move-arm-to-grasp 
+  "Actually move arm to state using move_arm action, with replanning, synchronously"
+  ([#^NodeHandle nh arm-state] (move-arm-to-state nh arm-state false 60.0))
+  ([#^NodeHandle nh arm-state upright? timeout]
+     (let [r? (isa? (:class arm-state) ::Right)]
+       (run-action nh (str "/move_" (if r? "right" "left") "_arm") MoveArmAction 
+	 {:contacts nil
+	  :path_constraints  (if upright? (upright-gripper-path-constraint r?) *no-constraints*)
+	  :goal_constraints {:pose_constraint  []
+			     :joint_constraint (vec (map parse-joint-constraint 
+							 (:joint-angle-map arm-state)))}}
+	 (Duration. (double timeout))))))
+
 (defn move-arm-to-pose
   "Use move_arm to move the gripper to a specific pose." 
   ([nh right? pose] (move-arm-to-pose nh right? pose "/base_link" false 60.0))
@@ -504,14 +540,45 @@
 	  :joint_constraint []}}
 	(Duration. (double timeout))))))
 
+(defn move-arm-to-grasp 
+  "Actually move arm to state using move_arm action, with replanning, synchronously"
+  ([#^NodeHandle nh arm-state] (move-arm-to-state nh arm-state false 60.0))
+  ([#^NodeHandle nh arm-state upright? timeout]
+     (let [r? (isa? (:class arm-state) ::Right)]
+       (run-action nh (str "/move_" (if r? "right" "left") "_arm") MoveArmAction 
+	 {:contacts nil
+	  :path_constraints  (if upright? (upright-gripper-path-constraint r?) *no-constraints*)
+	  :goal_constraints {:pose_constraint  []
+			     :joint_constraint (vec (map parse-joint-constraint 
+							 (:joint-angle-map arm-state)))}}
+	 (Duration. (double timeout))))))
+
+(defn move-arm-to-grasp
+  "Use move_arm to move the gripper to a specific grasping pose, which ignores contacts." 
+  ([nh right? pose] (move-arm-to-pose nh right? pose "/base_link" false 60.0))
+  ([nh right? pose frame upright? timeout]
+   (assert (#{"/base_link" "/torso_lift_link"} frame))
+   (let [pos          (decode-point (:position pose))
+	 [axis angle] (quaternion-msg->axis-angle (:orientation pose))]			   
+    (run-action nh (str "/move_" (if right? "right" "left") "_arm") MoveArmAction
+	{:contacts 
+	  [{:depth 0.04
+	    :links (map #(str (if right? "r_gripper_" "l_gripper_") %)
+			["l_finger_link" "r_finger_link" "l_finger_tip_link" "r_finger_tip_link" "palm_link"])
+	    :pose  {:header {:frame_id frame}
+		    :pose   (update-in pose [:position :x] #(+ % 0.1))}
+	    :bound {:type ros.pkg.mapping_msgs.msg.Object/SPHERE
+		    :dimensions [0.5]
+		    :triangles [] :vertices []}}]
+	 :path_constraints  (if upright? (upright-gripper-path-constraint right?) *no-constraints*)
+	 :goal_constraints 
+	 {:pose_constraint  
+	  [(encode-pose-constraint true frame (decode-point (:position pose)) axis angle)]
+	  :joint_constraint []}}
+	(Duration. (double timeout))))))
 
 
-(defn get-arm-pose 
-  "Get the current pose of the gripper palm link in the specified frame (base_link by default)."
-  ([nh right?] (get-arm-pose nh right? "/base_link"))
-  ([nh right? frame]
-     (:pose (:pout (transform-pose-tf nh (str (if right? "r" "l") "_gripper_palm_link") 
-				      frame (make-pose [0 0 0] [0 0 0 1]))))))
+
 
 (defn move-arm-rel 
   "Move the gripper to a new position relative to the current one."
