@@ -140,7 +140,8 @@
 	       status      (*action-status-backward* (int (:status goal-status)))]
 	   (assert (and (= (.secs status-goal-id) (.secs start-time)) (= (.nsecs status-goal-id) (.nsecs start-time))))
 ;	   (println "Action finished with status" status "and text" (:text goal-status))
-	   [status (:result result)])))))
+	   status)))))
+;	   [status (:result result)])))))
 
 
 (defn shutdown-action-client 

@@ -205,17 +205,19 @@
 			 :fixed_frame ""})
 	       )))))
 
-(defn transform-pose-tf [nh src-frame trg-frame nice-pose]
-  (decode-pose 
+(defn transform-raw-pose-tf [nh src-frame trg-frame pose]
    (:pose (:pout 
      (call-srv nh "/tf_node/transform_pose"
 	       (map-msg TransformPose$Request
 			{:target_frame trg-frame
 			 :target_time (Time.);(.subtract (.now *ros*) (Duration. 0.3))
 			 :pin {:header {:frame_id src-frame :stamp (.subtract (.now *ros*) (Duration. 0.3))}
-			       :pose (apply make-pose nice-pose)}
+			       :pose pose}
 			 :fixed_frame ""})
-	       )))))
+	       ))))
+
+(defn transform-pose-tf [nh src-frame trg-frame nice-pose]
+  (decode-pose (transform-raw-pose-tf nh src-frame trg-frame (apply make-pose nice-pose))))
 
 
 ;; Regions

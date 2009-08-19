@@ -80,32 +80,17 @@
 ;; move arm into grasping position using rviz or perception.
 
 
-
-(defn compute-pregrasp-point [[x y z]]
-  "Compute a good point for the gripper to grasp (palm link) given object coords in base link."
-  (when (and (> x 0.4) (< x 1.5) (> y -0.5) (< y 0.5))
-    [(- x 0.26 ) y z]))
-
-(defn arm-to-pregrasp "obj in base-link" [right? obj]
-  (if-let [grasp-point (compute-pregrasp-point obj)]
-    (do (println "Grasping to" grasp-point)
-;	(= :success (first 
-	  (move-arm-to-pose nh right? 
-	    (make-pose grasp-point [0 0 0 1]) "/base_link" false 20.0));))
-    (println "Failed to get grasp point for" obj)))
-
-(defn compute-grasp-point [[x y z]]
-  "Compute a good point for the gripper to grasp (palm link) given object coords in base link."
-  (when (and (> x 0.4) (< x 1.5) (> y -0.5) (< y 0.5))
-    [(- x 0.15 ) y z]))
-
-(defn arm-to-grasp "obj in base-link" [right? obj]
-  (if-let [grasp-point (compute-grasp-point obj)]
-    (do (println "Grasping to" grasp-point)
-	;(= :success (first 
-	 (move-arm-to-grasp nh right? 
-	   (make-pose grasp-point [0 0 0 1]) "/base_link" false 40.0));))
-    (println "Failed to get grasp point for" obj)))
+(defn compute-grasp-pose 
+  "Compute a pose for the palm_link to grasp an object at [x y z].
+   By default, sets up away from the object, for a straight-ahead grasp."
+  ([[x y z]] (compute-grasp-point [x y z] 0.26 0))
+  ([[x y z] dist angle]
+     (make-pose 
+      [(- x (* dist (Math/cos (double angle))))
+       (- y (* dist (Math/sin (double angle))))
+       z]
+      (decode-quaternion (angle->quaternion angle)))))
+     
 
 ;(defn pt [x] (println x) x)
 
@@ -123,8 +108,9 @@
     ))
 
 (defn grasp-object-base [right? obj]
+  (assert (and (< 0.4 (first obj) 1.3) (< -0.8 (second obj) 0.8)))
   (open-gripper nh right?)
-  (println (arm-to-pregrasp right? obj))
+  (move-arm-to-pose nh right? (compute-grasp-pose obj 0.26 0) "/base_link" false 20.0)
   (println (final-approach-base right? obj))
   (close-gripper nh right?)
   (Thread/sleep 3000)
@@ -133,47 +119,40 @@
 
 ; Grasp 2: servoing using arm
 
-(defn final-approach-arm "obj in base-link" [right? [objx objy objz]]
-  (let [[[gx gy gz] [ox oy oz ow]] (get-arm-pose nh right?)]
-    (assert (approx-= gy objy 0.05))
-    (assert (approx-= ow 1.0 0.10))
-    (move-arm-rel-unsafe nh right? [(- objx gx 0.15) 0.0 0.0] 30.0 1.0)
-    true
-    ))
+;(defn final-approach-arm "obj in base-link" [right? [objx objy objz]]
+;  (let [[[gx gy gz] [ox oy oz ow]] (get-arm-pose nh right?)]
+;    (assert (approx-= gy objy 0.05))
+;    (assert (approx-= ow 1.0 0.10))
+;    (move-arm-rel-unsafe nh right? [(- objx gx 0.15) 0.0 0.0] 30.0 1.0)
+;    true
+;    ))
 
-(defn grasp-object-arm [right? obj]
-  (open-gripper nh right?)
-  (println (arm-to-pregrasp right? obj))
-  (println (final-approach-arm right? obj))
-  (close-gripper nh right?)
-  (Thread/sleep 3000)
-  (move-arm-rel-unsafe nh right? [-0.2 0 0])
-  (move-arm-to-state nh (arm-joint-state true "home") false #_ true 60.0))
+(defn grasp-object-arm 
+  ([right? obj] (grasp-object-arm right? obj 0))
+  ([right? obj angle]
+    (assert (and (< 0.4 (first obj) 1.1) (< -0.8 (second obj) 0.8)))
+    (open-gripper nh right?)
+    (when (= :succeeded 
+	     (move-arm-to-pose nh right? (compute-grasp-pose obj 0.26 angle) "/base_link" false 30.0))
+;      (println (final-approach-arm right? obj))
+      (move-arm-to-pose-unsafe nh right? (compute-grasp-pose obj 0.15 angle) "/base_link" 10.0 1.0)
+      (close-gripper nh right?)
+      (Thread/sleep 3000)
+      (move-arm-rel-unsafe nh right? [-0.2 0 0])
+      (move-arm-to-state nh (arm-joint-state true "home") false #_ true 60.0))))
 
 ; Grasp 3: trying to do things right ...
 
 
 (defn grasp-object-direct [right? obj]
   (open-gripper nh right?)
-  (println (arm-to-grasp right? obj))
+  (move-arm-to-grasp nh right? (compute-grasp-pose obj 0.15 0) "/base_link" false 40.0)
   (close-gripper nh right?)
   (Thread/sleep 3000)
   (move-arm-rel-unsafe nh right? [-0.2 0 0])
   (move-arm-to-state nh (arm-joint-state true "home") #_ false true 60.0))
   
 
-(comment 
-(defn grasp-object "obj in base-link" [nh right? obj]
-  (and 
-  ; (do (look-at nh obj) true)
-   (do (pt (open-gripper nh right?)) true)
-   (do (pt (arm-to-grasp nh right? obj)) true)
-;   (do (final-approach nh right? obj) true)
-;   (do (pt (close-gripper nh right?)) true)
-;   (do (Thread/sleep 3000) (move-base-rel nh :x -0.3) true)
-;   (pt (move-arm-to-state nh (arm-joint-state true "home") true 60.0))
-;   (do (look-forward nh) true)))
-   )))
 
 ;(defn grasp-rviz [nh right?]
 ;  (let [[obj-map obj-bl] (get-rviz-points nh true)]

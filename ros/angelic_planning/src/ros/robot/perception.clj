@@ -36,7 +36,7 @@
 
 (def *laser-state* (atom nil))
 
-(defn laser-slow 
+(defn laser-slow []
   (if (= @*laser-state* :slow) 
       (println "Laser should already be slow...")
     (do (util/sh "roslaunch" "/u/jawolfe/angel/ros/angelic_planning/launch/laser_slow.launch")

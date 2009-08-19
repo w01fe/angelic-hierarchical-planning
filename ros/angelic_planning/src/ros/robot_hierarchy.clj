@@ -91,6 +91,9 @@
    (envs/make-simple-condition goal-pred true)))
 
 
+; Types of goals: object to region on table, object to table (reduce to prev), object near object (?)
+
+
 ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;; Valuations ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
 
 (defn make-abstract-robot-valuation 

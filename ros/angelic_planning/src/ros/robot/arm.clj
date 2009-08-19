@@ -143,12 +143,20 @@
 
 (defn inverse-kinematics
   "Returns a final joint map (possibly in collision) or nil for failure.
-   Pose-stamped must be a pose of a *_gripper_palm_link, in the torso_lift_link frame."
+   Pose-stamped must be a pose of a *_gripper_palm_link."
   [#^NodeHandle nh right? pose-stamped init-joint-map]
-  (assert (= (:frame_id (:header pose-stamped)) "/torso_lift_link"))
-  (let [init-joints (seq init-joint-map)]
-    (try 
-     (into {} (map vector (map first init-joints) 
+  (let [frame-in (:frame_id (:header pose-stamped))
+	pose-stamped 
+	 (if (= frame-in "/torso_lift_link")
+	     pose-stamped
+	   (do (println "Warning: IK is using TF to transform pose from"
+			frame-in "to torso_lift_link.")
+	       (assoc pose-stamped 
+		 :header {:frame_id "/torso_lift_link"}
+		 :pose   (transform-raw-pose-tf nh frame-in "/torso_lift_link" (:pose pose-stamped)))))] 
+    (let [init-joints (seq init-joint-map)]
+     (try 
+      (into {} (map vector (map first init-joints) 
        (:solution (call-srv-cached nh (str "/pr2_ik_" (if right? "right" "left") "_arm/ik_service")  
 		    (map-msg 
 		     {:class IKService$Request
@@ -157,7 +165,7 @@
 			     :pose_stamped pose-stamped}})))))
      (catch RosException e
        nil
-       ))))
+       )))))
 
 
 (defn- make-kinematic-joint [[joint-name joint-position]]
@@ -338,6 +346,16 @@
 				      0.2 (/ 0.3 speed-mul))
        wait-secs)))
 
+(defn move-arm-to-pose-unsafe
+  "Move the gripper to a new pose."
+  ([nh right? pose] (move-arm-to-pose-unsafe nh right? pose "/base_link" 10 1.0))
+  ([nh right? pose frame timeout speed-mul] 
+   (let [ik (inverse-kinematics nh right? 
+	     {:header {:frame_id frame}
+	      :pose   pose} 
+	     (:joint-angle-map (get-current-arm-state nh right?)))]
+    (if (not ik) (println "Couldn't find IK solution; not moving")
+      (move-arm-to-state-unsafe nh (make-robot-arm-state right? ik) timeout speed-mul)))))
 
 
 (defn get-arm-pose 
@@ -351,14 +369,11 @@
   "Move the gripper to a new position relative to the current one, keeping orientation."
   ([nh right? [dx dy dz]] (move-arm-rel-unsafe nh right? [dx dy dz] 10 1.0))
   ([nh right? [dx dy dz] timeout speed-mul] 
-  (let [[[x y z] q]  (get-arm-pose nh right? "/torso_lift_link")
-	ik           (inverse-kinematics nh right? 
-			{:header {:frame_id "/torso_lift_link"}
-			 :pose   {:position {:x (+ x dx) :y (+ y dy) :z (+ z dz)}
-				  :orientation (make-quaternion q)}}
-			(:joint-angle-map (get-current-arm-state nh right?)))]
-    (if (not ik) (println "Couldn't find IK solution; not moving")
-      (move-arm-to-state-unsafe nh (make-robot-arm-state right? ik) timeout speed-mul)))))
+   (let [[[x y z] q]  (get-arm-pose nh right? "/torso_lift_link")]
+     (move-arm-to-pose-unsafe nh right? 
+       {:position {:x (+ x dx) :y (+ y dy) :z (+ z dz)}
+	:orientation (make-quaternion q)}
+       "/torso_lift_link" timeout speed-mul))))
 
 
 
