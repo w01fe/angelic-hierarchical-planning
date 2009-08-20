@@ -1,6 +1,8 @@
 <launch>
   <master auto="start"/>
 
+  <node pkg="tf_node" type="tf_node" />
+
   <include file="$(find 3dnav_pr2)/launch/perception/laser-perception.launch"/> 
   <include file="$(find 3dnav_pr2)/launch/planning/ompl_chomp_planning.launch"/> 
   <include file="$(find 3dnav_pr2)/launch/actions/right_arm.launch"/> 
