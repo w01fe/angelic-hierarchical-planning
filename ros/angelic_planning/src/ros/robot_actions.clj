@@ -47,6 +47,9 @@
   ([nh] (make-current-robot-env nh (get-initial-world 0.1 0.1 0)))
   ([nh world] (make-robot-env (get-current-robot-state nh) world)))
 
+;; Also need abstract robot envs, where in world objects' xyz can be [xyregion z], and
+;; in robot, base can be in xytheta region 
+
 (def *base-cost-multiplier* -1)
 (def *arm-cost-multiplier* -4)
 (def *torso-cost-multiplier* -4)

@@ -224,10 +224,17 @@
 
 (defmulti region-name :class)
 
+(defmulti sample-region :class)
+
+(defmulti region-contains? (fn [i p] (:class i)))
+
+(defmulti region-subsumes? (fn [x y] [(:class x) (:class y)]))
+
+
 (defn rand-double [[mn mx]]
   (+ mn (rand (- mx mn))))
 
-(defmulti sample-region :class)
+
 
 (defn make-interval-region [[a b]]
   (assert (>= b a))
@@ -239,17 +246,92 @@
 (defmethod region-name ::IntervalRegion [r]
   (:interval r))
 
-(defn make-base-rect-region [[minx maxx] [miny maxy] [mina maxa]]
-  {:class ::BaseRectRegion
+(defmethod region-contains? ::IntervalRegion [r p]
+  (let [[a b] (:interval r)] 
+    (<= a p b)))
+
+(defmethod region-subsumes? [::IntervalRegion ::IntervalRegion] [x y]
+  (let [[ax bx] (:interval x) 
+        [ay by] (:interval y)] 
+    (<= ax ay by bx)))
+
+(defn shrink-interval-region [r e]
+  (let [[a b] (:interval r)]
+    (make-interval-region [(+ a e) (- b e)])))
+
+
+(defn make-xy-region [[minx maxx] [miny maxy]]
+  {:class ::XYRegion
+   :intervals [(make-interval-region [minx maxx])
+	       (make-interval-region [miny maxy])]})
+
+(defmethod sample-region ::XYRegion [r]
+  (vec (map sample-region (:intervals r))))
+
+(defmethod region-name ::XYRegion [r]
+  (vec (map region-name (:intervals r))))
+
+(defmethod region-contains? ::XYRegion [r p]
+  (every? identity (map region-contains? (:intervals r) p)))
+
+(defmethod region-subsumes? [::XYRegion ::XYRegion] [x y]
+  (every? identity (map region-subsumes? (:intervals x) (:intervals y))))
+
+(defn get-xy-region-extent [r]
+  (map :interval (:intervals r)))
+
+(defn shrink-xy-region [r e]
+  (update-in r [:intervals] (fn [is] (map #(shrink-interval-region % e) is))))
+
+
+(defn make-xytheta-region [[minx maxx] [miny maxy] [mina maxa]]
+  {:class ::XYThetaRegion
    :intervals [(make-interval-region [minx maxx])
 	       (make-interval-region [miny maxy])
 	       (make-interval-region [mina maxa])]})
 
-(defmethod sample-region ::BaseRectRegion [r]
-  (map sample-region (:intervals r)))
+(defmethod sample-region ::XYThetaRegion [r]
+  (vec (map sample-region (:intervals r))))
 
-(defmethod region-name ::BaseRectRegion [r]
+(defmethod region-name ::XYThetaRegion [r]
   (vec (map region-name (:intervals r))))
+
+(defmethod region-contains? ::XYThetaRegion [r p]
+  (every? identity (map region-contains? (:intervals r) p)))
+
+(defmethod region-subsumes? [::XYThetaRegion ::XYThetaRegion] [x y]
+  (every? identity (map region-subsumes? (:intervals x) (:intervals y))))
+
+
+
+
+
+
+
+(comment 
+(defn make-surface-region [[minx maxx] [miny maxy] z]
+  {:class ::SurfaceRegion
+   :intervals [(make-interval-region [minx maxx])
+	       (make-interval-region [miny maxy])]
+   :z z})
+
+(defmethod sample-region ::SurfaceRegion [r]
+  (vec (concat (map sample-region (:intervals r)) [(:z r)])))
+
+(defmethod region-name ::SurfaceRegion [r]
+  (vec (concat (map region-name (:intervals r)) [(:z r)])))
+
+(defmethod region-contains? ::SurfaceRegion [r p]
+  (let [[p1 p2 p3] p
+	{[i1 i2] :intervals z :z} r]
+    (and (region-contains? i1 p1) (region-contains? i2 p2) (= p3 z))))
+
+(defmethod region-subsumes? [::SurfaceRegion ::SurfaceRegion] [x y]
+  (let [{[x1 x2] :intervals z1 :z} x
+	{[y1 y2] :intervals z2 :z} y]
+    (and (region-subsumes? x1 y1) (region-subsumes? x2 y2) (= z1 z2))))
+
+ )
 
 
 (comment 

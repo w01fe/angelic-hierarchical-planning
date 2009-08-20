@@ -610,7 +610,20 @@
 
 
 
+;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
+;;;;;;;;;;;;;;;;;;;;;;;;;;                 Miscellaneous       ;;;;;;;;;;;;;;;;;;;;;;;;;;;
+;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;	 
 
+(defn compute-grasp-pose 
+  "Compute a pose for the palm_link to grasp an object at [x y z].
+   By default, sets up away from the object, for a straight-ahead grasp."
+  ([[x y z]] (compute-grasp-pose [x y z] 0.26 0))
+  ([[x y z] dist angle]
+     (make-pose 
+      [(- x (* dist (Math/cos (double angle))))
+       (- y (* dist (Math/sin (double angle))))
+       z]
+      (decode-quaternion (angle->quaternion angle)))))
 
 
 
@@ -703,3 +716,7 @@
       (encode-normalized-arm-trajectory true throw 1000)
       10))) 
   )
+
+
+
+

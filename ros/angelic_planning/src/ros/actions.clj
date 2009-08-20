@@ -87,7 +87,7 @@
     (loop []
       (Thread/sleep 1)
       (if (and (< (.getNumSubscribers goal-pub) 1) (< (.getNumSubscribers cancel-pub) 1))
-  	  (if (.hasElapsed start-time (Duration. 1.0))
+  	  (if (.hasElapsed start-time (Duration. 10.0))
 	      (do (println "Action client did not recieve subscribers"
 			   (.getNumSubscribers goal-pub) (.getNumSubscribers cancel-pub))
 		  (.logError nh "Action client did not recieve subscribers")

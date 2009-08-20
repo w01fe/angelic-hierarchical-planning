@@ -79,17 +79,6 @@
 
 ;; move arm into grasping position using rviz or perception.
 
-
-(defn compute-grasp-pose 
-  "Compute a pose for the palm_link to grasp an object at [x y z].
-   By default, sets up away from the object, for a straight-ahead grasp."
-  ([[x y z]] (compute-grasp-point [x y z] 0.26 0))
-  ([[x y z] dist angle]
-     (make-pose 
-      [(- x (* dist (Math/cos (double angle))))
-       (- y (* dist (Math/sin (double angle))))
-       z]
-      (decode-quaternion (angle->quaternion angle)))))
      
 
 ;(defn pt [x] (println x) x)
@@ -127,6 +116,9 @@
 ;    true
 ;    ))
 
+;; TODO: x coord of object
+;; TODO: constant-time for relative arm mvoement
+
 (defn grasp-object-arm 
   ([right? obj] (grasp-object-arm right? obj 0))
   ([right? obj angle]
@@ -135,11 +127,27 @@
     (when (= :succeeded 
 	     (move-arm-to-pose nh right? (compute-grasp-pose obj 0.26 angle) "/base_link" false 30.0))
 ;      (println (final-approach-arm right? obj))
-      (move-arm-to-pose-unsafe nh right? (compute-grasp-pose obj 0.15 angle) "/base_link" 10.0 1.0)
-      (close-gripper nh right?)
+      (move-arm-to-pose-unsafe nh right? (compute-grasp-pose obj 0.15 angle) "/base_link" 10.0 0.3)
+      (close-gripper nh right? 30 true)
       (Thread/sleep 3000)
       (move-arm-rel-unsafe nh right? [-0.2 0 0])
       (move-arm-to-state nh (arm-joint-state true "home") false #_ true 60.0))))
+
+
+(defn grasp-object-above 
+  ([right? obj] (grasp-object-above right? obj 0))
+  ([right? obj angle]
+    (assert (and (< 0.4 (first obj) 1.1) (< -0.8 (second obj) 0.8)))
+    (open-gripper nh right?)
+    (when (= :succeeded 
+	     (move-arm-to-pose nh right? (update-in (compute-grasp-pose obj 0.15 angle)[:position :z] + 0.12) "/base_link" false 30.0))
+;      (println (final-approach-arm right? obj))
+      (move-arm-to-pose-unsafe nh right? (compute-grasp-pose obj 0.15 angle) "/base_link" 10.0 0.3)
+      (close-gripper nh right? 30 true)
+      (Thread/sleep 3000)
+      (move-arm-rel-unsafe nh right? [-0.2 0 0])
+      (move-arm-to-state nh (arm-joint-state true "home") false #_ true 60.0))))
+
 
 ; Grasp 3: trying to do things right ...
 

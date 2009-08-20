@@ -30,7 +30,7 @@
 
 
 (ns ros.world
-  (:use   ros.ros)
+  (:use   ros.ros ros.geometry)
 	  )
   
 (set! *warn-on-reflection* true)
@@ -337,15 +337,60 @@
        :def {:class :cylinder :radius 2 :height 5}}}})
    
 
+; Hack in goals: 
+; surface should be usable surface ...
+
+(defn preprocess-world [w d3-res d2-res d2-pad]
+  "Render the world, check object properties, and normalize goals."
+  (let [w (pre-render-world w d3-res d2-res d2-pad)]
+    (into {}
+      (for [[obj-name info] w]
+	[obj-name 
+	 (condp = (:type info) 
+	   :surface 
+	     (do (assert (region-contains? (:surface info) (butlast (:xyz info))))
+		 (assert (:height info))
+		 (assert (not (:goal info)))
+		 info)
+	   :movable
+	     (do (assert (:height info))
+	         (assert (:on info))
+		 (assert (= :surface (:type (w (:on info)))))		 
+		 (assert (region-contains? (:surface (w (:on info))) (butlast (:xyz info))))
+		 (assert (> (last (:xyz info)) (:height (w (:on info)))))
+		 (if-let [[t & args] (:goal info)]
+		   (assoc info :goal
+		     [t
+		       (let [goal-surface (:surface (w t))
+			     padded-surface (shrink-xy-region goal-surface 0.1)]
+			 (condp = (count args)
+			   0 padded-surface
+			   1 (do (assert (region-subsumes? padded-surface (first args)))
+				 (first args))
+			   2 (do (assert (region-contains? padded-surface args))
+				 (make-xy-region [(first args) (first args)] [(second args) (second args)]))))])
+		   info)))]))))
+						      
+    
 
 (def *gazebo-offset* 25.65)
 (defn get-initial-world [d3-res d2-res d2-pad]
-  (pre-render-world 
-   {"cup"   {:xyz [(+ *gazebo-offset* 2.35) (+ *gazebo-offset* 0) 0.6875] :rpy [0 0 0] :on "table" :def (get-cup)}
-    "table" {:xyz [(+ *gazebo-offset* 2.28) (+ *gazebo-offset* -0.21) 0]  :rpy [0 0 0] :on nil :def (get-desk)}}
+  (preprocess-world 
+   {"cup"   {:xyz [(+ *gazebo-offset* 2.35) (+ *gazebo-offset* 0) 0.6875] :rpy [0 0 0] :def (get-cup)
+	     :type :movable :on "table" :goal ["table" ] :height 0.075
+	     }
+    "table" {:xyz [(+ *gazebo-offset* 2.28) (+ *gazebo-offset* -0.21) 0]  :rpy [0 0 0] :def (get-desk)
+	     :type :surface :surface (make-xy-region [26 29] [25 26]) :height 0.605
+	     }}
    d3-res d2-res d2-pad))
   
 
+;; Coordinates for big table, 
+[16.169146525325775 27.25444436618952 0.7661073682977223] ; window tv
+[18.870676770772384 27.197025498543947 0.7563681210328691] ; window odwalla
+[18.846492327482324 25.82203319478116 0.7479274700544063] ; tv whiteboard
+[16.033881385488314 25.926735309868786 0.7708749146139766] ; kitchen
+; table is 0.7036 in base_link, 0.07546 in /map
 
 
 (defn world-points [w] 

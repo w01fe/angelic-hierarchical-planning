@@ -124,9 +124,9 @@
 	    (println "Got bottles" bottles)
 	    ; ...
 
-	    (second (util/first-maximal-element 
-		      #(- 100 (Math/abs (double (second (second %)))))
-		      bottles))
+	    (util/first-maximal-element 
+	     #(- 100 (Math/abs (double (second (second %)))))
+	     bottles)
 	    )))))
 
 (defn find-object-rviz [nh]
@@ -139,7 +139,9 @@
 
 (defn find-object-table [nh]
   "Get the position of an object by using the table-object-detector"
-  (wait-for-table-object nh))
+  (let [[[minx miny minz] [cx cy cz] [maxx maxy maxz]]
+	(wait-for-table-object nh)]
+    [(+ minx 0.01) cy cz]))
 
 
 ; Right now, nothing sets laser to fast...
