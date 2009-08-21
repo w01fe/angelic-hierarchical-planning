@@ -9,7 +9,7 @@
 
   <include file="$(find 2dnav_pr2)/rviz/rviz_move_base.launch"/>
   <include file="$(find 3dnav_pr2)/launch/perception/laser-perception.launch"/> 
-  <include file="$(find 3dnav_pr2)/launch/planning/ompl_chomp_planning.launch"/> 
+  <include file="$(find 3dnav_pr2)/launch/planning/ompl_fake_planning.launch"/> 
   <include file="$(find 3dnav_pr2)/launch/actions/left_arm.launch"/> 
   <include file="$(find 3dnav_pr2)/launch/actions/right_arm.launch"/> 
 
