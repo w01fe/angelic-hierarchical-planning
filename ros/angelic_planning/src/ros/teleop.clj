@@ -104,7 +104,7 @@
   (close-gripper nh right?)
   (Thread/sleep 3000)
   (move-base-rel nh :x -0.3)
-  (move-arm-to-state nh (arm-joint-state true "home") false #_ true 60.0))
+  (move-arm-to-state nh (arm-joint-state right? "home") false #_ true 60.0))
 
 ; Grasp 2: servoing using arm
 
@@ -128,10 +128,10 @@
 	     (move-arm-to-pose nh right? (compute-grasp-pose obj 0.26 angle) "/base_link" false 30.0))
 ;      (println (final-approach-arm right? obj))
       (move-arm-to-pose-unsafe nh right? (compute-grasp-pose obj 0.15 angle) "/base_link" 10.0 0.3)
-      (close-gripper nh right? 30 true)
+      (close-gripper nh right?)
       (Thread/sleep 3000)
       (move-arm-rel-unsafe nh right? [-0.2 0 0])
-      (move-arm-to-state nh (arm-joint-state true "home") false #_ true 60.0))))
+      (move-arm-to-state nh (arm-joint-state right? "home") false #_ true 60.0))))
 
 
 (defn grasp-object-above 
@@ -146,7 +146,7 @@
       (close-gripper nh right? 30 true)
       (Thread/sleep 3000)
       (move-arm-rel-unsafe nh right? [-0.2 0 0])
-      (move-arm-to-state nh (arm-joint-state true "home") false #_ true 60.0))))
+      (move-arm-to-state nh (arm-joint-state right? "home") false #_ true 60.0))))
 
 
 ; Grasp 3: trying to do things right ...
@@ -158,7 +158,7 @@
   (close-gripper nh right?)
   (Thread/sleep 3000)
   (move-arm-rel-unsafe nh right? [-0.2 0 0])
-  (move-arm-to-state nh (arm-joint-state true "home") #_ false true 60.0))
+  (move-arm-to-state nh (arm-joint-state right? "home") #_ false true 60.0))
   
 
 

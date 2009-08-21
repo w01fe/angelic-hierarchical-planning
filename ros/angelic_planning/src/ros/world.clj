@@ -374,7 +374,7 @@
     
 
 (def *gazebo-offset* 25.65)
-(defn get-initial-world [d3-res d2-res d2-pad]
+(defn get-simple-world [d3-res d2-res d2-pad]
   (preprocess-world 
    {"cup"   {:xyz [(+ *gazebo-offset* 2.35) (+ *gazebo-offset* 0) 0.6875] :rpy [0 0 0] :def (get-cup)
 	     :type :movable :on "table" :goal ["table" ] :height 0.075
@@ -384,13 +384,30 @@
 	     }}
    d3-res d2-res d2-pad))
   
+(defn get-odwalla []
+  {:xyz [3 2 2] :rpy [0 0 0]
+   :def {:class :cylinder :radius 0.04 :height 0.2}})
+
+;(defn get-demo-world [d3-res d2-res d2-pad]
+;  (preprocess-world 
+;   {"table" {:xyz [17.48 26.55 0.378]  :rpy [0 0 0] 
+;	     :def {:class :box :name "table-top" :size [2.76 1.36 0.756]}
+;	     :type :surface :surface (make-xy-region [16.10 18.86] [25.87 27.23]) 
+;	     :height 0.756}
+;   {"bottle" {:xyz [16.2 26.0 0.85] :rpy [0 0 0] :def (get-odwalla)
+;	     :type :movable :on "table" :goal ["table" ] :height 0.075	      
+
+;    }))
 
 ;; Coordinates for big table, 
-[16.169146525325775 27.25444436618952 0.7661073682977223] ; window tv
-[18.870676770772384 27.197025498543947 0.7563681210328691] ; window odwalla
-[18.846492327482324 25.82203319478116 0.7479274700544063] ; tv whiteboard
-[16.033881385488314 25.926735309868786 0.7708749146139766] ; kitchen
-; table is 0.7036 in base_link, 0.07546 in /map
+
+ ; kitchen
+
+;[16.169146525325775 27.25444436618952 0.7661073682977223] ; window tv
+;[18.870676770772384 27.197025498543947 0.7563681210328691] ; window odwalla
+;[18.846492327482324 25.82203319478116 0.7479274700544063] ; tv whiteboard
+;[16.033881385488314 25.926735309868786 0.7708749146139766] ; kitchen
+; table is 0.7036 in base_link, 0.7546 in /map
 
 
 (defn world-points [w] 

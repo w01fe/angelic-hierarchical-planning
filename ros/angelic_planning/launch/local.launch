@@ -1,7 +1,8 @@
 <launch>
   <master auto="start"/>
 
-  <include file="$(find 2dnav_pr2)/rviz/rviz_move_base.launch"/>
+<!--  <include file="$(find 2dnav_pr2)/rviz/rviz_move_base.launch"/> -->
+<node pkg="rviz" type="rviz"/>
 
  
 <!--  <node pkg="tf_node" type="tf_node" /> -->

@@ -140,7 +140,7 @@
 ;;;;;;;;;;;;;;;;;;;;;;;;; Forward and inverse arm kinematics ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
 ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
 
-
+;; TODO: take out hack for left arm miscalibration
 (defn inverse-kinematics
   "Returns a final joint map (possibly in collision) or nil for failure.
    Pose-stamped must be a pose of a *_gripper_palm_link."
@@ -155,14 +155,19 @@
 		 :header {:frame_id "/torso_lift_link"}
 		 :pose   (transform-raw-pose-tf nh frame-in "/torso_lift_link" (:pose pose-stamped)))))] 
     (let [init-joints (seq init-joint-map)]
-     (try 
+      (try 
+       (let [sol 
       (into {} (map vector (map first init-joints) 
        (:solution (call-srv-cached nh (str "/pr2_ik_" (if right? "right" "left") "_arm/ik_service")  
 		    (map-msg 
 		     {:class IKService$Request
 		      :data {:joint_names (map first init-joints)
 			     :positions   (map second init-joints)
-			     :pose_stamped pose-stamped}})))))
+			     :pose_stamped pose-stamped}})))))]
+	 (println sol)
+	 (if right? sol
+	     (assoc sol "l_wrist_roll_joint"
+		    (norm-angle (+ (sol "l_wrist_roll_joint") 2.1)))))
      (catch RosException e
        nil
        )))))
@@ -541,6 +546,19 @@
 	 (Duration. (double timeout))))))
 
 (defn move-arm-to-pose
+  "Move the gripper to a new pose."
+  ([nh right? pose] (move-arm-to-pose nh right? pose "/base_link" false 30.0))
+  ([nh right? pose frame upright? timeout]
+   (let [ik (inverse-kinematics nh right? 
+	     {:header {:frame_id frame}
+	      :pose   pose} 
+	     (:joint-angle-map (get-current-arm-state nh right?)))]
+    (if (not ik) (println "Couldn't find IK solution; not moving")
+      (move-arm-to-state nh (make-robot-arm-state right? ik) false timeout)))))
+
+;; TODO: fix!
+#_
+(defn move-arm-to-pose
   "Use move_arm to move the gripper to a specific pose." 
   ([nh right? pose] (move-arm-to-pose nh right? pose "/base_link" false 60.0))
   ([nh right? pose frame upright? timeout]
@@ -627,14 +645,13 @@
 
 
 
+; right arm tucked state
 
+; {:class :ros.robot/RightArmState, :joint-angle-map {"r_shoulder_pan_joint" 0.12808124450881173, "r_shoulder_lift_joint" 1.0476205587710026, "r_upper_arm_roll_joint" -1.374350229675983, "r_elbow_flex_joint" -1.5358192497513936, "r_forearm_roll_joint" 6.318809851584663, "r_wrist_flex_joint" 0.09424513887796726, "r_wrist_roll_joint" -0.007835282492778366}}
 
+; left arm tucked state
 
-
-
-
-
-
+;{:class :ros.robot/LeftArmState, :joint-angle-map {"l_shoulder_pan_joint" 0.14416359068194412, "l_shoulder_lift_joint" 0.510993149881035, "l_upper_arm_roll_joint" 1.6163442732832822, "l_elbow_flex_joint" -1.7717788859762282, "l_forearm_roll_joint" -8.279420860160453, "l_wrist_flex_joint" 0.23690940173628183, "l_wrist_roll_joint" 5.131353782089386}}
 
 
 
