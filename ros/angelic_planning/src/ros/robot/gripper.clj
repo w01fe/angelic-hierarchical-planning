@@ -48,8 +48,10 @@
 (defstruct robot-gripper-state :class :open? :force :holding)
 
 (defn make-robot-gripper-state 
+  "What it sounds like.  Holding should eventually describe the object geometry; 
+   for now, it's treated as a boolean: holding an odwalla bottle or not."
   ([right? open?]
-     (make-robot-gripper-state right? open? 100 false))
+     (make-robot-gripper-state right? open? (if open? 100 60) false))
   ([right? open? force holding]
      (when open? (assert (not holding)))
      (struct robot-gripper-state (if right? ::RightGripperState ::LeftGripperState) 
@@ -76,37 +78,10 @@
     ))
 
 
-;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;; Actuating gripper  ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
-
-(defn apply-gripper-force [#^NodeHandle nh right? force]
-  (start-action-async nh (str "/actuate_gripper_" (if right? "right" "left") "_arm")
-	      ActuateGripperAction {:data force} true))
-
-; Running synchronously results in long lag times...
-;  (run-action nh (str "/actuate_gripper_" (if right? "right" "left") "_arm")
-;	      ActuateGripperAction {:data force}))
-
-(defn move-gripper-to-state 
-  ([nh gs]
-     (apply-gripper-force nh (isa? (:class gs) ::Right) (* (:force gs) (if (:open? gs) 1 -1)))))
-
-
-(defn open-gripper [nh right?]
-  (apply-gripper-force nh right? 100)
-;  (unattach-bottle nh)
-  )
-
-(defn close-gripper 
-  ([nh right?] (close-gripper nh right? 60 false))
-  ([nh right? force empty?] 
-     (apply-gripper-force nh right? (- force))
- ;    (when-not empty? (attach-bottle nh))
-     ))
-
 
 ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;; Attaching objects ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
 
-;; TODO: integrate with "holding" above, make generic.
+;; TODO:  make generic.
 
 (defn attach-bottle [#^NodeHandle nh]
   (put-single-message-cached nh "/attach_object" 
@@ -130,6 +105,34 @@
     ))
 
 
+
+
+
+;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;; Actuating gripper  ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
+
+(defn apply-gripper-force [#^NodeHandle nh right? force]
+  (start-action-async nh (str "/actuate_gripper_" (if right? "right" "left") "_arm")
+	      ActuateGripperAction {:data force} true))
+
+; Running synchronously results in long lag times...
+;  (run-action nh (str "/actuate_gripper_" (if right? "right" "left") "_arm")
+;	      ActuateGripperAction {:data force}))
+
+(defn move-gripper-to-state 
+  ([nh gs]
+    (apply-gripper-force nh (isa? (:class gs) ::Right) (* (:force gs) (if (:open? gs) 1 -1)))
+    (if (:holding gs) (attach-bottle nh) (unattach-bottle nh))))
+
+
+(defn open-gripper [nh right?]
+  (apply-gripper-force nh right? 100)
+  )
+
+(defn close-gripper 
+  ([nh right?] (close-gripper nh right? 60 false))
+  ([nh right? force empty?] 
+     (apply-gripper-force nh right? (- force))
+     ))
 
 
 

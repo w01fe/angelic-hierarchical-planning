@@ -83,15 +83,16 @@
   {:class ::DummyActionSpace})
 
 
-(defn make-angelic-robot-env [robot-env goal-pred]
+(defn make-angelic-robot-env [robot-env]
   (envs/make-environment
    robot-env
    (envs/make-state-set str)
    (make-dummy-action-space)
-   (envs/make-simple-condition goal-pred true)))
+   (constantly true)))
+   ; TODO: proper goal pred
+;   (envs/make-simple-condition goal-pred true)
 
 
-; Types of goals: object to region on table, object to table (reduce to prev), object near object (?)
 
 
 ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;; Valuations ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
@@ -131,12 +132,13 @@
 
 (defn make-angelic-robot-hierarchy 
   "Goal-pred should work on either abstract or concrete env."
-  [nh initial-plans env goal-pred sample-depths]
+  [nh initial-plans env sample-depths]
   (let [h {:class ::AngelicRobotHierarchy 
-	   :nh nh :angelic-env (make-angelic-robot-env env goal-pred) 
+	   :nh nh :angelic-env (make-angelic-robot-env env) 
 	   :sample-depths sample-depths}]
     [(make-angelic-top-level-robot-action initial-plans h)
-     (make-angelic-finish-action goal-pred h)]))
+     (make-angelic-finish-action (constantly true) h)]))
+ ;; TODO: real goal.
 
 
 (defmethod hierarchies/hla-primitive? ::AngelicRobotAction [hla]
@@ -182,6 +184,7 @@
 	h (:hierarchy hla)
 	[env rew-so-far] (util/safe-singleton (angelic/explicit-valuation-map opt-val))]
     (assert (= (:class env) ::ra/RobotEnv))
+    (println "Refining" (hierarchies/hla-name hla))
     (for [plan 
 	  (if (ra/robot-hla-discrete-refinements? a)
 	    (ra/robot-hla-refinements (:nh h) a env)
@@ -189,7 +192,7 @@
 	      (filter identity
 		      (take num-refs
 			    (repeatedly #(ra/sample-robot-hla-refinement (:nh h) a env))))))]
-      (for [action (ra/get-action-seq plan)]
+      (for [action plan]
 	(do 
 ;	  (println (:class action))
 	  (make-angelic-robot-action action h))))))
@@ -282,4 +285,9 @@
 
  (aha-star-search (alt-node (make-angelic-robot-hierarchy nh [[(make-base-region-action (make-xytheta-region [26.5 27.3] [25 26] [0 (* 2 Math/PI)])) (make-arm-pose-action false (make-pose [27.43 25.44 0.7] [0 0 0 1]))]] (get-default-env nh) (constantly true) {:ros.robot-actions/BaseRegionAction 10 :ros.robot-actions/ArmPoseAction 5}) {:graph? false :cache? false :ref-choice-fn first-choice-fn}))
 
+ (aha-star-search (alt-node (make-angelic-robot-hierarchy nh [[(make-base-region-action (make-xytheta-region [16 17] [25 26] [0 (* 2 Math/PI)])) (make-grasp-hla false "bottle")]] (get-default-env nh) {:ros.robot-actions/BaseRegionAction 10 :ros.robot-actions/ArmGraspHLA 5}) {:graph? false :cache? false :ref-choice-fn first-choice-fn}))
+
+ (aha-star-search (alt-node (make-angelic-robot-hierarchy nh [[(make-gripper-action (make-robot-gripper-state false true)) (make-base-region-action (make-xytheta-region [16 17] [25 26] [0 (* 2 Math/PI)])) (make-grasp-hla false "bottle")]] (get-default-env nh) {:ros.robot-actions/BaseRegionAction 10 :ros.robot-actions/ArmGraspHLA 5}) {:graph? false :cache? false :ref-choice-fn first-choice-fn}))
+
+  (aha-star-search (alt-node (make-angelic-robot-hierarchy nh [[(make-gripper-action (make-robot-gripper-state false true)) (make-base-region-action (make-xytheta-region [15.6 16] [25 27] [0 (* 2 Math/PI)])) (make-grasp-hla false "bottle") (make-drop-hla false [16.2 26.3 0.85])]] (get-default-env nh) {:ros.robot-actions/BaseRegionAction 10  :ros.robot-actions/ArmGraspHLA 5  :ros.robot-actions/ArmDropHLA 5  :ros.robot-actions/ArmPoseAction 1 }) {:graph? false :cache? false :ref-choice-fn first-choice-fn}))
  )

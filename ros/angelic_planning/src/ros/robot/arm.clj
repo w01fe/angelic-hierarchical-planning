@@ -94,11 +94,14 @@
 
 (def *larm-joint-states*
      {"up"                [1.033456 -0.218231 0.115697 -1.082723 -2.929992 0.107283 -1.695491]
-      "tucked"            [-0.000020 0.899529 1.569952 -1.550905 0.000192 0.100453 -0.000417]})
+      "tucked"            [0.144164 0.510993 1.616344 -1.771779 -8.279421 0.236909 5.131354]
+      ; [-0.000020 0.899529 1.569952 -1.550905 0.000192 0.100453 -0.000417]
+      })
 
 (def *rarm-joint-states*
      {"up"                [-1.060668 -0.336501 -0.099800 -0.974440 3.106211 0.139013 2.735894]
-      "tucked"            [-0.000186 1.286251 -1.569942 -1.570996 -0.000091 0.101947 0.000223]
+      "tucked"            [0.12808 1.04762 -1.3743 -1.5358 6.3188 0.0942 -0.0078]
+      ;[-0.000186 1.286251 -1.569942 -1.570996 -0.000091 0.101947 0.000223]
       "home"              [0.39146 0.770561 -0.593027 -1.99714 0.742525 1.60109 2.63896]
       "grasp_bar"         [-0.112613 -0.215548 -2.5479 0.002441 -0.14698 0.263452 2.53254]
       "grasp_bar_low"     [-0.0888183 -0.150892 -0.134794 -0.0605298 2.96289 0.268543 -3.0757]
@@ -164,7 +167,7 @@
 		      :data {:joint_names (map first init-joints)
 			     :positions   (map second init-joints)
 			     :pose_stamped pose-stamped}})))))]
-	 (println sol)
+	 ;(println sol)
 	 (if right? sol
 	     (assoc sol "l_wrist_roll_joint"
 		    (norm-angle (+ (sol "l_wrist_roll_joint") 2.1)))))
@@ -209,6 +212,13 @@
       (map-msg (world->collision-map world)) )
     (robot-forward-kinematics nh robot)))
 
+(defn object-forward-kinematics
+  "Get the current approximate pose (msg) of an object in the gripper, given a robot state."
+  [nh right? robot]
+  (transform-pose
+   (make-pose [0.16 0 0] [0 0 0 1])
+   (safe-get* (second (robot-forward-kinematics nh robot))
+    (if right? "r_gripper_palm_link" "l_gripper_palm_link"))))
 
 
 
@@ -225,11 +235,11 @@
   [right? pose-stamped]
   (let [pos (pose-position (:pose pose-stamped))
 	[x y z] pos]
-     (println pos (l2-distance [0 0 0] pos))
+;     (println pos (l2-distance [0 0 0] pos))
     (cond (< x 0) 
-            (println "Skipping IK; can't reach behind robot.")
+            nil ;(println "Skipping IK; can't reach behind robot.")
 	  (> (l2-distance [0 0 0] pos) 0.9)
-	    (println "Skipping IK; can't reach more than 0.9 meters away.")
+	    nil ; (println "Skipping IK; can't reach more than 0.9 meters away.")
 	  ; ...
           :else true)))
 
@@ -255,9 +265,9 @@
 			(if collision "" " not ") "in collision.") 
 	       (when (not collision)
 		 sol))
-	     (println "Failed to find IK solution"))
+	     nil #_(println "Failed to find IK solution"))
 	   (when (> tries 0)
-	     (println "IK failed; retrying with random initial joints.")
+	     nil #_ (println "IK failed; retrying with random initial joints.")
 	     (recur (dec tries) (random-arm-joint-map nh right?)))))))))
 
 
@@ -643,15 +653,6 @@
        z]
       (decode-quaternion (angle->quaternion angle)))))
 
-
-
-; right arm tucked state
-
-; {:class :ros.robot/RightArmState, :joint-angle-map {"r_shoulder_pan_joint" 0.12808124450881173, "r_shoulder_lift_joint" 1.0476205587710026, "r_upper_arm_roll_joint" -1.374350229675983, "r_elbow_flex_joint" -1.5358192497513936, "r_forearm_roll_joint" 6.318809851584663, "r_wrist_flex_joint" 0.09424513887796726, "r_wrist_roll_joint" -0.007835282492778366}}
-
-; left arm tucked state
-
-;{:class :ros.robot/LeftArmState, :joint-angle-map {"l_shoulder_pan_joint" 0.14416359068194412, "l_shoulder_lift_joint" 0.510993149881035, "l_upper_arm_roll_joint" 1.6163442732832822, "l_elbow_flex_joint" -1.7717788859762282, "l_forearm_roll_joint" -8.279420860160453, "l_wrist_flex_joint" 0.23690940173628183, "l_wrist_roll_joint" 5.131353782089386}}
 
 
 

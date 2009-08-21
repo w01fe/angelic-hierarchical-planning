@@ -110,7 +110,7 @@
 (defn find-table-objects [nh]
   (:table (call-srv nh "/table_object_detector" (map-msg FindTable$Request {}))))
 
-(defn wait-for-table-object [nh]
+(defn wait-for-table-objects [nh]
   (laser-slow)
 ;  (Thread/sleep 2000)
   (loop [table (find-table-objects nh)]
@@ -118,16 +118,20 @@
         (do (print ".")
 	    (Thread/sleep 100)
 	    (recur (find-table-objects nh)))
-      (do (assert (= (:frame_id (:header table)) "/base_link")) 
-	  (let [bottles (map (fn [obj] (map #(decode-point (% obj)) [:min_bound :center :max_bound])) 
-			     (:objects table))]
-	    (println "Got bottles" bottles)
-	    ; ...
+      table)))
 
-	    (util/first-maximal-element 
-	     #(- 100 (Math/abs (double (second (second %)))))
-	     bottles)
-	    )))))
+(defn extract-center-table-object [table]
+  (assert (seq (:objects table)))
+  (assert (= (:frame_id (:header table)) "/base_link")) 
+  (let [bottles (map (fn [obj] (map #(decode-point (% obj)) [:min_bound :center :max_bound])) 
+		     (:objects table))]
+    (println "Got bottles" bottles)  
+    (util/first-maximal-element 
+     #(- 100 (Math/abs (double (second (second %)))))
+     bottles)
+    ))
+
+
 
 (defn find-object-rviz [nh]
   "Get the position of an object by waiting for the user to click on a point in rviz"
@@ -140,8 +144,28 @@
 (defn find-object-table [nh]
   "Get the position of an object by using the table-object-detector"
   (let [[[minx miny minz] [cx cy cz] [maxx maxy maxz]]
-	(wait-for-table-object nh)]
+	(extract-center-table-object (wait-for-table-objects nh))]
     [(+ minx 0.01) cy cz]))
+
+(defn find-specific-object [nh map-pt max-dist]
+  "Get the exact position of object in base-link, given an approximate map location."
+  (let [table   (util/make-safe (find-table-objects nh))
+	[x y z] (transform-point-tf nh "/map" "/base_link" map-pt) 
+	bottles (map (fn [obj] (map #(decode-point (% obj)) [:min_bound :center :max_bound])) 
+		     (:objects table))
+	[[minx miny minz] [cx cy cz] [maxx maxy maxz] :as best] 
+	 (util/first-maximal-element 
+	  (fn [[min [cx cy] max]]
+	    (- 0 (Math/pow (double (- cx x)) 2) (Math/pow (double (- cy y)) 2)))
+	  bottles)
+	dist (Math/sqrt (+ (Math/pow (double (- cx x)) 2) (Math/pow (double (- cy y)) 2)))]
+    (assert (= (:frame_id (:header table)) "/base_link")) 
+    (println "Got best bottle" best "with distance to given point" dist) 
+    (assert (< dist max-dist))
+    (assert (< minz z maxz))
+    [(+ minx 0.01) cy cz]))
+
+  
 
 
 ; Right now, nothing sets laser to fast...
