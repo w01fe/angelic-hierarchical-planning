@@ -83,8 +83,10 @@
 
 ;; TODO:  make generic.
 
+
 (defn attach-bottle [#^NodeHandle nh]
-  (put-single-message-cached nh "/attach_object" 
+  (println "Not attaching objects for now.")
+#_  (put-single-message-cached nh "/attach_object" 
     (map-msg AttachedObject
      {:header {:frame_id "r_gripper_palm_link" :stamp (.now nh)}
       :link_name "r_gripper_palm_link"
@@ -92,7 +94,9 @@
 		 :dimensions [0.075 0.30]
 		 :triangles []
 		 :vertices []}]
-      :poses   [(make-pose [0.16 0 0] [0 0 0 1])]}) 
+      :poses   [(make-pose [0.16 0 0] [0 0 0 1])]
+      :touch_links ??
+      }) 
     ))
 
 (defn unattach-bottle [nh]
@@ -101,7 +105,9 @@
      {:header {:frame_id "r_gripper_palm_link"}
       :link_name "r_gripper_palm_link"
       :objects []
-      :poses []}) 
+      :poses []
+      :touch_links []
+      }) 
     ))
 
 

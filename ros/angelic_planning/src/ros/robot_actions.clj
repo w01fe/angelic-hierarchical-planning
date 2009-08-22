@@ -100,6 +100,16 @@
       (nth refs (rand-int (count refs))))))
 
 
+(defn robot-plan-result [nh actions env]
+  (loop [actions actions env env rew 0]
+    (if (empty? actions) [env rew]
+      (when-let [[next-env step-rew] (robot-primitive-result nh (first actions) env)]
+	(recur (next actions) next-env (+ rew step-rew))))))
+
+(defn execute-robot-plan  [nh actions]
+  (doseq [action actions]
+    (execute-robot-primitive nh action)))
+
 
 ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;; Base - Point ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
 
@@ -189,7 +199,7 @@
 		(let [[surface-name surface-def] (first surfaces)]
 		  (assoc world now-holding
 		    (assoc obj :on surface-name 
-			   :xyz [(first coord) (second coord) (+ (:height surface-def)
+			   :xyz [(first obj-pt) (second obj-pt) (+ (:height surface-def)
 								 (/ (:height obj) 2))]))))
 	    will-hold 
 	      (let [obj (safe-get* world will-hold)]
@@ -286,10 +296,13 @@
 
 (derive ::ArmPoseAction ::RobotHLA)
 
-(defstruct arm-pose-action :class :right? :pose)
+(defstruct arm-pose-action :class :right? :pose :frame)
 
-(defn make-arm-pose-action [right? map-gripper-pose]
-  (struct arm-pose-action ::ArmPoseAction right? map-gripper-pose))
+(defn make-arm-pose-action 
+  ([right? map-gripper-pose] (make-arm-pose-action right? map-gripper-pose "/map"))
+  ([right? gripper-pose frame]
+     (assert (#{"/map" "/base_link"} frame))
+     (struct arm-pose-action ::ArmPoseAction right? map-gripper-pose frame)))
 
 (defmethod robot-hla-discrete-refinements? ::ArmPoseAction [a] false)
 
@@ -297,7 +310,9 @@
   (let [r?  (:right? a)
 	ik  (safe-inverse-kinematics 
 	     nh r? 
-	     (map-pose->tll-pose-stamped (:pose a) (:base (:robot env)))
+	     (condp = (:frame a) 
+	       "/map" (map-pose->tll-pose-stamped (:pose a) (:base (:robot env)))
+	       "/base_link" {:header {:frame_id "/base_link"} :pose (:pose a)})
 	     (:robot env) (:world env) 0 true)]
     (when ik
       [(make-arm-joint-action (make-robot-arm-state r? ik))])))
@@ -426,6 +441,8 @@
 	(make-interval-region [(/ Math/PI -4) (/ Math/PI 4)]))
       (make-gripper-action 
        (make-robot-gripper-state right? false 60 obj-name))
+      (make-arm-pose-action right?
+       (
       ; arm pose rel action?
       ]]))
 	           
