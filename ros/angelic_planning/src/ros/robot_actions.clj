@@ -302,7 +302,40 @@
   ([right? map-gripper-pose] (make-arm-pose-action right? map-gripper-pose "/map"))
   ([right? gripper-pose frame]
      (assert (#{"/map" "/base_link"} frame))
-     (struct arm-pose-action ::ArmPoseAction right? map-gripper-pose frame)))
+     (struct arm-pose-action ::ArmPoseAction right? gripper-pose frame)))
+
+(defmethod robot-hla-discrete-refinements? ::ArmPoseAction [a] false)
+
+(defmethod sample-robot-hla-refinement ::ArmPoseAction [nh a env]
+  (let [r?  (:right? a)
+	ik  (safe-inverse-kinematics 
+	     nh r? 
+	     (condp = (:frame a) 
+	       "/map" (map-pose->tll-pose-stamped (:pose a) (:base (:robot env)))
+	       "/base_link" {:header {:frame_id "/base_link"} :pose (:pose a)})
+	     (:robot env) (:world env) 0 true)]
+    (when ik
+      [(make-arm-joint-action (make-robot-arm-state r? ik))])))
+
+(defmethod robot-action-name ::ArmPoseAction [a]
+  (vec 
+   (cons (if (:right? a) 'right-arm-to-pose 'left-arm-to-pose)
+	 (decode-pose (:pose a)))))
+
+
+;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;; Arm - Relative Pose  ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
+
+; Attempt to move the arm (i.e. palm link) by a particular pose
+
+(derive ::ArmPoseAction ::RobotHLA)
+
+(defstruct arm-pose-action :class :right? :pose :frame)
+
+(defn make-arm-pose-action 
+  ([right? map-gripper-pose] (make-arm-pose-action right? map-gripper-pose "/map"))
+  ([right? gripper-pose frame]
+     (assert (#{"/map" "/base_link"} frame))
+     (struct arm-pose-action ::ArmPoseAction right? gripper-pose frame)))
 
 (defmethod robot-hla-discrete-refinements? ::ArmPoseAction [a] false)
 
@@ -442,7 +475,7 @@
       (make-gripper-action 
        (make-robot-gripper-state right? false 60 obj-name))
       (make-arm-pose-action right?
-       (
+       (compute-grasp-pose 
       ; arm pose rel action?
       ]]))
 	           
