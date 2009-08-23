@@ -325,35 +325,36 @@
 
 ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;; Arm - Relative Pose  ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
 
-; Attempt to move the arm (i.e. palm link) by a particular pose
+; Attempt to move the arm (i.e. palm link) by a particular diff, in either base_link
+; or gripper frame.
 
-(derive ::ArmPoseAction ::RobotHLA)
+(derive ::ArmRelPoseAction ::RobotHLA)
 
-(defstruct arm-pose-action :class :right? :pose :frame)
+(defstruct arm-rel-pose-action :class :right? :dxzy :gripper?)
 
 (defn make-arm-pose-action 
-  ([right? map-gripper-pose] (make-arm-pose-action right? map-gripper-pose "/map"))
-  ([right? gripper-pose frame]
-     (assert (#{"/map" "/base_link"} frame))
-     (struct arm-pose-action ::ArmPoseAction right? gripper-pose frame)))
+  ([right? dxyz gripper?]
+     (struct arm-rel-pose-action ::ArmRelPoseAction right? dxyz gripper?)))
 
-(defmethod robot-hla-discrete-refinements? ::ArmPoseAction [a] false)
+(defmethod robot-hla-discrete-refinements? ::ArmRelPoseAction [a] true)
 
-(defmethod sample-robot-hla-refinement ::ArmPoseAction [nh a env]
-  (let [r?  (:right? a)
-	ik  (safe-inverse-kinematics 
-	     nh r? 
-	     (condp = (:frame a) 
-	       "/map" (map-pose->tll-pose-stamped (:pose a) (:base (:robot env)))
-	       "/base_link" {:header {:frame_id "/base_link"} :pose (:pose a)})
-	     (:robot env) (:world env) 0 true)]
-    (when ik
-      [(make-arm-joint-action (make-robot-arm-state r? ik))])))
+(defmethod robot-hla-refinements ::ArmRelPoseAction [nh a env]
+  (let [{:keys [right? dxyz gripper?] a}
+	gripper-link (if right? "r_gripper_palm_link" "l_gripper_palm_link")
+	cur-pose (safe-get* (second (robot-forward-kinematics nh (:robot env)))
+			    gripper-link)]
+    [(make-arm-pose-action right?
+      (if gripper? ...
+	  (update-in cur-pose [:position]
+	    transform-pose (make-pose dxyz [0 0 0 1]))
+	 (update-in cur-pose [:position] add-points (make-point dxyz)))
+      "/base_link")]))
+	
 
-(defmethod robot-action-name ::ArmPoseAction [a]
-  (vec 
-   (cons (if (:right? a) 'right-arm-to-pose 'left-arm-to-pose)
-	 (decode-pose (:pose a)))))
+(defmethod robot-action-name ::ArmRelPoseAction [a]
+  [(if (:right? a) 'right-arm-rel-pose 'left-arm-rel-pose)
+   (:dxyz a)
+   (if (gripper? a) :gripper :base_link)])
 
 
 ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;; Arm - Specific Grasp  ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
@@ -474,13 +475,63 @@
 	(make-interval-region [(/ Math/PI -4) (/ Math/PI 4)]))
       (make-gripper-action 
        (make-robot-gripper-state right? false 60 obj-name))
-      (make-arm-pose-action right?
-       (compute-grasp-pose 
-      ; arm pose rel action?
+      (make-arm-rel-pose-action right? [-0.1 0 0.05] false)
       ]]))
 	           
 (defmethod robot-action-name ::GraspHLA [a]
   ['grasp (:right? a) (:obj-name a)])
+
+
+
+;;;;;;;;;;;;;;;;;;;;;;;;;; Arm+ Gripper + Base; Pickup  ;;;;;;;;;;;;;;;;;;;;;;;;;;;;
+
+(defn compute-base-grasp-region 
+  "Given a world and object, compute a good base region for pickup.   
+   Return nil if no pose is thought feasible."
+  [world obj-name]
+  (let [obj     (safe-get* world obj-name)
+	[x y _]  (:xyz obj)
+	table   (safe-get* world (:on obj))
+	[[minx maxx] [miny maxy]] (get-xy-region-extent (:surface table))]
+    (assert (and (<= minx x maxx) (<= miny y maxy)))
+    (let [miny? (< (Math/abs (double (- miny y))) (Math/abs (double (- maxy y))))
+	  [diry edgey] (if miny? [-1 miny] [1 maxy])
+	  disty        (Math/abs (double (- edgey y)))      
+          minx? (< (Math/abs (double (- minx x))) (Math/abs (double (- maxx x))))
+	  [dirx edgex] (if minx? [minx -1] [maxx 1])
+	  distx        (Math/abs (double (- edgex x)))
+	  x?           (< distx disty)]
+      (when (< (min distx disty?) 0.3)
+	(if (not x?)
+	  (make-xytheta-region
+	   [(- x 0.4) (+ x 0.4)]
+	   (sort [(+ y (* diry 1.0)) (+ y (* diry 0.5))])
+	   [(+ (/ Math/PI 2) (if min? 0 Math/PI)) (+ (/ Math/PI 2) (if min? 0 Math/PI))]
+	  (make-robot-base-state (- x (* dir 0.1)) (+ y (* dir 1.0)) ))))
+
+(derive ::GoGraspHLA ::RobotHLA)
+
+(defstruct go-grasp-hla :class :right? :obj-name)
+
+(defn make-go-grasp-hla [right? obj-name]
+  (struct go-grasp-hla ::GoGraspHLA right? obj-name))
+
+(defmethod robot-hla-discrete-refinements? ::GoGraspHLA [a] true)
+
+;; TODO: use base pose of robot to assist in sampling feasible poses.
+(defmethod robot-hla-refinements ::GoGraspHLA [nh a env]
+  (let [{:keys [right? obj-name]} a]
+    [[(make-arm-grasp-hla right? 
+	(:xyz (safe-get* (:world env) obj-name)) 
+	(make-interval-region [(/ Math/PI -4) (/ Math/PI 4)]))
+      (make-gripper-action 
+       (make-robot-gripper-state right? false 60 obj-name))
+      (make-arm-rel-pose-action right? [-0.1 0 0.05] false)
+      ]]))
+	           
+(defmethod robot-action-name ::GoGraspHLA [a]
+  ['go-grasp (:right? a) (:obj-name a)])
+
 
 
 
@@ -504,7 +555,7 @@
 	(make-interval-region [(/ Math/PI -1) (/ Math/PI 1)]))
       (make-gripper-action 
        (make-robot-gripper-state right? true))
-      ; arm pose rel action?
+      (make-arm-rel-pose-action right? [-0.1 0 0] true)
       ]]))
 	           
 (defmethod robot-action-name ::DropHLA [a]
