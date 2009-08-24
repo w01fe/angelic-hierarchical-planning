@@ -274,7 +274,11 @@
    (safe-get* (second (robot-forward-kinematics nh robot))
     (if right? "r_gripper_palm_link" "l_gripper_palm_link"))))
 
-
+(defn object-fk-point-stamped
+  [nh right? robot]
+  {:class PointStamped
+   :header {:frame_id "/map"}
+   :point  (:position (object-forward-kinematics nh right? robot))})
 
 
 (defn feasible-ik-pose? 

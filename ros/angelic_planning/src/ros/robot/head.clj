@@ -40,3 +40,27 @@
 (defn look-at [nh base-link-xyz]
   (point-head nh {:header {:frame_id "/base_link"}
 		  :point  (make-point base-link-xyz)}))
+
+(defonce *head-point-stamped* (atom nil))
+
+(defn track-head
+  "Start the head tracking a particular point-stamped, or switch tracking to a new point-stamped.
+   Pass nil to stop head tracking."
+  ([nh] (track-head nh {:header {:frame_id "/base_link"} :point (make-point [1 0 1])}))
+  ([nh point-stamped]
+     (let [start? (and point-stamped (not @*head-point-stamped*))]
+       (reset! *head-point-stamped* point-stamped)
+       (when start?
+	 (.run 
+	  (Thread. 
+	   (proxy [Runnable] []
+	    (run [] 
+	     (loop []
+	       (when-let [pt @*head-point-stamped*]
+		 (point-head nh pt)
+		 (Thread/sleep 100)
+		 (recur)))))))))))
+
+
+       
+       

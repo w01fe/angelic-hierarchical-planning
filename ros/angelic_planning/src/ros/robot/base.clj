@@ -77,6 +77,13 @@
 	    :orientation (angle->quaternion (:theta base-state))}})
 
 
+(defn base-state->point-stamped [base-state]
+  {:class PointStamped
+   :header {:frame_id "/map"}
+   :point {:x (:x base-state) :y (:y base-state) :z 0}})
+
+
+
 
 (let [mem (atom {})]
   (def get-current-base-pose 

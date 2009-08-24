@@ -69,13 +69,14 @@
 		       [(str cr "_gripper_" finger "_finger_" joint) (* *gripper-mul* sep)])))))
 
 
+(defn get-current-gripper-separation [nh right?] 
+  (:position (first (filter #(= (:name %) (str (if right? "r" "l") "_gripper_joint"))
+			    (:joint_states (get-current-mechanism-state nh))))))
+
 (defn get-current-gripper-state [nh right?]
   (try 
     (make-robot-gripper-state right? 
-      (>
-       (:position (first (filter #(= (:name %) (str (if right? "r" "l") "_gripper_joint"))
- 			      (:joint_states (get-current-mechanism-state nh)))))
-       0.06)
+      (> (get-current-gripper-separation nh right?) 0.06)
      )
     (catch Exception e
       (println "Presuming" right? "gripper missing.")

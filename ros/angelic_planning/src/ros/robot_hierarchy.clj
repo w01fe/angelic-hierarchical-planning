@@ -300,15 +300,11 @@
 
 ; Working plan to move base and move a bottle!
   (aha-star-search (alt-node (make-angelic-robot-hierarchy nh [[(make-gripper-action (make-robot-gripper-state true true))  (make-go-grasp-hla true "bottle") (make-arm-joint-action (arm-joint-state true "tucked")) (make-go-drop-hla true "table" [17.8 26.1 0.82])]] (get-default-env nh) {:ros.robot-actions/BaseRegionAction 5  :ros.robot-actions/ArmGraspHLA 5  :ros.robot-actions/ArmDropHLA 3  :ros.robot-actions/ArmPoseAction 5}) {:graph? false :cache? false :ref-choice-fn first-choice-fn}))
- )
+ 
 
 ; Move base and move two bottles.
 (aha-star-search (alt-node (make-angelic-robot-hierarchy nh [[(make-gripper-action (make-robot-gripper-state true true))  (make-go-grasp-hla true "bottle2") (make-arm-joint-action (arm-joint-state true "tucked")) (make-go-drop-hla true "table" [16.2 26.5 0.82]) (make-arm-joint-action (arm-joint-state true "tucked")) (make-go-grasp-hla true "bottle") (make-arm-joint-action (arm-joint-state true "tucked")) (make-go-drop-hla true "table" [17.8 26.0 0.82]) (make-arm-joint-action (arm-joint-state true "tucked"))]] (get-default-env nh) {:ros.robot-actions/BaseRegionAction 5  :ros.robot-actions/ArmGraspHLA 3  :ros.robot-actions/ArmDropHLA 3  :ros.robot-actions/ArmPoseAction 3}) {:graph? false :cache? false :ref-choice-fn first-choice-fn}))
 
+)
 ;; TODO: better search control
-;; TODO: head pointing!
-;; TODO: check for successful grasp.
-;; TODO: fix overzealous base movement
-;; TODO: fix non-executing unsafe trajectories.
-;; TODO: fix when bottle is not where we expected, and we cant' reach it
-;;  (should also check for pregrasp pose when we plan!)
+;; TODO: error recovery (failed grasp, failed unsafe trajectory, failed detection/reach, etc.)

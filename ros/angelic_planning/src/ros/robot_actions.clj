@@ -122,6 +122,7 @@
   (struct base-action ::BaseAction goal))
 
 (defmethod robot-primitive-result ::BaseAction [nh action env]
+  (track-head nh (base-state->point-stamped (:goal action)))
   (let [sol (plan-base-motion nh (:world env) (:base (:robot env)) (:goal action) [[0 0] [40 40]])]
     (when (seq sol)
       [(assoc-in env [:robot :base] (:goal action)) (* *base-cost-multiplier* 
@@ -130,6 +131,7 @@
 
 (defmethod execute-robot-primitive ::BaseAction [nh action]
   (println "Executing move_base action")
+  (track-head nh (base-state->point-stamped (:goal action)))
   (assert (= :success (move-base-precise nh (:goal action)))))
 
 (defmethod robot-action-name ::BaseAction [a]
@@ -183,6 +185,7 @@
 (defmethod robot-hla-discrete-refinements? ::BaseRegionAction [a] false)
 
 (defmethod sample-robot-hla-refinement ::BaseRegionAction [nh a env]
+    (track-head nh (get-xy-theta-region-point-stamped nh (:goal-region a)))
   (if (and (< (rand 5) 1) (region-contains? (:goal-region a) (map (:base (:robot env)) [:x :y :theta])))
      []
    [(make-base-action (apply make-robot-base-state (sample-region (:goal-region a))))]))
@@ -279,7 +282,9 @@
 (defmethod execute-robot-primitive ::GripperAction [nh action]
   (println "Executing move_gripper action (via actuate gripper action)")
   (move-gripper-to-state nh (:goal action))
-  (Thread/sleep 3000))
+  (Thread/sleep 3000)
+  (when (:holding (:goal action))
+    (assert (> (get-current-gripper-separation nh (isa? (:class (:goal action)) :ros.robot/Right)) 0.02))))
 
 (defmethod robot-action-name ::GripperAction [a]
   [(if (isa? (:class (:goal a)) :ros.robot/Right) 'right-gripper-to 'left-gripper-to)
@@ -301,11 +306,13 @@
 
 (defmethod robot-primitive-result ::ArmJointAction [nh action env]
   (let [r?  (isa? (:class (:goal action)) :ros.robot/Right)
+	final-robot (assoc (:robot env) (if r? :rarm :larm) (:goal action))
+	_   (track-head nh (object-fk-point-stamped nh r? final-robot))
 	sol (plan-arm-motion nh r? (:world env) (:robot env) (:joint-angle-map (:goal action)) nil)
 	times (:times (:path sol))]
     (print "Result for joint action: ") (describe-motion-plan sol)
     (when (> (count times) 0)
-      [(assoc-in env [:robot (if r? :rarm :larm)] (:goal action)) 
+      [(assoc env :robot final-robot)
        (* *arm-cost-multiplier* (last times))])))
 
 ;; TODO:use move_arm
@@ -315,6 +322,7 @@
 
 (defmethod execute-robot-primitive ::ArmJointAction [nh action]
   (println "Executing move_arm action (synchronously, using move_arm)")
+  (track-head nh (object-fk-point-stamped nh (isa? (:class (:goal action)) :ros.robot/Right) (assoc (get-current-robot-state nh) (if (isa? (:class (:goal action)) :ros.robot/Right) :rarm :larm) (:goal action))))
   (if (:unsafe? action)
       (move-arm-to-state-unsafe nh (:goal action))
     (move-arm-to-state nh (:goal action))))
@@ -374,6 +382,7 @@
 (defmethod robot-hla-discrete-refinements? ::ArmPoseAction [a] false)
 
 (defmethod sample-robot-hla-refinement ::ArmPoseAction [nh a env]
+  (track-head nh {:header {:frame_id (:frame a)} :point (:position (:pose a))})
   (let [r?  (:right? a)
 	ik  (safe-inverse-kinematics 
 	     nh r? 
@@ -451,6 +460,7 @@
   (struct arm-grasp-action ::ArmGraspAction right? obj-map-pt angle))
 
 (defmethod robot-primitive-result ::ArmGraspAction [nh action env]
+  (track-head nh {:header {:frame_id "/map"} :point (make-point (:obj-map-pt action))})
   (let [{:keys [right? obj-map-pt angle]} action
         map->bl-transform  (map->base-link-transform (:base (:robot env))) 
 	obj-bl-pt (first (decode-pose (untransform-pose (make-pose obj-map-pt [0 0 0 1]) map->bl-transform)))]
@@ -460,15 +470,21 @@
 		       (transform-pose (compute-grasp-pose obj-bl-pt *grasp-distance* angle) 
 				       map->bl-transform))
 		     env)]
-      (assert (= (count ref) 1))
-      (when-let [result (robot-primitive-result nh (first ref) env)]
-	(update-in result [1] + 2.0) ; cost for extra movement
-	))))
+      (when-let [refp (sample-robot-hla-refinement nh 
+		     (make-arm-pose-action right?
+		       (transform-pose (compute-grasp-pose obj-bl-pt *grasp-approach-distance* angle) 
+				       map->bl-transform))
+		     env)]
+	(when-let [result (robot-primitive-result nh (first ref) env)]
+	  (update-in result [1] + 2.0) ; cost for extra movement
+	  )))))
 
 (defmethod execute-robot-primitive ::ArmGraspAction [nh action]
   (println "Executing arm-grasp-action...")
+  (track-head nh {:header {:frame_id "/map"} :point (make-point (:obj-map-pt action))})
   (move-gripper-to-state nh (make-robot-gripper-state (:right? action) true)) ; make sure open...
   (let [obj (find-specific-object nh (:obj-map-pt action) *max-object-error*)]
+    (track-head nh {:header {:frame_id "/base_link"} :point obj})
     (assert (= :succeeded (move-arm-to-pose nh (:right? action)
 			     (compute-grasp-pose obj *grasp-approach-distance* (:angle action))
 			     "/base_link" false 60.0)))
@@ -499,6 +515,7 @@
 
 ;; TODO: use base pose of robot to assist in sampling feasible poses.
 (defmethod sample-robot-hla-refinement ::ArmGraspHLA [nh a env]
+  (track-head nh {:header {:frame_id "/map"} :point (make-point (:obj-map-pt a))})
   (let [{:keys [right? obj-map-pt angle-interval]} a]
     [(make-arm-grasp-action right? obj-map-pt (sample-region angle-interval))]))
 	           
@@ -524,6 +541,7 @@
 ;; TODO: use base pose of robot to assist in sampling feasible poses.
 (defmethod sample-robot-hla-refinement ::ArmDropHLA [nh a env]
   (println "Ignoring map angle interval for now") ;; TODO!
+  (track-head nh {:header {:frame_id "/map"} :point (make-point (:obj-map-pt a))})
   (let [{:keys [right? obj-map-pt map-angle-interval]} a]
     [(make-arm-pose-action right? 
       (compute-grasp-pose obj-map-pt *grasp-distance* 

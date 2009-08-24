@@ -280,6 +280,13 @@
 (defn get-xy-region-extent [r]
   (map :interval (:intervals r)))
 
+(defn get-xy-region-point-stamped [r height]
+  (let [[[ax bx] [ay by]] (get-xy-region-extent r)]
+    {:class PointStamped
+     :header {:frame_id "/map"}
+     :point  (make-point (/ (+ ax bx) 2) (/ (+ ay by) 2) height)}))
+
+
 (defn shrink-xy-region [r e]
   (update-in r [:intervals] (fn [is] (map #(shrink-interval-region % e) is))))
 
@@ -302,7 +309,11 @@
 (defmethod region-subsumes? [::XYThetaRegion ::XYThetaRegion] [x y]
   (every? identity (map region-subsumes? (:intervals x) (:intervals y))))
 
-
+(defn get-xy-theta-region-point-stamped [r]
+  (let [[[ax bx] [ay by]] (get-xy-region-extent r)]
+    {:class PointStamped
+     :header {:frame_id "/map"}
+     :point  (make-point (/ (+ ax bx) 2) (/ (+ ay by) 2) 0)}))
 
 
 
