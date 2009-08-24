@@ -188,9 +188,9 @@
    (move-base-unsafe nh
     (fn [init-pose current-pose]
       (let [dist (- distance (point-distance (:position init-pose) (:position current-pose)))]
-	{:linear {coord (* dir (cond (> dist 0.1) (* speed 0.2) 
-				  (< dist -0.1) 0
-				  :else (* (max dist 0) speed 3)))}}))
+	{:linear {coord (* dir (cond (> dist 0.2) (* speed 0.2) 
+				  (< dist -0.2) 0
+				  :else (* (max dist 0) speed 1.5)))}}))
     (fn [init-pose current-pose]
       (let [dist (- distance (point-distance (:position init-pose) (:position current-pose)))]
 	(or (< (Math/abs (double dist)) 0.005)
@@ -203,19 +203,34 @@
   (let [init-pose-angle (:theta (get-current-base-state-tf nh))
 	init-odom-angle (quaternion->angle (:orientation (get-current-base-odom nh)))
 	angle (+ init-odom-angle (- angle init-pose-angle))]
-    (println angle)
+;    (println angle)
    (move-base-unsafe nh 
     (fn [init-pose current-pose]
       (let [ac (quaternion->angle (:orientation current-pose))
 	    norm-diff (double (norm-angle (- angle ac)))]
-	(println norm-diff)
-	{:angular {:z (if (> (Math/abs norm-diff) 0.1) (* (Math/signum norm-diff) 0.5) (* norm-diff 4))}}))
+;	(println norm-diff)
+	{:angular {:z (if (> (Math/abs norm-diff) 0.25) (* (Math/signum norm-diff) 0.5) (* norm-diff 2))}}))
     (fn [init-pose current-pose]
       (let [ac (quaternion->angle (:orientation current-pose))
 	    norm-diff (double (norm-angle (- angle ac)))]
 	(< (Math/abs norm-diff) 0.03))))))
 
 
+(defn move-base-precise [nh state]
+  "Use move-base to get approximately to state, then unsafely servo to correct position."
+;  (println "Trying to move precisely to" state)
+  (when (= :success (move-base-to-pose-stamped nh (base-state->pose-stamped state)))
+    (let [cbs (get-current-base-state nh)]
+;    (println "Move base got us to" (get-current-base-state nh))
+     (let [{:keys [x y theta]} state]
+      (when (> (Math/abs (double (- theta (:theta cbs)))) 0.05) 
+	(spin-base-to nh theta)
+	(Thread/sleep 300))
+      (let [[x y _] (transform-point-tf nh "/map" "/base_link" [x y 0])]
+        (when (> (Math/abs (double x)) 0.02) (move-base-rel nh :x x 0.7))
+        (when (> (Math/abs (double y)) 0.02) (move-base-rel nh :y y)))))
+;    (println "Servoing got us to" (get-current-base-state nh))
+    :success))
 
 ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
 ;;;;;;;;;;;;;;;;;;;;;;;;;;; Future base planning using navfn ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;

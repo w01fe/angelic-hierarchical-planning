@@ -393,7 +393,10 @@
 	     :type :surface :surface (make-xy-region [16.10 18.86] [25.87 27.23]) 
 	     :height 0.756}
     "bottle" {:xyz [16.2 26.0 0.85] :rpy [0 0 0] :def (get-odwalla)
-	     :type :movable :on "table" :goal ["table" (make-xy-region [17.2 17.4] [26.0 26.1])] :height 0.2}}
+	     :type :movable :on "table" :goal ["table" (make-xy-region [17.2 17.4] [26.0 26.1])] :height 0.2}
+    "bottle2" {:xyz [16.2 27.1 0.85] :rpy [0 0 0] :def (get-odwalla)
+	     :type :movable :on "table" :goal ["table" (make-xy-region [17.2 17.4] [26.0 26.1])] :height 0.2}
+    }
       d3-res d2-res d2-pad))
 
 ;; Coordinates for big table, 

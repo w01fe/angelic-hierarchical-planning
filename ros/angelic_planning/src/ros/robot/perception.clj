@@ -161,9 +161,10 @@
 	dist (Math/sqrt (+ (Math/pow (double (- cx x)) 2) (Math/pow (double (- cy y)) 2)))]
     (assert (= (:frame_id (:header table)) "/base_link")) 
     (println "Got best bottle" best "with distance to given point" dist) 
-    (assert (< dist max-dist))
-    (assert (< minz z maxz))
-    [(+ minx 0.01) cy cz]))
+    (if (or (> dist max-dist) (not (< minz z maxz)))
+        (do (println "Got bad bottle; trying again")
+	    (recur nh map-pt max-dist))
+      [(+ minx 0.01) cy cz])))
 
   
 

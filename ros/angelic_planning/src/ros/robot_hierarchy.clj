@@ -292,6 +292,23 @@
   (aha-star-search (alt-node (make-angelic-robot-hierarchy nh [[(make-gripper-action (make-robot-gripper-state false true)) (make-base-region-action (make-xytheta-region [15.6 16] [25 27] [0 (* 2 Math/PI)])) (make-grasp-hla false "bottle") (make-drop-hla false [16.2 26.3 0.85])]] (get-default-env nh) {:ros.robot-actions/BaseRegionAction 10  :ros.robot-actions/ArmGraspHLA 5  :ros.robot-actions/ArmDropHLA 5  :ros.robot-actions/ArmPoseAction 1 }) {:graph? false :cache? false :ref-choice-fn first-choice-fn}))
 
   (aha-star-search (alt-node (make-angelic-robot-hierarchy nh [[(make-gripper-action (make-robot-gripper-state true true)) (make-base-region-action (make-xytheta-region [15.6 16] [25 27] [0 (* 2 Math/PI)])) (make-grasp-hla true "bottle") (make-drop-hla true [16.4 26.0 0.85])]] (get-default-env nh) {:ros.robot-actions/BaseRegionAction 10  :ros.robot-actions/ArmGraspHLA 5  :ros.robot-actions/ArmDropHLA 5  :ros.robot-actions/ArmPoseAction 1 }) {:graph? false :cache? false :ref-choice-fn first-choice-fn}))
+
+
+;; Working plan to move a bottle!
+  (aha-star-search (alt-node (make-angelic-robot-hierarchy nh [[(make-gripper-action (make-robot-gripper-state true true))  (make-grasp-hla true "bottle") (make-drop-hla true [16.8 26.1 0.82])]] (get-default-env nh) {:ros.robot-actions/BaseRegionAction 10  :ros.robot-actions/ArmGraspHLA 5  :ros.robot-actions/ArmDropHLA 5  :ros.robot-actions/ArmPoseAction 8}) {:graph? false :cache? false :ref-choice-fn first-choice-fn}))
+
+
+; Working plan to move base and move a bottle!
+  (aha-star-search (alt-node (make-angelic-robot-hierarchy nh [[(make-gripper-action (make-robot-gripper-state true true))  (make-go-grasp-hla true "bottle") (make-arm-joint-action (arm-joint-state true "tucked")) (make-go-drop-hla true "table" [17.8 26.1 0.82])]] (get-default-env nh) {:ros.robot-actions/BaseRegionAction 5  :ros.robot-actions/ArmGraspHLA 5  :ros.robot-actions/ArmDropHLA 3  :ros.robot-actions/ArmPoseAction 5}) {:graph? false :cache? false :ref-choice-fn first-choice-fn}))
  )
 
-; key touch_links not found, safe-get* at 34 in gripper.clj
+; Move base and move two bottles.
+(aha-star-search (alt-node (make-angelic-robot-hierarchy nh [[(make-gripper-action (make-robot-gripper-state true true))  (make-go-grasp-hla true "bottle2") (make-arm-joint-action (arm-joint-state true "tucked")) (make-go-drop-hla true "table" [16.2 26.5 0.82]) (make-arm-joint-action (arm-joint-state true "tucked")) (make-go-grasp-hla true "bottle") (make-arm-joint-action (arm-joint-state true "tucked")) (make-go-drop-hla true "table" [17.8 26.0 0.82]) (make-arm-joint-action (arm-joint-state true "tucked"))]] (get-default-env nh) {:ros.robot-actions/BaseRegionAction 5  :ros.robot-actions/ArmGraspHLA 3  :ros.robot-actions/ArmDropHLA 3  :ros.robot-actions/ArmPoseAction 3}) {:graph? false :cache? false :ref-choice-fn first-choice-fn}))
+
+;; TODO: better search control
+;; TODO: head pointing!
+;; TODO: check for successful grasp.
+;; TODO: fix overzealous base movement
+;; TODO: fix non-executing unsafe trajectories.
+;; TODO: fix when bottle is not where we expected, and we cant' reach it
+;;  (should also check for pregrasp pose when we plan!)

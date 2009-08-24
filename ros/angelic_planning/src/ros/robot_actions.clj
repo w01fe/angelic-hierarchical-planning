@@ -130,7 +130,7 @@
 
 (defmethod execute-robot-primitive ::BaseAction [nh action]
   (println "Executing move_base action")
-  (assert (= :success (move-base-to-state nh (:goal action)))))
+  (assert (= :success (move-base-precise nh (:goal action)))))
 
 (defmethod robot-action-name ::BaseAction [a]
   (let [{:keys [x y theta]} (:goal a)]
@@ -188,6 +188,7 @@
    [(make-base-action (apply make-robot-base-state (sample-region (:goal-region a))))]))
 
 (defmethod robot-action-name ::BaseRegionAction [a]
+  (println (:goal-region a))
   ['base-to-region (region-name (:goal-region a))])
 
 
@@ -473,7 +474,7 @@
 			     "/base_link" false 60.0)))
     (move-arm-to-pose-unsafe nh (:right? action) 
       (compute-grasp-pose obj *grasp-distance* (:angle action))
-      "/base_link" 10.0 0.3)))
+      "/base_link" 30.0 0.3)))
 
 (defmethod robot-action-name ::ArmGraspAction [a]
   ['arm-grasp (:right? a) (:obj-map-pt a) (:angle a)])
@@ -566,32 +567,34 @@
 
 
 ;;;;;;;;;;;;;;;;;;;;;;;;;; Arm+ Gripper + Base; Pickup  ;;;;;;;;;;;;;;;;;;;;;;;;;;;;
-#_
+
 (defn compute-base-grasp-region 
   "Given a world and object, compute a good base region for pickup.   
    Return nil if no pose is thought feasible."
-  [world obj-name]
-  (let [obj     (safe-get* world obj-name)
-	[x y _]  (:xyz obj)
-	table   (safe-get* world (:on obj))
+  [map-pt table]
+  (let [[x y _]  map-pt
 	[[minx maxx] [miny maxy]] (get-xy-region-extent (:surface table))]
     (assert (and (<= minx x maxx) (<= miny y maxy)))
     (let [miny? (< (Math/abs (double (- miny y))) (Math/abs (double (- maxy y))))
 	  [diry edgey] (if miny? [-1 miny] [1 maxy])
 	  disty        (Math/abs (double (- edgey y)))      
           minx? (< (Math/abs (double (- minx x))) (Math/abs (double (- maxx x))))
-	  [dirx edgex] (if minx? [minx -1] [maxx 1])
+	  [dirx edgex] (if minx? [-1 minx] [1 maxx])
 	  distx        (Math/abs (double (- edgex x)))
 	  x?           (< distx disty)]
-      (when (< (min distx disty?) 0.3)
+      (when (< (min distx disty) 0.3)
 	(if (not x?)
 	  (make-xytheta-region
-	   [(- x 0.4) (+ x 0.4)]
-	   (sort [(+ y (* diry 1.0)) (+ y (* diry 0.5))])
-	   [(+ (/ Math/PI 2) (if min? 0 Math/PI)) (+ (/ Math/PI 2) (if min? 0 Math/PI))]
-	  (make-robot-base-state (- x (* dir 0.1)) (+ y (* dir 1.0)) ))))
- )))
-(comment 
+	   [(- x 0.6) (+ x 0.6)]
+	   (sort [(+ y (* diry 0.95)) (+ edgey (* diry 0.65))])
+	   [(+ (* Math/PI 0.9 0.5) (if miny? 0 Math/PI)) (+ (* Math/PI 1.1 0.5) (if miny? 0 Math/PI))])
+	  (make-xytheta-region
+	   (sort [(+ x (* dirx 0.95)) (+ edgex (* dirx 0.65))])
+	   [(- y 0.6) (+ y 0.6)]
+	   [(+ (* -0.05 Math/PI) (if minx? 0 Math/PI)) (+ (* 0.05 Math/PI) (if minx? 0 Math/PI))]))))))
+	  
+	   ;(make-robot-base-state (- x (* dir 0.1)) (+ y (* dir 1.0)) ))))
+
 (derive ::GoGraspHLA ::RobotHLA)
 
 (defstruct go-grasp-hla :class :right? :obj-name)
@@ -603,18 +606,18 @@
 
 ;; TODO: use base pose of robot to assist in sampling feasible poses.
 (defmethod robot-hla-refinements ::GoGraspHLA [nh a env]
-  (let [{:keys [right? obj-name]} a]
-    [[(make-arm-grasp-hla right? 
-	(:xyz (safe-get* (:world env) obj-name)) 
-	(make-interval-region [(/ Math/PI -4) (/ Math/PI 4)]))
-      (make-gripper-action 
-       (make-robot-gripper-state right? false 60 obj-name))
-
-      ]]))
+  (let [{:keys [right? obj-name]} a
+	world (:world env)
+	obj (safe-get* world obj-name)
+	base-region (compute-base-grasp-region (:xyz obj) (safe-get* world (:on obj)))]
+    (if base-region
+      [[(make-base-region-action base-region)
+	(make-grasp-hla right? obj-name)]]
+      (println "Could not find base region to grasp" obj-name))))
 	           
 (defmethod robot-action-name ::GoGraspHLA [a]
   ['go-grasp (:right? a) (:obj-name a)])
- )
+  
 
 
 
@@ -635,7 +638,7 @@
   (let [{:keys [right? map-pt]} a
 	base-theta (:theta (:base (:robot env)))]
     [[(make-arm-drop-hla right? 
-	(update-in map-pt [2] + 0.17)
+	(update-in map-pt [2] + 0.18)
 	(make-interval-region [(- base-theta 1) (+ base-theta 1)]))
       (make-torso-action (make-robot-torso-state 0.05))
       (make-gripper-action 
@@ -645,6 +648,33 @@
 	           
 (defmethod robot-action-name ::DropHLA [a]
   ['drop (:right? a) (:map-pt a)])
+
+
+
+;;;;;;;;;;;;;;;;;;;;;;;;;; Arm+ Gripper + Base; Drop  ;;;;;;;;;;;;;;;;;;;;;;;;;;;;
+
+
+(derive ::GoDropHLA ::RobotHLA)
+
+(defstruct go-drop-hla :class :right? :table-name :map-pt)
+
+(defn make-go-drop-hla [right? table-name map-pt]
+  (struct go-drop-hla ::GoDropHLA right? table-name map-pt))
+
+(defmethod robot-hla-discrete-refinements? ::GoDropHLA [a] true)
+
+;; TODO: use base pose of robot to assist in sampling feasible poses.
+(defmethod robot-hla-refinements ::GoDropHLA [nh a env]
+  (let [{:keys [right? map-pt table-name]} a
+	base-region (compute-base-grasp-region map-pt (safe-get* (:world env) table-name))]
+    (if base-region
+      [[(make-base-region-action base-region)
+        (make-drop-hla right? map-pt)]]
+     (println "Could not find base region for map-pt" map-pt))))
+	           
+(defmethod robot-action-name ::GoDropHLA [a]
+  ['go-drop (:right? a) (:table-name a) (:map-pt a)])
+  
 
 
 

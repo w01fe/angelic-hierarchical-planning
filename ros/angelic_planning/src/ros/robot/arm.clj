@@ -230,7 +230,7 @@
    :joint_name joint-name :value (if (coll? joint-position) 
 				   (vec (map double joint-position)) [(double joint-position)])})
 
-(def *fk-z-offset*  -0.055  #_0.1141 #_ 0.09412233491155875)
+;(def *fk-z-offset*  -0.055  #_0.1141 #_ 0.09412233491155875)
 
 (defn forward-kinematics
   "Returns a lazy seq [in-collision? poses], where poses is a map
@@ -240,7 +240,13 @@
  [#^NodeHandle nh joint-map]
    (let [res (call-srv-cached nh "/fk_node/forward_kinematics"
 	      (map-msg {:class ForwardKinematics$Request
-			:joints (map make-kinematic-joint joint-map)}))]
+			:joints (map make-kinematic-joint joint-map)}))
+	 [_ base-link] (first 
+			(filter (fn [[name pose]] (= name "base_link")) 
+				(map vector (:link_names res) (:link_poses res))))
+	 z             (:z (:position base-link))
+	 offset        (- 0.05 z)]
+     (assert base-link)
 ;     (println res)
      (assert (= (count (:link_names res)) (count (:link_poses res))))
     (cons (> (:in_collision res) 0)
@@ -248,7 +254,7 @@
 		      (interleave 
 		       (:link_names res) 
 		       (for [pose (:link_poses res)]
-			 (update-in pose [:position :z] #(- % *fk-z-offset* )))))]))))
+			 (update-in pose [:position :z] #(+ % offset )))))]))))
 
 (defn robot-forward-kinematics
   "Like forward-kinematics, but takes a robot state and possibly world state,
@@ -306,7 +312,7 @@
 			    (:joint-angle-map ((if right? :rarm :larm) robot)))]
        (or (if-let [sol (time (inverse-kinematics nh right? pose-stamped init-joints))]
 	     (let [collision (first (forward-kinematics nh (merge all-joints sol)))
-		   safe?     (not (out-of-safety-limits? nh sol)]
+		   safe?     (not (out-of-safety-limits? nh sol))]
 	       (println "Found IK solution ..."
 			(if collision "" " not ") "in collision," 
 			(if safe? "" " not ") "in safety limits.") 
@@ -618,6 +624,7 @@
 	      :pose   pose} 
 	     (:joint-angle-map (get-current-arm-state nh right?))
 	     10)]
+     (prn ik)
     (if (not ik) (println "Couldn't find IK solution; not moving")
       (move-arm-to-state nh (make-robot-arm-state right? ik) false timeout)))))
 
