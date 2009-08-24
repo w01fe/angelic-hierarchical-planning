@@ -56,6 +56,7 @@
 (derive ::LeftArmState ::Left)
 (derive ::RightArmState ::ArmState)
 (derive ::RightArmState ::Right)
+;(derive ::MissingArmState ::ArmState)
 
 (defstruct robot-arm-state :class :joint-angle-map) ;:gripper-state
 
@@ -63,17 +64,25 @@
   (struct robot-arm-state (if right? ::RightArmState ::LeftArmState) joint-angle-map))
 
 (defmethod get-joint-map ::ArmState [obj] (:joint-angle-map obj))
+;(defmethod get-joint-map ::MissingArmState [obj] {})
 
 
 
 (defn get-current-arm-state-msg [nh right?]
-  (call-srv-cached nh (str "/" (if right? "r" "l") 
+  (try 
+    (call-srv-cached nh (str "/" (if right? "r" "l") 
 		    "_arm_joint_waypoint_controller/TrajectoryQuery" )
-	    (map-msg TrajectoryQuery$Request {:trajectoryid (TrajectoryQuery$Request/Query_Joint_Names)})))
+	    (map-msg TrajectoryQuery$Request {:trajectoryid (TrajectoryQuery$Request/Query_Joint_Names)}))
+    (catch Exception e
+      (println "Presming arm missing")
+      {})
+  ))
 
 (defn get-current-arm-state [nh right?]
   (let [{:keys [jointnames jointpositions]} (get-current-arm-state-msg nh right?)]
-    (make-robot-arm-state right? (apply array-map (interleave jointnames jointpositions)))))
+    (if jointnames 
+        (make-robot-arm-state right? (apply array-map (interleave jointnames jointpositions)))
+      *missing-part*)))
 
 
 ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
@@ -173,12 +182,46 @@
 			     :positions   (map second init-joints)
 			     :pose_stamped pose-stamped}})))))]
 	 ;(println sol)
-	 (if right? sol
-	     (assoc sol "l_wrist_roll_joint"
-		    (norm-angle (+ (sol "l_wrist_roll_joint") 2.1)))))
+	 sol)
+;	 (if right? sol
+;	     (assoc sol "l_wrist_roll_joint"
+;		    (norm-angle (+ (sol "l_wrist_roll_joint") 2.1)))))
      (catch RosException e
        nil
        )))))
+
+(defn out-of-safety-limits? [nh joint-map]
+  (let [limits (get-robot-safe-joint-limits nh)
+        [bad-j bad-v]
+	(first 
+	 (filter (fn [[j v]] 
+		   (let [[mi mx] (get limits j [(- Math/PI) Math/PI])]
+		     (not (<= mi v mx))))
+		 joint-map))]
+    (when bad-j [bad-j bad-v (get limits bad-j)])))
+
+
+(defn random-arm-joint-map [nh right?]
+  (let [joint-limits (get-robot-safe-joint-limits nh)]
+   (into {}
+    (for [joint (get-arm-joint-names right?)
+	  :let [limits (joint-limits joint)]]
+      [joint (rand-double (or limits [0 (* 2 Math/PI)]))]))))
+
+(defn limited-inverse-kinematics 
+  "Try to find an IK solution that respects joint limits"
+  ([#^NodeHandle nh right? pose-stamped init-joint-map random-retries]
+;     (println pose-stamped)
+     (loop [tries random-retries 
+	    init-joints init-joint-map]
+       (or (if-let [sol (time (inverse-kinematics nh right? pose-stamped init-joints))]
+	       (if-let [violation (out-of-safety-limits? nh sol)]
+		   (println "IK not in safety limits:" violation)
+	         sol)
+	     (println "IK solution not found."))
+	   (when (> tries 0)
+	     (recur (dec tries) (random-arm-joint-map nh right?)))))))
+
 
 
 (defn- make-kinematic-joint [[joint-name joint-position]]
@@ -187,13 +230,13 @@
    :joint_name joint-name :value (if (coll? joint-position) 
 				   (vec (map double joint-position)) [(double joint-position)])})
 
-(def *fk-z-offset* 0.09412233491155875)
+(def *fk-z-offset*  -0.055  #_0.1141 #_ 0.09412233491155875)
 
 (defn forward-kinematics
   "Returns a lazy seq [in-collision? poses], where poses is a map
    from link names to poses.  Assumes joints in map frame.
    If in_collision is to be accurate, must first publish a collision map
-   to the appropriate topic in the fk_node.  Response is in base link."
+   to the appropriate topic in the fk_node.  Response is corrected to be in map frame.."
  [#^NodeHandle nh joint-map]
    (let [res (call-srv-cached nh "/fk_node/forward_kinematics"
 	      (map-msg {:class ForwardKinematics$Request
@@ -227,23 +270,20 @@
 
 
 
-(defn random-arm-joint-map [nh right?]
-  (let [joint-limits (get-robot-joint-limits nh)]
-   (into {}
-    (for [joint (get-arm-joint-names right?)
-	  :let [limits (joint-limits joint)]]
-      [joint (rand-double (or limits [0 (* 2 Math/PI)]))]))))
 
 (defn feasible-ik-pose? 
   "Is it physically possible to reach the given pose?  If no, we won't
    bother trying to call IK."
   [right? pose-stamped]
-  (let [pos (pose-position (:pose pose-stamped))
+  (let [frame (:frame_id (:header pose-stamped))
+	pos (pose-position (:pose pose-stamped))
 	[x y z] pos]
 ;     (println pos (l2-distance [0 0 0] pos))
     (cond (< x 0) 
             nil ;(println "Skipping IK; can't reach behind robot.")
-	  (> (l2-distance [0 0 0] pos) 0.9)
+	  (> (l2-distance 
+	      (condp = frame "/torso_lift_link" [0 0 0] "/base_link" [0 0 0.9])
+	      pos) 0.9)
 	    nil ; (println "Skipping IK; can't reach more than 0.9 meters away.")
 	  ; ...
           :else true)))
@@ -258,22 +298,26 @@
    (when (feasible-ik-pose? nh pose-stamped) ;; TODO: replace with opt desc.
      (when world
        (put-single-message-cached nh "/fk_node/collision_map" 
-	 (map-msg (world->collision-map world))))
-     (println "Sent map!")
+	 (map-msg (world->collision-map world)))
+       (println "Sent map for FK!"))
      (let [all-joints (get-joint-map robot)]
       (loop [tries random-retries 
 	    init-joints (if start-random? (random-arm-joint-map nh right?)
 			    (:joint-angle-map ((if right? :rarm :larm) robot)))]
        (or (if-let [sol (time (inverse-kinematics nh right? pose-stamped init-joints))]
-	     (let [collision (first (time (forward-kinematics nh (merge all-joints sol))))]
+	     (let [collision (first (forward-kinematics nh (merge all-joints sol)))
+		   safe?     (not (out-of-safety-limits? nh sol)]
 	       (println "Found IK solution ..."
-			(if collision "" " not ") "in collision.") 
-	       (when (not collision)
+			(if collision "" " not ") "in collision," 
+			(if safe? "" " not ") "in safety limits.") 
+	       (when (and safe? (not collision))
 		 sol))
 	     nil #_(println "Failed to find IK solution"))
 	   (when (> tries 0)
 	     nil #_ (println "IK failed; retrying with random initial joints.")
 	     (recur (dec tries) (random-arm-joint-map nh right?)))))))))
+
+
 
 
 
@@ -359,10 +403,11 @@
   ([#^NodeHandle nh arm-state wait-secs]
      (move-arm-to-state-unsafe nh arm-state wait-secs 1.0))
   ([#^NodeHandle nh arm-state wait-secs speed-mul]
+     (println arm-state)
      (execute-arm-trajectory nh 
        (make-smooth-joint-trajectory (:joint-angle-map (get-current-arm-state nh 
 						        (isa? (:class arm-state) ::Right))) 
-				     (:joint-angle-map arm-state)
+			      (:joint-angle-map arm-state)
 				      0.2 (/ 0.3 speed-mul))
        wait-secs)))
 
@@ -370,7 +415,11 @@
   "Move the gripper to a new pose."
   ([nh right? pose] (move-arm-to-pose-unsafe nh right? pose "/base_link" 10 1.0))
   ([nh right? pose frame timeout speed-mul] 
-   (let [ik (inverse-kinematics nh right? 
+   (let [ik #_(safe-inverse-kinematics nh right? 
+	     {:header {:frame_id frame}
+	      :pose   pose} 
+	     (get-current-robot-state nh) nil 10)
+	    (inverse-kinematics nh right? 
 	     {:header {:frame_id frame}
 	      :pose   pose} 
 	     (:joint-angle-map (get-current-arm-state nh right?)))]
@@ -425,10 +474,9 @@
      
 (def *shared-arm-params*
      {:class KinematicSpaceParameters
-      :contacts nil
       :distance_metric "L2Square" :planner_id      "" :contacts nil
-      :volumeMin       {:header {:frame_id "/map"} :point {:x 0 :y 0 :z 0}}
-      :volumeMax       {:header {:frame_id "/map"} :point {:x 0 :y 0 :z 0}}})
+      :volumeMin       {:header {:frame_id "/map"} :point {:x -0.2 :y -1.0 :z 0}}
+      :volumeMax       {:header {:frame_id "/map"} :point {:x 100.0 :y 100.0 :z 1.5}}})
 (def *larm-params* (assoc *shared-arm-params* :model_id "left_arm"))
 (def *rarm-params* (assoc *shared-arm-params* :model_id "right_arm"))
 
@@ -560,18 +608,21 @@
 							 (:joint-angle-map arm-state)))}}
 	 (Duration. (double timeout))))))
 
+
 (defn move-arm-to-pose
   "Move the gripper to a new pose."
   ([nh right? pose] (move-arm-to-pose nh right? pose "/base_link" false 30.0))
   ([nh right? pose frame upright? timeout]
-   (let [ik (inverse-kinematics nh right? 
+   (let [ik (limited-inverse-kinematics nh right? 
 	     {:header {:frame_id frame}
 	      :pose   pose} 
-	     (:joint-angle-map (get-current-arm-state nh right?)))]
+	     (:joint-angle-map (get-current-arm-state nh right?))
+	     10)]
     (if (not ik) (println "Couldn't find IK solution; not moving")
       (move-arm-to-state nh (make-robot-arm-state right? ik) false timeout)))))
 
 ;; TODO: fix!
+
 #_
 (defn move-arm-to-pose
   "Use move_arm to move the gripper to a specific pose." 

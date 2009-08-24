@@ -12,4 +12,9 @@
   <include file="$(find find_bottles)/find_bottle.launch"/>
   <include file="$(find table_object_detector)/table_object_detector.launch"/>
 
+  <rosparam command="load" file="$(find pr2_default_controllers)/pr2_joint_position_controllers.yaml"/>
+  <node pkg="mechanism_control" type="spawner.py" args="torso_lift_position_controller" />
+
+  <include file="$(find pr2_default_controllers)/head_position_controller.launch" />
+
 </launch>

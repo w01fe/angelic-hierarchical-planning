@@ -108,10 +108,10 @@
 
 
 (defn find-table-objects [nh]
+  (laser-slow)
   (:table (call-srv nh "/table_object_detector" (map-msg FindTable$Request {}))))
 
 (defn wait-for-table-objects [nh]
-  (laser-slow)
 ;  (Thread/sleep 2000)
   (loop [table (find-table-objects nh)]
     (if (empty? (:objects table))
@@ -149,7 +149,7 @@
 
 (defn find-specific-object [nh map-pt max-dist]
   "Get the exact position of object in base-link, given an approximate map location."
-  (let [table   (util/make-safe (find-table-objects nh))
+  (let [table   (util/make-safe (wait-for-table-objects nh))
 	[x y z] (transform-point-tf nh "/map" "/base_link" map-pt) 
 	bottles (map (fn [obj] (map #(decode-point (% obj)) [:min_bound :center :max_bound])) 
 		     (:objects table))

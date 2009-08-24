@@ -42,16 +42,19 @@
 (defmethod get-joint-map ::TorsoState [obj]
   {"torso_lift_joint" (:height obj)})
 
+(defn get-current-torso-height [nh]
+  (:position 
+   (first (filter #(= (:name %) "torso_lift_joint") 
+		  (:joint_states (get-current-mechanism-state nh))))))
+
 (defn get-current-torso-state [#^NodeHandle nh]
-  (make-robot-torso-state 
-    (:position 
-     (first (filter #(= (:name %) "torso_lift_joint") 
-	      (:joint_states (get-current-mechanism-state nh)))))))
+  (make-robot-torso-state (get-current-torso-height nh)))
 
 (defn set-torso-position [#^NodeHandle nh pos]
-  (put-single-message nh "/torso_lift_controller/set_command" 
+  (put-single-message nh "/torso_lift_position_controller/set_command" 
 		      (map-msg {:class Float64 :data pos}) 1))
 
 ; Todo: make synchronous?
 (defn move-torso-to-state [nh state]
-  (set-torso-position nh (:height state)))
+  (set-torso-position nh (:height state))
+  (while (> (Math/abs (double (- (:height state) (get-current-torso-height nh)))) 0.01)))

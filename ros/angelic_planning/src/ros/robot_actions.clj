@@ -51,6 +51,7 @@
 ;; in robot, base can be in xytheta region 
 
 (def *base-cost-multiplier* -1)
+(def *base-rel-cost-multiplier* -0.1)
 (def *arm-cost-multiplier* -4)
 (def *torso-cost-multiplier* -4)
 (def *gripper-cost* -20)
@@ -129,11 +130,43 @@
 
 (defmethod execute-robot-primitive ::BaseAction [nh action]
   (println "Executing move_base action")
-  (move-base-to-state nh (:goal action)))
+  (assert (= :success (move-base-to-state nh (:goal action)))))
 
 (defmethod robot-action-name ::BaseAction [a]
   (let [{:keys [x y theta]} (:goal a)]
     ['base-to x y theta]))
+
+
+
+;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;; Base - Relative ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
+
+(derive ::BaseRelAction ::RobotPrimitive)
+
+(defstruct base-rel-action :class :coord :dist)
+
+(defn make-base-rel-action [coord dist]
+  (assert (#{:x :y} coord))
+  (struct base-rel-action ::BaseRelAction coord dist))
+
+(defmethod robot-primitive-result ::BaseRelAction [nh action env]
+  (let [[dx dy] (if (= (:coord action) :x) [(:dist action) 0] [0 (:dist action)])
+	{:keys [x y theta]} (:base (:robot env))
+	theta (double theta) s (Math/sin theta) c (Math/cos theta)]
+    [(assoc-in env [:robot :base]
+       (make-robot-base-state 
+	(+ x (* c dx) (* -1 s dy))
+	(+ y (* s dx) (* c dy))
+	theta))
+     (* (:dist action) *base-rel-cost-multiplier* )]))
+
+
+(defmethod execute-robot-primitive ::BaseRelAction [nh action]
+  (println "Executing move_base_rel action")
+  (move-base-rel nh (:coord action) (:dist action)))
+
+(defmethod robot-action-name ::BaseRelAction [a]
+  (let [{:keys [coord dist]} (:goal a)]
+    ['base-rel coord dist]))
 
 
 ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;; Base - Region ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
@@ -156,6 +189,35 @@
 
 (defmethod robot-action-name ::BaseRegionAction [a]
   ['base-to-region (region-name (:goal-region a))])
+
+
+
+;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;; Torso ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;  
+
+; TODO: collision checking; integration with map->tll-pose-stamped
+
+(derive ::TorsoAction ::RobotPrimitive)
+
+(defstruct torso-action :class :goal)
+
+(defn make-torso-action [goal]
+  (struct torso-action ::TorsoAction goal))
+
+(defmethod robot-primitive-result ::TorsoAction [nh action env]
+  [(assoc-in env [:robot :torso] (:goal action))
+   (* *torso-cost-multiplier*
+      (Math/abs (double (- (:height (:goal action)) (:height (:torso (:robot env)))))))])
+
+(defmethod execute-robot-primitive ::TorsoAction [nh action]
+  (println "Executing move_torso action (directly via trajectory controller)")
+  (move-torso-to-state nh (:goal action)))
+
+(defmethod robot-action-name ::TorsoAction [a]
+  ['torso-to (:height (:goal a))])
+
+
+
+
 
 ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;; Gripper ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;  
 
@@ -229,10 +291,12 @@
 
 (derive ::ArmJointAction ::RobotPrimitive)
 
-(defstruct arm-joint-action :class :goal)
+(defstruct arm-joint-action :class :goal :unsafe?)
 
-(defn make-arm-joint-action [goal]
-  (struct arm-joint-action ::ArmJointAction goal))
+(defn make-arm-joint-action 
+  ([goal] (make-arm-joint-action goal false))
+  ([goal unsafe?]
+     (struct arm-joint-action ::ArmJointAction goal unsafe?)))
 
 (defmethod robot-primitive-result ::ArmJointAction [nh action env]
   (let [r?  (isa? (:class (:goal action)) :ros.robot/Right)
@@ -250,7 +314,9 @@
 
 (defmethod execute-robot-primitive ::ArmJointAction [nh action]
   (println "Executing move_arm action (synchronously, using move_arm)")
-  (move-arm-to-state nh (:goal action)))
+  (if (:unsafe? action)
+      (move-arm-to-state-unsafe nh (:goal action))
+    (move-arm-to-state nh (:goal action))))
 
 (defmethod robot-action-name ::ArmJointAction [a]
   (vec
@@ -311,50 +377,59 @@
 	ik  (safe-inverse-kinematics 
 	     nh r? 
 	     (condp = (:frame a) 
-	       "/map" (map-pose->tll-pose-stamped (:pose a) (:base (:robot env)))
+	       "/map" (map-pose->tll-pose-stamped (:pose a) (:robot env))
 	       "/base_link" {:header {:frame_id "/base_link"} :pose (:pose a)})
 	     (:robot env) (:world env) 0 true)]
+;    (println "Refining arm-pose with pose" (decode-pose (:pose a)) "in frame" (:frame a)
+;	     "from" (:base (:robot env)) "got" ik)
     (when ik
       [(make-arm-joint-action (make-robot-arm-state r? ik))])))
 
 (defmethod robot-action-name ::ArmPoseAction [a]
   (vec 
    (cons (if (:right? a) 'right-arm-to-pose 'left-arm-to-pose)
-	 (decode-pose (:pose a)))))
+	 (concat (decode-pose (:pose a)) [(:frame a)]))))
 
 
 ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;; Arm - Relative Pose  ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
 
-; Attempt to move the arm (i.e. palm link) by a particular diff, in either base_link
+; Attempt to move the arm (i.e. palm link) by a particular diff, in either  map
 ; or gripper frame.
+;; TODO: fix
 
 (derive ::ArmRelPoseAction ::RobotHLA)
 
-(defstruct arm-rel-pose-action :class :right? :dxzy :gripper?)
+(defstruct arm-rel-pose-action :class :right? :dxyz :gripper?)
 
-(defn make-arm-pose-action 
+(defn make-arm-rel-pose-action 
   ([right? dxyz gripper?]
      (struct arm-rel-pose-action ::ArmRelPoseAction right? dxyz gripper?)))
 
 (defmethod robot-hla-discrete-refinements? ::ArmRelPoseAction [a] true)
 
 (defmethod robot-hla-refinements ::ArmRelPoseAction [nh a env]
-  (let [{:keys [right? dxyz gripper?] a}
+  (let [{:keys [right? dxyz gripper?]} a
 	gripper-link (if right? "r_gripper_palm_link" "l_gripper_palm_link")
 	cur-pose (safe-get* (second (robot-forward-kinematics nh (:robot env)))
-			    gripper-link)]
-    [(make-arm-pose-action right?
-      (if gripper? ...
-	  (update-in cur-pose [:position]
-	    transform-pose (make-pose dxyz [0 0 0 1]))
-	 (update-in cur-pose [:position] add-points (make-point dxyz)))
-      "/base_link")]))
+			    gripper-link)
+	_ (println (decode-pose cur-pose))
+	ik  (safe-inverse-kinematics nh right? 
+	     (map-pose->tll-pose-stamped 
+	      (if gripper?
+		(transform-pose (make-pose dxyz [0 0 0 1]) cur-pose)
+		(update-in cur-pose [:position] add-points (make-point dxyz))) 
+	      (:robot env))
+	     (:robot env) (:world env) 0 false)]
+    (when ik
+      [[(make-arm-joint-action (make-robot-arm-state right? ik) true)]])))
+
+;    (println "Relative pose from" dxyz cur-pose gripper?)
 	
 
 (defmethod robot-action-name ::ArmRelPoseAction [a]
   [(if (:right? a) 'right-arm-rel-pose 'left-arm-rel-pose)
    (:dxyz a)
-   (if (gripper? a) :gripper :base_link)])
+   (if (:gripper? a) :gripper :base_link)])
 
 
 ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;; Arm - Specific Grasp  ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
@@ -378,6 +453,7 @@
   (let [{:keys [right? obj-map-pt angle]} action
         map->bl-transform  (map->base-link-transform (:base (:robot env))) 
 	obj-bl-pt (first (decode-pose (untransform-pose (make-pose obj-map-pt [0 0 0 1]) map->bl-transform)))]
+;    (println "Trying ...")
     (when-let [ref (sample-robot-hla-refinement nh 
 		     (make-arm-pose-action right?
 		       (transform-pose (compute-grasp-pose obj-bl-pt *grasp-distance* angle) 
@@ -394,7 +470,7 @@
   (let [obj (find-specific-object nh (:obj-map-pt action) *max-object-error*)]
     (assert (= :succeeded (move-arm-to-pose nh (:right? action)
 			     (compute-grasp-pose obj *grasp-approach-distance* (:angle action))
-			     "/base_link" false 30.0)))
+			     "/base_link" false 60.0)))
     (move-arm-to-pose-unsafe nh (:right? action) 
       (compute-grasp-pose obj *grasp-distance* (:angle action))
       "/base_link" 10.0 0.3)))
@@ -446,9 +522,12 @@
 
 ;; TODO: use base pose of robot to assist in sampling feasible poses.
 (defmethod sample-robot-hla-refinement ::ArmDropHLA [nh a env]
+  (println "Ignoring map angle interval for now") ;; TODO!
   (let [{:keys [right? obj-map-pt map-angle-interval]} a]
     [(make-arm-pose-action right? 
-      (compute-grasp-pose obj-map-pt *grasp-distance* (sample-region map-angle-interval)))]))
+      (compute-grasp-pose obj-map-pt *grasp-distance* 
+			  ;(:theta (:base (:robot env)))
+			  (sample-region map-angle-interval)))]))
 	           
 (defmethod robot-action-name ::ArmDropHLA [a]
   ['arm-drop (:right? a) (:obj-map-pt a) (:interval (:map-angle-interval a))])
@@ -475,7 +554,10 @@
 	(make-interval-region [(/ Math/PI -4) (/ Math/PI 4)]))
       (make-gripper-action 
        (make-robot-gripper-state right? false 60 obj-name))
-      (make-arm-rel-pose-action right? [-0.1 0 0.05] false)
+      (make-torso-action (make-robot-torso-state 0.19))
+      ;(make-arm-joint-action (arm-joint-state right? "home"))
+      ; (make-arm-rel-pose-action right? [-0.1 0 0.00] true)
+     ; (make-arm-joint-action (arm-joint-state right? "home"))
       ]]))
 	           
 (defmethod robot-action-name ::GraspHLA [a]
@@ -484,7 +566,7 @@
 
 
 ;;;;;;;;;;;;;;;;;;;;;;;;;; Arm+ Gripper + Base; Pickup  ;;;;;;;;;;;;;;;;;;;;;;;;;;;;
-
+#_
 (defn compute-base-grasp-region 
   "Given a world and object, compute a good base region for pickup.   
    Return nil if no pose is thought feasible."
@@ -508,7 +590,8 @@
 	   (sort [(+ y (* diry 1.0)) (+ y (* diry 0.5))])
 	   [(+ (/ Math/PI 2) (if min? 0 Math/PI)) (+ (/ Math/PI 2) (if min? 0 Math/PI))]
 	  (make-robot-base-state (- x (* dir 0.1)) (+ y (* dir 1.0)) ))))
-
+ )))
+(comment 
 (derive ::GoGraspHLA ::RobotHLA)
 
 (defstruct go-grasp-hla :class :right? :obj-name)
@@ -526,12 +609,12 @@
 	(make-interval-region [(/ Math/PI -4) (/ Math/PI 4)]))
       (make-gripper-action 
        (make-robot-gripper-state right? false 60 obj-name))
-      (make-arm-rel-pose-action right? [-0.1 0 0.05] false)
+
       ]]))
 	           
 (defmethod robot-action-name ::GoGraspHLA [a]
   ['go-grasp (:right? a) (:obj-name a)])
-
+ )
 
 
 
@@ -549,10 +632,12 @@
 
 ;; TODO: use base pose of robot to assist in sampling feasible poses.
 (defmethod robot-hla-refinements ::DropHLA [nh a env]
-  (let [{:keys [right? map-pt]} a]
+  (let [{:keys [right? map-pt]} a
+	base-theta (:theta (:base (:robot env)))]
     [[(make-arm-drop-hla right? 
-	map-pt
-	(make-interval-region [(/ Math/PI -1) (/ Math/PI 1)]))
+	(update-in map-pt [2] + 0.17)
+	(make-interval-region [(- base-theta 1) (+ base-theta 1)]))
+      (make-torso-action (make-robot-torso-state 0.05))
       (make-gripper-action 
        (make-robot-gripper-state right? true))
       (make-arm-rel-pose-action right? [-0.1 0 0] true)
@@ -560,33 +645,6 @@
 	           
 (defmethod robot-action-name ::DropHLA [a]
   ['drop (:right? a) (:map-pt a)])
-
-
-
-
-;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;; Torso ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;  
-
-; TODO: collision checking; integration with map->tll-pose-stamped
-
-(derive ::TorsoAction ::RobotPrimitive)
-
-(defstruct torso-action :class :goal)
-
-(defn make-torso-action [goal]
-  (struct torso-action ::TorsoAction goal))
-
-(defmethod robot-primitive-result ::TorsoAction [nh action env]
-  [(assoc-in env [:robot :torso] (:goal action))
-   (* *torso-cost-multiplier*
-      (Math/abs (double (- (:height (:goal action)) (:height (:torso (:robot env)))))))])
-
-(defmethod execute-robot-primitive ::TorsoAction [nh action]
-  (println "Executing move_torso action (directly via trajectory controller)")
-  (move-torso-to-state nh (:goal action)))
-
-(defmethod robot-action-name ::TorsoAction [a]
-  ['torso-to (:height (:goal a))])
-
 
 
 

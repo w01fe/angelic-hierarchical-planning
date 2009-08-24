@@ -70,12 +70,16 @@
 
 
 (defn get-current-gripper-state [nh right?]
-  (make-robot-gripper-state right? 
-    (>
-     (:position (first (filter #(= (:name %) (str (if right? "r" "l") "_gripper_joint"))
-			      (:joint_states (get-current-mechanism-state nh)))))
-     0.06)
-    ))
+  (try 
+    (make-robot-gripper-state right? 
+      (>
+       (:position (first (filter #(= (:name %) (str (if right? "r" "l") "_gripper_joint"))
+ 			      (:joint_states (get-current-mechanism-state nh)))))
+       0.06)
+     )
+    (catch Exception e
+      (println "Presuming" right? "gripper missing.")
+      *missing-part*)))
 
 
 
@@ -84,31 +88,41 @@
 ;; TODO:  make generic.
 
 
-(defn attach-bottle [#^NodeHandle nh]
-  (println "Not attaching objects for now.")
-#_  (put-single-message-cached nh "/attach_object" 
+(defn attach-bottle [#^NodeHandle nh right?]
+;  (println "Not attaching for now...")
+  (println "Attaching object.")
+  (let [link (if right? "r_gripper_palm_link" "l_gripper_palm_link")
+	all-links (cons (if right? "r_forearm_link" "l_forearm_link")
+		   (map #(str (if right? "r_gripper_" "l_gripper_") %)
+		       ["palm_link" "l_finger_link" "r_finger_link" 
+			"l_finger_tip_link" "r_finger_tip_link"
+			"float_link" "tool_frame"
+			]))]
+    (put-single-message-cached nh "/attach_object" 
     (map-msg AttachedObject
-     {:header {:frame_id "r_gripper_palm_link" :stamp (.now nh)}
-      :link_name "r_gripper_palm_link"
+     {:header {:frame_id link :stamp (.now nh)}
+      :link_name link
       :objects [{:type ros.pkg.mapping_msgs.msg.Object/CYLINDER
-		 :dimensions [0.075 0.30]
+		 :dimensions [0.10 0.20]
 		 :triangles []
 		 :vertices []}]
-      :poses   [(make-pose [0.16 0 0] [0 0 0 1])]
-      :touch_links ??
+      :poses   [(make-pose [0.15 0 0] [0 0 0 1])]
+      :touch_links all-links
       }) 
-    ))
+    )))
 
-(defn unattach-bottle [nh]
-  (put-single-message-cached nh "/attach_object"
+(defn unattach-bottle [nh right?]
+  (println "Unattaching object.")
+  (let [link (if right? "r_gripper_palm_link" "l_gripper_palm_link")]
+   (put-single-message-cached nh "/attach_object"
     (map-msg AttachedObject
-     {:header {:frame_id "r_gripper_palm_link"}
-      :link_name "r_gripper_palm_link"
+     {:header {:frame_id link}
+      :link_name link
       :objects []
       :poses []
       :touch_links []
       }) 
-    ))
+    )))
 
 
 
@@ -124,10 +138,10 @@
 ;  (run-action nh (str "/actuate_gripper_" (if right? "right" "left") "_arm")
 ;	      ActuateGripperAction {:data force}))
 
-(defn move-gripper-to-state 
-  ([nh gs]
-    (apply-gripper-force nh (isa? (:class gs) ::Right) (* (:force gs) (if (:open? gs) 1 -1)))
-    (if (:holding gs) (attach-bottle nh) (unattach-bottle nh))))
+(defn move-gripper-to-state  [nh gs]
+  (let [right? (isa? (:class gs) ::Right)]
+    (apply-gripper-force nh right? (* (:force gs) (if (:open? gs) 1 -1)))
+    (if (:holding gs) (attach-bottle nh right?) (unattach-bottle nh right?))))
 
 
 (defn open-gripper [nh right?]

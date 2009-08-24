@@ -45,9 +45,11 @@
 
 (defonce *robot-xml* nil)
 (defonce *robot-joint-limits* nil)
+(defonce *robot-safe-joint-limits* nil)
 
-(defn get-robot-joint-limits [#^NodeHandle nh]
-  (when-not *robot-joint-limits*
+
+(defn compute-robot-info [#^NodeHandle nh]
+  (when-not *robot-xml*
    (def *robot-xml* 
        (parse (java.io.ByteArrayInputStream. 
 	       (.getBytes (.getStringParam nh "/robot_description") "UTF-8"))))
@@ -59,9 +61,34 @@
 				  [:min :max]))]
 	   [(:name (:attrs joint))
 	    (vec (map read-string
-		   (map (:attrs (first (filter #(= (:tag %) :limit) (:content joint)))) [:min :max])))]))))
-   *robot-joint-limits*
-   )
+		   (map (:attrs (first (filter #(= (:tag %) :limit) (:content joint)))) [:min :max])))])))
+   (def *robot-safe-joint-limits*
+       (into {}
+	 (for [joint (:content *robot-xml*)
+	       :when (and (= (:tag joint) :joint)
+			  (every? (or (:attrs (first (filter #(= (:tag %) :limit) (:content joint)))) {})
+				  [:min :max]))]
+	   [(:name (:attrs joint))
+	    (let [[min max]
+	          (map read-string
+		    (map (:attrs (first (filter #(= (:tag %) :limit) (:content joint)))) 
+			 [:min :max]))
+		  [smin smax] 
+		  (map read-string
+		    (map (:attrs (first (filter #(= (:tag %) :limit) (:content joint)))) 
+			 [:safety_length_min :safety_length_max]))]
+	      [(+ min smin) (- max smax)])])))
+   ))
+
+(defn get-robot-joint-limits [#^NodeHandle nh]
+  (when-not *robot-joint-limits* (compute-robot-info nh))
+  *robot-joint-limits*
+  )
+
+(defn get-robot-safe-joint-limits [#^NodeHandle nh]
+  (when-not *robot-safe-joint-limits* (compute-robot-info nh))
+  *robot-safe-joint-limits*
+  )
 
 
 (defn get-current-mechanism-state [#^NodeHandle nh]
@@ -71,6 +98,9 @@
 ;;;;;;;;;;;;;;;;;;;;;;;;;;;;; Load parts, define robot state objects ;;;;;;;;;;;;;;;;;;;;;;;;;;
 
 (defmulti get-joint-map :class)
+
+(def *missing-part* {:class ::MissingPart})
+(defmethod get-joint-map ::MissingPart [p] {})
 
 (load "robot/perception" "robot/base" "robot/arm" 
       "robot/torso" "robot/gripper" "robot/head")

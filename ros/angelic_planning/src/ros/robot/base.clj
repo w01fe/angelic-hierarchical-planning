@@ -127,7 +127,8 @@
 (defn move-base-to-pose-stamped 
   "Moves the base to the given pose-stamped, by invoking move_base."
   ([#^NodeHandle nh pose]
-     (run-old-action nh "/move_base" (map-msg pose) (MoveBaseState.))))
+     (laser-fast)
+     (run-old-action nh "/move_base" (map-msg pose) (MoveBaseState.) (Duration. 30.0))))
 
 (defn move-base-to-state
   "Like move-base-to-pose-stamped, but takes a robot-base-state"
@@ -280,18 +281,18 @@
    :position    {:x (:x base) :y (:y base) :z 0.051}
    :orientation (axis-angle->quaternion-msg [0 0 1] (:theta base))})
 
-(def *base-link->torso-lift-link-transform*
-     {:class Pose
-      :position {:x -0.05, :y 0.0, :z 0.7448695339012872}
-      :orientation {:class Quaternion :x 0.0, :y 0.0, :z 0.0, :w 1.0}})
+(defn get-base-link->torso-lift-link-transform [torso-height]
+  {:class Pose
+   :position {:x -0.05, :y 0.0, :z (+ 0.7397 torso-height)}
+   :orientation {:class Quaternion :x 0.0, :y 0.0, :z 0.0, :w 1.0}})
 
-(defn map-pose->tll-pose-stamped [map-pose base]
+(defn map-pose->tll-pose-stamped [map-pose robot]
   {:class PoseStamped
    :header {:frame_id "/torso_lift_link"}
    :pose 
    (untransform-pose 
-    (untransform-pose map-pose (map->base-link-transform base))
-    *base-link->torso-lift-link-transform*)})
+    (untransform-pose map-pose (map->base-link-transform (:base robot)))
+    (get-base-link->torso-lift-link-transform (:height (:torso robot))))})
 
 
 (comment
