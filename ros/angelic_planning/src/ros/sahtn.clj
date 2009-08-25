@@ -55,6 +55,7 @@
    (or (first vs) {}) (rest vs)))
 
 (defn- immediate-refinements [h a s]
+  (println "Now refining" (ra/robot-action-name a))
   (if (robot-hla-discrete-refinements? a)
       (ra/robot-hla-refinements (:nh h) a s)
     (let [num-refs (safe-get* (:sample-depths h) (:class a))]
@@ -81,7 +82,7 @@
   "Actually refine a from state s.  Metadata on states gives best refinement to reach it."
   (let [{:keys [nh sample-depths]} h]
     (if (ra/robot-action-primitive? a)
-        (into {} (robot-primitive-result nh a s))
+        (apply hash-map (robot-primitive-result nh a s))
       (apply merge-valuations
 	(for [ref (immediate-refinements h a s)]
 	  (map-keys #(with-meta % {:ref ref})
@@ -114,7 +115,11 @@
 
 (defn sahtn-solution-seq [h as v final-s final-r]
   "Returns [solution init-s init-rew].  Should always succeed."
-  (if (empty? as) [[] final-s final-r]
+  (println (count as) (when (seq as) (ra/robot-action-name (first as))) (keys final-s) final-r (count v))
+  (if (empty? as) 
+      (do ;(println (:robot final-s) "\n\n\n" (map-keys :robot v) final-r (get v final-s))
+	  (assert (= final-r (get v final-s)))
+	  [[] final-s final-r])
     (let [a      (first as)
 	  next-v (apply merge-valuations
 		   (for [[s r]   v]
@@ -125,6 +130,10 @@
 	         (sahtn-solution-seq h (rest as) next-v final-s final-r)
 	  [my-fs my-fr] (find next-v step-final-s)
 	  my-is         (:pre (meta my-fs))]
+      (println (count as))
+;      (assert my-fs)
+      (assert my-is)
+;      (println step-final-r my-fr)
       (assert (and (= my-fs step-final-s) (= my-fr step-final-r)))
       [(concat (sahtn-solution h a my-is my-fs my-fr))
        my-is
@@ -137,9 +146,11 @@
 	cache-key         [a context]
 	cache-val         (.get cache cache-key)
 	final-s-context   (cherry-pick (ra/robot-action-effect-context-schema a) final-s)
-	[final-s-context final-s-rew] (get cache-val final-s-context Double/NEGATIVE_INFINITY)]
+	[final-s-context final-s-rew] (find cache-val final-s-context)]
     (assert (and cache-val (not (= cache-val :in-progress)))) ; Should have been computed
+    (println final-s-rew final-r)
     (assert (= final-s-rew final-r))                         ; Can't beat optimal.
+    (assert (:ref (meta final-s-context)))
     (if (ra/robot-action-primitive? a) 
         [a]
       (first (sahtn-solution-seq h (:ref (meta final-s-context)) {s 0} final-s final-r)))))
@@ -151,18 +162,22 @@
 (derive ::SAHTN-TLA ::ra/RobotHLA)
 (defmethod ra/robot-hla-discrete-refinements? ::SAHTN-TLA [a] true)
 (defmethod ra/robot-action-precondition-context-schema ::SAHTN-TLA [a] true)
+(defmethod ra/robot-action-name ::SAHTN-TLA [a] ['top-level])
 
 
 (defn sahtn
   [nh initial-plans env sample-depths]
   (let [h {:nh nh :sample-depths sample-depths :cache (HashMap.)}
-	tla-type (gensym)]
+	tla-type (keyword (str "ros.sahtn/" (name (gensym))))]
     (derive tla-type ::SAHTN-TLA)
     (defmethod ra/robot-hla-refinements tla-type [nh a env] initial-plans)
     (let [tla               {:class tla-type}
 	  final-val         (sahtn-result h tla env)
 	  [final-s final-r] (last (sort-by val final-val))]
-      [(sahtn-solution h tla env final-s final-r) final-r])))    
+;      (println final-val)
+      (println "SAHTN is done evaluating, got best reward" final-r)
+      (when final-r
+	[(sahtn-solution h tla env final-s final-r) final-r]))))    
 
 
 
