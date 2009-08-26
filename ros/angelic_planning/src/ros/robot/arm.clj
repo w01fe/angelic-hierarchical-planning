@@ -102,17 +102,20 @@
   (if right? *rarm-joints* *larm-joints*))
 
 
-
+;; Pumped left arm up by 0.2
 
 (def *larm-joint-states*
      {"up"                [1.033456 -0.218231 0.115697 -1.082723 -2.929992 0.107283 -1.695491]
-      "tucked"            [0.14540709632380175 1.0378067830448103 1.591487363568815 -1.7594742423694119 -3.1429474321523534 0.23698554238260994 3.1415593943539344];[0.144164 0.410993 1.616344 -1.771779 -8.279421 0.236909 5.131354]
+      "tucked"                  [0.00540709632380175 0.6378067830448103 1.591487363568815 -1.5594742423694119 -3.1409474321523534 0.10698554238260994 3.1415593943539344]
+      ;[0.14540709632380175 1.0378067830448103 1.591487363568815 -1.7594742423694119 -3.1429474321523534 0.23698554238260994 3.1415593943539344]
+      ;[0.144164 0.410993 1.616344 -1.771779 -8.279421 0.236909 5.131354]
       ; [-0.000020 0.899529 1.569952 -1.550905 0.000192 0.100453 -0.000417]
       })
 
 (def *rarm-joint-states*
      {"up"                [-1.060668 -0.336501 -0.099800 -0.974440 3.106211 0.139013 2.735894]
-      "tucked"            [ -0.297281 1.3463 -1.92473 -1.64801 0.220099 0.1 3.04481]
+      "tucked"            [ -0.297281 1.2063 -1.82473 -1.84801 0.220099 0.1 3.04481]
+      ;[ -0.297281 1.3063 -1.92473 -1.64801 0.220099 0.1 3.04481]
       ;[-0.04302513181083491 1.043559686056716 -1.3698599492114338 -1.5361087707774366 0.03598088240445091 0.09429071967304825 -6.290976956420347]
       ;[0.12808 1.04762 -1.3743 -1.5358 6.3188 0.0942 -0.0078]
       ;[-0.000186 1.286251 -1.569942 -1.570996 -0.000091 0.101947 0.000223]
@@ -195,7 +198,7 @@
         [bad-j bad-v]
 	(first 
 	 (filter (fn [[j v]] 
-		   (let [[mi mx] (get limits j [(- Math/PI) Math/PI])]
+		   (let [[mi mx] (get limits j [-1000 1000])]
 		     (not (<= mi v mx))))
 		 joint-map))]
     (when bad-j [bad-j bad-v (get limits bad-j)])))
@@ -309,12 +312,12 @@
      (when world
        (put-single-message-cached nh "/fk_node/collision_map" 
 	 (map-msg (world->collision-map world)))
-       (println "Sent map for FK!"))
+       #_ (println "Sent map for FK!"))
      (let [all-joints (get-joint-map robot)]
       (loop [tries random-retries 
 	    init-joints (if start-random? (random-arm-joint-map nh right?)
 			    (:joint-angle-map ((if right? :rarm :larm) robot)))]
-       (or (if-let [sol (time (inverse-kinematics nh right? pose-stamped init-joints))]
+       (or (if-let [sol (inverse-kinematics nh right? pose-stamped init-joints)]
 	     (let [collision (first (forward-kinematics nh (merge all-joints sol)))
 		   safe?     (not (out-of-safety-limits? nh sol))]
 	       (println "Found IK solution ..."
@@ -567,9 +570,9 @@
   ([#^NodeHandle nh right? world robot-state joint-constraints pose-constraints]
      (plan-arm-motion nh right? world robot-state joint-constraints pose-constraints *no-constraints*))
   ([#^NodeHandle nh right? world robot-state joint-constraints pose-constraints path-constraints]
-  (println "Putting collision map")
+;  (println "Putting collision map")
   (put-single-message-cached nh "/collision_map_future" (map-msg (world->collision-map world)))
-  (println "Calling plan service")
+;  (println "Calling plan service")
   (call-srv-cached nh "/future_ompl_planning/plan_kinematic_path"
    (map-msg 
      {:class GetMotionPlan$Request :times 1 :allowed_time 0.5 :planner_id ""

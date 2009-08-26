@@ -30,12 +30,35 @@
 
 
 (ns ros.robot-actions
+  (:import [java.util Random])
   (:use   clojure.xml ros.ros ros.world ros.robot ros.geometry)
 	  )
   
 (set! *warn-on-reflection* true)
 
 
+;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;; Utilities for state abstraction ;;;;;;;;;;;;;;;;;;;
+
+(defn merge-deep [m1 m2]
+  "Like merge, but deep-merges sub-maps."
+  (if (map? m1) 
+      (merge-with merge-deep m1 m2)
+    m2))
+
+(defn- make-safe [x] (assert x) x)
+
+(defn cherry-pick [schema m]
+  "Schema must be a nested map, whose (non-map) leaf values will be ignored.
+   Cherry-pick returns the part of m that overlaps with schema."
+;  (println "Trying to cherry-pick" schema "from" m)
+  (cond (set? schema)
+	  (into {} (map #(make-safe (find m %)) schema))
+	(map? schema)
+	  (into {}
+	    (for [[k v] schema]
+	      [k (cherry-pick v (get m k))]))
+	:else (make-safe m)))
+	      
 ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;; Environment ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
 
 (defstruct robot-env  :class :robot :world)
@@ -84,9 +107,20 @@
   "Return a lazy (often infinite) sequence of immediate refinements. Refinements are seqs of actions."
   (fn [nh a env] (:class a)))
 
-(defmulti sample-robot-hla-refinement
+
+(defmulti sample-robot-hla-refinement-det
+  "Return a single random refinement, or nil for failure.  Refinement are seqs of actions.
+   As much as possible, results should be deterministic when given the same arguments, 
+   by using the supplied java.util.Random to supply randomness."
+  (fn [nh a env random] (:class a)))
+
+(def *ra-random*  (Random.))
+
+(defn sample-robot-hla-refinement
   "Return a single random refinement, or nil for failure.  Refinement are seqs of actions."
-  (fn [nh a env] (:class a)))
+  [nh a env] (sample-robot-hla-refinement-det nh a env *ra-random*))
+
+
 
 
 (defmethod robot-hla-refinements ::RobotHLA [nh a env]
@@ -94,11 +128,35 @@
   (filter identity
    (repeatedly #(sample-robot-hla-refinement nh a env)))) ; default implementation
 
-(defmethod sample-robot-hla-refinement ::RobotHLA [nh a env]
+(defmethod sample-robot-hla-refinement-det ::RobotHLA [nh a env random]
   (assert (robot-hla-discrete-refinements? a))
   (let [refs (robot-hla-refinements nh a env)]
     (when (seq refs)
       (nth refs (rand-int (count refs))))))
+
+
+(defmulti robot-action-precondition-context-schema 
+  "Optional; like effect-context-schema, for actions
+   with a fixed precondition context type"
+  (fn [a] (:class a)))
+
+(defmulti robot-action-precondition-context 
+  "Return a partial env representing parts of s relevant for 
+   preconditions and costs of execiting a from s."
+  (fn [a s] (:class a)))
+
+(defmethod robot-action-precondition-context :default [a s]
+  (cherry-pick (robot-action-precondition-context-schema a) s))
+
+(defmulti robot-action-effect-context-schema       
+  "Return a map representing parts of the env that will be 
+   fully controlled by this action. For now, no diff-tracking
+   so if something *may* be set it needs to be in prec-context
+   as well.  Example: {:robot {:torso true} :world {'bottle' {:on true}}}"
+  (fn [a] (:class a)))
+
+(defmethod robot-action-effect-context-schema :default [a] 
+  (robot-action-precondition-context-schema a))       
 
 
 (defn robot-plan-result [nh actions env]
@@ -138,6 +196,7 @@
   (let [{:keys [x y theta]} (:goal a)]
     ['base-to x y theta]))
 
+(defmethod robot-action-precondition-context-schema ::BaseAction [a] {:robot #{:base}})
 
 
 ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;; Base - Relative ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
@@ -170,6 +229,8 @@
   (let [{:keys [coord dist]} (:goal a)]
     ['base-rel coord dist]))
 
+(defmethod robot-action-precondition-context-schema ::BaseRelAction [a] {:robot #{:base}})
+
 
 ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;; Base - Region ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
 
@@ -184,17 +245,19 @@
 
 (defmethod robot-hla-discrete-refinements? ::BaseRegionAction [a] false)
 
-(defmethod sample-robot-hla-refinement ::BaseRegionAction [nh a env]
-    (track-head nh (get-xy-theta-region-point-stamped nh (:goal-region a)))
-  (if (and (< (rand 5) 1) (region-contains? (:goal-region a) (map (:base (:robot env)) [:x :y :theta])))
+(defmethod sample-robot-hla-refinement-det ::BaseRegionAction [nh a env #^Random random]
+  (track-head nh (get-xy-theta-region-point-stamped (:goal-region a)))
+  (if (and (< (.nextInt random 5) 1) 
+	   (region-contains? (:goal-region a) (map (:base (:robot env)) [:x :y :theta])))
      []
-   [(make-base-action (apply make-robot-base-state (sample-region (:goal-region a))))]))
+   [(make-base-action (apply make-robot-base-state (sample-region-det (:goal-region a) random)))]))
 
 (defmethod robot-action-name ::BaseRegionAction [a]
   (println (:goal-region a))
   ['base-to-region (region-name (:goal-region a))])
 
 
+(defmethod robot-action-precondition-context-schema ::BaseRegionAction [a] {:robot #{:base}})
 
 ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;; Torso ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;  
 
@@ -220,18 +283,20 @@
   ['torso-to (:height (:goal a))])
 
 
-
-
+(defmethod robot-action-precondition-context-schema ::TorsoAction [a] {:robot #{:torso}})
 
 ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;; Gripper ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;  
 
 ;; TODO: when grasp fails, ask for help.
 (derive ::GripperAction ::RobotPrimitive)
 
-(defstruct gripper-action :class :goal)
+(defstruct gripper-action :class :goal :was-holding)
 
-(defn make-gripper-action [goal]
-  (struct gripper-action ::GripperAction goal))
+(defn make-gripper-action 
+  ([goal] (make-gripper-action goal nil))
+  ([goal was-holding] 
+     (assert (or (not was-holding) (not (:holding goal))))
+     (struct gripper-action ::GripperAction goal was-holding)))
 
 (defmethod robot-primitive-result ::GripperAction [nh action env]
   (let [right? (isa? (:class (:goal action)) :ros.robot/Right)
@@ -244,6 +309,7 @@
 	will-open? (:open? (:goal action))
 	]
     (assert (or (not now-holding) (not will-hold)))
+    (assert (= (when now-holding true) (when (:was-holding action) true)))
 ;    (println "moving gripper; from holding" now-holding "to" will-hold)
 ;    (println new-robot was-open? will-open?)
 
@@ -290,6 +356,14 @@
   [(if (isa? (:class (:goal a)) :ros.robot/Right) 'right-gripper-to 'left-gripper-to)
    (:open? (:goal a))])
 
+(defmethod robot-action-precondition-context-schema ::GripperAction [a]
+  (let [gripper {:robot #{(if (isa? (:class (:goal a)) :ros.robot/Right) :rgripper :lgripper)}}]
+    (cond (:was-holding a)
+	    (assoc gripper :world #{(:was-holding a)})
+	  (:holding (:goal a))
+	    (assoc gripper :world #{(:holding (:goal a))})
+	  :else gripper)))
+
 
 ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;; Arm - Joints  ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;  
 
@@ -332,37 +406,10 @@
    (cons (if (isa? (:class (:goal a)) :ros.robot/Right) 'right-arm-to 'left-arm-to)
 	 (map second (sort-by first (seq (:joint-angle-map (:goal a))))))))
 
-
-;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;; Arm - Tuck  ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
-
-(derive ::TuckArmsAction ::RobotPrimitive)
-(derive ::ThrowArmsAction ::RobotPrimitive)
-
-(defn make-tuck-arms-action [] {:class ::TuckArmsAction}) 
-(defn make-throw-arms-action [] {:class ::ThrowArmsAction})
-
-;; For now, assume these will always succeed with constant cost, for simplicity
-(defonce *tuck-reward* -6)
-(defonce *throw-reward* -6)
-
-(defmethod robot-primitive-result ::TuckArmsAction [nh action env]
-  [(update-in env [:robot] 
-	      #(assoc % :rarm (arm-joint-state true "tucked" true)
-		        :larm (arm-joint-state false "tucked" true)))
-   *tuck-reward*])
-(defmethod robot-primitive-result ::ThrowArmsAction [nh action env]
-  [(update-in env [:robot] 
-	      #(assoc % :rarm (arm-joint-state true "up")
-		        :larm (arm-joint-state true "up")))
-   *throw-reward*])
-
-(defmethod execute-robot-primitive ::TuckArmsAction  [nh action] 
-  (println "Tucking arms...")
-  (tuck-arms nh))
-
-(defmethod execute-robot-primitive ::ThrowArmsAction [nh action] 
-  (println "Throwing arms...")
-  (throw-arms nh))
+(defmethod robot-action-precondition-context-schema ::ArmJointAction [a]
+  {:robot #{:base
+	    :torso
+	    (if (isa? (:class (:goal a)) :ros.robot/Right) :rarm :larm)}})
 
 
 ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;; Arm - Pose  ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
@@ -381,7 +428,8 @@
 
 (defmethod robot-hla-discrete-refinements? ::ArmPoseAction [a] false)
 
-(defmethod sample-robot-hla-refinement ::ArmPoseAction [nh a env]
+(defmethod sample-robot-hla-refinement-det ::ArmPoseAction [nh a env random]
+;  (println "TODO: punting on deterministic sampling for arm pose action.")
   (track-head nh {:header {:frame_id (:frame a)} :point (:position (:pose a))})
   (let [r?  (:right? a)
 	ik  (safe-inverse-kinematics 
@@ -400,6 +448,10 @@
    (cons (if (:right? a) 'right-arm-to-pose 'left-arm-to-pose)
 	 (concat (decode-pose (:pose a)) [(:frame a)]))))
 
+(defmethod robot-action-precondition-context-schema ::ArmPoseAction [a]
+  {:robot #{:base
+	    :torso
+	    (if (:right? a) :rarm :larm)}})
 
 ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;; Arm - Relative Pose  ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
 
@@ -441,6 +493,10 @@
    (:dxyz a)
    (if (:gripper? a) :gripper :base_link)])
 
+(defmethod robot-action-precondition-context-schema ::ArmRelPoseAction [a]
+  {:robot #{:base
+	    :torso
+	    (if (:right? a) :rarm :larm)}})
 
 ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;; Arm - Specific Grasp  ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
 
@@ -485,16 +541,21 @@
   (move-gripper-to-state nh (make-robot-gripper-state (:right? action) true)) ; make sure open...
   (let [obj (find-specific-object nh (:obj-map-pt action) *max-object-error*)]
     (track-head nh {:header {:frame_id "/base_link"} :point obj})
-    (assert (= :succeeded (move-arm-to-pose nh (:right? action)
-			     (compute-grasp-pose obj *grasp-approach-distance* (:angle action))
-			     "/base_link" false 60.0)))
+;    (assert (= :succeeded 
+      (move-arm-to-pose nh (:right? action)
+			(compute-grasp-pose obj *grasp-approach-distance* (:angle action))
+			"/base_link" false 60.0);))
     (move-arm-to-pose-unsafe nh (:right? action) 
       (compute-grasp-pose obj *grasp-distance* (:angle action))
-      "/base_link" 30.0 0.3)))
+      "/base_link" 15.0 0.3)))
 
 (defmethod robot-action-name ::ArmGraspAction [a]
   ['arm-grasp (:right? a) (:obj-map-pt a) (:angle a)])
 
+(defmethod robot-action-precondition-context-schema ::ArmGraspAction [a]
+  {:robot #{:base
+	    :torso
+	    (if (:right? a) :rarm :larm)}})
 
 
 
@@ -514,15 +575,19 @@
 (defmethod robot-hla-discrete-refinements? ::ArmGraspHLA [a] false)
 
 ;; TODO: use base pose of robot to assist in sampling feasible poses.
-(defmethod sample-robot-hla-refinement ::ArmGraspHLA [nh a env]
+(defmethod sample-robot-hla-refinement-det ::ArmGraspHLA [nh a env random]
   (track-head nh {:header {:frame_id "/map"} :point (make-point (:obj-map-pt a))})
   (let [{:keys [right? obj-map-pt angle-interval]} a]
-    [(make-arm-grasp-action right? obj-map-pt (sample-region angle-interval))]))
+    [(make-arm-grasp-action right? obj-map-pt (sample-region-det angle-interval random))]))
 	           
 (defmethod robot-action-name ::ArmGraspHLA [a]
   ['arm-grasp (:right? a) (:obj-map-pt a) (:interval (:angle-interval a))])
 
 
+(defmethod robot-action-precondition-context-schema ::ArmGraspHLA [a]
+  {:robot #{:base
+	    :torso
+	    (if (:right? a) :rarm :larm)}})
 
 ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;; Arm - Drop  ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
    
@@ -539,19 +604,21 @@
 (defmethod robot-hla-discrete-refinements? ::ArmDropHLA [a] false)
 
 ;; TODO: use base pose of robot to assist in sampling feasible poses.
-(defmethod sample-robot-hla-refinement ::ArmDropHLA [nh a env]
-  (println "Ignoring map angle interval for now") ;; TODO!
+(defmethod sample-robot-hla-refinement-det ::ArmDropHLA [nh a env random]
   (track-head nh {:header {:frame_id "/map"} :point (make-point (:obj-map-pt a))})
   (let [{:keys [right? obj-map-pt map-angle-interval]} a]
     [(make-arm-pose-action right? 
       (compute-grasp-pose obj-map-pt *grasp-distance* 
-			  ;(:theta (:base (:robot env)))
-			  (sample-region map-angle-interval)))]))
+			  (sample-region-det map-angle-interval random)))]))
 	           
 (defmethod robot-action-name ::ArmDropHLA [a]
   ['arm-drop (:right? a) (:obj-map-pt a) (:interval (:map-angle-interval a))])
 
 
+(defmethod robot-action-precondition-context-schema ::ArmDropHLA [a]
+  {:robot #{:base
+	    :torso
+	    (if (:right? a) :rarm :larm)}})
 
 ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;; Arm+ Gripper; Pickup  ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
 
@@ -573,7 +640,7 @@
 	(make-interval-region [(/ Math/PI -4) (/ Math/PI 4)]))
       (make-gripper-action 
        (make-robot-gripper-state right? false 60 obj-name))
-      (make-torso-action (make-robot-torso-state 0.19))
+      (make-torso-action (make-robot-torso-state 0.24))
       ;(make-arm-joint-action (arm-joint-state right? "home"))
       ; (make-arm-rel-pose-action right? [-0.1 0 0.00] true)
      ; (make-arm-joint-action (arm-joint-state right? "home"))
@@ -582,6 +649,12 @@
 (defmethod robot-action-name ::GraspHLA [a]
   ['grasp (:right? a) (:obj-name a)])
 
+(defmethod robot-action-precondition-context-schema ::GraspHLA [a]
+  {:robot #{:base
+	    :torso
+	    (if (:right? a) :rarm :larm)
+	    (if (:right? a) :rgripper :lgripper)}
+   :world #{(:obj-name a)}})
 
 
 ;;;;;;;;;;;;;;;;;;;;;;;;;; Arm+ Gripper + Base; Pickup  ;;;;;;;;;;;;;;;;;;;;;;;;;;;;
@@ -636,17 +709,22 @@
 (defmethod robot-action-name ::GoGraspHLA [a]
   ['go-grasp (:right? a) (:obj-name a)])
   
-
+(defmethod robot-action-precondition-context-schema ::GoGraspHLA [a]
+  {:robot #{:base
+	    :torso
+	    (if (:right? a) :rarm :larm)
+	    (if (:right? a) :rgripper :lgripper)}
+   :world #{(:obj-name a)}})
 
 
 ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;; Arm+ Gripper; Putdown (point)  ;;;;;;;;;;;;;;;;;;;;;;;;;;
 
 (derive ::DropHLA ::RobotHLA)
 
-(defstruct drop-hla :class :right? :map-pt)
+(defstruct drop-hla :class :right? :obj-name :map-pt)
 
-(defn make-drop-hla [right? map-pt]
-  (struct drop-hla ::DropHLA right? map-pt))
+(defn make-drop-hla [right? obj-name map-pt]
+  (struct drop-hla ::DropHLA right? obj-name map-pt))
 
 
 (defmethod robot-hla-discrete-refinements? ::DropHLA [a] true)
@@ -656,20 +734,60 @@
   (let [{:keys [right? map-pt]} a
 	base-theta (:theta (:base (:robot env)))]
     [[(make-arm-drop-hla right? 
-	(update-in map-pt [2] + 0.18)
+	(update-in map-pt [2] + 0.23)
 	(make-interval-region [(- base-theta 1) (+ base-theta 1)]))
       (make-torso-action (make-robot-torso-state 0.05))
       (make-gripper-action 
-       (make-robot-gripper-state right? true))
+       (make-robot-gripper-state right? true)
+       (safe-get* ((if right? :rgripper :lgripper) (:robot env)) :holding))
       (make-arm-rel-pose-action right? [-0.1 0 0] true)
       ]]))
 	           
 (defmethod robot-action-name ::DropHLA [a]
   ['drop (:right? a) (:map-pt a)])
 
+(defmethod robot-action-precondition-context-schema ::DropHLA [a]
+  {:robot #{:base
+	    :torso
+	    (if (:right? a) :rarm :larm)
+	    (if (:right? a) :rgripper :lgripper)}
+   :world #{(:obj-name a)}})
 
 
 ;;;;;;;;;;;;;;;;;;;;;;;;;; Arm+ Gripper + Base; Drop  ;;;;;;;;;;;;;;;;;;;;;;;;;;;;
+
+
+(derive ::GoDropHLA ::RobotHLA)
+
+(defstruct go-drop-hla :class :right? :obj-name :table-name :map-pt)
+
+(defn make-go-drop-hla [right? obj-name table-name map-pt]
+  (struct go-drop-hla ::GoDropHLA right? obj-name table-name map-pt))
+
+(defmethod robot-hla-discrete-refinements? ::GoDropHLA [a] true)
+
+;; TODO: use base pose of robot to assist in sampling feasible poses.
+(defmethod robot-hla-refinements ::GoDropHLA [nh a env]
+  (let [{:keys [right? map-pt obj-name table-name]} a
+	base-region (compute-base-grasp-region map-pt (safe-get* (:world env) table-name))]
+    (if base-region
+      [[(make-base-region-action base-region)
+        (make-drop-hla right? obj-name map-pt)]]
+     (println "Could not find base region for map-pt" map-pt))))
+	           
+(defmethod robot-action-name ::GoDropHLA [a]
+  ['go-drop (:right? a) (:table-name a) (:map-pt a)])
+  
+(defmethod robot-action-precondition-context-schema ::GoDropHLA [a]
+  {:robot #{:base
+	    :torso
+	    (if (:right? a) :rarm :larm)
+	    (if (:right? a) :rgripper :lgripper)}
+   :world #{(:obj-name a)}})
+
+
+(comment
+;;;;;;;;;;;;;;;;;;;;;;;;;; Arm+ Gripper + Base; Drop Region  ;;;;;;;;;;;;;;;;;;;;;;;;;;;;
 
 
 (derive ::GoDropHLA ::RobotHLA)
@@ -693,6 +811,35 @@
 (defmethod robot-action-name ::GoDropHLA [a]
   ['go-drop (:right? a) (:table-name a) (:map-pt a)])
   
+ 
+
+
+;;;;;;;;;;;;;;;;;;;;;;;;;; Arm+ Gripper + Base; Move  ;;;;;;;;;;;;;;;;;;;;;;;;;;;;
+
+
+(derive ::GoMoveHLA ::RobotHLA)
+
+(defstruct go-move-hla :class :right? :table-name :map-pt)
+
+(defn make-go-move-hla [right? table-name map-pt]
+  (struct go-move-hla ::GoMoveHLA right? table-name map-pt))
+
+(defmethod robot-hla-discrete-refinements? ::GoMoveHLA [a] true)
+
+;; TODO: use base pose of robot to assist in sampling feasible poses.
+(defmethod robot-hla-refinements ::GoMoveHLA [nh a env]
+  (let [{:keys [right? map-pt table-name]} a
+	base-region (compute-base-grasp-region map-pt (safe-get* (:world env) table-name))]
+    (if base-region
+      [[(make-base-region-action base-region)
+        (make-move-hla right? map-pt)]]
+     (println "Could not find base region for map-pt" map-pt))))
+	           
+(defmethod robot-action-name ::GoMoveHLA [a]
+  ['go-move (:right? a) (:table-name a) (:map-pt a)])
+  
+  )
+
 
 
 
@@ -704,6 +851,9 @@
 
 (defn get-default-env [nh]
   (make-robot-env (get-current-robot-state nh) (get-demo-world 0.1 0.1 0)))
+
+(defn get-default-lowrez-env [nh]
+  (make-robot-env (get-current-robot-state nh) (get-demo-world 1 1 0)))
 
 ;; Stuff below not currently in use.  
 
@@ -880,5 +1030,42 @@
 
 (defn execute-robot-plan [nh actions]
   (execute-robot-primitive nh (make-robot-action-seq actions)))
+
+)
+
+
+
+
+(comment 
+;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;; Arm - Tuck  ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
+
+(derive ::TuckArmsAction ::RobotPrimitive)
+(derive ::ThrowArmsAction ::RobotPrimitive)
+
+(defn make-tuck-arms-action [] {:class ::TuckArmsAction}) 
+(defn make-throw-arms-action [] {:class ::ThrowArmsAction})
+
+;; For now, assume these will always succeed with constant cost, for simplicity
+(defonce *tuck-reward* -6)
+(defonce *throw-reward* -6)
+
+(defmethod robot-primitive-result ::TuckArmsAction [nh action env]
+  [(update-in env [:robot] 
+	      #(assoc % :rarm (arm-joint-state true "tucked" true)
+		        :larm (arm-joint-state false "tucked" true)))
+   *tuck-reward*])
+(defmethod robot-primitive-result ::ThrowArmsAction [nh action env]
+  [(update-in env [:robot] 
+	      #(assoc % :rarm (arm-joint-state true "up")
+		        :larm (arm-joint-state true "up")))
+   *throw-reward*])
+
+(defmethod execute-robot-primitive ::TuckArmsAction  [nh action] 
+  (println "Tucking arms...")
+  (tuck-arms nh))
+
+(defmethod execute-robot-primitive ::ThrowArmsAction [nh action] 
+  (println "Throwing arms...")
+  (throw-arms nh))
 
 )

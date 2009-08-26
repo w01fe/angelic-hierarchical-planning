@@ -124,16 +124,16 @@
   ([right? obj angle]
     (assert (and (< 0.4 (first obj) 1.1) (< -0.8 (second obj) 0.8)))
 
-    (when (= :succeeded 
-	     (move-arm-to-pose nh right? (compute-grasp-pose obj 0.26 angle) "/base_link" false 30.0))
+    ;(when (= :succeeded 
+	     (move-arm-to-pose nh right? (compute-grasp-pose obj 0.26 angle) "/base_link" false 30.0); )
     (open-gripper nh right?)
       (Thread/sleep 3000)
 ;      (println (final-approach-arm right? obj))
-     ; (move-arm-to-pose-unsafe nh right? (compute-grasp-pose obj 0.15 angle) "/base_link" 10.0 0.3)
-;      (close-gripper nh right?)
+       (move-arm-to-pose-unsafe nh right? (compute-grasp-pose obj 0.15 angle) "/base_link" 10.0 0.3)
+      (close-gripper nh right?)
 
 ;      (move-arm-rel-unsafe nh right? [-0.2 0 0])
-      #_(move-arm-to-state nh (arm-joint-state right? "home") false #_ true 60.0))))
+      #_(move-arm-to-state nh (arm-joint-state right? "home") false #_ true 60.0)));)
 
 
 (defn grasp-object-above 

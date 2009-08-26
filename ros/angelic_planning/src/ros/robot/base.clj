@@ -135,7 +135,7 @@
   "Moves the base to the given pose-stamped, by invoking move_base."
   ([#^NodeHandle nh pose]
      (laser-fast)
-     (run-old-action nh "/move_base" (map-msg pose) (MoveBaseState.) (Duration. 30.0))))
+     (run-old-action nh "/move_base" (map-msg pose) (MoveBaseState.) (Duration. 60.0))))
 
 (defn move-base-to-state
   "Like move-base-to-pose-stamped, but takes a robot-base-state"

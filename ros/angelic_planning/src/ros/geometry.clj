@@ -30,6 +30,7 @@
 
 
 (ns ros.geometry
+  (:import [java.util Random])
   (:use   ros.ros)
 	  )
   
@@ -224,15 +225,20 @@
 
 (defmulti region-name :class)
 
-(defmulti sample-region :class)
+(defmulti sample-region-det (fn [r random] (:class r)))
 
 (defmulti region-contains? (fn [i p] (:class i)))
 
 (defmulti region-subsumes? (fn [x y] [(:class x) (:class y)]))
 
+(defonce *geom-random* (Random.))
+(defn sample-region [r] (sample-region-det r *geom-random*))
 
 (defn rand-double [[mn mx]]
   (+ mn (rand (- mx mn))))
+
+(defn rand-double-det [[mn mx] #^Random random]
+  (+ mn (* (.nextDouble random) (- mx mn))))
 
 
 
@@ -240,8 +246,8 @@
   (assert (>= b a))
   {:class ::IntervalRegion :interval [a b]})
 
-(defmethod sample-region ::IntervalRegion [r]
-  (rand-double (:interval r)))
+(defmethod sample-region-det ::IntervalRegion [r random]
+  (rand-double-det (:interval r) random))
 
 (defmethod region-name ::IntervalRegion [r]
   (:interval r))
@@ -265,8 +271,8 @@
    :intervals [(make-interval-region [minx maxx])
 	       (make-interval-region [miny maxy])]})
 
-(defmethod sample-region ::XYRegion [r]
-  (vec (map sample-region (:intervals r))))
+(defmethod sample-region-det ::XYRegion [r random]
+  (vec (map #(sample-region-det % random) (:intervals r))))
 
 (defmethod region-name ::XYRegion [r]
   (vec (map region-name (:intervals r))))
@@ -297,8 +303,8 @@
 	       (make-interval-region [miny maxy])
 	       (make-interval-region [mina maxa])]})
 
-(defmethod sample-region ::XYThetaRegion [r]
-  (vec (map sample-region (:intervals r))))
+(defmethod sample-region-det ::XYThetaRegion [r random]
+  (vec (map #(sample-region-det % random) (:intervals r))))
 
 (defmethod region-name ::XYThetaRegion [r]
   (vec (map region-name (:intervals r))))
@@ -313,7 +319,7 @@
   (let [[[ax bx] [ay by]] (get-xy-region-extent r)]
     {:class PointStamped
      :header {:frame_id "/map"}
-     :point  (make-point (/ (+ ax bx) 2) (/ (+ ay by) 2) 0)}))
+     :point  (make-point [(/ (+ ax bx) 2) (/ (+ ay by) 2) 0])}))
 
 
 

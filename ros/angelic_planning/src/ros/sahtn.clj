@@ -30,7 +30,7 @@
 
 
 (ns ros.sahtn
-  (:import [java.util HashMap])
+  (:import [java.util HashMap Random])
   (:use ros.ros [ros.robot-actions :as ra])
   )
   
@@ -58,10 +58,12 @@
   (println "Now refining" (ra/robot-action-name a))
   (if (robot-hla-discrete-refinements? a)
       (ra/robot-hla-refinements (:nh h) a s)
-    (let [num-refs (safe-get* (:sample-depths h) (:class a))]
+    (let [num-refs (safe-get* (:sample-depths h) (:class a))
+	  random   (Random. (+ (* 1000000 (:seed h)) (.hashCode #^Object a)))]
+      (.nextDouble random) ;; First value from fresh random is distinctly not random.
       (filter identity
 	(take num-refs
-	  (repeatedly #(ra/sample-robot-hla-refinement (:nh h) a s)))))))
+	  (repeatedly #(ra/sample-robot-hla-refinement-det (:nh h) a s random)))))))
 
 
 
@@ -104,7 +106,8 @@
 	  (= cache-val :in-progress) ;; On the stack; this is a loop.
 	    {}
 	  :else                      ;; already computed; reuse 
-	    (map-keys #(merge-deep s %) cache-val))))
+	    (do (println "Yippee! Reusing results for action" (ra/robot-action-name a))
+		(map-keys #(merge-deep s %) cache-val)))))
 
 
 ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;; Extracting Solutions  ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
@@ -113,47 +116,44 @@
 
 (declare sahtn-solution)
 
-(defn sahtn-solution-seq [h as v final-s final-r]
+(defn sahtn-solution-seq [h as v final-s]
   "Returns [solution init-s init-rew].  Should always succeed."
-  (println (count as) (when (seq as) (ra/robot-action-name (first as))) (keys final-s) final-r (count v))
+;  (println (count as) (when (seq as) (ra/robot-action-name (first as))) (keys final-s)  (count v))
   (if (empty? as) 
       (do ;(println (:robot final-s) "\n\n\n" (map-keys :robot v) final-r (get v final-s))
-	  (assert (= final-r (get v final-s)))
-	  [[] final-s final-r])
+	  (contains? v final-s)
+	  [[] final-s])
     (let [a      (first as)
 	  next-v (apply merge-valuations
 		   (for [[s r]   v]
 		     (into {}
 		       (for [[ns sr] (sahtn-result h a s)]
 			 [(with-meta ns {:pre s}) (+ r sr)]))))
-	  [rest-sol step-final-s step-final-r] 
-	         (sahtn-solution-seq h (rest as) next-v final-s final-r)
-	  [my-fs my-fr] (find next-v step-final-s)
-	  my-is         (:pre (meta my-fs))]
-      (println (count as))
+	  [rest-sol step-final-s] (sahtn-solution-seq h (rest as) next-v final-s)
+	  [my-fs my-fr]           (find next-v step-final-s)
+	  my-is                   (:pre (meta my-fs))]
+;      (println (count as))
 ;      (assert my-fs)
-      (assert my-is)
+;      (assert my-is)
 ;      (println step-final-r my-fr)
-      (assert (and (= my-fs step-final-s) (= my-fr step-final-r)))
-      [(concat (sahtn-solution h a my-is my-fs my-fr))
-       my-is
-       (safe-get* v my-is)])))
+      (assert (= my-fs step-final-s)) ; (= my-fr step-final-r)))
+      [(concat (sahtn-solution h a my-is my-fs) rest-sol)
+       my-is])))
 
-(defn sahtn-solution [h a s final-s final-r]
+(defn sahtn-solution [h a s final-s]
   "Returns a solution (possibly [])."
+  (println "Extracting solution for" (ra/robot-action-name a))
   (let [#^HashMap cache   (:cache h)
 	context           (ra/robot-action-precondition-context a s)
 	cache-key         [a context]
 	cache-val         (.get cache cache-key)
 	final-s-context   (cherry-pick (ra/robot-action-effect-context-schema a) final-s)
 	[final-s-context final-s-rew] (find cache-val final-s-context)]
+    (println (meta final-s-context))
     (assert (and cache-val (not (= cache-val :in-progress)))) ; Should have been computed
-    (println final-s-rew final-r)
-    (assert (= final-s-rew final-r))                         ; Can't beat optimal.
-    (assert (:ref (meta final-s-context)))
     (if (ra/robot-action-primitive? a) 
         [a]
-      (first (sahtn-solution-seq h (:ref (meta final-s-context)) {s 0} final-s final-r)))))
+      (first (sahtn-solution-seq h (:ref (meta final-s-context)) {s 0} final-s)))))
       
 
 ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;; Driver  ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
@@ -167,7 +167,7 @@
 
 (defn sahtn
   [nh initial-plans env sample-depths]
-  (let [h {:nh nh :sample-depths sample-depths :cache (HashMap.)}
+  (let [h {:nh nh :sample-depths sample-depths :cache (HashMap.) :seed (rand-int 100000)}
 	tla-type (keyword (str "ros.sahtn/" (name (gensym))))]
     (derive tla-type ::SAHTN-TLA)
     (defmethod ra/robot-hla-refinements tla-type [nh a env] initial-plans)
@@ -177,7 +177,7 @@
 ;      (println final-val)
       (println "SAHTN is done evaluating, got best reward" final-r)
       (when final-r
-	[(sahtn-solution h tla env final-s final-r) final-r]))))    
+	[(sahtn-solution h tla env final-s) final-r]))))    
 
 
 

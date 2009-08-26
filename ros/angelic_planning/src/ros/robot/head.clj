@@ -51,15 +51,24 @@
      (let [start? (and point-stamped (not @*head-point-stamped*))]
        (reset! *head-point-stamped* point-stamped)
        (when start?
-	 (.run 
+	 (.start 
 	  (Thread. 
 	   (proxy [Runnable] []
 	    (run [] 
 	     (loop []
 	       (when-let [pt @*head-point-stamped*]
-		 (point-head nh pt)
+;		 (println "Pointing head at" pt)
+		 (if (= "/map" (:frame_id (:header pt))) ;; Don't look at points too close.
+		   (let [{:keys [x y]} (get-current-base-state nh)]
+		     (if (< (+ (Math/pow (double (- (:x (:point pt)) x)) 2)
+			       (Math/pow (double (- (:y (:point pt)) y)) 2))
+			    1)
+		         (point-head nh {:header {:frame_id "/base_link"} :point (make-point [1 0 1])})
+		       (point-head nh pt)))
+		   (point-head nh pt))
 		 (Thread/sleep 100)
-		 (recur)))))))))))
+		 (recur)))
+	     (println "Head tracking thread is dying.")))))))))
 
 
        
