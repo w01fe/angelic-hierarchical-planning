@@ -185,3 +185,9 @@
 
 (set! *warn-on-reflection* false)
 
+
+
+;; (sahtn nh [[(make-gripper-action (make-robot-gripper-state true true))  (make-go-grasp-hla true "bottle2") (make-arm-joint-action (arm-joint-state true "tucked")) (make-go-drop-hla true "bottle2" "table" [16.2 26.5 0.82]) (make-arm-joint-action (arm-joint-state true "tucked")) (make-go-grasp-hla true "bottle") (make-arm-joint-action (arm-joint-state true "tucked")) (make-go-drop-hla true "bottle" "table" [17.8 26.0 0.82]) (make-arm-joint-action (arm-joint-state true "tucked"))]] (get-default-env nh) {:ros.robot-actions/BaseRegionAction 5  :ros.robot-actions/ArmGraspHLA 3  :ros.robot-actions/ArmDropHLA 3  :ros.robot-actions/ArmPoseAction 3})
+
+
+;[[(make-gripper-action (make-robot-gripper-state true true))  (make-go-grasp-hla true "bottle2") (make-arm-joint-action (arm-joint-state true "tucked")) (make-go-drop-hla true "bottle2" "table" [16.2 26.5 0.82]) (make-grasp-hla true "bottle") (make-arm-joint-action (arm-joint-state true "tucked")) (make-go-drop-hla true "bottle" "table" [17.8 26.0 0.82]) (make-arm-joint-action (arm-joint-state true "tucked"))]]

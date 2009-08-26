@@ -110,6 +110,7 @@
       ;[0.14540709632380175 1.0378067830448103 1.591487363568815 -1.7594742423694119 -3.1429474321523534 0.23698554238260994 3.1415593943539344]
       ;[0.144164 0.410993 1.616344 -1.771779 -8.279421 0.236909 5.131354]
       ; [-0.000020 0.899529 1.569952 -1.550905 0.000192 0.100453 -0.000417]
+      "curl" [-0.008290201009834332 1.3063319912769966 0.30020155662118897 -1.99264839394572 1.5197005814266822 1.790703191104711 2.1387243534759017]
       })
 
 (def *rarm-joint-states*
@@ -119,6 +120,8 @@
       ;[-0.04302513181083491 1.043559686056716 -1.3698599492114338 -1.5361087707774366 0.03598088240445091 0.09429071967304825 -6.290976956420347]
       ;[0.12808 1.04762 -1.3743 -1.5358 6.3188 0.0942 -0.0078]
       ;[-0.000186 1.286251 -1.569942 -1.570996 -0.000091 0.101947 0.000223]
+;      "curl"  [0.5632463281371022 1.3096314503573545 0.2748661990181705 -1.9292432892423594 11.152685215512866 1.9999383928526328 -5.118613008759258]
+      "curl" [-0.008290201009834332 1.3063319912769966 0.30020155662118897 -1.99264839394572 1.5197005814266822 1.790703191104711 2.4387243534759017] 
       "home"              [0.39146 0.770561 -0.593027 -1.99714 0.742525 1.60109 2.63896]
       "grasp_bar"         [-0.112613 -0.215548 -2.5479 0.002441 -0.14698 0.263452 2.53254]
       "grasp_bar_low"     [-0.0888183 -0.150892 -0.134794 -0.0605298 2.96289 0.268543 -3.0757]
@@ -127,6 +130,8 @@
       "grasp_counter"     [-0.356016 -0.188573 -0.0260828 -0.719335 -3.05293 0.870881 -2.97632]
       "drop"              [0.00685727 0.412504 -0.0828579 -1.51335 -3.08632 1.05988 -2.91744]
       })
+
+(def *rarm-tucked-pose* [[0.17023826444898707 0.056367121113207234 0.4711496132012268] [0.6603447283989968 0.6619766211031068 0.32716708182637394 0.1367241506017992]])
 
 (defn arm-joint-state 
   "Get an known arm joint state by name."
@@ -139,15 +144,27 @@
 			  (safe-get* (if right? *rarm-joint-states* *larm-joint-states*) name)
 			name)))))))
 
+(defn arm-l1-distance [j1 j2]
+  (apply + (map #(Math/abs (double % )) 
+    (for [[v1 v2 roll?] (map vector j1 j2 *arm-joint-wraps*)]
+      (let [diff (if roll? 
+		     (Math/abs (double (- (norm-angle v1) (norm-angle v2))))
+		   (Math/abs (double (- v1 v2))))]
+	(if roll? (if (> diff Math/PI) (- (* 2 Math/PI) diff) diff) diff))))))
+
 (defn arm-l2-distance [j1 j2]
   (Math/sqrt (double (apply + (map #(* % %) 
     (for [[v1 v2 roll?] (map vector j1 j2 *arm-joint-wraps*)]
-      (let [diff (Math/abs (double (- v1 v2)))]
+      (let [diff (if roll? 
+		     (Math/abs (double (- (norm-angle v1) (norm-angle v2))))
+		   (Math/abs (double (- v1 v2))))]
 	(if roll? (if (> diff Math/PI) (- (* 2 Math/PI) diff) diff) diff))))))))
 
 
 (defn interpolate-arm-joint [v1 v2 w wrap?]
-  (let [dist (double (- v2 v1))]
+  (let [v1 (norm-angle v1)
+	v2 (norm-angle v2)	
+	dist (double (- v2 v1))]
     (if (or (not wrap?) (< (Math/abs dist) Math/PI))
         (+ v1 (* dist w))
       (norm-angle (- v1 (* (- (* 2 Math/PI) (Math/abs dist)) (Math/signum dist) w))))))
@@ -202,6 +219,16 @@
 		     (not (<= mi v mx))))
 		 joint-map))]
     (when bad-j [bad-j bad-v (get limits bad-j)])))
+
+(defn all-safety-limit-violations [nh joint-map]
+  (let [limits (get-robot-safe-joint-limits nh)
+	bad-jv-pairs
+	 (filter (fn [[j v]] 
+		   (let [[mi mx] (get limits j [-1000 1000])]
+		     (not (<= mi v mx))))
+		 joint-map)]
+    (for [[bad-j bad-v] bad-jv-pairs]
+      [bad-j bad-v (get limits bad-j)])))
 
 
 (defn random-arm-joint-map [nh right?]
@@ -347,14 +374,16 @@
  ;; TODO: handle wraparound properly
 (defn make-smooth-joint-trajectory [init-joints final-joints step-l2 step-time]
   (assert (= (set (keys init-joints)) (set (keys final-joints))))
+  (println "Trying to make smooth trajectory from" init-joints "to" final-joints)
   (let [ks (keys init-joints)
 	j1 (map init-joints ks)
 	j2 (map final-joints ks)
 	jd (map - j2 j1)
-	total-dist (arm-l2-distance j1 j2)
+	total-dist (arm-l1-distance j1 j2)
 	steps (inc (int (/ total-dist step-l2)))
 	step-dist (/ total-dist steps)
 	step-time (* step-time (/ step-dist step-l2))]
+    (println total-dist step-l2 steps step-time)
     {:class JointTraj :names ks 
      :points 
        (for [t (range (inc steps))]
@@ -421,7 +450,7 @@
        (make-smooth-joint-trajectory (:joint-angle-map (get-current-arm-state nh 
 						        (isa? (:class arm-state) ::Right))) 
 			      (:joint-angle-map arm-state)
-				      0.2 (/ 0.3 speed-mul))
+				      0.2 (/ 0.17 speed-mul))
        wait-secs)))
 
 (defn move-arm-to-pose-unsafe
@@ -534,8 +563,8 @@
   ([right? frame [x y z] [ax ay az] angle]
      (encode-pose-constraint right? frame [x y z] [ax ay az] angle [true true true] [true true true]))
   ([right? frame [x y z] [ax ay az] angle [x? y? z?] [roll? pitch? yaw?]]
-   (let [tol {:class Point :x 0.01 :y 0.01 :z 0.01}
-	 otol {:class Point :x 0.1 :y 0.1 :z 0.1}]
+   (let [tol {:class Point :x 0.03 :y 0.03 :z 0.03}
+	 otol {:class Point :x 0.25 :y 0.25 :z 0.25}]
   {:class PoseConstraint :type (encode-pose-constraint-type [x? y? z?] [roll? pitch? yaw?])
    :orientation_importance 0.5
    :position_tolerance_above tol :position_tolerance_below tol
@@ -621,7 +650,7 @@
 							 (:joint-angle-map arm-state)))}}
 	 (Duration. (double timeout))))))
 
-
+#_
 (defn move-arm-to-pose
   "Move the gripper to a new pose."
   ([nh right? pose] (move-arm-to-pose nh right? pose "/base_link" false 30.0))
@@ -637,7 +666,7 @@
 
 ;; TODO: fix!
 
-#_
+
 (defn move-arm-to-pose
   "Use move_arm to move the gripper to a specific pose." 
   ([nh right? pose] (move-arm-to-pose nh right? pose "/base_link" false 60.0))

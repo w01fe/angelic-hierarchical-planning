@@ -161,7 +161,9 @@
 
 (defn- move-base-unsafe 
   "Custom interface for moving base directly, without move_base."
-  [#^NodeHandle nh command-fn goal-fn]
+  ([#^NodeHandle nh command-fn goal-fn]
+     (move-base-unsafe nh command-fn goal-fn 5.0))
+  ([#^NodeHandle nh command-fn goal-fn timeout]
   (let [pub (.advertise nh "/cmd_vel" (Twist.) 1)
 	sw  (util/start-stopwatch)]
     (let [init-pose (get-current-base-odom nh)
@@ -169,7 +171,7 @@
 	  zero     {:x 0 :y 0 :z 0}]
       (loop []
 	(let [current-pose (get-current-base-odom nh)]
-  	 (when (and (util/within-time-limit? sw 5.0)
+  	 (when (and (util/within-time-limit? sw timeout)
 		    (not (goal-fn init-pose current-pose)))
 	  (.publish pub (map-msg Twist (update-in 
 					  (update-in 
@@ -181,13 +183,14 @@
       (.publish pub (map-msg Twist {:linear zero :angular zero}))
       (println "Stopping: traveled" (point-distance init-pos (:position (get-current-base-odom nh))))
       )
-    (.shutdown pub)))
+    (.shutdown pub))))
 
 
 (defn move-base-rel
   "Directly moves using base controllers (unsafe), without invoking planning."
   ([#^NodeHandle nh coord distance] (move-base-rel nh coord distance 1.0))
-  ([#^NodeHandle nh coord distance speed]
+  ([#^NodeHandle nh coord distance speed] (move-base-rel nh coord distance speed 5.0))
+  ([#^NodeHandle nh coord distance speed timeout]
   (assert (#{:x :y} coord))
   (let [distance (double distance)
 	dir (Math/signum distance)
@@ -201,7 +204,8 @@
     (fn [init-pose current-pose]
       (let [dist (- distance (point-distance (:position init-pose) (:position current-pose)))]
 	(or (< (Math/abs (double dist)) 0.005)
-	    (< dist -0.09))))))))
+	    (< dist -0.09))))
+    timeout))))
 
 
 (defn spin-base-to
@@ -234,8 +238,8 @@
 	(spin-base-to nh theta)
 	(Thread/sleep 300))
       (let [[x y _] (transform-point-tf nh "/map" "/base_link" [x y 0])]
-        (when (> (Math/abs (double x)) 0.02) (move-base-rel nh :x x 0.7))
-        (when (> (Math/abs (double y)) 0.02) (move-base-rel nh :y y)))))
+        (when (> (Math/abs (double x)) 0.02) (move-base-rel nh :x x 0.7 2.0))
+        (when (> (Math/abs (double y)) 0.02) (move-base-rel nh :y y 1.0 2.0)))))
 ;    (println "Servoing got us to" (get-current-base-state nh))
     :success))
 

@@ -540,14 +540,14 @@
   (track-head nh {:header {:frame_id "/map"} :point (make-point (:obj-map-pt action))})
   (move-gripper-to-state nh (make-robot-gripper-state (:right? action) true)) ; make sure open...
   (let [obj (find-specific-object nh (:obj-map-pt action) *max-object-error*)]
-    (track-head nh {:header {:frame_id "/base_link"} :point obj})
+    (track-head nh {:header {:frame_id "/base_link"} :point (make-point obj)})
 ;    (assert (= :succeeded 
       (move-arm-to-pose nh (:right? action)
 			(compute-grasp-pose obj *grasp-approach-distance* (:angle action))
 			"/base_link" false 60.0);))
     (move-arm-to-pose-unsafe nh (:right? action) 
       (compute-grasp-pose obj *grasp-distance* (:angle action))
-      "/base_link" 15.0 0.3)))
+      "/base_link" 15.0 0.5 #_0.3)))
 
 (defmethod robot-action-name ::ArmGraspAction [a]
   ['arm-grasp (:right? a) (:obj-map-pt a) (:angle a)])
@@ -640,7 +640,7 @@
 	(make-interval-region [(/ Math/PI -4) (/ Math/PI 4)]))
       (make-gripper-action 
        (make-robot-gripper-state right? false 60 obj-name))
-      (make-torso-action (make-robot-torso-state 0.24))
+      (make-torso-action (make-robot-torso-state 0.19))
       ;(make-arm-joint-action (arm-joint-state right? "home"))
       ; (make-arm-rel-pose-action right? [-0.1 0 0.00] true)
      ; (make-arm-joint-action (arm-joint-state right? "home"))
@@ -676,11 +676,11 @@
       (when (< (min distx disty) 0.3)
 	(if (not x?)
 	  (make-xytheta-region
-	   [(- x 0.6) (+ x 0.6)]
-	   (sort [(+ y (* diry 0.95)) (+ edgey (* diry 0.65))])
+	   [(- x 0.4) (+ x 0.4)]
+	   (sort [(+ y (* diry 0.90)) (+ edgey (* diry 0.60))])
 	   [(+ (* Math/PI 0.9 0.5) (if miny? 0 Math/PI)) (+ (* Math/PI 1.1 0.5) (if miny? 0 Math/PI))])
 	  (make-xytheta-region
-	   (sort [(+ x (* dirx 0.95)) (+ edgex (* dirx 0.65))])
+	   (sort [(+ x (* dirx 0.90)) (+ edgex (* dirx 0.60))])
 	   [(- y 0.6) (+ y 0.6)]
 	   [(+ (* -0.05 Math/PI) (if minx? 0 Math/PI)) (+ (* 0.05 Math/PI) (if minx? 0 Math/PI))]))))))
 	  
@@ -734,13 +734,13 @@
   (let [{:keys [right? map-pt]} a
 	base-theta (:theta (:base (:robot env)))]
     [[(make-arm-drop-hla right? 
-	(update-in map-pt [2] + 0.23)
+	(update-in map-pt [2] + 0.18)
 	(make-interval-region [(- base-theta 1) (+ base-theta 1)]))
       (make-torso-action (make-robot-torso-state 0.05))
       (make-gripper-action 
        (make-robot-gripper-state right? true)
        (safe-get* ((if right? :rgripper :lgripper) (:robot env)) :holding))
-      (make-arm-rel-pose-action right? [-0.1 0 0] true)
+      (make-arm-rel-pose-action right? [-0.1 0 0.1] true)
       ]]))
 	           
 (defmethod robot-action-name ::DropHLA [a]

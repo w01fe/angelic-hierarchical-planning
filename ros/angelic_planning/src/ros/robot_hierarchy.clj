@@ -305,8 +305,22 @@
 ; Move base and move two bottles.
 (aha-star-search (alt-node (make-angelic-robot-hierarchy nh [[(make-gripper-action (make-robot-gripper-state true true))  (make-go-grasp-hla true "bottle2") (make-arm-joint-action (arm-joint-state true "tucked")) (make-go-drop-hla true "bottle2" "table" [16.2 26.5 0.82]) (make-arm-joint-action (arm-joint-state true "tucked")) (make-go-grasp-hla true "bottle") (make-arm-joint-action (arm-joint-state true "tucked")) (make-go-drop-hla true "bottle" "table" [17.8 26.0 0.82]) (make-arm-joint-action (arm-joint-state true "tucked"))]] (get-default-env nh) {:ros.robot-actions/BaseRegionAction 5  :ros.robot-actions/ArmGraspHLA 3  :ros.robot-actions/ArmDropHLA 3  :ros.robot-actions/ArmPoseAction 3}) {:graph? false :cache? false :ref-choice-fn first-choice-fn}))
 
+; Move base and move two bottles, smarter-looking.
+(aha-star-search (alt-node (make-angelic-robot-hierarchy nh [[(make-gripper-action (make-robot-gripper-state true true))  (make-go-grasp-hla true "bottle2") (make-arm-joint-action (arm-joint-state true "tucked")) (make-go-drop-hla true "bottle2" "table" [16.2 26.5 0.82]) (make-grasp-hla true "bottle") (make-arm-joint-action (arm-joint-state true "tucked")) (make-go-drop-hla true "bottle" "table" [17.8 26.0 0.82]) (make-arm-joint-action (arm-joint-state true "tucked"))]] (get-default-env nh) {:ros.robot-actions/BaseRegionAction 5  :ros.robot-actions/ArmGraspHLA 3  :ros.robot-actions/ArmDropHLA 3  :ros.robot-actions/ArmPoseAction 3}) {:graph? false :cache? false :ref-choice-fn first-choice-fn}))
+
 )
-;; TODO: better search control
+;; TODO: tune cost params.
+;; TODO: higher levels in hierarchy, shortcuts.
 ;; TODO: error recovery (failed grasp, failed unsafe trajectory, failed detection/reach, etc.)
 ;; TODO: check arm is at correct position, rather than relying on success from move_arm
 ;; TODO: fix left wrist flex joint calibration.
+;; TODO: speed up precise base movement + laser switching, if possible.
+;; TODO: weirdness in final push.
+;; TODO: figure out why self-collision is not working locally.
+
+;; Multiple IK solutions
+;; Elbow out of way for torso drop.
+;; TODO: rel pose for pullback after torso drop is bad.
+
+;; TODO: change back arm to use joint goals
+;; TODO: change back distance in encode-pose-constraint to 0.01
