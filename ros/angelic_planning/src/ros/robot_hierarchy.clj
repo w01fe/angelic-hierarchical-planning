@@ -313,7 +313,6 @@
 ;; TODO: higher levels in hierarchy, shortcuts.
 ;; TODO: error recovery (failed grasp, failed unsafe trajectory, failed detection/reach, etc.)
 ;; TODO: check arm is at correct position, rather than relying on success from move_arm
-;; TODO: fix left wrist flex joint calibration.
 ;; TODO: speed up precise base movement + laser switching, if possible.
 ;; TODO: weirdness in final push.
 ;; TODO: figure out why self-collision is not working locally.
@@ -321,6 +320,3 @@
 ;; Multiple IK solutions
 ;; Elbow out of way for torso drop.
 ;; TODO: rel pose for pullback after torso drop is bad.
-
-;; TODO: change back arm to use joint goals
-;; TODO: change back distance in encode-pose-constraint to 0.01

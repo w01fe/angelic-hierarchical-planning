@@ -177,7 +177,6 @@
 ;;;;;;;;;;;;;;;;;;;;;;;;; Forward and inverse arm kinematics ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
 ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
 
-;; TODO: take out hack for left arm miscalibration
 (defn inverse-kinematics
   "Returns a final joint map (possibly in collision) or nil for failure.
    Pose-stamped must be a pose of a *_gripper_palm_link."
@@ -563,8 +562,8 @@
   ([right? frame [x y z] [ax ay az] angle]
      (encode-pose-constraint right? frame [x y z] [ax ay az] angle [true true true] [true true true]))
   ([right? frame [x y z] [ax ay az] angle [x? y? z?] [roll? pitch? yaw?]]
-   (let [tol {:class Point :x 0.03 :y 0.03 :z 0.03}
-	 otol {:class Point :x 0.25 :y 0.25 :z 0.25}]
+   (let [tol {:class Point :x 0.01 :y 0.01 :z 0.01}
+	 otol {:class Point :x 0.1 :y 0.1 :z 0.1}]
   {:class PoseConstraint :type (encode-pose-constraint-type [x? y? z?] [roll? pitch? yaw?])
    :orientation_importance 0.5
    :position_tolerance_above tol :position_tolerance_below tol
@@ -650,7 +649,7 @@
 							 (:joint-angle-map arm-state)))}}
 	 (Duration. (double timeout))))))
 
-#_
+
 (defn move-arm-to-pose
   "Move the gripper to a new pose."
   ([nh right? pose] (move-arm-to-pose nh right? pose "/base_link" false 30.0))
@@ -664,9 +663,9 @@
     (if (not ik) (println "Couldn't find IK solution; not moving")
       (move-arm-to-state nh (make-robot-arm-state right? ik) false timeout)))))
 
-;; TODO: fix!
+;; Old version below: lets move_arm do IK.
 
-
+#_
 (defn move-arm-to-pose
   "Use move_arm to move the gripper to a specific pose." 
   ([nh right? pose] (move-arm-to-pose nh right? pose "/base_link" false 60.0))
