@@ -58,10 +58,12 @@
 (derive ::RightArmState ::Right)
 ;(derive ::MissingArmState ::ArmState)
 
-(defstruct robot-arm-state :class :joint-angle-map) ;:gripper-state
+(defstruct robot-arm-state :class :joint-angle-map :tucked?)
 
-(defn make-robot-arm-state [right? joint-angle-map]
-  (struct robot-arm-state (if right? ::RightArmState ::LeftArmState) joint-angle-map))
+(defn make-robot-arm-state 
+  ([right? joint-angle-map] (make-robot-arm-state right? joint-angle-map false))
+  ([right? joint-angle-map tucked?]
+     (struct robot-arm-state (if right? ::RightArmState ::LeftArmState) joint-angle-map tucked?)))
 
 (defmethod get-joint-map ::ArmState [obj] (:joint-angle-map obj))
 ;(defmethod get-joint-map ::MissingArmState [obj] {})
@@ -135,14 +137,16 @@
 
 (defn arm-joint-state 
   "Get an known arm joint state by name."
-  ([right? name]
+  ([right? name] (arm-joint-state right? name false))
+  ([right? name tucked?]
      (make-robot-arm-state right?
       (if (map? name) name
 	(into {} (map vector 
 		      (if right? *rarm-joints* *larm-joints*)
 		      (if (string? name)
 			  (safe-get* (if right? *rarm-joint-states* *larm-joint-states*) name)
-			name)))))))
+			name))))
+      tucked?)))
 
 (defn arm-l1-distance [j1 j2]
   (apply + (map #(Math/abs (double % )) 

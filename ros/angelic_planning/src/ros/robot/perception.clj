@@ -31,8 +31,13 @@
 
 (in-ns 'ros.robot)
 
-(defmsgs [geometry_msgs PointStamped])
+(defmsgs [geometry_msgs PointStamped] [std_msgs String])
 (defsrvs [find_bottles FindBottles] [tabletop_srvs FindTable])
+
+;; For Alex Teichman's hand detector
+(defn wait-for-hand [nh]
+  (println "Got hands" (get-single-message nh "/headcart/hands" (ros.pkg.std_msgs.msg.String.))))
+
 
 (def *laser-state* (atom nil))
 

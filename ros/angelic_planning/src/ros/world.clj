@@ -359,17 +359,18 @@
 		 (assert (region-contains? (:surface (w (:on info))) (butlast (:xyz info))))
 		 (assert (> (last (:xyz info)) (:height (w (:on info)))))
 		 (if-let [[t & args] (:goal info)]
-		   (assoc info :goal
-		     [t
-		       (let [goal-surface (:surface (w t))
-			     padded-surface (shrink-xy-region goal-surface 0.1)]
-			 (condp = (count args)
-			   0 padded-surface
-			   1 (do (assert (region-subsumes? padded-surface (first args)))
+		   (let [padded-surface (shrink-xy-region (:surface (w t)) 0.1)
+			 goal-surface 
+			   (condp = (count args)
+			     0 padded-surface
+			     1 (do (assert (region-subsumes? padded-surface (first args)))
 				 (first args))
-			   2 (do (assert (region-contains? padded-surface args))
-				 (make-xy-region [(first args) (first args)] [(second args) (second args)]))))])
-		   info)))]))))
+			     2 (do (assert (region-contains? padded-surface args))
+				   (make-xy-region [(first args) (first args)] [(second args) (second args)])))]
+		     (assoc info :goal
+		      (if (region-contains? goal-surface (drop-last 1 (:xzy info)))
+			  (println "Dropping already satisfied goal for" obj-name)
+			[t goal-surface]))))))]))))
 						      
     
 

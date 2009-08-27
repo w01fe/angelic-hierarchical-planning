@@ -231,7 +231,7 @@
   "Use move-base to get approximately to state, then unsafely servo to correct position."
 ;  (println "Trying to move precisely to" state)
   (when (= :success (move-base-to-pose-stamped nh (base-state->pose-stamped state)))
-    (start-laser-fast)
+    (start-laser-slow)
     (let [cbs (get-current-base-state nh)]
 ;    (println "Move base got us to" (get-current-base-state nh))
      (let [{:keys [x y theta]} state]
@@ -241,6 +241,7 @@
       (let [[x y _] (transform-point-tf nh "/map" "/base_link" [x y 0])]
         (when (> (Math/abs (double x)) 0.02) (move-base-rel nh :x x 3.0 2.0))
         (when (> (Math/abs (double y)) 0.02) (move-base-rel nh :y y 3.0 2.0)))))
+    (wait-for-laser-slow)
 ;    (println "Servoing got us to" (get-current-base-state nh))
     :success))
 

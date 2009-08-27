@@ -165,9 +165,18 @@
       (when-let [[next-env step-rew] (robot-primitive-result nh (first actions) env)]
 	(recur (next actions) next-env (+ rew step-rew))))))
 
+(defn describe-robot-plan [nh actions env]
+  (loop [actions actions env env rew 0]
+    (if (empty? actions) [env rew]
+      (if-let [[next-env step-rew] (robot-primitive-result nh (first actions) env)]
+	(do (println "Action" (first actions) "\n" has reward step-rew "\n")
+	    (recur (next actions) next-env (+ rew step-rew)))
+	(println "Plan failed at" (first actions))))))
+
 (defn execute-robot-plan  [nh actions]
   (doseq [action actions]
     (execute-robot-primitive nh action)))
+
 
 
 ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;; Base - Point ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
@@ -247,10 +256,10 @@
 
 (defmethod sample-robot-hla-refinement-det ::BaseRegionAction [nh a env #^Random random]
   (track-head nh (get-xy-theta-region-point-stamped (:goal-region a)))
-  (if (and (< (.nextInt random 5) 1) 
-	   (region-contains? (:goal-region a) (map (:base (:robot env)) [:x :y :theta])))
-     []
-   [(make-base-action (apply make-robot-base-state (sample-region-det (:goal-region a) random)))]))
+   [(make-base-action (apply make-robot-base-state (sample-region-det (:goal-region a) random)))])
+;  (if (and (< (.nextInt random 5) 1) 
+;	   (region-contains? (:goal-region a) (map (:base (:robot env)) [:x :y :theta])))
+;     []
 
 (defmethod robot-action-name ::BaseRegionAction [a]
   (println (:goal-region a))
@@ -412,7 +421,33 @@
 	    (if (isa? (:class (:goal a)) :ros.robot/Right) :rarm :larm)}})
 
 
-;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;; Arm - Pose  ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
+
+;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;; Arm - Tuck ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
+
+(derive ::ArmTuckAction ::RobotHLA)
+
+(defstruct arm-tuck-action :class :right?)
+
+(defn make-arm-tuck-action [right?] 
+  (struct arm-tuck-action ::ArmTuckAction right?))
+
+(defmethod robot-hla-discrete-refinements? ::ArmTuckAction [a] true)
+
+(defmethod robot-hla-refinements ::ArmTuckAction [nh a env random]
+  (let [right? (:right? a)
+	arm    (if right? :rarm :larm)]	
+    (if (:tucked? (arm (:robot env)))
+        [[]]
+      [[(make-arm-joint-action (make-robot-arm-state right? "tucked" true))]])))
+
+(defmethod robot-action-name ::ArmTuckAction [a]
+  [(if (:right? a) 'tuck-right-arm 'tuck-left-arm)])
+
+(defmethod robot-action-precondition-context-schema ::ArmTuckAction [a]
+  {:robot #{(if (:right? a) :rarm :larm)}})
+
+
+;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;; Arm - Pose  ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
 
 ; Attempt to move the arm (i.e. palm link) to a particular pose
 
@@ -474,7 +509,6 @@
 	gripper-link (if right? "r_gripper_palm_link" "l_gripper_palm_link")
 	cur-pose (safe-get* (second (robot-forward-kinematics nh (:robot env)))
 			    gripper-link)
-	_ (println (decode-pose cur-pose))
 	ik  (safe-inverse-kinematics nh right? 
 	     (map-pose->tll-pose-stamped 
 	      (if gripper?
@@ -482,6 +516,7 @@
 		(update-in cur-pose [:position] add-points (make-point dxyz))) 
 	      (:robot env))
 	     (:robot env) (:world env) 0 false)]
+    (println "Rel pose action has torso" (:torso (:robot env)) "cur pose" (decode-pose cur-pose))
     (when ik
       [[(make-arm-joint-action (make-robot-arm-state right? ik) true)]])))
 
@@ -702,8 +737,13 @@
 	obj (safe-get* world obj-name)
 	base-region (compute-base-grasp-region (:xyz obj) (safe-get* world (:on obj)))]
     (if base-region
-      [[(make-base-region-action base-region)
-	(make-grasp-hla right? obj-name)]]
+      (concat 
+       (when (region-contains? base-region (map (:base (:robot env)) [:x :y :theta]))
+	 [[(make-arm-tuck-action right?)
+	   (make-grasp-hla right? obj-name)]])
+       [[(make-arm-tuck-action right?)
+	 (make-base-region-action base-region)
+	 (make-grasp-hla right? obj-name)]])
       (println "Could not find base region to grasp" obj-name))))
 	           
 (defmethod robot-action-name ::GoGraspHLA [a]
@@ -771,12 +811,14 @@
   (let [{:keys [right? map-pt obj-name table-name]} a
 	base-region (compute-base-grasp-region map-pt (safe-get* (:world env) table-name))]
     (if base-region
-      [[(make-base-region-action base-region)
+      [[(make-drop-hla right? obj-name map-pt)]
+       [(make-arm-tuck-action right?)
+	(make-base-region-action base-region)
         (make-drop-hla right? obj-name map-pt)]]
      (println "Could not find base region for map-pt" map-pt))))
 	           
 (defmethod robot-action-name ::GoDropHLA [a]
-  ['go-drop (:right? a) (:table-name a) (:map-pt a)])
+  ['go-drop (:right? a) (:obj-name a) (:table-name a) (:map-pt a)])
   
 (defmethod robot-action-precondition-context-schema ::GoDropHLA [a]
   {:robot #{:base
@@ -786,63 +828,126 @@
    :world #{(:obj-name a)}})
 
 
-(comment
+
 ;;;;;;;;;;;;;;;;;;;;;;;;;; Arm+ Gripper + Base; Drop Region  ;;;;;;;;;;;;;;;;;;;;;;;;;;;;
 
+(derive ::GoDropRegionHLA ::RobotHLA)
 
-(derive ::GoDropHLA ::RobotHLA)
+(defstruct go-drop-region-hla :class :right? :obj-name :table-name :drop-region)
 
-(defstruct go-drop-hla :class :right? :table-name :map-pt)
+(defn make-go-drop-region-hla [right? obj-name table-name drop-region]
+  (struct go-drop-region-hla ::GoDropRegionHLA right? obj-name table-name drop-region))
 
-(defn make-go-drop-hla [right? table-name map-pt]
-  (struct go-drop-hla ::GoDropHLA right? table-name map-pt))
+(defmethod robot-hla-discrete-refinements? ::GoDropRegionHLA [a] false)
 
-(defmethod robot-hla-discrete-refinements? ::GoDropHLA [a] true)
-
-;; TODO: use base pose of robot to assist in sampling feasible poses.
-(defmethod robot-hla-refinements ::GoDropHLA [nh a env]
-  (let [{:keys [right? map-pt table-name]} a
-	base-region (compute-base-grasp-region map-pt (safe-get* (:world env) table-name))]
-    (if base-region
-      [[(make-base-region-action base-region)
-        (make-drop-hla right? map-pt)]]
-     (println "Could not find base region for map-pt" map-pt))))
+(defmethod sample-robot-hla-refinement-det ::GoDropRegionHLA [nh a env random]
+   [(make-drop-hla (:right? a) (:table-name a) (sample-region-det (:drop-region a) random))])
 	           
-(defmethod robot-action-name ::GoDropHLA [a]
-  ['go-drop (:right? a) (:table-name a) (:map-pt a)])
+(defmethod robot-action-name ::GoDropRegionHLA [a]
+  ['go-drop (:right? a) (:obj-name a) (:table-name a) (:map-pt a)])
   
- 
+ (defmethod robot-action-precondition-context-schema ::GoDropRegionHLA [a]
+  {:robot #{:base
+	    :torso
+	    (if (:right? a) :rarm :larm)
+	    (if (:right? a) :rgripper :lgripper)}
+   :world #{(:obj-name a)}})
 
 
 ;;;;;;;;;;;;;;;;;;;;;;;;;; Arm+ Gripper + Base; Move  ;;;;;;;;;;;;;;;;;;;;;;;;;;;;
 
+(derive ::MoveToGoalHLA ::RobotHLA)
 
-(derive ::GoMoveHLA ::RobotHLA)
+(defstruct move-to-goal-hla :class :right? :obj-name)
 
-(defstruct go-move-hla :class :right? :table-name :map-pt)
+(defn make-move-to-goal-hla [right? obj-name]
+  (struct move-to-goal-hla ::MoveToGoalHLA right? obj-name))
 
-(defn make-go-move-hla [right? table-name map-pt]
-  (struct go-move-hla ::GoMoveHLA right? table-name map-pt))
-
-(defmethod robot-hla-discrete-refinements? ::GoMoveHLA [a] true)
+(defmethod robot-hla-discrete-refinements? ::MoveToGoalHLA [a] true)
 
 ;; TODO: use base pose of robot to assist in sampling feasible poses.
-(defmethod robot-hla-refinements ::GoMoveHLA [nh a env]
-  (let [{:keys [right? map-pt table-name]} a
-	base-region (compute-base-grasp-region map-pt (safe-get* (:world env) table-name))]
-    (if base-region
-      [[(make-base-region-action base-region)
-        (make-move-hla right? map-pt)]]
-     (println "Could not find base region for map-pt" map-pt))))
+(defmethod robot-hla-refinements ::MoveToGoalHLA [nh a env]
+  (let [[table drop-region] goal (:goal (safe-get* (:world env) (:obj-name a)))]
+    [[(make-go-grasp-hla (:right? a) (:obj-name a))
+      (make-go-drop-hla  (:right? a) (:obj-name a) table drop-region)]]))
 	           
-(defmethod robot-action-name ::GoMoveHLA [a]
-  ['go-move (:right? a) (:table-name a) (:map-pt a)])
+(defmethod robot-action-name ::MoveToGoalHLA [a]
+  ['move-to-goal (:right? a) (:obj-name a)])
   
-  )
+(defmethod robot-action-precondition-context-schema ::MoveToGoalHLA [a]
+  {:robot #{:base
+	    :torso
+	    (if (:right? a) :rarm :larm)
+	    (if (:right? a) :rgripper :lgripper)}
+   :world #{(:obj-name a)}})  
+
+
+;;;;;;;;;;;;;;;;;;;;;;;;;; Enforce goal satisfaction  ;;;;;;;;;;;;;;;;;;;;;;;;;;;;
+
+; Fake primitive action that just verifies that object goal was achieved, and removes goal.
+
+(derive ::EnforceGoalAction ::RobotPrimitive)
+
+(defstruct enforce-goal-action :class :obj-name)
+
+(defn make-enforce-goal-action [obj-name]
+  (struct enforce-goal-action ::EnforceGoalAction obj-name))
+
+(defmethod robot-primitive-result ::EnforceGoalAction [nh action env]
+  (let [obj-name (:obj-name action)
+	obj      (safe-get* (:world env) obj-name)
+	[goal-table goal-region] (:goal obj)]
+    (assert (= goal-table (:on obj)))
+    (assert (region-contains? goal-region (drop-last 1 (:xyz obj))))
+    [(assoc-in env [:world :obj-name :goal] nil) 0]))
+
+(defmethod execute-robot-primitive ::EnforceGoalAction [nh action] true)
+	           
+(defmethod robot-action-name ::EnforceGoalAction [a]
+  ['enforce-goal (:right? a) (:obj-name a)])
+  
+(defmethod robot-action-precondition-context-schema ::EnforceGoalAction [a]
+  {:world #{(:obj-name a)}})  
 
 
 
 
+;;;;;;;;;;;;;;;;;;;;;;;;;; Top-level action  ;;;;;;;;;;;;;;;;;;;;;;;;;;;;
+
+;; Here, we use the invariant that goals are only present if not alreay satisfied.
+;; This Act is for single-arm robots.
+
+(derive ::ActHLA ::RobotHLA)
+
+(defstruct act-hla :class :right?)
+
+(defn make-act-hla [right?]
+  (struct act-hla ::ActHLA right?))
+
+(defmethod robot-hla-discrete-refinements? ::ActHLA [a] true)
+
+(defmethod robot-hla-refinements ::ActHLA [nh a env]
+  (let [remaining-objects
+	  (for [[obj-name {goal :goal}] (:world env)
+		:when goal]
+	    obj-name)]
+    (if (empty? remaining-objects)
+        [[]]
+      (for [obj remaining-objects]
+	[(make-move-to-goal-hla (:right? a) obj)
+	 (make-enforce-goal-action obj)]))))
+	           
+(defmethod robot-action-name ::ActHLA [a]
+  ['act])
+  
+(defmethod robot-action-precondition-context-schema ::ActHLA [a]
+  #{:robot :world})
+
+
+
+
+
+;; TODO: act, satisfy goal
 
 
 (set! *warn-on-reflection* false)

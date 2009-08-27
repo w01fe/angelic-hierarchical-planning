@@ -309,14 +309,27 @@
 (aha-star-search (alt-node (make-angelic-robot-hierarchy nh [[(make-gripper-action (make-robot-gripper-state true true))  (make-go-grasp-hla true "bottle2") (make-arm-joint-action (arm-joint-state true "tucked")) (make-go-drop-hla true "bottle2" "table" [16.2 26.5 0.82]) (make-grasp-hla true "bottle") (make-arm-joint-action (arm-joint-state true "tucked")) (make-go-drop-hla true "bottle" "table" [17.8 26.0 0.82]) (make-arm-joint-action (arm-joint-state true "tucked"))]] (get-default-env nh) {:ros.robot-actions/BaseRegionAction 5  :ros.robot-actions/ArmGraspHLA 3  :ros.robot-actions/ArmDropHLA 3  :ros.robot-actions/ArmPoseAction 3}) {:graph? false :cache? false :ref-choice-fn first-choice-fn}))
 
 )
-;; TODO: tune cost params.
-;; TODO: higher levels in hierarchy, shortcuts.
+
+;; TODO: tune cost params. (use describe-robot-plan)
 ;; TODO: error recovery (failed grasp, failed unsafe trajectory, failed detection/reach, etc.)
 ;; TODO: check arm is at correct position, rather than relying on success from move_arm
-;; TODO: speed up precise base movement + laser switching, if possible.
-;; TODO: weirdness in final push.
-;; TODO: figure out why self-collision is not working locally.
 
-;; Multiple IK solutions
+;; TODO: adaptive sampling for drop region, based on region size.  
+;; More sytematic sampling, in general.
+
+;; Branch and bound in SAHTN
+
+;; Multiple IK solutions for final push (fix weirdness)
 ;; Elbow out of way for torso drop.
 ;; TODO: rel pose for pullback after torso drop is bad.
+;; Fancier problems.
+
+;;;;;;;;; Test
+
+;; Higher-level hierarchy
+;; speed up precise base movement + laser switching, if possible.
+;; Hand detection
+
+;;;;;;;;; No?
+
+;; TODO: figure out why self-collision is not working locally.
