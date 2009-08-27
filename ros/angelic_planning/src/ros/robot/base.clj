@@ -164,8 +164,7 @@
   ([#^NodeHandle nh command-fn goal-fn]
      (move-base-unsafe nh command-fn goal-fn 5.0))
   ([#^NodeHandle nh command-fn goal-fn timeout]
-  (let [pub (.advertise nh "/cmd_vel" (Twist.) 1)
-	sw  (util/start-stopwatch)]
+  (let [sw  (util/start-stopwatch)]
     (let [init-pose (get-current-base-odom nh)
 	  init-pos (:position init-pose)
 	  zero     {:x 0 :y 0 :z 0}]
@@ -173,17 +172,18 @@
 	(let [current-pose (get-current-base-odom nh)]
   	 (when (and (util/within-time-limit? sw timeout)
 		    (not (goal-fn init-pose current-pose)))
-	  (.publish pub (map-msg Twist (update-in 
-					  (update-in 
-					   (command-fn init-pose current-pose)
-					   [:linear] #(merge zero %))
-					   [:angular] #(merge zero %))))
+	  (put-single-message-cached nh "/cmd_vel" 
+	    (map-msg Twist (update-in 
+			    (update-in 
+			     (command-fn init-pose current-pose)
+			     [:linear] #(merge zero %))
+			    [:angular] #(merge zero %))))
 	  (Thread/sleep 100)
 	  (recur))))
-      (.publish pub (map-msg Twist {:linear zero :angular zero}))
+      (put-single-message-cached nh "/cmd_vel" 
+	(map-msg Twist {:linear zero :angular zero}))
       (println "Stopping: traveled" (point-distance init-pos (:position (get-current-base-odom nh))))
-      )
-    (.shutdown pub))))
+      ))))
 
 
 (defn move-base-rel
@@ -196,12 +196,12 @@
 	dir (Math/signum distance)
 	distance (Math/abs distance)]
    (move-base-unsafe nh
-    (fn [init-pose current-pose]
+    (fn rel-command [init-pose current-pose]
       (let [dist (- distance (point-distance (:position init-pose) (:position current-pose)))]
 	{:linear {coord (* dir (cond (> dist 0.2) (* speed 0.2) 
 				  (< dist -0.2) 0
 				  :else (* (max dist 0) speed 1.5)))}}))
-    (fn [init-pose current-pose]
+    (fn rel-goal [init-pose current-pose]
       (let [dist (- distance (point-distance (:position init-pose) (:position current-pose)))]
 	(or (< (Math/abs (double dist)) 0.005)
 	    (< dist -0.09))))
@@ -231,6 +231,7 @@
   "Use move-base to get approximately to state, then unsafely servo to correct position."
 ;  (println "Trying to move precisely to" state)
   (when (= :success (move-base-to-pose-stamped nh (base-state->pose-stamped state)))
+    (start-laser-fast)
     (let [cbs (get-current-base-state nh)]
 ;    (println "Move base got us to" (get-current-base-state nh))
      (let [{:keys [x y theta]} state]
@@ -238,8 +239,8 @@
 	(spin-base-to nh theta)
 	(Thread/sleep 300))
       (let [[x y _] (transform-point-tf nh "/map" "/base_link" [x y 0])]
-        (when (> (Math/abs (double x)) 0.02) (move-base-rel nh :x x 0.7 2.0))
-        (when (> (Math/abs (double y)) 0.02) (move-base-rel nh :y y 1.0 2.0)))))
+        (when (> (Math/abs (double x)) 0.02) (move-base-rel nh :x x 3.0 2.0))
+        (when (> (Math/abs (double y)) 0.02) (move-base-rel nh :y y 3.0 2.0)))))
 ;    (println "Servoing got us to" (get-current-base-state nh))
     :success))
 

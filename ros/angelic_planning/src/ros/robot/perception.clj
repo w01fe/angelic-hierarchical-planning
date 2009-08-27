@@ -36,12 +36,39 @@
 
 (def *laser-state* (atom nil))
 
-(defn laser-slow []
+(defn start-laser-slow [] 
+  (if (= @*laser-state* :slow) 
+      (println "Laser should already be slow...")
+    (do (reset! *laser-state* :transition)
+	(future-call 
+	 #(do (util/sh "roslaunch" "/u/jawolfe/angel/ros/angelic_planning/launch/laser_slow.launch")
+	      (reset! *laser-state* :slow)
+	      (println "Laser is now slow."))))))
+
+(defn wait-for-laser-slow []
+  (while (not (= @*laser-state* :slow)) (Thread/sleep 0.1)))
+
+(defn laser-slow [] 
   (if (= @*laser-state* :slow) 
       (println "Laser should already be slow...")
     (do (util/sh "roslaunch" "/u/jawolfe/angel/ros/angelic_planning/launch/laser_slow.launch")
 	(reset! *laser-state* :slow)
 	(println "Laser is now slow."))))
+
+
+
+
+(defn start-laser-fast [] 
+  (if (= @*laser-state* :fast) 
+      (println "Laser should already be fast...")
+    (do (reset! *laser-state* :transition)
+	(future-call 
+	 #(do (util/sh "roslaunch" "/u/jawolfe/angel/ros/angelic_planning/launch/laser_fast.launch")
+	      (reset! *laser-state* :fast)
+	      (println "Laser is now fast."))))))
+
+(defn wait-for-laser-fast []
+  (while (not (= @*laser-state* :fast)) (Thread/sleep 0.1)))
 
 (defn laser-fast [] 
   (if (= @*laser-state* :fast) 
@@ -50,6 +77,12 @@
 	(reset! *laser-state* :fast)
 	(println "Laser is now fast."))))
 
+
+
+
+(comment 
+
+)
   
 
 (def *rviz-point-map* (atom nil))
@@ -69,7 +102,7 @@
 (let [mem (atom {})]
   (def get-rviz-points
      (fn [#^NodeHandle nh wait?]
-       (future-call laser-slow)
+       (start-laser-slow laser-slow)
        (when-not (@mem nh) 
 	 (do
 	   (setup-rviz-points nh)
