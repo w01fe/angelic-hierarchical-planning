@@ -197,7 +197,7 @@
     (Thread/sleep 2000) (.spinOnce nh) (reset! a false)  
     (doseq [action actions]
       (loop []
-	(let [f #^java.util.concurrent.Future (future-call #(execute-robot-primitive nh action))]
+	(let [f #^java.util.concurrent.Future (future-call #(when (execute-robot-primitive nh action) true))]
 	  (while (and (not @a) (not (.isDone f))) (.spinOnce nh))
 	  (when @a
 	    (println "Pausing!")
@@ -213,7 +213,8 @@
 	    (println "Waiting for restart signal.")
 	    (while (not @a) (.spinOnce nh)) 
 	    (Thread/sleep 2000) (.spinOnce nh) (reset! a false)  		
-	    (recur)))))))
+	    (recur))
+	  (when (not @f) (throw (Exception.))))))))
 
 (defn execute-robot-plan-robustly  [nh actions]
   (doseq [action actions]

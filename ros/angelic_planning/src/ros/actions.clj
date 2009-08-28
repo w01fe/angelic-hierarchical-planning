@@ -86,7 +86,7 @@
 	start-time (.now nh)]
     (loop []
       (Thread/sleep 1)
-      (if (and (< (.getNumSubscribers goal-pub) 1) (< (.getNumSubscribers cancel-pub) 1))
+      (if (or (< (.getNumSubscribers goal-pub) 1) (< (.getNumSubscribers cancel-pub) 1))
   	  (if (.hasElapsed start-time (Duration. 10.0))
 	      (do (println "Action client did not recieve subscribers"
 			   (.getNumSubscribers goal-pub) (.getNumSubscribers cancel-pub))
@@ -220,7 +220,7 @@
 	start-time (.now nh)]
     (loop []
       (Thread/sleep 1)
-      (if (and (< (.getNumSubscribers goal-pub) 1) (< (.getNumSubscribers preempt-pub) 1))
+      (if (or (< (.getNumSubscribers goal-pub) 1) (< (.getNumSubscribers preempt-pub) 1))
   	  (if (.hasElapsed start-time (Duration. 10.0))
 	      (do (println "Action client did not recieve subscribers"
 			   (.getNumSubscribers goal-pub) (.getNumSubscribers preempt-pub))
