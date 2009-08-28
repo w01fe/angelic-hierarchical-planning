@@ -84,11 +84,18 @@
   "Actually refine a from state s.  Metadata on states gives best refinement to reach it."
   (let [{:keys [nh sample-depths]} h]
     (if (ra/robot-action-primitive? a)
-        (apply hash-map (robot-primitive-result nh a s))
-      (apply merge-valuations
-	(for [ref (immediate-refinements h a s)]
-	  (map-keys #(with-meta % {:ref ref})
-	    (sahtn-compute-result-seq h ref {s 0})))))))
+        (if-let [[result-state step-rew] (robot-primitive-result nh a s)]
+	    {result-state step-rew}
+	  (do (println (robot-action-name a) "is a dead end: not executable.")
+	      {}))
+      (let [refs (immediate-refinements h a s)]
+	(if (empty? refs)
+	    (do (println (robot-action-name a) "is a dead end: no refinements.")
+		{})
+	  (apply merge-valuations
+	    (for [ref refs]
+	      (map-keys #(with-meta % {:ref ref})
+		(sahtn-compute-result-seq h ref {s 0})))))))))
 
 (defn sahtn-result [h a s]
   "Memoized result valuation for doing a from s."
@@ -191,3 +198,8 @@
 
 
 ;[[(make-gripper-action (make-robot-gripper-state true true))  (make-go-grasp-hla true "bottle2") (make-arm-joint-action (arm-joint-state true "tucked")) (make-go-drop-hla true "bottle2" "table" [16.2 26.5 0.82]) (make-grasp-hla true "bottle") (make-arm-joint-action (arm-joint-state true "tucked")) (make-go-drop-hla true "bottle" "table" [17.8 26.0 0.82]) (make-arm-joint-action (arm-joint-state true "tucked"))]]
+
+
+;; (sahtn nh [[(make-act-hla true)]] (get-default-env nh) {:ros.robot-actions/BaseRegionAction 5  :ros.robot-actions/ArmGraspHLA 3  :ros.robot-actions/ArmDropHLA 3  :ros.robot-actions/ArmPoseAction 3})
+
+; (sahtn nh [[(make-setup-hla [true false]) (make-act-hla true)]] (get-default-env nh) {:ros.robot-actions/BaseRegionAction 5  :ros.robot-actions/ArmGraspHLA 3  :ros.robot-actions/ArmDropHLA 3  :ros.robot-actions/ArmPoseAction 3 :ros.robot-actions/GoDropRegionHLA 3})

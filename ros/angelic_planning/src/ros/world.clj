@@ -357,7 +357,7 @@
 	         (assert (:on info))
 		 (assert (= :surface (:type (w (:on info)))))		 
 		 (assert (region-contains? (:surface (w (:on info))) (butlast (:xyz info))))
-		 (assert (> (last (:xyz info)) (:height (w (:on info)))))
+		 (assert (> (nth (:xyz info) 2) (:height (w (:on info)))))
 		 (if-let [[t & args] (:goal info)]
 		   (let [padded-surface (shrink-xy-region (:surface (w t)) 0.1)
 			 goal-surface 
@@ -368,8 +368,8 @@
 			     2 (do (assert (region-contains? padded-surface args))
 				   (make-xy-region [(first args) (first args)] [(second args) (second args)])))]
 		     (assoc info :goal
-		      (if (region-contains? goal-surface (drop-last 1 (:xzy info)))
-			  (println "Dropping already satisfied goal for" obj-name)
+		      (if (region-contains? goal-surface (drop-last 1 (:xyz info)))
+			  (println "Dropping already satisfied goal for" obj-name ": " goal-surface (drop-last 1 (:xyz info)))
 			[t goal-surface]))))))]))))
 						      
     
@@ -394,9 +394,9 @@
 	     :type :surface :surface (make-xy-region [16.10 18.86] [25.87 27.23]) 
 	     :height 0.756}
     "bottle" {:xyz [16.3 26.1 0.85] :rpy [0 0 0] :def (get-odwalla)
-	     :type :movable :on "table" :goal ["table" (make-xy-region [17.2 17.4] [26.0 26.1])] :height 0.2}
+	     :type :movable :on "table" :goal ["table" (make-xy-region [17.7 18.0] [26.0 26.2])] :height 0.2}
     "bottle2" {:xyz [16.3 27.0 0.85] :rpy [0 0 0] :def (get-odwalla)
-	     :type :movable :on "table" :goal ["table" (make-xy-region [17.2 17.4] [26.0 26.1])] :height 0.2}
+	     :type :movable :on "table" :goal ["table" (make-xy-region [16.21 16.8] [26.2 26.5])] :height 0.2}
     }
       d3-res d2-res d2-pad))
 
@@ -465,7 +465,7 @@
 	#^bytes fdata (make-array Byte/TYPE (* fwidth fheight))]
     (doseq [{:keys [xyz rpy def]} (vals w)]
       (assert (= (:class def) :rendered))
-      (assert (= rpy [0 0 0]))
+      (when-not (= rpy [0 0 0]) (println xyz rpy) (assert nil))
       (let [costmap (translate-costmap (:2d-costmap def) xyz)
 	    {:keys [minx miny width height data]} costmap
 	    minx (int minx) miny (int miny) width (int width) height (int height)

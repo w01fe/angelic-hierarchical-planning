@@ -70,14 +70,16 @@
   ([nh] (make-current-robot-env nh (get-demo-world 0.1 0.1 0)))
   ([nh world] (make-robot-env (get-current-robot-state nh) world)))
 
-;; Also need abstract robot envs, where in world objects' xyz can be [xyregion z], and
-;; in robot, base can be in xytheta region 
 
-(def *base-cost-multiplier* -1)
-(def *base-rel-cost-multiplier* -0.1)
+;; Cost mulitpliers are intended to make reward approximately negative 
+;; execution time, in seconds.
+
+(def *base-cost-multiplier* -2)
+(def *base-cost-constant* -20)
+(def *base-rel-cost-multiplier* -2)
 (def *arm-cost-multiplier* -4)
-(def *torso-cost-multiplier* -4)
-(def *gripper-cost* -20)
+(def *torso-cost-multiplier* -60)
+(def *gripper-cost* -3)
 
 ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;; Actions ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
 
@@ -167,15 +169,24 @@
 
 (defn describe-robot-plan [nh actions env]
   (loop [actions actions env env rew 0]
-    (if (empty? actions) [env rew]
+    (if (empty? actions) rew
       (if-let [[next-env step-rew] (robot-primitive-result nh (first actions) env)]
-	(do (println "Action" (first actions) "\n" has reward step-rew "\n")
+	(do (println "Action" (first actions) "\nhas reward" step-rew "\n")
 	    (recur (next actions) next-env (+ rew step-rew)))
 	(println "Plan failed at" (first actions))))))
 
 (defn execute-robot-plan  [nh actions]
   (doseq [action actions]
     (execute-robot-primitive nh action)))
+
+(defn execute-robot-plan-handy  [nh actions]
+  (wait-for-hand nh)
+  (doseq [action actions]
+    (let [c (start-hand-counter nh)]
+      (execute-robot-primitive nh action)
+      (when (> (stop-message-counter nh c) 0)
+	(println "Now paused.")
+	(wait-for-hand nh)))))
 
 
 
@@ -192,9 +203,10 @@
   (track-head nh (base-state->point-stamped (:goal action)))
   (let [sol (plan-base-motion nh (:world env) (:base (:robot env)) (:goal action) [[0 0] [40 40]])]
     (when (seq sol)
-      [(assoc-in env [:robot :base] (:goal action)) (* *base-cost-multiplier* 
+      [(assoc-in env [:robot :base] (:goal action)) (+ *base-cost-constant* 
+						       (* *base-cost-multiplier* 
 						       (world-2d-res (:world env))
-						       (count sol))])))
+						       (count sol)))])))
 
 (defmethod execute-robot-primitive ::BaseAction [nh action]
   (println "Executing move_base action")
@@ -387,7 +399,7 @@
   ([goal unsafe?]
      (struct arm-joint-action ::ArmJointAction goal unsafe?)))
 
-(defmethod robot-primitive-result ::ArmJointAction [nh action env]
+(defn arm-joint-action-result [nh action env]
   (let [r?  (isa? (:class (:goal action)) :ros.robot/Right)
 	final-robot (assoc (:robot env) (if r? :rarm :larm) (:goal action))
 	_   (track-head nh (object-fk-point-stamped nh r? final-robot))
@@ -397,6 +409,10 @@
     (when (> (count times) 0)
       [(assoc env :robot final-robot)
        (* *arm-cost-multiplier* (last times))])))
+
+(defmethod robot-primitive-result ::ArmJointAction [nh action env]
+  (first (filter identity (take 3 (repeatedly #(arm-joint-action-result nh action env))))))
+
 
 ;; TODO:use move_arm
 ;(defmethod execute-robot-primitive ::ArmJointAction [nh action]
@@ -433,12 +449,12 @@
 
 (defmethod robot-hla-discrete-refinements? ::ArmTuckAction [a] true)
 
-(defmethod robot-hla-refinements ::ArmTuckAction [nh a env random]
+(defmethod robot-hla-refinements ::ArmTuckAction [nh a env]
   (let [right? (:right? a)
 	arm    (if right? :rarm :larm)]	
     (if (:tucked? (arm (:robot env)))
         [[]]
-      [[(make-arm-joint-action (make-robot-arm-state right? "tucked" true))]])))
+      [[(make-arm-joint-action (arm-joint-state right? "tucked" true))]])))
 
 (defmethod robot-action-name ::ArmTuckAction [a]
   [(if (:right? a) 'tuck-right-arm 'tuck-left-arm)])
@@ -550,22 +566,25 @@
 (defn make-arm-grasp-action [right? obj-map-pt angle]
   (struct arm-grasp-action ::ArmGraspAction right? obj-map-pt angle))
 
+(defn try-sample [nh a env n]
+  (first (filter identity (take n (repeatedly #(sample-robot-hla-refinement nh a env))))))
+
 (defmethod robot-primitive-result ::ArmGraspAction [nh action env]
   (track-head nh {:header {:frame_id "/map"} :point (make-point (:obj-map-pt action))})
   (let [{:keys [right? obj-map-pt angle]} action
         map->bl-transform  (map->base-link-transform (:base (:robot env))) 
 	obj-bl-pt (first (decode-pose (untransform-pose (make-pose obj-map-pt [0 0 0 1]) map->bl-transform)))]
-;    (println "Trying ...")
-    (when-let [ref (sample-robot-hla-refinement nh 
+    (println "Trying to refine arm grasp")
+    (when-let [ref (try-sample nh 
 		     (make-arm-pose-action right?
 		       (transform-pose (compute-grasp-pose obj-bl-pt *grasp-distance* angle) 
 				       map->bl-transform))
-		     env)]
-      (when-let [refp (sample-robot-hla-refinement nh 
+		     env 10)]
+      (when-let [refp (try-sample nh
 		     (make-arm-pose-action right?
 		       (transform-pose (compute-grasp-pose obj-bl-pt *grasp-approach-distance* angle) 
 				       map->bl-transform))
-		     env)]
+		     env 10)]
 	(when-let [result (robot-primitive-result nh (first ref) env)]
 	  (update-in result [1] + 2.0) ; cost for extra movement
 	  )))))
@@ -631,23 +650,32 @@
 
 (derive ::ArmDropHLA ::RobotHLA)
 
-(defstruct arm-drop-hla :class :right? :obj-map-pt :map-angle-interval)
+(defstruct arm-drop-hla :class :right? :obj-map-pt :drop-torso-height :map-angle-interval)
 
-(defn make-arm-drop-hla [right? obj-map-pt map-angle-interval]
-  (struct arm-drop-hla ::ArmDropHLA right? obj-map-pt map-angle-interval))
+(defn make-arm-drop-hla [right? obj-map-pt drop-height map-angle-interval]
+  (struct arm-drop-hla ::ArmDropHLA right? obj-map-pt drop-height map-angle-interval))
 
 (defmethod robot-hla-discrete-refinements? ::ArmDropHLA [a] false)
 
 ;; TODO: use base pose of robot to assist in sampling feasible poses.
 (defmethod sample-robot-hla-refinement-det ::ArmDropHLA [nh a env random]
   (track-head nh {:header {:frame_id "/map"} :point (make-point (:obj-map-pt a))})
-  (let [{:keys [right? obj-map-pt map-angle-interval]} a]
-    [(make-arm-pose-action right? 
-      (compute-grasp-pose obj-map-pt *grasp-distance* 
-			  (sample-region-det map-angle-interval random)))]))
+  (println "Drop for" (:obj-map-pt a) (:drop-torso-height a))
+  (let [{:keys [right? obj-map-pt map-angle-interval]} a
+	pose-action 
+	  (make-arm-pose-action right? 
+            (compute-grasp-pose obj-map-pt *grasp-distance* 
+	      (sample-region-det map-angle-interval random)))
+        rand (java.util.Random. (hash pose-action))]
+    (.nextDouble rand)
+    (first (filter identity (take 10 (repeatedly
+      #(sample-robot-hla-refinement-det nh pose-action 
+	 (assoc-in env [:robot :torso :height] (:drop-torso-height a))
+	 rand)))))))
+
 	           
 (defmethod robot-action-name ::ArmDropHLA [a]
-  ['arm-drop (:right? a) (:obj-map-pt a) (:interval (:map-angle-interval a))])
+  ['arm-drop (:right? a) (:obj-map-pt a) (:drop-torso-height a) (:interval (:map-angle-interval a))])
 
 
 (defmethod robot-action-precondition-context-schema ::ArmDropHLA [a]
@@ -774,13 +802,15 @@
   (let [{:keys [right? map-pt]} a
 	base-theta (:theta (:base (:robot env)))]
     [[(make-arm-drop-hla right? 
-	(update-in map-pt [2] + 0.18)
+	(update-in map-pt [2] - 0.05) ;map-pt 
+	0.05
+;	(update-in map-pt [2] + 0.18)
 	(make-interval-region [(- base-theta 1) (+ base-theta 1)]))
       (make-torso-action (make-robot-torso-state 0.05))
       (make-gripper-action 
        (make-robot-gripper-state right? true)
        (safe-get* ((if right? :rgripper :lgripper) (:robot env)) :holding))
-      (make-arm-rel-pose-action right? [-0.1 0 0.1] true)
+      (make-arm-rel-pose-action right? [-0.1 0 0.2] true)
       ]]))
 	           
 (defmethod robot-action-name ::DropHLA [a]
@@ -841,10 +871,12 @@
 (defmethod robot-hla-discrete-refinements? ::GoDropRegionHLA [a] false)
 
 (defmethod sample-robot-hla-refinement-det ::GoDropRegionHLA [nh a env random]
-   [(make-drop-hla (:right? a) (:table-name a) (sample-region-det (:drop-region a) random))])
+   [(make-go-drop-hla (:right? a) (:obj-name a) (:table-name a) 
+		      (conj (vec (sample-region-det (:drop-region a) random)) 
+			    (+ 0.10 (:height (safe-get* (:world env) (:table-name a))))))])
 	           
 (defmethod robot-action-name ::GoDropRegionHLA [a]
-  ['go-drop (:right? a) (:obj-name a) (:table-name a) (:map-pt a)])
+  ['go-drop-region (:right? a) (:obj-name a) (:table-name a) (region-name (:drop-region a))])
   
  (defmethod robot-action-precondition-context-schema ::GoDropRegionHLA [a]
   {:robot #{:base
@@ -867,9 +899,9 @@
 
 ;; TODO: use base pose of robot to assist in sampling feasible poses.
 (defmethod robot-hla-refinements ::MoveToGoalHLA [nh a env]
-  (let [[table drop-region] goal (:goal (safe-get* (:world env) (:obj-name a)))]
+  (let [[table drop-region] (:goal (safe-get* (:world env) (:obj-name a)))]
     [[(make-go-grasp-hla (:right? a) (:obj-name a))
-      (make-go-drop-hla  (:right? a) (:obj-name a) table drop-region)]]))
+      (make-go-drop-region-hla  (:right? a) (:obj-name a) table drop-region)]]))
 	           
 (defmethod robot-action-name ::MoveToGoalHLA [a]
   ['move-to-goal (:right? a) (:obj-name a)])
@@ -899,7 +931,7 @@
 	[goal-table goal-region] (:goal obj)]
     (assert (= goal-table (:on obj)))
     (assert (region-contains? goal-region (drop-last 1 (:xyz obj))))
-    [(assoc-in env [:world :obj-name :goal] nil) 0]))
+    [(assoc-in env [:world obj-name :goal] nil) 0]))
 
 (defmethod execute-robot-primitive ::EnforceGoalAction [nh action] true)
 	           
@@ -935,13 +967,43 @@
         [[]]
       (for [obj remaining-objects]
 	[(make-move-to-goal-hla (:right? a) obj)
-	 (make-enforce-goal-action obj)]))))
+	 (make-enforce-goal-action obj)
+	 a]))))
 	           
 (defmethod robot-action-name ::ActHLA [a]
   ['act])
   
 (defmethod robot-action-precondition-context-schema ::ActHLA [a]
-  #{:robot :world})
+  #{:robot 
+    :world})
+
+
+
+;;;;;;;;;;;;;;;;;;;;;;;;;; Setup action  ;;;;;;;;;;;;;;;;;;;;;;;;;;;;
+
+;; make sure the robot is in a good state to start planning
+
+(derive ::SetupHLA ::RobotHLA)
+
+(defstruct setup-hla :class :arms)
+
+(defn make-setup-hla [arms]
+  (struct setup-hla ::SetupHLA arms))
+
+(defmethod robot-hla-discrete-refinements? ::SetupHLA [a] true)
+
+(defmethod robot-hla-refinements ::SetupHLA [nh a env]
+  [(apply concat
+    (for [right? (:arms a)]
+      [(make-gripper-action (make-robot-gripper-state right? true))
+       (make-arm-tuck-action right?)]))])
+	           
+(defmethod robot-action-name ::SetupHLA [a]
+  ['setup (:arms a)])
+  
+(defmethod robot-action-precondition-context-schema ::SetupHLA [a]
+  #{:robot 
+    :world})
 
 
 

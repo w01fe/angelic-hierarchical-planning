@@ -35,8 +35,31 @@
 (defsrvs [find_bottles FindBottles] [tabletop_srvs FindTable])
 
 ;; For Alex Teichman's hand detector
+
+(defn start-message-counter [#^NodeHandle nh #^String topic #^Message msg-tmpl]
+  (let [a (atom 0)]
+    {:counter a
+     :sub     (.subscribe nh topic msg-tmpl (sub-cb [m] (swap! a inc)) 1)}))
+
+(defn get-message-count [#^NodeHandle nh counter] (.spinOnce nh) @(:counter counter))
+
+(defn stop-message-counter [#^NodeHandle nh counter] 
+  (.spinOnce nh)
+  (.shutdown #^Subscriber (:sub counter))
+  @(:counter counter))
+
+
+(defn start-hand-counter [nh]
+  (start-message-counter nh "/headcart/hands" (ros.pkg.std_msgs.msg.String.)))
+
 (defn wait-for-hand [nh]
-  (println "Got hands" (get-single-message nh "/headcart/hands" (ros.pkg.std_msgs.msg.String.))))
+  (let [c (start-hand-counter nh)]
+    (println "Waiting for a hand ...")
+    (while (zero? (get-message-count nh c))
+      (println "Waiting for a hand ...")
+      (Thread/sleep 1000))))
+
+
 
 
 (def *laser-state* (atom nil))

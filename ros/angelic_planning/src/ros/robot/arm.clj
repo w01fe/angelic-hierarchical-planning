@@ -464,10 +464,12 @@
 	     {:header {:frame_id frame}
 	      :pose   pose} 
 	     (get-current-robot-state nh) nil 10)
-	    (inverse-kinematics nh right? 
-	     {:header {:frame_id frame}
-	      :pose   pose} 
-	     (:joint-angle-map (get-current-arm-state nh right?)))]
+	    (first 
+	      (filter identity
+		(take 10 (repeatedly
+		 #(inverse-kinematics nh right? 
+     	           {:header {:frame_id frame} :pose   pose} 
+		  (:joint-angle-map (get-current-arm-state nh right?)))))))]
     (if (not ik) (println "Couldn't find IK solution; not moving")
       (move-arm-to-state-unsafe nh (make-robot-arm-state right? ik) timeout speed-mul)))))
 
@@ -662,7 +664,7 @@
 	     {:header {:frame_id frame}
 	      :pose   pose} 
 	     (:joint-angle-map (get-current-arm-state nh right?))
-	     10)]
+	     50)]
      (prn ik)
     (if (not ik) (println "Couldn't find IK solution; not moving")
       (move-arm-to-state nh (make-robot-arm-state right? ik) false timeout)))))
