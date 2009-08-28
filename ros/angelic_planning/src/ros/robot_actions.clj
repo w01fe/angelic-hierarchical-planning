@@ -271,7 +271,7 @@
   (read-string (slurp f)))
 
 (defn write-plan [f plan]
-   (with-open [#^java.io.PrintWriter w (java.io.File. f)]
+   (with-open [#^java.io.PrintWriter w (java.io.FileOutputStream. (java.io.File. #^String f))]
       (.print w plan)))
  
 
