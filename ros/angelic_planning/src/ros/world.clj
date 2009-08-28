@@ -399,7 +399,7 @@
 	     :type :surface :surface (make-xy-region [12.12 12.52] [25.6 26.2]) 
 	     :height 0.6}
     "desk" {:xyz [13.32 24.9 0.3]  :rpy [0 0 0] 
-	     :def {:class :box :name "table-top" :size [1.00 1.0 0.6]}
+	     :def {:class :box :name "table-top" :size [1.00 2.0 0.6]}
 	     :type :surface :surface (make-xy-region [13.2 13.4] [24.9 25.0]) 
 	     :height 0.6}
 
