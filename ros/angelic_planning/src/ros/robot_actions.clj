@@ -218,10 +218,10 @@
 	  (when (not @f) (throw (Exception.)))))))))
 
 (defn execute-robot-plan-robustly  [nh actions]
-  (doseq [action actions]
+  (loop [i 0]
     (loop []
-      (when
-        (try (execute-robot-primitive nh action)
+      (if
+        (try (execute-robot-primitive nh (nth actions i))
 	     false
 	     (catch Exception e
 	       (println "Caught exception" e "; trying again.")
@@ -229,7 +229,8 @@
 	       (preempt-base nh)
 	       (move-arm-to-state nh (arm-joint-state true "tucked"))
 	       true))
-	(recur)))))
+	(recur (if (isa? (:class (nth actions i)) ::GripperAction) (dec i) i))
+	(recur (inc i))))))
 	 
 
 (defn execute-robot-plan-hr  [#^NodeHandle nh actions]
