@@ -219,7 +219,6 @@
 
 (defn execute-robot-plan-robustly  [nh actions]
   (loop [i 0]
-    (loop []
       (if
         (try (execute-robot-primitive nh (nth actions i))
 	     false
