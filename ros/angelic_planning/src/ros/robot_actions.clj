@@ -455,7 +455,7 @@
 (defmethod execute-robot-primitive ::GripperAction [nh action]
   (println "Executing move_gripper action (via actuate gripper action)")
   (move-gripper-to-state nh (:goal action))
-  (Thread/sleep 3000)
+  (Thread/sleep 6000)
   (when (:holding (:goal action))
     (assert (> (get-current-gripper-separation nh (isa? (:class (:goal action)) :ros.robot/Right)) 0.02))))
 
