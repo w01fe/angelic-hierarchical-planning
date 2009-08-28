@@ -238,10 +238,9 @@
     (println "Waiting for a hand to start.")
     (while (not @a) (.spinOnce nh)) (reset! a false) 
     (Thread/sleep 2000) (.spinOnce nh) (reset! a false)  
-    (doseq [action actions]
-      (loop []
+    (loop [i 0] 
 	(let [f #^java.util.concurrent.Future
-	        (future-call #(try (execute-robot-primitive nh action) false 
+	        (future-call #(try (execute-robot-primitive nh (nth actions i)) false 
 				   (catch Exception e (preempt-arm nh true) (preempt-base nh)
 					  (println "Caught exception" e "; trying again.")
 					  (move-arm-to-state nh (arm-joint-state true "tucked"))
@@ -262,9 +261,9 @@
 	      (println "Waiting for restart signal.")
 	      (while (not @a) (.spinOnce nh)) (reset! a false)
 	      (Thread/sleep 2000) (.spinOnce nh) (reset! a false)  
-	      (recur))
-	         @f
-	      (recur)))))))
+	      (recur i))
+	         @f (recur (if (isa? (:class (nth actions i)) ::GripperAction) (dec i) i))
+		 :else (recur (inc i)))))))
 
 
 (defn read-plan [f]
