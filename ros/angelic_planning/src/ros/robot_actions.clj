@@ -195,7 +195,7 @@
     (while (not @a) (.spinOnce nh)) (reset! a false)  
     (doseq [action actions]
       (loop []
-	(let [f #^Future (future-call #(execute-robot-primitive nh action))]
+	(let [f #^java.util.concurrent.Future (future-call #(execute-robot-primitive nh action))]
 	  (while (and (not @a) (not (.isDone f))) (.spinOnce nh))
 	  (when @a
 	    (println "Pausing!")
