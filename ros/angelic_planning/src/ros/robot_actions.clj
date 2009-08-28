@@ -197,7 +197,7 @@
     (Thread/sleep 2000) (.spinOnce nh) (reset! a false)  
     (doseq [action actions]
       (loop []
-	(let [f #^java.util.concurrent.Future (future-call #(when (execute-robot-primitive nh action) true))]
+	(let [f #^java.util.concurrent.Future (future-call #(do (execute-robot-primitive nh action) true))]
 	  (while (and (not @a) (not (.isDone f))) (.spinOnce nh))
 	  (if @a
 	   (do
