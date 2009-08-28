@@ -643,7 +643,7 @@
 
 (def *grasp-approach-distance* 0.26)
 (def *grasp-distance* 0.15)
-(def *max-object-error* 0.20)
+(def *max-object-error* 0.12)
 
 (derive ::ArmGraspAction ::RobotPrimitive)
 
@@ -694,10 +694,10 @@
 			"/base_link" false 60.0)))
     (move-arm-to-pose-unsafe nh (:right? action) 
       (compute-grasp-pose obj (/ (+ *grasp-distance* *grasp-approach-distance*) 2) (:angle action))
-      "/base_link" 6.0 0.5 #_0.3)
+      "/base_link" 6.0 1.0 #_0.3)
     (move-arm-to-pose-unsafe nh (:right? action) 
       (compute-grasp-pose obj *grasp-distance* (:angle action))
-      "/base_link" 6.0 0.3 #_0.3)))
+      "/base_link" 15.0 0.3 #_0.3)))
 
 (defmethod robot-action-name ::ArmGraspAction [a]
   ['arm-grasp (:right? a) (:obj-map-pt a) (:angle a)])

@@ -398,6 +398,11 @@
 	     :def {:class :box :name "table-top" :size [0.40 0.6 0.6]}
 	     :type :surface :surface (make-xy-region [12.12 12.52] [25.6 26.2]) 
 	     :height 0.6}
+    "desk" {:xyz [13.32 24.9 0.3]  :rpy [0 0 0] 
+	     :def {:class :box :name "table-top" :size [1.00 1.0 0.6]}
+	     :type :surface :surface (make-xy-region [13.2 13.4] [24.9 25.0]) 
+	     :height 0.6}
+
     "bottle" {:xyz [16.3 26.1 0.85] :rpy [0 0 0] :def (get-odwalla)
 	     :type :movable :on "table" :goal nil ;["table" (make-xy-region [17.7 18.0] [26.0 26.2])] 
 	      :height 0.2}
