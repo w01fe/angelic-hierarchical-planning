@@ -312,12 +312,7 @@
 
 
 ;; TODO: error recovery (failed grasp, failed unsafe trajectory, failed detection/reach, etc.)
-;; TODO: check arm is at correct position, rather than relying on success from move_arm
 
-;; TODO: adaptive sampling for drop region, based on region size.  
-;; More sytematic sampling, in general.
-
-;; Multiple IK solutions for final push (fix weirdness)
 
 ;; Fancier problems.
 
@@ -329,6 +324,7 @@
 
 ;; Hand detection
 ;; Elbow out of way for torso drop.
+;; Multiple IK solutions for final push (fix weirdness)
 
 
 ;;;;;;;;; No?
@@ -336,3 +332,8 @@
 ;; TODO: figure out why self-collision is not working locally.
 ;; Branch and bound in SAHTN
 
+
+;; TODO: adaptive sampling for drop region, based on region size.  
+;; More sytematic sampling, in general.
+
+;; TODO: check arm is at correct position, rather than relying on success from move_arm

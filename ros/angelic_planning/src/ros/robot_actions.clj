@@ -188,6 +188,76 @@
 	(println "Now paused.")
 	(wait-for-hand nh)))))
 
+(import-ros)
+(defn execute-robot-plan-handy2  [#^NodeHandle nh actions]
+  (let [a   (atom false)
+	sub (.subscribe nh "/headcart/hands" (ros.pkg.std_msgs.msg.String.) (sub-cb [m] (reset! a true)) 1)]
+    (while (not @a) (.spinOnce nh)) (reset! a false)  
+    (doseq [action actions]
+      (loop []
+	(let [f (future-call #(execute-robot-primitive nh action))]
+	  (while (and (not @a) (not (.isDone f))) (.spinOnce nh))
+	  (when @a
+	    (println "Pausing!")
+	    (preempt-base nh)
+	    (preempt-arm nh true)
+	    (println "Waiting for finish ...")
+	    (while (not (.isDone f)) (Thread/sleep 100))
+	    (move-arm-to-state nh (arm-joint-state true "tucked"))
+	    (.spinOnce nh)
+	    (Thread/sleep 2000)
+	    (.spinOnce nh)
+	    (reset! a false)
+	    (println "Waiting for restart signal.")
+	    (while (not @a) (.spinOnce nh)) (reset! a false)  
+	    (recur)))))))
+
+(defn execute-robot-plan-robustly  [nh actions]
+  (doseq [action actions]
+    (loop []
+      (when
+        (try (execute-robot-primitive nh action)
+	     false
+	     (catch Exception e
+	       (println "Caught exception" e "; trying again.")
+	       (preempt-arm nh true)
+	       (preempt-base nh)
+	       (move-arm-to-state nh (arm-joint-state true "tucked"))
+	       true))
+	(recur)))))
+	 
+
+(defn execute-robot-plan-hr  [#^NodeHandle nh actions]
+  (let [a   (atom false)
+	sub (.subscribe nh "/headcart/hands" (ros.pkg.std_msgs.msg.String.) (sub-cb [m] (reset! a true)) 1)]
+    (while (not @a) (.spinOnce nh)) (reset! a false)  
+    (doseq [action actions]
+      (loop []
+	(let [f (future-call #(try (execute-robot-primitive nh action) false 
+				   (catch Exception e (preempt-arm nh true) (preempt-base nh)
+					  (println "Caught exception" e "; trying again.")
+					  (move-arm-to-state nh (arm-joint-state true "tucked"))
+					  true)))]
+	  (while (and (not @a) (not (.isDone f))) (.spinOnce nh))
+	  (cond  @a
+	    (do 
+	      (println "Pausing!")
+	      (preempt-base nh)
+	      (preempt-arm nh true)
+	      (println "Waiting for finish ...")
+	      (while (not (.isDone f)) (Thread/sleep 100))
+	      (move-arm-to-state nh (arm-joint-state true "tucked"))
+	      (.spinOnce nh)
+	      (Thread/sleep 2000)
+	      (.spinOnce nh)
+	      (reset! a false)
+	      (println "Waiting for restart signal.")
+	      (while (not @a) (.spinOnce nh)) (reset! a false)  
+	      (recur))
+	         @f
+	      (recur)))))))
+
+
 
 
 ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;; Base - Point ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
@@ -602,13 +672,16 @@
   (move-gripper-to-state nh (make-robot-gripper-state (:right? action) true)) ; make sure open...
   (let [obj (find-specific-object nh (:obj-map-pt action) *max-object-error*)]
     (track-head nh {:header {:frame_id "/base_link"} :point (make-point obj)})
-;    (assert (= :succeeded 
+    (assert (= :succeeded 
       (move-arm-to-pose nh (:right? action)
 			(compute-grasp-pose obj *grasp-approach-distance* (:angle action))
-			"/base_link" false 60.0);))
+			"/base_link" false 60.0)))
+    (move-arm-to-pose-unsafe nh (:right? action) 
+      (compute-grasp-pose obj (/ (+ *grasp-distance* *grasp-approach-distance*) 2) (:angle action))
+      "/base_link" 6.0 0.5 #_0.3)
     (move-arm-to-pose-unsafe nh (:right? action) 
       (compute-grasp-pose obj *grasp-distance* (:angle action))
-      "/base_link" 15.0 0.5 #_0.3)))
+      "/base_link" 6.0 0.3 #_0.3)))
 
 (defmethod robot-action-name ::ArmGraspAction [a]
   ['arm-grasp (:right? a) (:obj-map-pt a) (:angle a)])

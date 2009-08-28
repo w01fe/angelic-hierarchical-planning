@@ -635,7 +635,7 @@
 
 (defn move-arm-to-state 
   "Actually move arm to state using move_arm action, with replanning, synchronously"
-  ([#^NodeHandle nh arm-state] (move-arm-to-state nh arm-state false 60.0))
+  ([#^NodeHandle nh arm-state] (move-arm-to-state nh arm-state false 30.0))
   ([#^NodeHandle nh arm-state upright? timeout]
      (let [r? (isa? (:class arm-state) ::Right)]
        (run-action nh (str "/move_" (if r? "right" "left") "_arm") MoveArmAction 
