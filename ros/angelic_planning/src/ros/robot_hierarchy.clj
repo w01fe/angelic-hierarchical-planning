@@ -321,13 +321,12 @@
 
 ;; Fancier problems.
 
-;; Hand pausing, etc.
+;; TODO: failed action issue
+
 
 ;;;;;;;;; Test
 
 
-;; speed up precise base movement + laser switching, if possible.
-;; TODO: rel pose for pullback after torso drop is bad.
 ;; Hand detection
 ;; Elbow out of way for torso drop.
 
@@ -336,3 +335,4 @@
 
 ;; TODO: figure out why self-collision is not working locally.
 ;; Branch and bound in SAHTN
+

@@ -566,28 +566,35 @@
 (defn make-arm-grasp-action [right? obj-map-pt angle]
   (struct arm-grasp-action ::ArmGraspAction right? obj-map-pt angle))
 
-(defn try-sample [nh a env n]
-  (first (filter identity (take n (repeatedly #(sample-robot-hla-refinement nh a env))))))
+(defn try-ik-joint-action [nh right? env pose n]
+  "Try to do safe IK for a point in map frame, trying at most 
+   n times, but failing early if IK invalid.  If succeeds, returns
+   an arm-joint-action"
+  (let [tll-pose (map-pose->tll-pose-stamped pose (:robot env))]
+    (loop [tries 10]
+      (let [ik (safe-inverse-kinematics nh right? tll-pose
+					(:robot env) (:world env) 0 true)]
+	(cond (= ik false) false
+	      (= ik nil) (when (> tries 0) (recur (dec tries)))
+	      :else [(make-arm-joint-action (make-robot-arm-state right? ik))])))))
+
 
 (defmethod robot-primitive-result ::ArmGraspAction [nh action env]
   (track-head nh {:header {:frame_id "/map"} :point (make-point (:obj-map-pt action))})
   (let [{:keys [right? obj-map-pt angle]} action
         map->bl-transform  (map->base-link-transform (:base (:robot env))) 
-	obj-bl-pt (first (decode-pose (untransform-pose (make-pose obj-map-pt [0 0 0 1]) map->bl-transform)))]
+	obj-bl-pt (first (decode-pose (untransform-pose (make-pose obj-map-pt [0 0 0 1]) map->bl-transform)))
+	grasp-pose-fn #(transform-pose 
+			(compute-grasp-pose obj-bl-pt % angle) 
+			map->bl-transform)]
     (println "Trying to refine arm grasp")
-    (when-let [ref (try-sample nh 
-		     (make-arm-pose-action right?
-		       (transform-pose (compute-grasp-pose obj-bl-pt *grasp-distance* angle) 
-				       map->bl-transform))
-		     env 10)]
-      (when-let [refp (try-sample nh
-		     (make-arm-pose-action right?
-		       (transform-pose (compute-grasp-pose obj-bl-pt *grasp-approach-distance* angle) 
-				       map->bl-transform))
-		     env 10)]
-	(when-let [result (robot-primitive-result nh (first ref) env)]
-	  (update-in result [1] + 2.0) ; cost for extra movement
-	  )))))
+    (when-let [ref (try-ik-joint-action nh right? env
+		     (grasp-pose-fn *grasp-distance*) 10)]
+     (when-let [refp (try-ik-joint-action nh right? env
+		      (grasp-pose-fn *grasp-approach-distance*) 10)]
+       (when-let [result (robot-primitive-result nh (first ref) env)]
+	 (update-in result [1] + 2.0) ; cost for extra movement
+	 )))))
 
 (defmethod execute-robot-primitive ::ArmGraspAction [nh action]
   (println "Executing arm-grasp-action...")
@@ -661,17 +668,13 @@
 (defmethod sample-robot-hla-refinement-det ::ArmDropHLA [nh a env random]
   (track-head nh {:header {:frame_id "/map"} :point (make-point (:obj-map-pt a))})
   (println "Drop for" (:obj-map-pt a) (:drop-torso-height a))
-  (let [{:keys [right? obj-map-pt map-angle-interval]} a
-	pose-action 
-	  (make-arm-pose-action right? 
-            (compute-grasp-pose obj-map-pt *grasp-distance* 
-	      (sample-region-det map-angle-interval random)))
-        rand (java.util.Random. (hash pose-action))]
-    (.nextDouble rand)
-    (first (filter identity (take 10 (repeatedly
-      #(sample-robot-hla-refinement-det nh pose-action 
-	 (assoc-in env [:robot :torso :height] (:drop-torso-height a))
-	 rand)))))))
+  (let [{:keys [right? obj-map-pt map-angle-interval]} a]
+    (try-ik-joint-action nh right?
+      (assoc-in env [:robot :torso :height] (:drop-torso-height a))
+      (compute-grasp-pose obj-map-pt *grasp-distance* 
+		     (sample-region-det map-angle-interval random))
+      10)))
+	      
 
 	           
 (defmethod robot-action-name ::ArmDropHLA [a]
@@ -802,7 +805,7 @@
   (let [{:keys [right? map-pt]} a
 	base-theta (:theta (:base (:robot env)))]
     [[(make-arm-drop-hla right? 
-	(update-in map-pt [2] - 0.05) ;map-pt 
+	(update-in map-pt [2] + 0.00) ;map-pt 
 	0.05
 ;	(update-in map-pt [2] + 0.18)
 	(make-interval-region [(- base-theta 1) (+ base-theta 1)]))
@@ -873,7 +876,7 @@
 (defmethod sample-robot-hla-refinement-det ::GoDropRegionHLA [nh a env random]
    [(make-go-drop-hla (:right? a) (:obj-name a) (:table-name a) 
 		      (conj (vec (sample-region-det (:drop-region a) random)) 
-			    (+ 0.10 (:height (safe-get* (:world env) (:table-name a))))))])
+			    (+ 0.20 (:height (safe-get* (:world env) (:table-name a))))))])
 	           
 (defmethod robot-action-name ::GoDropRegionHLA [a]
   ['go-drop-region (:right? a) (:obj-name a) (:table-name a) (region-name (:drop-region a))])

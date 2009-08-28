@@ -203,3 +203,6 @@
 ;; (sahtn nh [[(make-act-hla true)]] (get-default-env nh) {:ros.robot-actions/BaseRegionAction 5  :ros.robot-actions/ArmGraspHLA 3  :ros.robot-actions/ArmDropHLA 3  :ros.robot-actions/ArmPoseAction 3})
 
 ; (sahtn nh [[(make-setup-hla [true false]) (make-act-hla true)]] (get-default-env nh) {:ros.robot-actions/BaseRegionAction 5  :ros.robot-actions/ArmGraspHLA 3  :ros.robot-actions/ArmDropHLA 3  :ros.robot-actions/ArmPoseAction 3 :ros.robot-actions/GoDropRegionHLA 3})
+
+
+; (sahtn nh [[(make-setup-hla [true]) (make-act-hla true)]] (get-default-env nh) {:ros.robot-actions/BaseRegionAction 5  :ros.robot-actions/ArmGraspHLA 3  :ros.robot-actions/ArmDropHLA 3  :ros.robot-actions/ArmPoseAction 3 :ros.robot-actions/GoDropRegionHLA 3})

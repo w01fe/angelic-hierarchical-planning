@@ -334,7 +334,8 @@
 (defn safe-inverse-kinematics 
   "Find an IK solution respecting the collision space.  Pass
    world if you want its collision map published.
-   Other initial joint configurations will be randomly generated."
+   Other initial joint configurations will be randomly generated.
+   Returns false for ik invalid, or nil for out of safety/collision limits"
   ([#^NodeHandle nh right? pose-stamped robot world random-retries]
      (safe-inverse-kinematics nh right? pose-stamped robot world random-retries false))
   ([#^NodeHandle nh right? pose-stamped robot world random-retries start-random?]
@@ -347,7 +348,8 @@
       (loop [tries random-retries 
 	    init-joints (if start-random? (random-arm-joint-map nh right?)
 			    (:joint-angle-map ((if right? :rarm :larm) robot)))]
-       (or (if-let [sol (inverse-kinematics nh right? pose-stamped init-joints)]
+       (let [result
+	     (if-let [sol (inverse-kinematics nh right? pose-stamped init-joints)]
 	     (let [collision (first (forward-kinematics nh (merge all-joints sol)))
 		   safe?     (not (out-of-safety-limits? nh sol))]
 	       (println "Found IK solution ..."
@@ -355,10 +357,12 @@
 			(if safe? "" " not ") "in safety limits.") 
 	       (when (and safe? (not collision))
 		 sol))
-	     nil #_(println "Failed to find IK solution"))
-	   (when (> tries 0)
-	     nil #_ (println "IK failed; retrying with random initial joints.")
-	     (recur (dec tries) (random-arm-joint-map nh right?)))))))))
+	     (do (println "Failed to find IK solution") false))]
+	  (or result
+	   (if (> tries 0)
+;	      #_ (println "IK failed; retrying with random initial joints.")
+	     (recur (dec tries) (random-arm-joint-map nh right?))
+	     result))))))))
 
 
 

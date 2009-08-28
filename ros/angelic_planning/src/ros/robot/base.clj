@@ -239,8 +239,8 @@
 	(spin-base-to nh theta)
 	(Thread/sleep 300))
       (let [[x y _] (transform-point-tf nh "/map" "/base_link" [x y 0])]
-        (when (> (Math/abs (double x)) 0.02) (move-base-rel nh :x x 3.0 2.0))
-        (when (> (Math/abs (double y)) 0.02) (move-base-rel nh :y y 3.0 2.0)))))
+        (when (> (Math/abs (double x)) 0.02) (move-base-rel nh :x x 1.2 2.0))
+        (when (> (Math/abs (double y)) 0.02) (move-base-rel nh :y y 1.2 2.0)))))
     (wait-for-laser-slow)
 ;    (println "Servoing got us to" (get-current-base-state nh))
     :success))
