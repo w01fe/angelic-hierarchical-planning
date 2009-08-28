@@ -192,7 +192,9 @@
 (defn execute-robot-plan-handy2  [#^NodeHandle nh actions]
   (let [a   (atom false)
 	sub (.subscribe nh "/headcart/hands" (ros.pkg.std_msgs.msg.String.) (sub-cb [m] (reset! a true)) 1)]
-    (while (not @a) (.spinOnce nh)) (reset! a false)  
+    (println "Waiting for a hand to start.")
+    (while (not @a) (.spinOnce nh)) 
+    (Thread/sleep 2000) (.spinOnce nh) (reset! a false)  
     (doseq [action actions]
       (loop []
 	(let [f #^java.util.concurrent.Future (future-call #(execute-robot-primitive nh action))]
@@ -209,7 +211,8 @@
 	    (.spinOnce nh)
 	    (reset! a false)
 	    (println "Waiting for restart signal.")
-	    (while (not @a) (.spinOnce nh)) (reset! a false)  
+	    (while (not @a) (.spinOnce nh)) 
+	    (Thread/sleep 2000) (.spinOnce nh) (reset! a false)  		
 	    (recur)))))))
 
 (defn execute-robot-plan-robustly  [nh actions]

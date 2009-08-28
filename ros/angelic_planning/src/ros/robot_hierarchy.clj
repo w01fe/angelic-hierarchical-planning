@@ -317,10 +317,10 @@
 ;; Fancier problems.
 
 ;; TODO: failed action issue
-
+;; Try/catch in track head, or some such.  TF fails sometimes.
 
 ;;;;;;;;; Test
-
+ 
 
 ;; Hand detection
 ;; Elbow out of way for torso drop.
