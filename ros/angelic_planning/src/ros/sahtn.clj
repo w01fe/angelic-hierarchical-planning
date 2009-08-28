@@ -59,6 +59,7 @@
   (if (robot-hla-discrete-refinements? a)
       (ra/robot-hla-refinements (:nh h) a s)
     (let [num-refs (safe-get* (:sample-depths h) (:class a))
+	  num-refs (if (fn? num-refs) (num-refs a) num-refs)
 	  random   (Random. (+ (* 1000000 (:seed h)) (.hashCode #^Object a)))]
       (.nextDouble random) ;; First value from fresh random is distinctly not random.
       (filter identity
@@ -211,3 +212,5 @@
 
 ;; This one is good, runs in 10 seconds, usually works. (for 2 arms).
 ;(time (sahtn nh [[(make-setup-hla [true false]) (make-act-hla true)]] (get-default-env nh) {:ros.robot-actions/BaseRegionAction 5  :ros.robot-actions/ArmGraspHLA 1  :ros.robot-actions/ArmDropHLA 1  :ros.robot-actions/ArmPoseAction 1 :ros.robot-actions/GoDropRegionHLA 3}))
+
+;(time (sahtn nh [[(make-setup-hla [true false]) (make-act-hla true)]] (get-default-env nh) {:ros.robot-actions/BaseRegionAction 5  :ros.robot-actions/ArmGraspHLA 1  :ros.robot-actions/ArmDropHLA 1  :ros.robot-actions/ArmPoseAction 1 :ros.robot-actions/GoDropRegionHLA (fn [a] (let [[ax bx] [ay by] (get-xy-region-extent (:drop-region a))] (min 1 (int (* 5 (+ (- bx ax) (- by ay)))))))}))

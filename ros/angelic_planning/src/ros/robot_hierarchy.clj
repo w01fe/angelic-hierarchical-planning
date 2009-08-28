@@ -316,7 +316,7 @@
 
 ;; Way to store/load plan.
 
-;; Better way to sample drop regions.
+
 
 ;;;;;;;;; Test
  
