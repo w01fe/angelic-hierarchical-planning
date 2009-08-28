@@ -314,8 +314,8 @@
 ;; TODO: error recovery (failed grasp, failed unsafe trajectory, failed detection/reach, etc.)
 
 
-;; Way to store/load plan.
-
+;; TODO: better base rect sampling (not greedy.)
+;; TODO: fix stupid IK problems.
 
 
 ;;;;;;;;; Test

@@ -643,7 +643,7 @@
 
 (def *grasp-approach-distance* 0.26)
 (def *grasp-distance* 0.15)
-(def *max-object-error* 0.12)
+(def *max-object-error* 0.25)
 
 (derive ::ArmGraspAction ::RobotPrimitive)
 
