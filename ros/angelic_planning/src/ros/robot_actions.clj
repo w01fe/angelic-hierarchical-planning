@@ -1056,7 +1056,7 @@
 		:when goal]
 	    obj-name)]
     (if (empty? remaining-objects)
-        [[]]
+        [[(make-arm-tuck-action right?)]]
       (for [obj remaining-objects]
 	[(make-move-to-goal-hla (:right? a) obj)
 	 (make-enforce-goal-action obj)
@@ -1085,10 +1085,12 @@
 (defmethod robot-hla-discrete-refinements? ::SetupHLA [a] true)
 
 (defmethod robot-hla-refinements ::SetupHLA [nh a env]
-  [(apply concat
+  [(cons 
+    (make-torso-action (make-robot-torso-state 0.035))
+    (apply concat
     (for [right? (:arms a)]
       [(make-gripper-action (make-robot-gripper-state right? true))
-       (make-arm-tuck-action right?)]))])
+       (make-arm-tuck-action right?)])))])
 	           
 (defmethod robot-action-name ::SetupHLA [a]
   ['setup (:arms a)])
