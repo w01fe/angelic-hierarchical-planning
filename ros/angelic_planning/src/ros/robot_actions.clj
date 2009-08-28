@@ -964,7 +964,7 @@
 
 (defmethod sample-robot-hla-refinement-det ::GoDropRegionHLA [nh a env random]
    [(make-go-drop-hla (:right? a) (:obj-name a) (:table-name a) 
-		      (conj (vec (sample-region-border-det (:drop-region a) 0.2 random)) 
+		      (conj (vec (sample-region-border-det (:drop-region a) 0.1 random)) 
 			    (+ 0.12 (:height (safe-get* (:world env) (:table-name a))))))])
 	           
 (defmethod robot-action-name ::GoDropRegionHLA [a]
