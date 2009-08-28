@@ -635,7 +635,7 @@
 ; a specific pose.
 
 (def *grasp-approach-distance* 0.26)
-(def *grasp-distance* 0.14)
+(def *grasp-distance* 0.15)
 (def *max-object-error* 0.20)
 
 (derive ::ArmGraspAction ::RobotPrimitive)
@@ -958,7 +958,7 @@
 (defmethod sample-robot-hla-refinement-det ::GoDropRegionHLA [nh a env random]
    [(make-go-drop-hla (:right? a) (:obj-name a) (:table-name a) 
 		      (conj (vec (sample-region-det (:drop-region a) random)) 
-			    (+ 0.20 (:height (safe-get* (:world env) (:table-name a))))))])
+			    (+ 0.10 (:height (safe-get* (:world env) (:table-name a))))))])
 	           
 (defmethod robot-action-name ::GoDropRegionHLA [a]
   ['go-drop-region (:right? a) (:obj-name a) (:table-name a) (region-name (:drop-region a))])

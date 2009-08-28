@@ -314,12 +314,9 @@
 ;; TODO: error recovery (failed grasp, failed unsafe trajectory, failed detection/reach, etc.)
 
 
-;; Fancier problems.
-
-;; TODO: failed action issue
-;; Try/catch in track head, or some such.  TF fails sometimes.
-
 ;; Way to store/load plan.
+
+;; Better way to sample drop regions.
 
 ;;;;;;;;; Test
  
