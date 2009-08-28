@@ -1056,7 +1056,7 @@
 		:when goal]
 	    obj-name)]
     (if (empty? remaining-objects)
-        [[(make-arm-tuck-action right?)]]
+        [[(make-arm-tuck-action true)]]
       (for [obj remaining-objects]
 	[(make-move-to-goal-hla (:right? a) obj)
 	 (make-enforce-goal-action obj)
