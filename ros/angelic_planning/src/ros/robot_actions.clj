@@ -229,7 +229,7 @@
 	       (move-arm-to-state nh (arm-joint-state true "tucked"))
 	       true))
 	(recur (if (isa? (:class (nth actions i)) ::GripperAction) (dec i) i))
-	(recur (inc i))))))
+	(recur (inc i)))))
 	 
 
 (defn execute-robot-plan-hr  [#^NodeHandle nh actions]
