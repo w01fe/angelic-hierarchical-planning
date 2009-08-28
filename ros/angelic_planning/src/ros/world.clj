@@ -393,12 +393,22 @@
 	     :def {:class :box :name "table-top" :size [2.76 1.36 0.756]}
 	     :type :surface :surface (make-xy-region [16.10 18.86] [25.87 27.23]) 
 	     :height 0.756}
+    "endtable" {:xyz [12.32 25.9 0.3]  :rpy [0 0 0] 
+	     :def {:class :box :name "table-top" :size [0.40 0.6 0.6]}
+	     :type :surface :surface (make-xy-region [12.12 12.52] [25.6 26.2]) 
+	     :height 0.6}
     "bottle" {:xyz [16.3 26.1 0.85] :rpy [0 0 0] :def (get-odwalla)
-	     :type :movable :on "table" :goal ["table" (make-xy-region [17.7 18.0] [26.0 26.2])] :height 0.2}
+	     :type :movable :on "table" :goal nil #_["table" (make-xy-region [17.7 18.0] [26.0 26.2])] :height 0.2}
     "bottle2" {:xyz [16.3 27.0 0.85] :rpy [0 0 0] :def (get-odwalla)
-	     :type :movable :on "table" :goal ["table" (make-xy-region [16.21 16.8] [26.2 26.5])] :height 0.2}
+	     :type :movable :on "table" :goal nil #_["endtable"] #_["table" (make-xy-region [16.21 16.8] [26.2 26.5])] :height 0.2}
+    "bottle3" {:xyz [12.2 26.1 0.70] :rpy [0 0 0] :def (get-odwalla)
+	     :type :movable :on "endtable" :goal ["table" ] :height 0.2}
     }
       d3-res d2-res d2-pad))
+
+;    "bottle" {:xyz [16.3 26.1 0.85] :rpy [0 0 0] :def (get-odwalla)
+;	     :type :movable :on "table" :goal ["table" (make-xy-region [17.7 18.0] [26.0 26.2])] :height 0.2}
+
 
 ;; Coordinates for big table, 
 
