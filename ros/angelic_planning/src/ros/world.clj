@@ -402,7 +402,7 @@
 	     :type :movable :on "table" :goal nil ;["table" (make-xy-region [17.7 18.0] [26.0 26.2])] 
 	      :height 0.2}
     "bottle2" {:xyz [16.3 27.0 0.85] :rpy [0 0 0] :def (get-odwalla)
-	     :type :movable :on "table" :goal nil #_["endtable"] #_["table" (make-xy-region [16.21 16.8] [26.2 26.5])] :height 0.2}
+	     :type :movable :on "table" :goal ["endtable"] #_["table" (make-xy-region [16.21 16.8] [26.2 26.5])] :height 0.2}
     "bottle3" {:xyz [12.4 26.1 0.70] :rpy [0 0 0] :def (get-odwalla)
 	     :type :movable :on "endtable" :goal ["table" ] :height 0.2}
     }
