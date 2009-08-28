@@ -267,6 +267,13 @@
 	      (recur)))))))
 
 
+(defn read-plan [f]
+  (read-string (slurp f)))
+
+(defn write-plan [f plan]
+   (with-open [#^java.io.PrintWriter w (java.io.File. f)]
+      (.print w plan)))
+ 
 
 
 ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;; Base - Point ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
