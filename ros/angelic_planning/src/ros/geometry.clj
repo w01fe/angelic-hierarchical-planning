@@ -274,6 +274,9 @@
 (defmethod sample-region-det ::XYRegion [r random]
   (vec (map #(sample-region-det % random) (:intervals r))))
 
+
+  
+
 (defmethod region-name ::XYRegion [r]
   (vec (map region-name (:intervals r))))
 
@@ -285,6 +288,18 @@
 
 (defn get-xy-region-extent [r]
   (map :interval (:intervals r)))
+
+(defn sample-region-border-det [r border-dist random]
+  (let [[[ax bx] [ay by]] (get-xy-region-extent r)]
+    (loop []
+      (let [s (sample-region-det r random)
+	    [x y] s]
+	(if (or (< (- x ax) border-dist)
+		(< (- bx x) border-dist)
+		(< (- y ay) border-dist)
+		(< (- by y) border-dist))
+	    s
+	  (recur))))))
 
 (defn get-xy-region-point-stamped [r height]
   (let [[[ax bx] [ay by]] (get-xy-region-extent r)]
