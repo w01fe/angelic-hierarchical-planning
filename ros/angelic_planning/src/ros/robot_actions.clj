@@ -233,7 +233,8 @@
     (while (not @a) (.spinOnce nh)) (reset! a false)  
     (doseq [action actions]
       (loop []
-	(let [f (future-call #(try (execute-robot-primitive nh action) false 
+	(let [f #^java.util.concurrent.Future
+	        (future-call #(try (execute-robot-primitive nh action) false 
 				   (catch Exception e (preempt-arm nh true) (preempt-base nh)
 					  (println "Caught exception" e "; trying again.")
 					  (move-arm-to-state nh (arm-joint-state true "tucked"))
