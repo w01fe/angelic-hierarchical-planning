@@ -370,7 +370,8 @@
 		     (assoc info :goal
 		      (if (region-contains? goal-surface (drop-last 1 (:xyz info)))
 			  (println "Dropping already satisfied goal for" obj-name ": " goal-surface (drop-last 1 (:xyz info)))
-			[t goal-surface]))))))]))))
+			[t goal-surface])))
+		   info)))]))))
 						      
     
 
@@ -398,7 +399,8 @@
 	     :type :surface :surface (make-xy-region [12.12 12.52] [25.6 26.2]) 
 	     :height 0.6}
     "bottle" {:xyz [16.3 26.1 0.85] :rpy [0 0 0] :def (get-odwalla)
-	     :type :movable :on "table" :goal nil #_["table" (make-xy-region [17.7 18.0] [26.0 26.2])] :height 0.2}
+	     :type :movable :on "table" :goal nil ;["table" (make-xy-region [17.7 18.0] [26.0 26.2])] 
+	      :height 0.2}
     "bottle2" {:xyz [16.3 27.0 0.85] :rpy [0 0 0] :def (get-odwalla)
 	     :type :movable :on "table" :goal nil #_["endtable"] #_["table" (make-xy-region [16.21 16.8] [26.2 26.5])] :height 0.2}
     "bottle3" {:xyz [12.2 26.1 0.70] :rpy [0 0 0] :def (get-odwalla)
