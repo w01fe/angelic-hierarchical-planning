@@ -259,9 +259,13 @@
 	      (.spinOnce nh)
 	      (reset! a false)
 	      (println "Waiting for restart signal.")
-	      (while (not @a) (.spinOnce nh)) (reset! a false)
-	      (Thread/sleep 2000) (.spinOnce nh) (reset! a false)  
-	      (recur i))
+	      (let [t (.secs (.now nh))]
+		(while (and (not @a) (not (> (.secs (.now nh)) (+ t 20))))
+		  (.spinOnce nh)) 
+		(reset! a false)
+		(Thread/sleep 2000) (.spinOnce nh) (reset! a false)
+		(when (< (.secs (.now nh)) (+ 22 t))
+		  (recur i))))
 	         @f (recur (if (isa? (:class (nth actions i)) ::GripperAction) (dec i) i))
 		 :else (recur (inc i)))))))
 
