@@ -197,25 +197,23 @@
 (defn transform-point-tf [nh src-frame trg-frame nice-point]
   (decode-point 
    (:point (:pout 
-     (call-srv nh "/tf_node/transform_point"
-	       (map-msg TransformPoint$Request
-			{:target_frame trg-frame
+     (call-service nh "/tf_node/transform_point"
+			{:class TransformPoint$Request
+			 :target_frame trg-frame
 			 :target_time (Time.);(.subtract (.now *ros*) (Duration. 0.3))
 			 :pin {:header {:frame_id src-frame :stamp (.subtract (.now *ros*) (Duration. 0.3))}
 			       :point (make-point nice-point)}
-			 :fixed_frame ""})
-	       )))))
+			 :fixed_frame ""})))))
 
 (defn transform-raw-pose-tf [nh src-frame trg-frame pose]
    (:pose (:pout 
-     (call-srv nh "/tf_node/transform_pose"
-	       (map-msg TransformPose$Request
-			{:target_frame trg-frame
+     (call-service nh "/tf_node/transform_pose"
+			{:class TransformPose$Request
+			 :target_frame trg-frame
 			 :target_time (Time.);(.subtract (.now *ros*) (Duration. 0.3))
 			 :pin {:header {:frame_id src-frame :stamp (.subtract (.now *ros*) (Duration. 0.3))}
 			       :pose pose}
-			 :fixed_frame ""})
-	       ))))
+			 :fixed_frame ""}))))
 
 (defn transform-pose-tf [nh src-frame trg-frame nice-pose]
   (decode-pose (transform-raw-pose-tf nh src-frame trg-frame (apply make-pose nice-pose))))

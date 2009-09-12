@@ -522,16 +522,16 @@
 
 
 
-; (put-single-message "start_static_transform" (map-msg {:class StartStaticTransform :frame_id "/future_base_link" :parent_id "/base_link" :frequency (Duration. 1.0)  :transform {:class Transform :translation {:class Vector3 :x 1 :y 2 :z 3} :rotation {:class Quaternion :x 0 :y 0 :z 0 :w 1}}}))
+; (put-message "start_static_transform" (map->msg {:class StartStaticTransform :frame_id "/future_base_link" :parent_id "/base_link" :frequency (Duration. 1.0)  :transform {:class Transform :translation {:class Vector3 :x 1 :y 2 :z 3} :rotation {:class Quaternion :x 0 :y 0 :z 0 :w 1}}}))
 
-; (put-single-message "collision_map_future" (map-msg (world->collision-map (get-initial-world 0.1))))
-
-
+; (put-message "collision_map_future" (map->msg (world->collision-map (get-initial-world 0.1))))
 
 
-; (put-single-message "publish_transform" (map-msg {:class TransformStamped :header {:class Header :frame_id "tmp"} :parent_id "tmp2" :transform {:class Transform :translation {:class Vector3 :x 1 :y 2 :z 3} :rotation {:class Quaternion :x 1 :y 0 :z 0 :w 0}}}))
 
-; (put-single-message "start_static_transform" (map-msg {:class StartStaticTransform :frame_id "test" :parent_id "foo" :frequency (Duration. 1.0)  :transform {:class Transform :translation {:class Vector3 :x 1 :y 2 :z 3} :rotation {:class Quaternion :x 1 :y 0 :z 0 :w 0}}}))
+
+; (put-message "publish_transform" (map->msg {:class TransformStamped :header {:class Header :frame_id "tmp"} :parent_id "tmp2" :transform {:class Transform :translation {:class Vector3 :x 1 :y 2 :z 3} :rotation {:class Quaternion :x 1 :y 0 :z 0 :w 0}}}))
+
+; (put-message "start_static_transform" (map->msg {:class StartStaticTransform :frame_id "test" :parent_id "foo" :frequency (Duration. 1.0)  :transform {:class Transform :translation {:class Vector3 :x 1 :y 2 :z 3} :rotation {:class Quaternion :x 1 :y 0 :z 0 :w 0}}}))
 
 
 
@@ -540,17 +540,17 @@
 
 ;(defsrvs [ros.pkg.navfn.srv SetCostmap MakeNavPlan])
 
-; (call-srv "/navfn_node/set_costmap" (map-msg {:class SetCostmap$Request :costs (repeat 100 (byte 0)) :height 10 :width 10}))
+; (call-service "/navfn_node/set_costmap" (map->msg {:class SetCostmap$Request :costs (repeat 100 (byte 0)) :height 10 :width 10}))
 
 ; (defn xy->pose-stamped [[x y]] {:class PoseStamped :header {:class Header :frame_id "/map"} :pose {:class Pose :position {:class Point :x x :y y :z 0} :orientation {:class Quaternion :x 0 :y 0 :z 0 :w 0}}})
 
-; (call-srv "/navfn_node/make_plan" (map-msg {:class MakeNavPlan$Request :start (xy->pose-stamped [4 4]) :goal (xy->pose-stamped [7 7])}))
+; (call-service "/navfn_node/make_plan" (map->msg {:class MakeNavPlan$Request :start (xy->pose-stamped [4 4]) :goal (xy->pose-stamped [7 7])}))
 
 ; (defn pose-stamped->xy [ps] (let [point (:position (:pose ps))] [(:x point) (:y point)]))
 
-; (map pose-stamped->xy (:path (call-srv "/navfn_node/make_plan" (map-msg {:class MakeNavPlan$Request :start (xy->pose-stamped [4 4]) :goal (xy->pose-stamped [7 7])}))))
+; (map pose-stamped->xy (:path (call-service "/navfn_node/make_plan" (map->msg {:class MakeNavPlan$Request :start (xy->pose-stamped [4 4]) :goal (xy->pose-stamped [7 7])}))))
 
-; (call-srv "/navfn_node/set_costmap" (map-msg {:class SetCostmap$Request :costs (map byte (concat (repeat 10 0) (repeat 5 0) (repeat 10 0))) :height 5 :width 5}))
+; (call-service "/navfn_node/set_costmap" (map->msg {:class SetCostmap$Request :costs (map byte (concat (repeat 10 0) (repeat 5 0) (repeat 10 0))) :height 5 :width 5}))
 
 ; 254 is lethal, 253 seems lethal-like (inscribed obstacle), below is nonlethal?
 

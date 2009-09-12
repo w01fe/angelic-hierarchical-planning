@@ -92,7 +92,7 @@
 
 
 (defn get-current-mechanism-state [#^NodeHandle nh]
-  (get-single-message nh "/mechanism_state" (MechanismState.)))
+  (get-message nh "/mechanism_state" (MechanismState.)))
 
 
 ;;;;;;;;;;;;;;;;;;;;;;;;;;;;; Load parts, define robot state objects ;;;;;;;;;;;;;;;;;;;;;;;;;;

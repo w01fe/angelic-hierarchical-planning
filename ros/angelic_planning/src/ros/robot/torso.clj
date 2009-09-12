@@ -51,8 +51,8 @@
   (make-robot-torso-state (get-current-torso-height nh)))
 
 (defn set-torso-position [#^NodeHandle nh pos]
-  (put-single-message nh "/torso_lift_position_controller/set_command" 
-		      (map-msg {:class Float64 :data pos}) 1))
+  (put-message nh "/torso_lift_position_controller/set_command" 
+		      {:class Float64 :data pos} 1))
 
 ; Todo: make synchronous?
 (defn move-torso-to-state [nh state]

@@ -147,8 +147,8 @@
 	    
 
 (defn visualize-local-map [r]
-  (put-single-message "/angelic/localmap"
-    (map-msg {:class Polyline :header {:class Header :frame_id "map"} 
+  (put-message "/angelic/localmap"
+    (map->msg {:class Polyline :header {:class Header :frame_id "map"} 
 	      :color {:class ColorRGBA :r 1.0 :g 1.0 :b 0.0 :a 0.0} 
 	      :points 
       (let [w (int (first *map-dims*))  h (int (second *map-dims*)) 
@@ -193,10 +193,10 @@
   ([] (get-map 1))
   ([downscale]
   (with-node-handle [nh]
-    (let [static-map-msg
+    (let [static-map->msg
 	    (.call (.serviceClient nh "static_map" (StaticMap.) false)
 		   (StaticMap$Request.))
-	  {:keys [#^java.util.ArrayList data info]} (:map (time (msg-map static-map-msg)))
+	  {:keys [#^java.util.ArrayList data info]} (:map (time (msg->map static-map->msg)))
 	  w (int (/ (:width info) downscale)) h (int (/ (:height info) downscale))
 	  #^java.util.ArrayList data (if (> downscale 1) 
 				       (downscale-map data downscale (:width info) w h) data)]
@@ -227,7 +227,7 @@
 
 (defonce *topo-map* nil)
 (defn get-topo-map []
-  (def *topo-map* (call-srv "topological_map" (GetTopologicalMap$Request.))))
+  (def *topo-map* (call-service "topological_map" (GetTopologicalMap$Request.))))
 
 (defn region-points [reg]
   (let [pc #(vector (/ (:x %) *map-scale*) (/ (:y %) *map-scale*))
@@ -243,8 +243,8 @@
 	    (recur (next points) (conj res cp))))))))
 
 (defn visualize-regions []
-  (put-single-message "/angelic/regions" 
-    (map-msg {:class Polyline :header {:class Header :frame_id "map"} 
+  (put-message "/angelic/regions" 
+    (map->msg {:class Polyline :header {:class Header :frame_id "map"} 
 	      :color {:class ColorRGBA :r 1.0 :g 0.0 :b 0.0 :a 0.0} 
 	      :points 
       (doall (apply concat
@@ -256,8 +256,8 @@
   (doseq [reg (partition 5 (shuffle (filter #(<= 1000 (count (:cells %))) (:regions *topo-map*))))
 	  :let   [regs (map region-points reg)]]
     (Thread/sleep 2.0)
-    (put-single-message "/angelic/regions"
-       (map-msg {:class Polyline :header {:class Header :frame_id "map"} 
+    (put-message "/angelic/regions"
+       (map->msg {:class Polyline :header {:class Header :frame_id "map"} 
 		 :color {:class ColorRGBA :r 1.0 :g 0.0 :b 0.0 :a 0.0} 
 		 :points 
          (mapcat (fn [pts] (map disc-pos->point (apply concat (partition 2 1 pts)))) regs)}))))
@@ -334,8 +334,8 @@
     (doseq [reg (partition-all 5 (shuffle  (vals points-by-region) 
 				        #_ (map #(.get points-by-region (byte %)) [12] #_ [2 41 10 15])))]
       (Thread/sleep 2000.0)
-      (put-single-message "/angelic/regions"
-       (map-msg {:class Polyline :header {:class Header :frame_id "map"} 
+      (put-message "/angelic/regions"
+       (map->msg {:class Polyline :header {:class Header :frame_id "map"} 
 		 :color {:class ColorRGBA :r 1.0 :g 0.0 :b 0.0 :a 0.0} 
 		 :points 
          (apply concat (map (fn [pts] (map disc-pos->point pts)) reg))})))))
@@ -422,8 +422,8 @@
 
 
 (defn visualize-my-connectors []
-  (put-single-message "/angelic/regions"
-       (map-msg {:class Polyline :header {:class Header :frame_id "map"} 
+  (put-message "/angelic/regions"
+       (map->msg {:class Polyline :header {:class Header :frame_id "map"} 
 		 :color {:class ColorRGBA :r 1.0 :g 0.0 :b 0.0 :a 0.0} 
 		 :points 
 	 (map disc-pos->point 
@@ -477,8 +477,8 @@
 
 
 (defn visualize-connector-plans []
-    (put-single-message "/angelic/regions" 
-     (map-msg {:class Polyline :header {:class Header :frame_id "map"} 
+    (put-message "/angelic/regions" 
+     (map->msg {:class Polyline :header {:class Header :frame_id "map"} 
 	       :color {:class ColorRGBA :r 1 :g 0.5 :b 0.26 :a 0.0} 
 	       :points *path-points*})))
 
@@ -504,7 +504,7 @@
 (defn move-to-point [point]
   (with-node-handle [nh]
     (run-action nh "/move_base" 
-      (map-msg {:class PoseStamped :header {:class Header :frame_id "/map"} 
+      (map->msg {:class PoseStamped :header {:class Header :frame_id "/map"} 
 		:pose {:class Pose :position (disc-pos->point point) 
 		       :orientation {:class Quaternion :x 0 :y 0 :z 0 :w 1.00}}})
       (MoveBaseState.))))
@@ -569,8 +569,8 @@
 	  (do ;(println pos points) 
 	      (println pi hor)
 ;	      (visualize-path (take 10 points))
-	      (put-single-message "/move_base/activate"
-	        (map-msg {:class PoseStamped :header {:class Header :frame_id "/map"} 
+	      (put-message "/move_base/activate"
+	        (map->msg {:class PoseStamped :header {:class Header :frame_id "/map"} 
 			  :pose {:class Pose :position (disc-pos->point (points pi)) 
 				 :orientation (if (>= pi (- (count points) 5)) 
 						  dst-orientation
@@ -579,8 +579,8 @@
 						  (map - (points (+ 4 pi)) (points pi)))))}}))
 	      (recur (dec tries) pi (.now nh) hor))))))))
 (comment
-(put-single-message "/move_base/activate"
-	        (map-msg {:class PoseStamped :header {:class Header :frame_id "/map"} 
+(put-message "/move_base/activate"
+	        (map->msg {:class PoseStamped :header {:class Header :frame_id "/map"} 
 			  :pose {:class Pose :position {:class Point :x 15.2194343567
     :y 5.506299636841
     :z 0.0}
@@ -588,12 +588,12 @@
 				 :orientation (angle->orientation 0)}}))
 )
 (defn visualize-path [points]
-  (put-single-message "/angelic/traverse" 
-    (map-msg {:class Polyline :header {:class Header :frame_id "map"} 
+  (put-message "/angelic/traverse" 
+    (map->msg {:class Polyline :header {:class Header :frame_id "map"} 
 	      :color {:class ColorRGBA :r 1 :g 0.5 :b 0.26 :a 0.0} 
 	      :points (map disc-pos->point [[0 0]])}))
-  (put-single-message "/angelic/plan" 
-    (map-msg {:class Polyline :header {:class Header :frame_id "map"} 
+  (put-message "/angelic/plan" 
+    (map->msg {:class Polyline :header {:class Header :frame_id "map"} 
 	      :color {:class ColorRGBA :r 1 :g 0.5 :b 0.26 :a 0.0} 
 	      :points (map disc-pos->point (apply concat (partition 2 1 points)))})))
 
@@ -629,8 +629,8 @@
     (doseq [[topic color pts]
 	    [["/angelic/plan" {:class ColorRGBA :r 1 :g 0.5 :b 0.26 :a 0.0} (concat prim connect)]
 	     ["/angelic/traverse" {:class ColorRGBA :r 0.0 :g 0.0 :b 1.0 :a 0.0} traverse]]]
-      (put-single-message topic 
-	(map-msg {:class Polyline :header {:class Header :frame_id "map"} 
+      (put-message topic 
+	(map->msg {:class Polyline :header {:class Header :frame_id "map"} 
 		  :color color 
 		  :points (map disc-pos->point pts)})))))
 
@@ -720,9 +720,9 @@
     
   
 
-;(put-single-message "/angelic/plan" (map-msg {:class ros.pkg.visualization_msgs.msg.Polyline :header {:class ros.pkg.roslib.msg.Header :frame_id "map"} :color {:class ros.pkg.std_msgs.msg.ColorRGBA :r 1 :g 0.5 :b 0.26 :a 0.0} :points (map disc-pos->point [[100 100] [900 900] [100 900] [100 100] [600 200] [300 800]])}))
+;(put-message "/angelic/plan" (map->msg {:class ros.pkg.visualization_msgs.msg.Polyline :header {:class ros.pkg.roslib.msg.Header :frame_id "map"} :color {:class ros.pkg.std_msgs.msg.ColorRGBA :r 1 :g 0.5 :b 0.26 :a 0.0} :points (map disc-pos->point [[100 100] [900 900] [100 900] [100 100] [600 200] [300 800]])}))
 
-;  (with-node-handle [nh] (when-let [ac (make-action-client nh "/move_base" (PoseStamped.) (MoveBaseState.))] (println "got action client!") (execute-action-client ac (map-msg {:class PoseStamped :header {:class Header :frame_id "map"} :pose {:class Pose :position {:class Point :x 30.25 :y 17.06 :z 0} :orientation {:class Quaternion :x 0 :y 0 :z 0 :w 1.00}}}) (Duration. 15.0))))
+;  (with-node-handle [nh] (when-let [ac (make-action-client nh "/move_base" (PoseStamped.) (MoveBaseState.))] (println "got action client!") (execute-action-client ac (map->msg {:class PoseStamped :header {:class Header :frame_id "map"} :pose {:class Pose :position {:class Point :x 30.25 :y 17.06 :z 0} :orientation {:class Quaternion :x 0 :y 0 :z 0 :w 1.00}}}) (Duration. 15.0))))
 
 
 
@@ -807,7 +807,7 @@
 
 	  
 ;	      (println (run-action nh "/move_base"
-;	        (map-msg {:class PoseStamped :header {:class Header :frame_id "/map"} 
+;	        (map->msg {:class PoseStamped :header {:class Header :frame_id "/map"} 
 ;			  :pose {:class Pose :position (disc-pos->point (first points)) 
 ;				 :orientation {:class Quaternion :x 0 :y 0 :z 0 :w 1.00}}})
 ;		(MoveBaseState.) (Duration. 3.0)))

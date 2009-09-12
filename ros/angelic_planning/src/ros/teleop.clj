@@ -276,7 +276,7 @@
 
 (comment 
 (defn get-trash-point [nh]
-  (let [p (get-single-message-cached nh "/trash_can" (PointStamped.))]
+  (let [p (get-message-cached nh "/trash_can" (PointStamped.))]
     (transform-point nh (:frame_id (:header p)) "/base_link" (decode-point (:point p)))))
 
 (defn servo-to-trash [nh]

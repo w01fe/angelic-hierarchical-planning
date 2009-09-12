@@ -65,13 +65,13 @@
 (defn action-status-code [status] (safe-get* *action-status-forward* status))
 
 (defn- action-goal-msg [action-class]
-  (.newInstance #^Class (:class (:action_goal (msg-map (.newInstance #^Class action-class))))))
+  (.newInstance #^Class (:class (:action_goal (msg->map (.newInstance #^Class action-class))))))
 
 (defn- action-result-msg [action-class]
-  (.newInstance #^Class (:class (:action_result (msg-map (.newInstance #^Class action-class))))))
+  (.newInstance #^Class (:class (:action_result (msg->map (.newInstance #^Class action-class))))))
 
 (defn- action-feedback-msg [action-class]
-  (.newInstance #^Class (:class (:action_feedback (msg-map (.newInstance #^Class action-class))))))
+  (.newInstance #^Class (:class (:action_feedback (msg->map (.newInstance #^Class action-class))))))
 
 
 
@@ -104,7 +104,7 @@
 (defn cancel-action-client 
   "Preempt a currently executing action client"
   [ac goal-id]
-  (.publish #^Publisher (:cancel-pub ac) (map-msg goal-id)))
+  (.publish #^Publisher (:cancel-pub ac) (map->msg goal-id)))
 
 (defn- equal-goals? [#^Time g1 #^Time g2]
   (and (= (.secs g1) (.secs g2)) (= (.nsecs g1) (.nsecs g2)))) 
@@ -120,13 +120,13 @@
 	   result-q   #^Subscriber$QueueingCallback (:result-cb ac)]
        (.clear result-q)
        (.publish #^Publisher (:goal-pub ac)
-	 (map-msg {:class (:class (:action_goal (msg-map (.newInstance #^Class (:action ac)))))
+	 (map->msg {:class (:class (:action_goal (msg->map (.newInstance #^Class (:action ac)))))
 		   :header {:frame_id "/map"}
 		   :goal_id goal-id
 		   :goal goal-msg}))
        (while (and (not (.hasElapsed start-time duration))
 		   (or (.isEmpty result-q)
-		       (and (not (equal-goals? start-time (:id (:goal_id (:status (msg-map (.peek result-q)))))))
+		       (and (not (equal-goals? start-time (:id (:goal_id (:status (msg->map (.peek result-q)))))))
 			    (do (.pop result-q) true))))
 		       
 	 (.spinOnce nh))
@@ -134,7 +134,7 @@
 	   (do (println "preempting!")
 	       (cancel-action-client ac goal-id)
 	       :preempting)
-         (let [result      (msg-map (.pop result-q))
+         (let [result      (msg->map (.pop result-q))
 	       goal-status (:status result)
 	       status-goal-id #^Time (:id (:goal_id goal-status))
 	       status      (*action-status-backward* (int (:status goal-status)))]
@@ -165,10 +165,10 @@
 (defn cancel-action-async
   "Cancel all goals associated with a given action."
   [nh name]
-  (put-single-message nh (str name "/cancel")
-    (map-msg {:class GoalID
-	      :stamp (Time.)
-	      :id    (Time.)}) 1))
+  (put-message nh (str name "/cancel")
+    {:class GoalID
+     :stamp (Time.)
+     :id    (Time.)} 1))
 
 (defn start-action-async
   "Start an action running by firing off a goal message.  No
@@ -176,11 +176,11 @@
   ([nh name action goal-msg] (start-action-async nh name action goal-msg false))
   ([nh name action goal-msg cancel-others?]
     (when cancel-others? (cancel-action-async nh name))
-    (put-single-message nh (str name "/goal") 
-      (map-msg {:class (:class (:action_goal (msg-map (.newInstance #^Class action))))
-	        :header {:frame_id "/map"}
-	        :goal_id {:stamp (Time.) :id (Time.)}
-	        :goal goal-msg})
+    (put-message nh (str name "/goal") 
+      {:class (:class (:action_goal (msg->map (.newInstance #^Class action))))
+       :header {:frame_id "/map"}
+       :goal_id {:stamp (Time.) :id (Time.)}
+       :goal goal-msg}
       1)))
 
  
@@ -241,7 +241,7 @@
   (. #^NodeHandle (:node-handle ac) spinOnce)
   (let [#^Subscriber$QueueingCallback cb (:feedback-cb ac)]
     (when-not (.isEmpty cb)
-      (let [m (msg-map (.pop cb))]
+      (let [m (msg->map (.pop cb))]
 	(reset! (:feedback ac) (safe-get* m :feedback))
 	(reset! (:status   ac) (old-action-status (:value (:status m))))))))
 
@@ -296,7 +296,9 @@
   ([nh name goal-msg empty-state-msg] 
      (run-old-action nh name goal-msg empty-state-msg Duration/MAX_VALUE))
   ([nh name goal-msg empty-state-msg duration]
-     (let [ac (make-old-action-client nh name goal-msg empty-state-msg)
+     (let [goal-msg (map->msg goal-msg)
+		   empty-state-msg (map->msg empty-state-msg)
+	       ac (make-old-action-client nh name goal-msg empty-state-msg)
 	   result (execute-old-action-client ac goal-msg duration)]
        (shutdown-old-action-client ac)
        result)))
@@ -316,7 +318,7 @@
 
 (comment 
 (defn- action-server-runner [#^NodeHandle nh name goal-msg state-msg exec-fn status]
- (let [state        (atom (msg-map state-msg))
+ (let [state        (atom (msg->map state-msg))
        action       (atom nil)
        feedback-pub (.advertise nh (str name "/feedback") state-msg 1)
        goal-cb      (Subscriber$QueueingCallback.)

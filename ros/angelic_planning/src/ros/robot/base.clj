@@ -135,7 +135,7 @@
   "Moves the base to the given pose-stamped, by invoking move_base."
   ([#^NodeHandle nh pose]
      (laser-fast)
-     (run-old-action nh "/move_base" (map-msg pose) (MoveBaseState.) (Duration. 60.0))))
+     (run-old-action nh "/move_base" pose (MoveBaseState.) (Duration. 60.0))))
 
 (defn move-base-to-state
   "Like move-base-to-pose-stamped, but takes a robot-base-state"
@@ -152,7 +152,7 @@
 						  theta))))
 
 (defn preempt-base [nh]
-  (put-single-message nh "/move_base/preempt" (Empty.) 1))		       
+  (put-message nh "/move_base/preempt" (Empty.) 1))		       
 
 ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
 ;;;;;;;;;;;;;;;;;;;;;;;;;;; Moving unsafely using controller ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
@@ -172,16 +172,15 @@
 	(let [current-pose (get-current-base-odom nh)]
   	 (when (and (util/within-time-limit? sw timeout)
 		    (not (goal-fn init-pose current-pose)))
-	  (put-single-message-cached nh "/cmd_vel" 
-	    (map-msg Twist (update-in 
+	  (put-message-cached nh "/cmd_vel" 
+	    (map->msg Twist (update-in 
 			    (update-in 
 			     (command-fn init-pose current-pose)
 			     [:linear] #(merge zero %))
 			    [:angular] #(merge zero %))))
 	  (Thread/sleep 100)
 	  (recur))))
-      (put-single-message-cached nh "/cmd_vel" 
-	(map-msg Twist {:linear zero :angular zero}))
+      (put-message-cached nh "/cmd_vel" {:class Twist :linear zero :angular zero})
       (println "Stopping: traveled" (point-distance init-pos (:position (get-current-base-odom nh))))
       ))))
 
@@ -273,14 +272,14 @@
 ;    (println slop minc)
     (when-not (= [nh window] @*last-window*) ; Assume costmap is static.
       (println "Setting costmap")
-      (call-srv  nh "/navfn_node/set_costmap" 
-		(map-msg (world->costmap world minc maxc)))
+      (call-service  nh "/navfn_node/set_costmap" 
+		(world->costmap world minc maxc))
       (reset! *last-window* [nh window]))
     (let [result 
-	  (call-srv-cached nh "/navfn_node/make_plan" 
-		    (map-msg {:class MakeNavPlan$Request
+	  (call-service-cached nh "/navfn_node/make_plan" 
+		    {:class MakeNavPlan$Request
 			:start (base-state->pose-stamped (base-state->disc initial-base-state res minc maxc))
-			:goal  (base-state->pose-stamped (base-state->disc final-base-state res minc maxc))}))]
+			:goal  (base-state->pose-stamped (base-state->disc final-base-state res minc maxc))})]
       (if (= 1 (:plan_found result))
 ;	(println result)
 	(for [ps (:path result)]
@@ -351,7 +350,7 @@
 
 
 (defn get-trash-point [nh]
-  (let [p (get-single-message-cached nh "/trash_can" (PointStamped.))]
+  (let [p (get-message-cached nh "/trash_can" (PointStamped.))]
     (transform-point nh (:frame_id (:header p)) "/base_link" (decode-point (:point p)))))
 
 (defn servo-to-trash [nh]

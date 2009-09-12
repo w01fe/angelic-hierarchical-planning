@@ -34,8 +34,8 @@
 (defmsgs [geometry_msgs PointStamped])
 
 (defn point-head [#^NodeHandle nh point-stamped] 
-  (put-single-message-cached nh "/head_controller/point_head" 
-    (map-msg PointStamped point-stamped)))
+  (put-message-cached nh "/head_controller/point_head" 
+		(assoc point-stamped :class PointStamped)))
 
 (defn look-at [nh base-link-xyz]
   (point-head nh {:header {:frame_id "/base_link"}

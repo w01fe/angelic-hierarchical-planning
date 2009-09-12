@@ -93,7 +93,7 @@
 
 
 (defn get-current-mechanism-state [#^NodeHandle nh]
-  (get-single-message nh "/mechanism_state" (MechanismState.)))
+  (get-message nh "/mechanism_state" (MechanismState.)))
 
 (def *tll-header* {:frame_id "/torso_lift_link"})
 (def *bl-header*  {:frame_id "/base_link"})
@@ -142,7 +142,7 @@
 
 
 ;(defn get-current-base-pose [#^NodeHandle nh]
-;  (get-single-message nh "/base_pose_ground_truth" (PoseWithRatesStamped.)))
+;  (get-message nh "/base_pose_ground_truth" (PoseWithRatesStamped.)))
 
 (let [mem (atom {})]
   (def get-current-base-pose 
@@ -184,13 +184,13 @@
   ([nh frame]
   (vec (map  (pose-stamped->base-state 
   (:pose (:pout 
-   (call-srv nh "/tf_node/transform_pose" 
-    (map-msg TransformPose$Request
-      {:target_frame "/map"
+   (call-service nh "/tf_node/transform_pose" 
+      {:class TransformPose$Request 
+       :target_frame "/map"
        :target_time (Time.);(.subtract (.now *ros*) (Duration. 0.3))
        :pin {:header {:frame_id frame :stamp (.subtract (.now *ros*) (Duration. 0.3))}	     
 	     :pose {:position {:x 0 :y 0 :z 0} :orientation {:x 0 :y 0 :z 0 :w 1}}}
-       :fixed_frame ""})))))
+       :fixed_frame ""}))))
    [:x :y :theta])))
   )
 
@@ -199,7 +199,7 @@
 (defn move-base-to-pose-stamped 
   "Moves the base to the given pose-stamped, by invoking move_base."
   ([#^NodeHandle nh pose]
-     (run-action nh "/move_base" (map-msg pose) (MoveBaseState.))))
+     (run-action nh "/move_base" (map->msg pose) (MoveBaseState.))))
 
 (defn move-base-to-state
   "Like move-base-to-pose-stamped, but takes a robot-base-state"
@@ -228,14 +228,14 @@
 	(let [current-pose (get-current-base-odom nh)]
   	 (when (and (util/within-time-limit? sw 5.0)
 		    (not (goal-fn init-pose current-pose)))
-	  (.publish pub (map-msg Twist (update-in 
+	  (.publish pub (map->msg Twist (update-in 
 					  (update-in 
 					   (command-fn init-pose current-pose)
 					   [:linear] #(merge zero %))
 					   [:angular] #(merge zero %))))
 	  (Thread/sleep 100)
 	  (recur))))
-      (.publish pub (map-msg Twist {:linear zero :angular zero}))
+      (.publish pub (map->msg Twist {:linear zero :angular zero}))
       (println "Stopping: traveled" (point-distance init-pos (:position (get-current-base-odom nh))))
 ;      (Thread/sleep 4000)
 ;      (println "Stopping: traveled" (point-distance init-pos (:position (get-current-base-odom nh)))))
@@ -276,7 +276,7 @@
   [#^NodeHandle nh vel secs]
   (let [pub (.advertise nh "/cmd_vel" (Twist.) 1)
 	sw  (util/start-stopwatch)
-	msg (map-msg Twist {:linear  {:x 0 :y 0 :z 0}
+	msg (map->msg Twist {:linear  {:x 0 :y 0 :z 0}
 			    :angular {:x 0 :y 0 :z vel}})]
     (loop []
       (.publish pub msg)
@@ -351,12 +351,12 @@
 ;    (println slop minc)
     (when-not (= [nh window] @*last-window*) ; Assume costmap is static.
       (println "Setting costmap")
-      (call-srv  nh "/navfn_node/set_costmap" 
-		(map-msg (world->costmap world minc maxc)))
+      (call-service  nh "/navfn_node/set_costmap" 
+		(map->msg (world->costmap world minc maxc)))
       (reset! *last-window* [nh window]))
     (let [result 
-	  (call-srv-cached nh "/navfn_node/make_plan" 
-		    (map-msg {:class MakeNavPlan$Request
+	  (call-service-cached nh "/navfn_node/make_plan" 
+		    (map->msg {:class MakeNavPlan$Request
 			:start (base-state->pose-stamped (base-state->disc initial-base-state res minc maxc))
 			:goal  (base-state->pose-stamped (base-state->disc final-base-state res minc maxc))}))]
       (if (= 1 (:plan_found result))
@@ -377,8 +377,8 @@
 ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;     Attach object ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
 
 (defn attach-bottle [#^NodeHandle nh]
-  (put-single-message-cached nh "/attach_object" 
-    (map-msg AttachedObject
+  (put-message-cached nh "/attach_object" 
+    (map->msg AttachedObject
      {:header {:frame_id "r_gripper_palm_link" :stamp (.now nh)}
       :link_name "r_gripper_palm_link"
       :objects [{:type ros.pkg.mapping_msgs.msg.Object/CYLINDER
@@ -389,8 +389,8 @@
     ))
 
 (defn unattach-bottle [nh]
-  (put-single-message-cached nh "/attach_object"
-    (map-msg AttachedObject
+  (put-message-cached nh "/attach_object"
+    (map->msg AttachedObject
      {:header {:frame_id "r_gripper_palm_link"}
       :link_name "r_gripper_palm_link"
       :objects []
@@ -437,8 +437,8 @@
     ))
 
 (defn apply-gripper-force [#^NodeHandle nh right? force]
-  (put-single-message nh (str "/actuate_gripper_" (if right? "right" "left") "_arm/activate")
-		      (map-msg Float64 {:data force}) 1))
+  (put-message nh (str "/actuate_gripper_" (if right? "right" "left") "_arm/activate")
+		      (map->msg Float64 {:data force}) 1))
 
 (defn move-gripper-to-state 
   ([nh gs]
@@ -540,9 +540,9 @@
 
 
 (defn get-current-arm-state-msg [nh right?]
-  (call-srv-cached nh (str "/" (if right? "r" "l") 
+  (call-service-cached nh (str "/" (if right? "r" "l") 
 		    "_arm_joint_waypoint_controller/TrajectoryQuery" )
-	    (map-msg TrajectoryQuery$Request {:trajectoryid (TrajectoryQuery$Request/Query_Joint_Names)})))
+	    (map->msg TrajectoryQuery$Request {:trajectoryid (TrajectoryQuery$Request/Query_Joint_Names)})))
 
 (defn get-current-arm-state [nh right?]
   (let [{:keys [jointnames jointpositions]} (get-current-arm-state-msg nh right?)]
@@ -581,8 +581,8 @@
 ;  (println traj)
 ;  (throw (RuntimeException.))
   (safe-get*
-   (call-srv-cached nh (str srv-prefix "/TrajectoryStart")
-      (map-msg TrajectoryStart$Request {:traj traj :hastiming 0 :requesttiming 0}))
+   (call-service-cached nh (str srv-prefix "/TrajectoryStart")
+      (map->msg TrajectoryStart$Request {:traj traj :hastiming 0 :requesttiming 0}))
    :trajectoryid))
 
 (defonce *good-traj-outcomes* 
@@ -605,8 +605,8 @@
   (let [sw (util/start-stopwatch)]
    (loop []
      (let [outcome (int (:done 
-		       (call-srv-cached nh (str srv-prefix "/TrajectoryQuery")
-				      (map-msg TrajectoryQuery$Request
+		       (call-service-cached nh (str srv-prefix "/TrajectoryQuery")
+				      (map->msg TrajectoryQuery$Request
 					       {:trajectoryid traj-id}))))]
       (cond (*good-traj-outcomes* outcome) (do (println outcome) false)
 	    (*bad-traj-outcomes* outcome) (do (println outcome) outcome)
@@ -615,8 +615,8 @@
 			  (Thread/sleep 100)
 		  	  (recur))
 		    (do (println "Timeout, interruping ...")
-			(call-srv-cached nh (str srv-prefix "/TrajectoryCancel")
-					 (map-msg TrajectoryCancel$Request {:trajectoryid traj-id}))
+			(call-service-cached nh (str srv-prefix "/TrajectoryCancel")
+					 (map->msg TrajectoryCancel$Request {:trajectoryid traj-id}))
 			:timeout
 		      ))))))))
 
@@ -738,15 +738,15 @@
   [#^NodeHandle nh right? pose-stamped init-joint-map]
   (assert (= (:frame_id (:header pose-stamped)) "/torso_lift_link"))
   (let [init-joints (seq init-joint-map)]
-;    (map-msg 
+;    (map->msg 
 ;		     {:class IKService$Request
 ;		      :data {:joint_names (map first init-joints)
 ;			     :positions   (map second init-joints)
 ;			     :pose_stamped pose-stamped}})))
     (try 
      (into {} (map vector (map first init-joints) 
-       (:solution (call-srv-cached nh (str "/pr2_ik_" (if right? "right" "left") "_arm/ik_service")  
-		    (map-msg 
+       (:solution (call-service-cached nh (str "/pr2_ik_" (if right? "right" "left") "_arm/ik_service")  
+		    (map->msg 
 		     {:class IKService$Request
 		      :data {:joint_names (map first init-joints)
 			     :positions   (map second init-joints)
@@ -770,8 +770,8 @@
    If in_collision is to be accurate, must first publish a collision map
    to the appropriate topic in the fk_node.  Response is in base link."
  [#^NodeHandle nh joint-map]
-   (let [res (call-srv-cached nh "/fk_node/forward_kinematics"
-	      (map-msg {:class ForwardKinematics$Request
+   (let [res (call-service-cached nh "/fk_node/forward_kinematics"
+	      (map->msg {:class ForwardKinematics$Request
 			:joints (map make-kinematic-joint joint-map)}))]
 ;     (println res)
      (assert (= (count (:link_names res)) (count (:link_poses res))))
@@ -789,8 +789,8 @@
  ([#^NodeHandle nh robot]
     (forward-kinematics nh (get-joint-map robot)))
  ([#^NodeHandle nh robot world]
-    (put-single-message-cached nh "/fk_node/collision_map" 
-      (map-msg (world->collision-map world)) )
+    (put-message-cached nh "/fk_node/collision_map" 
+      (map->msg (world->collision-map world)) )
     (robot-forward-kinematics nh robot)))
 
 
@@ -832,8 +832,8 @@
   ([#^NodeHandle nh right? pose-stamped robot world random-retries start-random?]
    (when (feasible-ik-pose? nh pose-stamped) ;; TODO: replace with opt desc.
      (when world
-       (put-single-message-cached nh "/fk_node/collision_map" 
-	 (map-msg (world->collision-map world))))
+       (put-message-cached nh "/fk_node/collision_map" 
+	 (map->msg (world->collision-map world))))
      (println "Sent map!")
      (let [all-joints (get-joint-map robot)]
       (loop [tries random-retries 
@@ -971,14 +971,14 @@
      (plan-arm-motion nh right? world robot-state joint-constraints pose-constraints *no-constraints*))
   ([#^NodeHandle nh right? world robot-state joint-constraints pose-constraints path-constraints]
   (println "Putting collision map")
-  (put-single-message-cached nh "/collision_map_future" (map-msg (world->collision-map world)))
+  (put-message-cached nh "/collision_map_future" (map->msg (world->collision-map world)))
 ;  (println "\n\n\n\n\n\n\n\n" right?)
 ;  (println (doall (map make-kinematic-joint (get-joint-map robot-state))))
 ;  (println "\n\n\n")
 ;  (println pose-constraints)
     (println "Calling plan service")
-  (call-srv-cached nh "/future_ompl_planning/plan_kinematic_path"
-   (map-msg 
+  (call-service-cached nh "/future_ompl_planning/plan_kinematic_path"
+   (map->msg 
      {:class GetMotionPlan$Request :times 1 :allowed_time 0.5 :planner_id ""
       :params (if right? *rarm-params* *larm-params*)
       :start_state      (doall (map make-kinematic-joint (get-joint-map robot-state)))
@@ -1002,7 +1002,7 @@
   ([#^NodeHandle nh arm-state] (move-arm-to-state nh arm-state false 60.0))
   ([#^NodeHandle nh arm-state upright? timeout]
    (run-action nh (str "/move_" (if (isa? (:class arm-state) ::Right) "right" "left") "_arm")  
-    (map-msg {:class MoveArmGoal 
+    (map->msg {:class MoveArmGoal 
 	      :contacts nil
 	      :path_constraints (if upright? *upright-rgripper-constraint* *no-constraints*)
 	      :goal_constraints {:pose_constraint  []
@@ -1016,7 +1016,7 @@
   ([nh pos upright? timeout]
 ;     (println "GO")
    (run-action nh "/move_right_arm"
-     (map-msg {:class MoveArmGoal 
+     (map->msg {:class MoveArmGoal 
 	      :contacts nil
 	      :path_constraints (if upright? *upright-rgripper-constraint* *no-constraints*)
 	      :goal_constraints 
@@ -1028,10 +1028,10 @@
 
 
 (defn preempt-arm [nh]
-  (put-single-message nh "/move_right_arm/preempt" (Empty.) 1))
+  (put-message nh "/move_right_arm/preempt" (Empty.) 1))
 
 (defn preempt-base [nh]
-  (put-single-message nh "/move_base/preempt" (Empty.) 1))
+  (put-message nh "/move_base/preempt" (Empty.) 1))
 
 
 ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
@@ -1053,8 +1053,8 @@
 	      (:joint_states (get-current-mechanism-state nh)))))))
 
 (defn set-torso-position [#^NodeHandle nh pos]
-  (put-single-message nh "/torso_lift_controller/set_command" 
-		      (map-msg {:class Float64 :data pos}) 1))
+  (put-message nh "/torso_lift_controller/set_command" 
+		      (map->msg {:class Float64 :data pos}) 1))
 
 ; Todo: make synchronous?
 (defn move-torso-to-state [nh state]
@@ -1098,8 +1098,8 @@
 (defn get-gripper-pose [nh]
   (decode-pose 
   (:pose (:pout 
-   (call-srv nh "/tf_node/transform_pose" 
-    (map-msg TransformPose$Request
+   (call-service nh "/tf_node/transform_pose" 
+    (map->msg TransformPose$Request
       {:target_frame "/base_link"
        :target_time (Time.);(.subtract (.now *ros*) (Duration. 0.3))
        :pin {:header {:frame_id "/r_gripper_palm_link" :stamp (.subtract (.now *ros*) (Duration. 0.1))}	     
@@ -1112,8 +1112,8 @@
 (defn transform-point [nh src-frame trg-frame nice-point]
   (decode-point 
    (:point (:pout 
-     (call-srv nh "/tf_node/transform_point"
-	       (map-msg TransformPoint$Request
+     (call-service nh "/tf_node/transform_point"
+	       (map->msg TransformPoint$Request
 			{:target_frame trg-frame
 			 :target_time (Time.);(.subtract (.now *ros*) (Duration. 0.3))
 			 :pin {:header {:frame_id src-frame :stamp (.subtract (.now *ros*) (Duration. 0.3))}
@@ -1152,7 +1152,7 @@
 
 (defn find-bottles [nh z]
   [])
-;  (:pts (call-srv nh "/find_bottles" (map-msg FindBottles$Request {:z z}))))
+;  (:pts (call-service nh "/find_bottles" (map->msg FindBottles$Request {:z z}))))
 
 (defn wait-for-bottle [nh z]
   (laser-slow)
@@ -1220,8 +1220,8 @@
     ))
 
 (defn look-at [#^NodeHandle nh bl-point] 
-  (put-single-message-cached nh "/head_controller/point_head" 
-    (map-msg PointStamped {:header {:frame_id "/base_link" :stamp (.now nh)} 
+  (put-message-cached nh "/head_controller/point_head" 
+    (map->msg PointStamped {:header {:frame_id "/base_link" :stamp (.now nh)} 
 			   :point (make-point bl-point)})))
 
 (defn look-forward [nh] (look-at nh [1 0 1.2]))  
@@ -1274,7 +1274,7 @@
 ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;; Trahs can ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
 
 (defn get-trash-point [nh]
-  (let [p (get-single-message-cached nh "/trash_can" (PointStamped.))]
+  (let [p (get-message-cached nh "/trash_can" (PointStamped.))]
     (transform-point nh (:frame_id (:header p)) "/base_link" (decode-point (:point p)))))
 
 (defn servo-to-trash [nh]
@@ -1314,8 +1314,8 @@
   ([nh] (get-gripper-map-point nh "r_gripper_r_finger_tip_link"))
   ([nh frame]
    (decode-point (:point (:pout 
-   (call-srv nh "/tf_node/transform_point" 
-    (map-msg TransformPoint$Request
+   (call-service nh "/tf_node/transform_point" 
+    (map->msg TransformPoint$Request
       {:target_frame "/map"
        :target_time (Time.);(.subtract (.now *ros*) (Duration. 0.3))
        :pin {:header {:frame_id frame :stamp (.subtract (.now *ros*) (Duration. 0.3))}	     
@@ -1499,7 +1499,7 @@
 ; (do (use 'ros.ros 'ros.world 'ros.geometry 'ros.robot 'ros.robot-actions 'ros.robot-hierarchy :reload) (import-ros) (import-all-msgs-and-srvs))
 ; (def nh (make-node-handle))
 
-; (call-srv "/tf_node/transform_point" (map-msg {:class TransformPoint$Request :target_frame "/map" :pin {:class PointStamped :header {:class Header :frame_id "/odom" :stamp (.subtract (.now *ros*) (Duration. 0.1))} :point {:class Point :x 0 :y 0 :z 0}} :fixed_frame "" :target_time (Time.)}))
+; (call-service "/tf_node/transform_point" (map->msg {:class TransformPoint$Request :target_frame "/map" :pin {:class PointStamped :header {:class Header :frame_id "/odom" :stamp (.subtract (.now *ros*) (Duration. 0.1))} :point {:class Point :x 0 :y 0 :z 0}} :fixed_frame "" :target_time (Time.)}))
 
 ; (count (:times (:path (plan-arm-motion nh true (get-initial-world 0.1 0.1 0) (assoc (get-current-robot-state nh)  :base (make-robot-base-state 8 9 0) :torso (make-robot-torso-state 0.2)) (:joint-angle-map *rarm-tucked-state*) nil))))
 
@@ -1514,7 +1514,7 @@
 ;  ([nh pose]
 ;     (move-base-to-pose-stamped nh pose nil))
 ;  ([#^NodeHandle nh pose wait-for-dist?]
-;     (put-single-message nh "/move_base/activate" (map-msg pose) 1) 		      
+;     (put-message nh "/move_base/activate" (map->msg pose) 1) 		      
 ;     (when wait-for-dist? (println "wait...")
 ;	   (while (> (pose-distance pose (:pos (get-current-base-pose nh)) 1.0) wait-for-dist?)
 ;	     (Thread/sleep 100)))))

@@ -72,9 +72,9 @@
 
 (defn get-current-arm-state-msg [nh right?]
   (try 
-    (call-srv-cached nh (str "/" (if right? "r" "l") 
+    (call-service-cached nh (str "/" (if right? "r" "l") 
 		    "_arm_joint_waypoint_controller/TrajectoryQuery" )
-	    (map-msg TrajectoryQuery$Request {:trajectoryid (TrajectoryQuery$Request/Query_Joint_Names)}))
+	    {:class TrajectoryQuery$Request :trajectoryid (TrajectoryQuery$Request/Query_Joint_Names)})
     (catch Exception e
       (println "Presming arm missing")
       {})
@@ -198,12 +198,11 @@
       (try 
        (let [sol 
       (into {} (map vector (map first init-joints) 
-       (:solution (call-srv-cached nh (str "/pr2_ik_" (if right? "right" "left") "_arm/ik_service")  
-		    (map-msg 
+       (:solution (call-service-cached nh (str "/pr2_ik_" (if right? "right" "left") "_arm/ik_service")  
 		     {:class IKService$Request
 		      :data {:joint_names (map first init-joints)
 			     :positions   (map second init-joints)
-			     :pose_stamped pose-stamped}})))))]
+			     :pose_stamped pose-stamped}}))))]
 	 ;(println sol)
 	 sol)
 ;	 (if right? sol
@@ -271,9 +270,9 @@
    If in_collision is to be accurate, must first publish a collision map
    to the appropriate topic in the fk_node.  Response is corrected to be in map frame.."
  [#^NodeHandle nh joint-map]
-   (let [res (call-srv-cached nh "/fk_node/forward_kinematics"
-	      (map-msg {:class ForwardKinematics$Request
-			:joints (map make-kinematic-joint joint-map)}))
+   (let [res (call-service-cached nh "/fk_node/forward_kinematics"
+	       {:class ForwardKinematics$Request
+			:joints (map make-kinematic-joint joint-map)})
 	 [_ base-link] (first 
 			(filter (fn [[name pose]] (= name "base_link")) 
 				(map vector (:link_names res) (:link_poses res))))
@@ -295,8 +294,7 @@
  ([#^NodeHandle nh robot]
     (forward-kinematics nh (get-joint-map robot)))
  ([#^NodeHandle nh robot world]
-    (put-single-message-cached nh "/fk_node/collision_map" 
-      (map-msg (world->collision-map world)) )
+    (put-message-cached nh "/fk_node/collision_map" (world->collision-map world))
     (robot-forward-kinematics nh robot)))
 
 (defn object-forward-kinematics
@@ -341,8 +339,7 @@
   ([#^NodeHandle nh right? pose-stamped robot world random-retries start-random?]
    (when (feasible-ik-pose? nh pose-stamped) ;; TODO: replace with opt desc.
      (when world
-       (put-single-message-cached nh "/fk_node/collision_map" 
-	 (map-msg (world->collision-map world)))
+       (put-message-cached nh "/fk_node/collision_map" (world->collision-map world))
        #_ (println "Sent map for FK!"))
      (let [all-joints (get-joint-map robot)]
       (loop [tries random-retries 
@@ -410,8 +407,8 @@
 
 (defn start-trajectory [#^NodeHandle nh srv-prefix traj]
   (safe-get*
-   (call-srv-cached nh (str srv-prefix "/TrajectoryStart")
-      (map-msg TrajectoryStart$Request {:traj traj :hastiming 0 :requesttiming 0}))
+   (call-service-cached nh (str srv-prefix "/TrajectoryStart")
+      {:class TrajectoryStart$Request :traj traj :hastiming 0 :requesttiming 0})
    :trajectoryid))
  
 (defn wait-for-trajectory 
@@ -424,9 +421,8 @@
   (let [sw (util/start-stopwatch)]
    (loop []
      (let [outcome (int (:done 
-		       (call-srv-cached nh (str srv-prefix "/TrajectoryQuery")
-				      (map-msg TrajectoryQuery$Request
-					       {:trajectoryid traj-id}))))]
+		       (call-service-cached nh (str srv-prefix "/TrajectoryQuery")
+					       {:class TrajectoryQuery$Request :trajectoryid traj-id})))]
       (cond (*good-traj-outcomes* outcome) (do (println outcome) false)
 	    (*bad-traj-outcomes* outcome) (do (println outcome) outcome)
 	    :else (if (util/within-time-limit? sw max-seconds) 
@@ -434,8 +430,8 @@
 			  (Thread/sleep 100)
 		  	  (recur))
 		    (do (println "Timeout, interruping ...")
-			(call-srv-cached nh (str srv-prefix "/TrajectoryCancel")
-					 (map-msg TrajectoryCancel$Request {:trajectoryid traj-id}))
+			(call-service-cached nh (str srv-prefix "/TrajectoryCancel")
+					{:class TrajectoryCancel$Request :trajectoryid traj-id})
 			:timeout
 		      ))))))))
 
@@ -609,16 +605,15 @@
      (plan-arm-motion nh right? world robot-state joint-constraints pose-constraints *no-constraints*))
   ([#^NodeHandle nh right? world robot-state joint-constraints pose-constraints path-constraints]
 ;  (println "Putting collision map")
-  (put-single-message-cached nh "/collision_map_future" (map-msg (world->collision-map world)))
+  (put-message-cached nh "/collision_map_future" (world->collision-map world))
 ;  (println "Calling plan service")
-  (call-srv-cached nh "/future_ompl_planning/plan_kinematic_path"
-   (map-msg 
+  (call-service-cached nh "/future_ompl_planning/plan_kinematic_path"
      {:class GetMotionPlan$Request :times 1 :allowed_time 0.5 :planner_id ""
       :params (if right? *rarm-params* *larm-params*)
       :start_state      (doall (map make-kinematic-joint (get-joint-map robot-state)))
       :path_constraints path-constraints
       :goal_constraints {:pose_constraint (vec pose-constraints)
-			 :joint_constraint (vec (map parse-joint-constraint joint-constraints))}}))))
+			 :joint_constraint (vec (map parse-joint-constraint joint-constraints))}})))
 
 
 (defn describe-motion-plan 

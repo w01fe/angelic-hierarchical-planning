@@ -147,7 +147,7 @@
 
 
 (defn find-bottles [nh z]
-  (:pts (call-srv nh "/find_bottles" (map-msg FindBottles$Request {:z z}))))
+  (:pts (call-service nh "/find_bottles" {:class FindBottles$Request :z z})))
 
 (defn wait-for-bottle [nh z]
   (laser-slow)
@@ -170,7 +170,7 @@
 
 (defn find-table-objects [nh]
   (laser-slow)
-  (:table (call-srv nh "/table_object_detector" (map-msg FindTable$Request {}))))
+  (:table (call-service nh "/table_object_detector" (FindTable$Request.))))
 
 (defn wait-for-table-objects [nh]
 ;  (Thread/sleep 2000)
@@ -237,7 +237,7 @@
 
 
 (defn get-trash-point [nh]
-  (let [p (get-single-message-cached nh "/trash_can" (PointStamped.))]
+  (let [p (get-message-cached nh "/trash_can" (PointStamped.))]
     (transform-point nh (:frame_id (:header p)) "/base_link" (decode-point (:point p)))))
 
  )

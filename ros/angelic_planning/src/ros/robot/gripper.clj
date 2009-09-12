@@ -99,9 +99,9 @@
 			"l_finger_tip_link" "r_finger_tip_link"
 			"float_link" "tool_frame"
 			]))]
-    (put-single-message-cached nh "/attach_object" 
-    (map-msg AttachedObject
-     {:header {:frame_id link :stamp (.now nh)}
+    (put-message-cached nh "/attach_object" 
+     {:class AttachedObject
+      :header {:frame_id link :stamp (.now nh)}
       :link_name link
       :objects [{:type ros.pkg.mapping_msgs.msg.Object/CYLINDER
 		 :dimensions [0.10 0.20]
@@ -109,21 +109,19 @@
 		 :vertices []}]
       :poses   [(make-pose [0.15 0 0] [0 0 0 1])]
       :touch_links all-links
-      }) 
-    )))
+      } )))
 
 (defn unattach-bottle [nh right?]
   (println "Unattaching object.")
   (let [link (if right? "r_gripper_palm_link" "l_gripper_palm_link")]
-   (put-single-message-cached nh "/attach_object"
-    (map-msg AttachedObject
-     {:header {:frame_id link}
+   (put-message-cached nh "/attach_object"
+     {:class AttachedObject
+      :header {:frame_id link}
       :link_name link
       :objects []
       :poses []
       :touch_links []
-      }) 
-    )))
+      })))
 
 
 
