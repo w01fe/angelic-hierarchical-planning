@@ -1,51 +1,26 @@
 ;;;;;;;;;;;;;;;; Implement
 
-Actually have two distinct finish states ... ish (one for explicit
-			val, one for dnf val.)
 
-Handle duplicate plans properly in full graph.
 
-AHSS should skip plans iwth optimistic cost > alpha
 
-Look at HLA order! 
 
-PUT BACK pruning in construct-immediate-refinement!
+;;;;;;;;;;;;;;;; General TODO
 
-beware of real-valued costs + pruning. 
-
-Kernel-map type version of graph planning.
+think about implicit pruning (i.e., decomposition, etc.)
 
 Subgoal caching / plan tying (i.e., cost for X at least cost for Y -
 distance to Y from X).   
 
-Hierarchy doesn't allow move(b,c,c), which could be needed to get
+Warehouse hierarchy doesn't allow move(b,c,c), which could be needed to get
 through tall stack.  
-
-Tiebreaking in AHA* (depht-first) can make huge difference ...
-  Investigate difference compared to experiments just run.  (AGAIN,
-  had bug)
- - Should also add this to tree/graph (flat) A* search ?!
-  ( does not seem to really matter ...)
-  - 
-
-TODO: weighted A*, optimistic A* need not reopen states to preserve
-suboptimality bound ? (see ARA* paper)
-
-TODO: ARA*
-
-Add tests for decomposed, weighted, optimistic offline algs. 
-
-put back was-tight?  (removed for easy description in paper.)
-
-think about implicit pruning (i.e., decomposition, etc.)
-
-;;;;;;;;;;;;;;;; General TODO
 
 Think about connection between hierarchical methods and first-order
 theorem proving.  Pessimistic descriptions are not pure logical
 statements ! 
  
 Later
+
+Handle duplicate plans properly in full graph.
 
 Fix regression for simple valuations ?
 

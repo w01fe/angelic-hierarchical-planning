@@ -316,6 +316,9 @@ improve efficiency of regression."
 (def *finish-description* {:class ::FinishDescription})
 (def *finish-state*  #{[(gensym "goal")]})
 (def *finish-clause* (state->clause *finish-state*))
+(defn make-finish-valuation [rew]
+  (map->valuation :edu.berkeley.ai.angelic.dnf-valuations/DNFSimpleValuation {*finish-state* rew}))
+
 (defmethod instantiate-description-schema ::FinishDescription [desc instance]  
   (assoc desc :goal (envs/get-goal instance)))
 (defmethod ground-description             ::FinishDescription [desc var-map]  desc)
@@ -323,7 +326,7 @@ improve efficiency of regression."
 (defmethod progress-valuation    [::ConditionalValuation ::FinishDescription] [val desc]
   (if (envs/consistent-condition? (envs/conjoin-conditions (util/safe-get val :condition)
 						      (util/safe-get desc :goal)))
-    (map->valuation ::ExplicitValuation {*finish-state* (valuation-max-reward val)})))
+    (make-finish-valuation (valuation-max-reward val))))
 
 
 (defmethod regress-state    [::ConditionalValuation ::FinishDescription ::Valuation] [state preval desc postval]
@@ -424,7 +427,7 @@ improve efficiency of regression."
 
 (defmethod progress-valuation    [::ExplicitValuation ::FinishDescription] progress-explicit-final [val desc]
   (if (some #(envs/satisfies-condition? % (util/safe-get desc :goal)) (keys (explicit-valuation-map val)))
-    (map->valuation ::ExplicitValuation {*finish-state* (valuation-max-reward val)})
+    (make-finish-valuation (valuation-max-reward val))
     *pessimal-valuation*))
 
 (prefer-method progress-valuation [::PessimalValuation ::Description] [::ExplicitValuation ::FinishDescription])

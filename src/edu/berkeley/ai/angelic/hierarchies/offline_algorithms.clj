@@ -8,6 +8,11 @@
 
 ;;; Algorithm from ICAPS 07 paper, modulo Act simplification
 
+;TODO: weighted A*, optimistic A* need not reopen states to preserve
+;suboptimality bound ? (see ARA* paper)
+
+;Add tests for decomposed, weighted, optimistic offline algs. 
+
 
 (defn concat-solutions [sols]
 ;  (println sols)

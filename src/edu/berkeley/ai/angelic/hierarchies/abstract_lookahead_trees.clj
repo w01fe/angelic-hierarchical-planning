@@ -31,7 +31,9 @@
   ; In fact, while it doesn't change the # of refinements (AT ALL), it does make runtime 2x faster
    ; on (*icaps-ww* 4).... seems it's just since it avoids DAG calls.  
 
-; TODO?: clause-based subsumption?
+;; Beware of real-valued costs; rounding error + pruning can result in suboptimality/incompleteness.
+
+;; TODO: should handle duplicate plans properly in full graph.
 
 ;; ALTs, nodes, and plans
 
@@ -321,7 +323,7 @@
 				 (and (= (:graph? alt) true) (util/safe-get ^node :was-tight?) 
 				      (not (.contains live-set graph-node)))
 				 (and (= (:graph? alt) :full)
-				     ; (util/safe-get ^node :was-tight?) TODO: put back? 
+				      (util/safe-get ^node :was-tight?) 
 				      (not (test-and-add-edge! alt graph-node name)))))))))
 	   graph-tuples)]
         (util/sref-set! (:fate ^node) bad-node)
