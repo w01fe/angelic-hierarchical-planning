@@ -1,25 +1,5 @@
 (in-ns 'edu.berkeley.ai.util)
 
-;(import '(edu.berkeley.ai.util DelayedSeq))
-
-(comment 
-(defn random-permutation [s]
-  "Return a random permutation of this seq." 
-  (let [arr (to-array s) len (alength arr)]
-    (dotimes [i (dec len)]
-      (let [r (+ i (rand-int (- len i))),
-	    prev (aget arr i)]
-	(aset arr i (aget arr r))
-	(aset arr r prev)))
-     (seq arr)))
-  )
-
-(comment 
-(defn random-element [s]
-  "Return a random element of this seq"
-  (nth s (rand-int (count s))))
-   )
-
 ;(defn vec-map [f v]
 ;  (reduce (fn [v i] (assoc v i (f (nth v i)))) v (range (count v))))
 

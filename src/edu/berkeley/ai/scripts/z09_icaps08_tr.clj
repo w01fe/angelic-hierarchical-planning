@@ -437,8 +437,45 @@
      [:recheck-graph? [true]]
      ]))
 
+(defonce *online-ext* nil)
+
+(defn read-extended-online-results []
+  (def *online-ext* 
+      (doall 
+       (map #(into {} (assoc % :printed nil :output [nil (second (:output %))] ))
+	    (experiments/experiment-set-results->dataset 
+	     (experiments/read-experiment-set-results (make-extended-online-experiment-set) 
+						      *run-folder*))))))
 
 
+(defn make-extended-online-charts 
+  ([] (make-extended-online-charts "/Users/jawolfe/Desktop/new-charts/"))
+  ([dir] 
+   ; Nav Switch
+   (doseq [[sz keyloc maxx] [[100 "4600, 550" 5000] [500 "1800, 4000" 2000]], i  (range 1 11)]
+    (charts/plot (datasets/ds->chart 
+      (datasets/ds-summarize 
+        (datasets/ds-derive (datasets/ds-fn [output ] (- (second output)))
+	  (filter (datasets/ds-fn [ms size run] (and ms (= size sz) (= run i))) 
+	    (filter (datasets/ds-fn [domain] (= domain :nav-switch)) *online-ext*)) 
+	  :cost) 
+	[:type :graph? :max-refs :ref-choice :algorithm :switches :size] 
+	[[:cost (fn [& args] (apply util/geometric-mean args)) (datasets/ds-fn [cost] cost)]]) 
+      [:algorithm :type :ref-choice] 
+      :max-refs :cost 
+      {:term "solid dashed size 3,2" :xrange (str "[10:" maxx "]")
+       ;:xlog "t" 
+       :key keyloc 
+       :title (str sz "x" sz " Online Nav Switch"  #_", 20 switches") 
+       :xlabel "Allowed refinements per env step"
+       :ylabel "Cost to reach goal (avg of 10 random instances)" } 
+;      (constantly {:lw 4})
+      (let [c (util/counter-from 0)]
+	(fn [& args] (let [v ([1 2 3] (c))]  {:lw 3 :pt v :lt v})))
+      (fn [[alg type ref-choice]]
+	(cond (= alg :ahss) "AHSS" (= type :hierarchy) "AHLRTA*" :else "LRTA*"))
+      identity)
+     #_(str dir "online-nav-" sz ".pdf")))))
 
 
 

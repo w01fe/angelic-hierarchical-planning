@@ -3,6 +3,10 @@
 Actually have two distinct finish states ... ish (one for explicit
 			val, one for dnf val.)
 
+Handle duplicate plans properly in full graph.
+
+AHSS should skip plans iwth optimistic cost > alpha
+
 Look at HLA order! 
 
 PUT BACK pruning in construct-immediate-refinement!

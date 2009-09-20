@@ -9,7 +9,7 @@
 (defstruct disjoint-sets :class :node-map)
 
 (defn ds-make-set [#^HashMap ds o]
-  (let [a (to-array [o 0 nil])]
+  (let [a #^"[Ljava.lang.Object;" (to-array [o 0 nil])]
     (aset a 2 a)
     (.put ds o a)
     o))
