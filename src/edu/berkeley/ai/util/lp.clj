@@ -21,7 +21,7 @@
 (set! *warn-on-reflection* true)
 
 ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
-;                               Basic Definitions    
+;                               Creating LP   
 ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
 
 (defn make-lp [bounds objective constraints]
@@ -29,6 +29,12 @@
    :constraints constraints
    :objective   objective
    :bounds      bounds})
+
+
+;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
+;                            MPS encoding of LP
+;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
+
 
 (defn fix [obj size]
   (.substring (str obj "                                           ") 0 size)) 
@@ -128,7 +134,7 @@
 	(when l (.append out (encode-mps-num l)))
 	(.append out "\n")
 	
-	(when (and (or l u) (not (= l u)))
+	(when (and (or l u) (not (= l u)) u)  ;; CLP doesn't like PL.
 	  (.append out 
 		   (cond u         " UP "
 			 :else     " PL "))
@@ -142,11 +148,11 @@
     (.append out "ENDATA\n")
     [(.toString out) namer (keys cols)]))
 
-;; glpk gives us back
-; n-rows n-cols
-; stat stat rew   (stat = 1 for unsolvable, 2 for solvable ??)
-; ROWS (bla bla bla)
-; COLS (status val marginal?)
+
+
+;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
+;                                     Solving LP
+;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
 
 (defn cheap-sh [& args]
   (.waitFor (.exec (Runtime/getRuntime) #^"[Ljava.lang.String;" (into-array args))))
@@ -176,11 +182,12 @@
   (let [[mps-file-data namer var-order] (lp->mps* lp)
 	in-file (util/fresh-random-filename "/tmp/lp")
 	out-file (str in-file ".out")]
+;    (println in-file)
     (util/spit in-file mps-file-data)
     (cheap-sh "clp" "-max" "-import" in-file "-solve" "-solution" out-file)
     (let [[[status] [obj val rew] & body] (map #(read-string (str "[" % "]")) (util/read-lines out-file))]
       (assert (is (= [obj val] '[Objective value])))
-      (cond ;(= stat1 stat2 1) nil ;infeasible
+      (cond (= status 'infeasible) nil 
 	    (= status 'optimal)
 	      [(into {} (map (fn [[_ _ val _] var] [var val]) body var-order)) (- rew)]
 	      ;; NOTE negation of reward due to apparent bug in CLP's handling of max.
@@ -188,23 +195,45 @@
 	      (throw (RuntimeException. (str "Unknown result statuses from clp: " status)))
 	      ))))
 
-;; Calls for small LPs for both take about 40 ms. 
 
+
+;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
+;                                   Tests
+;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
+
+;; Calls for small LPs for both take about 40 ms. 
 
 (def *wiki-lp* 
      (make-lp {:xone [nil 4] :ytwo [-1 1] :zthree nil} 
 	      {:xone 1 :ytwo 4 :zthree 9} 
 	      {{:xone 1 :ytwo 1} [nil 5] {:xone 1 :zthree 1} [10 nil] {:ytwo -1 :zthree 1} [7 7]}))
 (def *wiki-lp-sol* [{:ytwo 1, :zthree 8, :xone 4} 80])
-    
+
+(def *another-lp*
+     (make-lp {:x [0] :y [0] :z [0]}
+	      {:x 1 :y 1 :z 2}
+	      {{:y 1 :z 2} [nil 3]
+	       {:x -1 :z 3} [nil 2]
+	       {:x 2 :y 1 :z 1} [nil 1]}))
+
+(def *another-lp-sol* [{:x 0 :y (/ 1.0 3) :z (/ 2.0 3)} (/ 5.0 3)])
+
+(defn- approx-= [x y] (< (Math/abs (double (- x y))) 0.000001))
+(defn- approx-=-maps [m1 m2]
+  (and (= (set (keys m1)) (set (keys m2)))
+       (every? #(apply approx-= %) (map #(vector (m1 %) (m2 %)) (keys m1)))))
+(defn approx-=-lp-sols [[m1 r1] [m2 r2]]
+  (and (approx-=-maps m1 m2) (approx-= r1 r2)))
+
 (deftest test-glpk
-  (is (= (solve-lp-glpk *wiki-lp*) *wiki-lp-sol*)))
+  (is (approx-=-lp-sols (solve-lp-glpk *wiki-lp*) *wiki-lp-sol*))
+  (is (approx-=-lp-sols (solve-lp-glpk *another-lp*) *another-lp-sol*)))
 
 (deftest test-clp
-  (is (= (solve-lp-clp *wiki-lp*) *wiki-lp-sol*)))
+  (is (approx-=-lp-sols (solve-lp-clp *wiki-lp*) *wiki-lp-sol*))
+  (is (approx-=-lp-sols (solve-lp-clp *another-lp*) *another-lp-sol*)))
 
-;; Wikipedia example
-;; (println (lp->mps (make-lp {:xone [nil 4] :ytwo [-1 1] :zthree nil} {:xone 1 :ytwo 4 :zthree 9} {{:xone 1 :ytwo 1} [nil 5] {:xone 1 :zthree 1} [10 nil] {:ytwo -1 :zthree 1} [7 7]}))) 
+
      
 
 (set! *warn-on-reflection* false)

@@ -1,5 +1,8 @@
 ;;;;;;;;;;;;;;;; Implement
 
+TWO approaches to hybrid; LP splitting, vs. MIP.
+
+Heuristic for hybrid blocks
 
 
 
