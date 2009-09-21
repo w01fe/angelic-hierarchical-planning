@@ -18,6 +18,7 @@
   (:use clojure.test [edu.berkeley.ai.util :as util])
   (:import [java.util HashMap] [java.text DecimalFormat]))
 
+(set! *warn-on-reflection* true)
 
 ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
 ;                               Basic Definitions    
@@ -147,15 +148,18 @@
 ; ROWS (bla bla bla)
 ; COLS (status val marginal?)
 
+(defn cheap-sh [& args]
+  (.waitFor (.exec (Runtime/getRuntime) #^"[Ljava.lang.String;" (into-array args))))
+
 (defn solve-lp-glpk 
   "Solve the LP and return [var-binding-map sol-max-reward].  Returns nil for infeasible.
    Requrires GLPK (gnu LP solver kit) on the path."
   [lp]
   (let [[mps-file-data namer var-order] (lp->mps* lp)
-	in-file (util/fresh-filename "/tmp/lp")
+	in-file (util/fresh-random-filename "/tmp/lp")
 	out-file (str in-file ".out")]
     (util/spit in-file mps-file-data)
-    (util/sh "glpsol" "--max" "-w" out-file "--mps" in-file)
+    (cheap-sh "glpsol" "--max" "-w" out-file "--mps" in-file)
     (let [[[rows cols] [stat1 stat2 rew] & body] (map #(read-string (str "[" % "]")) (util/read-lines out-file))]
       (cond (= stat1 stat2 1) nil ;infeasible
 	    (= stat1 stat2 2) ; solved
@@ -170,10 +174,10 @@
    Requrires CLP (COIN_OR LP solver) on the path."  
   [lp]
   (let [[mps-file-data namer var-order] (lp->mps* lp)
-	in-file (util/fresh-filename "/tmp/lp")
+	in-file (util/fresh-random-filename "/tmp/lp")
 	out-file (str in-file ".out")]
     (util/spit in-file mps-file-data)
-    (util/sh "clp" "-max" "-import" in-file "-solve" "-solution" out-file)
+    (cheap-sh "clp" "-max" "-import" in-file "-solve" "-solution" out-file)
     (let [[[status] [obj val rew] & body] (map #(read-string (str "[" % "]")) (util/read-lines out-file))]
       (assert (is (= [obj val] '[Objective value])))
       (cond ;(= stat1 stat2 1) nil ;infeasible
@@ -184,8 +188,7 @@
 	      (throw (RuntimeException. (str "Unknown result statuses from clp: " status)))
 	      ))))
 
-
-
+;; Calls for small LPs for both take about 40 ms. 
 
 
 (def *wiki-lp* 
@@ -203,3 +206,5 @@
 ;; Wikipedia example
 ;; (println (lp->mps (make-lp {:xone [nil 4] :ytwo [-1 1] :zthree nil} {:xone 1 :ytwo 4 :zthree 9} {{:xone 1 :ytwo 1} [nil 5] {:xone 1 :zthree 1} [10 nil] {:ytwo -1 :zthree 1} [7 7]}))) 
      
+
+(set! *warn-on-reflection* false)
