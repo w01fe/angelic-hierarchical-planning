@@ -1,9 +1,9 @@
 (ns edu.berkeley.ai.domains.hybrid-strips
- (:use     [edu.berkeley.ai.util.hybrid :as hybrid])
- (:require [edu.berkeley.ai.util.propositions :as props]
+ (:use     edu.berkeley.ai.util.hybrid)
+ (:require [edu.berkeley.ai.util.hybrid :as hybrid]
+           [edu.berkeley.ai.util.propositions :as props]
            [edu.berkeley.ai [util :as util] [envs :as envs]]
            [edu.berkeley.ai.envs.states.binary :as binary-states])
-;           [edu.berkeley.ai.domains.hybrid_strips domains])
  )
 
 
@@ -142,20 +142,20 @@
 
 ;;; State space.
 
-(derive ::HybridStateSpace ::edu.berkeley.ai.envs.states/StateSpace)
+(derive ::HybridStateSpace ::edu.berkeley.ai.envs/StateSpace)
 
 (defstruct hybrid-state-space :class :fluent-atoms :numeric-atoms :str-fn) 
 
 (defn make-hybrid-state-space [fluent-atoms numeric-atoms str-fn]
   (struct hybrid-state-space ::HybridStateSpace (util/to-set fluent-atoms) (util/to-set numeric-atoms) str-fn))
 
-(defmethod edu.berkeley.ai.envs.states/list-states ::HybridStateSpace [state-set]
+(defmethod edu.berkeley.ai.envs/list-states ::HybridStateSpace [state-set]
   (throw (UnsupportedOperationException.)))
 
-(defmethod edu.berkeley.ai.envs.states/canonicalize ::HybridStateSpace [state-set]
+(defmethod edu.berkeley.ai.envs/canonicalize ::HybridStateSpace [state-set]
   state-set)  
 
-(defmethod edu.berkeley.ai.envs.states/set-contains? ::HybridStateSpace [state-set elt]
+(defmethod edu.berkeley.ai.envs/set-contains? ::HybridStateSpace [state-set elt]
   (and (every? (:fluent-atoms state-set) (first elt))
        (= (set (keys (second elt))) (:numeric-atoms state-set))))
 

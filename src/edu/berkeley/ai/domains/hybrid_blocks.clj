@@ -2,7 +2,6 @@
  (:import [java.util HashMap HashSet])
  (:use clojure.test )
  (:require [edu.berkeley.ai [util :as util] [envs :as envs]] 
-           [edu.berkeley.ai.envs.states :as states]
            [edu.berkeley.ai.domains.hybrid-strips :as hs])
  )
 
@@ -120,7 +119,6 @@
        (envs/get-goal env)))))
 
 
-(comment 
 
 (set! *warn-on-reflection* true)
 
@@ -205,7 +203,7 @@
 ;			  (hs/applicable-quasi-actions s as))
 ;			 as)))
 	       (dec n-steps))))))
-)
+
       
 
 (comment 

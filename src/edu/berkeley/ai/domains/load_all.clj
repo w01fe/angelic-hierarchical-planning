@@ -2,7 +2,7 @@
  (:require [edu.berkeley.ai.domains strips 
 	     ;hybrid-strips 
 	    nav-switch warehouse discrete-road-trip 
-	    ; hybrid-blocks road-trip simple-road-trip
+	    hybrid-strips hybrid-blocks road-trip simple-road-trip
 	    ]
 	   edu.berkeley.ai.domains.strips.load-all
 	   edu.berkeley.ai.domains.tests.load-all

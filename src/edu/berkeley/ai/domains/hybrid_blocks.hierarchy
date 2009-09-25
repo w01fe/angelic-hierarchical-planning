@@ -10,7 +10,8 @@
        :refinement   (:parameters (:?b - block :?to - block :?dx - x) 
 		      :precondition (and (holding :?b)
 					 ;; TODO: better bounds with a forall?
-					 (>= :?dx (+ (- (blockcx :?to) (blocklw :?to)) (blocklw :?b)))					                           (<= :?dx (- (+ (blockcx :?to) (blockrw :?to)) (blockrw :?b)))) 
+					 (>= :?dx (+ (- (blockcx :?to) (blocklw :?to)) (blocklw :?b)))
+					 (<= :?dx (- (+ (blockcx :?to) (blockrw :?to)) (blockrw :?b)))) 
 		      :expansion ((go-put :?b :?to :?dx) (move-blocks)))
        :refinement   (:precondition (gripperempty)
 		      :expansion    ((move-blocks)))
@@ -24,7 +25,8 @@
        :refinement   (:parameters (:?b - block :?from - block :?to - block :?dx - x) 
 		      :precondition (and (on :?b :?from)
 					 ;; TODO: better bounds with a forall?
-					 (>= :?dx (+ (- (blockcx :?to) (blocklw :?to)) (blocklw :?b)))					                           (<= :?dx (- (+ (blockcx :?to) (blockrw :?to)) (blockrw :?b)))) 
+					 (>= :?dx (+ (- (blockcx :?to) (blocklw :?to)) (blocklw :?b)))
+					 (<= :?dx (- (+ (blockcx :?to) (blockrw :?to)) (blockrw :?b)))) 
 		      :expansion ((go-get :?b :?from) (go-put :?b :?to :?dx) (move-blocks)))
        :optimistic   (:opt 0)
        :pessimistic  (:pess))
@@ -32,7 +34,7 @@
 
   (:hla go-get
        :parameters (?b - block ?from - block)
-       :precondition (and (gripperempty) (on ?b ?from))
+       :precondition (and (gripperempty) (on ?b ?from) (forall (?d - block) nil (not (on ?d ?b))))
        :refinement (:parameters (:?dx - x :?dy - y)
 		    :precondition (and (= :?dx (blockcx ?b)) (= :?dy (blockty ?b)))
 		    :expansion ((nav-empty :?dx :?dy)
