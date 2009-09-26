@@ -6,7 +6,6 @@ Heuristic for hybrid blocks
 
 
 
-
 ;;;;;;;;;;;;;;;; General TODO
 
 think about implicit pruning (i.e., decomposition, etc.)

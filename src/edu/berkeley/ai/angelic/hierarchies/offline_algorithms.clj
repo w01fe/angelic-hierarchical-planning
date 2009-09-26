@@ -180,10 +180,9 @@
 
 ;; TODO: ???
 (defn aha-star-priority-fn [x] 
-  (- 0
-     (search/upper-reward-bound x)
-     (/ (max (search/lower-reward-bound x) -999999.0) 1000000.0)
-     (/ (min (search/node-depth x) 1000000) 10000000000.0)))
+  [(- (search/upper-reward-bound x))
+   (- (search/lower-reward-bound x))
+   (- (search/node-depth x))])
 
 (defn aha-star-search  "AHA*.  Identical to A* up to tiebreaking.  Assumes integer costs."
   [node]
@@ -338,13 +337,13 @@
     (loop [sol nil, sol-lb (+ 0 Double/POSITIVE_INFINITY), sol-pri (+ 0 Double/POSITIVE_INFINITY)]
       (cond (queues/pq-empty? opt-pq)   
               (do (util/assert-is (= sol-lb Double/POSITIVE_INFINITY)) nil)
-	    (>= (* wt (queues/pq-peek-min opt-pq)) sol-lb)
+	    (>= (* wt (second (queues/pq-peek-min opt-pq))) sol-lb)
 	      (do (util/print-debug 2 "committing to " (search/node-str sol))
 		  (if et? sol
 		    ((if decompose? ahss-decomposed-search ahss-search) 
 		     (search/reroot-at-node sol alts/first-choice-fn) (- sol-lb) sub-pf)))
 	    :else
-	(let [n (if (< (queues/pq-peek-min sub-pq) sol-pri)
+	(let [n (if (< (second (queues/pq-peek-min sub-pq)) sol-pri)
 		    (remove-min-from-queues! sub-pq opt-pq)
 		  (remove-min-from-queues! opt-pq sub-pq))
 	      n-lb (search/lower-reward-bound n)]

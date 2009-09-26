@@ -30,11 +30,10 @@
 ;(defn uniform-cost-graph-search "Tree uniform-cost search"  [node]
 ;  (first-optimal-solution node (queues/make-graph-search-pq) #(- (reward-so-far %))))
 
-(defn a-star-priority-fn [x] 
-  (- 0
-     (upper-reward-bound x)
-     (/ (min (node-depth x) 10000000.0) 1000000000.0)))
-  
+(defn a-star-priority-fn [x] ;(util/prln 
+  [(- (upper-reward-bound x))
+   (- (node-depth x))])
+
 
 (defn a-star-search             "Tree a* search"            [node]
   (first-optimal-solution node (queues/make-tree-search-pq)  a-star-priority-fn #_(fn negator [x] (- (upper-reward-bound x)))))
@@ -77,10 +76,10 @@
     (loop [sol nil, sol-cost (+ 0 Double/POSITIVE_INFINITY)]
       (cond (queues/pq-empty? opt-pq)   
               (do (util/assert-is (= sol-cost Double/POSITIVE_INFINITY)) nil)
-	    (>= (* wt (queues/pq-peek-min opt-pq)) sol-cost)
+	    (>= (* wt (second (queues/pq-peek-min opt-pq))) sol-cost)
 	      [sol (- sol-cost)]
 	    :else
-	(let [n (if (< (queues/pq-peek-min sub-pq) sol-cost)
+	(let [n (if (< (second (queues/pq-peek-min sub-pq)) sol-cost)
 		    (remove-min-from-queues! sub-pq opt-pq)
 		  (remove-min-from-queues! opt-pq sub-pq))
 	      n-sol (extract-optimal-solution n)]
@@ -111,10 +110,10 @@
     (loop [sol nil, sol-cost (+ 0 Double/POSITIVE_INFINITY)]
       (cond (queues/pq-empty? opt-pq)   
               (do (util/assert-is (= sol-cost Double/POSITIVE_INFINITY)) nil)
-	    (>= (* wt (queues/pq-peek-min opt-pq)) sol-cost)
+	    (>= (* wt (second (queues/pq-peek-min opt-pq))) sol-cost)
 	      [sol (- sol-cost)]
 	    :else
-	(let [n (if (< (queues/pq-peek-min sub-pq) sol-cost)
+	(let [n (if (< (second (queues/pq-peek-min sub-pq)) sol-cost)
 		    (remove-min-from-queues! sub-pq opt-pq)
 		  (remove-min-from-queues! opt-pq sub-pq))
 	      n-sol (extract-optimal-solution n)]
