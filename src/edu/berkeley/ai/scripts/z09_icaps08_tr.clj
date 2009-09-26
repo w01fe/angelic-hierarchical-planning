@@ -12,7 +12,7 @@
 	   )
  )
 
-(def *run-folder* "/Users/jawolfe/Projects/reports/09-icaps08-tr/results/")
+(def *run-folder* "/Users/jawolfe/Projects/reports/archive/09-icaps08-tr/results/")
 	
 (def *warehouse-args* 
      [[3 4 [2 3] true {0 '[a] 2 '[c baz]} nil '[[c a]]]
