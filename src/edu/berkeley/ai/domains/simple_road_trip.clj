@@ -4,9 +4,13 @@
            [edu.berkeley.ai.domains.hybrid-strips :as hs])
  )
 
+; simple-road-trip is like road-trip but tank size is always 100, 
+; every city sells gas (at some price).  
 
 ; Note domination relation -- more gas is always better, given everything else.
 ; TODO: figure out how to take this into account?
+
+;; TODO: make regular road trip be this one but with multiple place goals allowed.  
 
 (let [f (util/path-local "simple_road_trip.pddl")]
   (defn make-simple-road-trip-strips-domain []
@@ -37,28 +41,18 @@
      )))
 
 
-(comment 
-  (make-road-trip-strips-env [['a 3 2] ['b 0 0]] '[[a b 2]] 'a 'b 1 4 1)
+(require '[edu.berkeley.ai.search.algorithms.textbook :as algs] 
+	 '[edu.berkeley.ai.search.state-space :as ss])
 
-(let [e (make-road-trip-strips-env [['a 3 2] ['b 0 0]] '[[a b 2]] 'a 'b 1 4 1)
-        as (get-action-space e)]
-    (map :name (applicable-actions (get-initial-state e) as)))
+(deftest simple-road-trip-test
+  (let [args  '[ {a 3 b 3} [[a b 2]] a b 1]]
+    (doseq [[e s] (map vector (map #(apply make-simple-road-trip-strips-env %) [args (conj args 1)]) [-299 -5])]
+      (is (= s (second (algs/a-star-graph-search (ss/ss-node e)))))))
+  (let [args  [ '{a 3 b 0 c 4} '[[a b 2] [a c 1] [c b 1]] 'a 'b 0 ]]
+    (doseq [[e s] (map vector (map #(apply make-simple-road-trip-strips-env %) [args (conj args 1)]) [-302 -8])]
+      (is (= s (second (algs/a-star-graph-search (ss/ss-node e))))))))
 
-(map :name (first (a-star-graph-search (ss-node (make-road-trip-strips-env [['a 3 2] ['b 0 0] ['c 4 2]] '[[a b 2] [a c 1] [c b 1]] 'a 'b 0 4 1)))))
-     
-  )
 
 
-(comment 
-(deftest simple-hybrid-test
-  (let [env (make-hybrid-blocks-strips-env 7 7 [2 2] '[[a 1 1 2 2] [b 4 1 2 2]] '[[b [[a]]]])]
-    (is 
-     (envs/satisfies-condition?  
-       (envs/safe-apply-actions (envs/get-initial-state env)
-	  [(hs/get-hs-action env 'get '{?b a ?c table})
-	   (hs/get-hs-action env 'up-holding '{?b a ?ngy 4})
-	   (hs/get-hs-action env 'right-holding '{?b a ?ngx 5})
-	   (hs/get-hs-action env 'put '{?b a ?c b})])
-       (envs/get-goal env)))))
 
-)
+

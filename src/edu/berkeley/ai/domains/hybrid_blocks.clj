@@ -107,8 +107,12 @@
 
   )
 
+
+(require '[edu.berkeley.ai.search.algorithms.textbook :as algs] 
+	 '[edu.berkeley.ai.search.state-space :as ss])
+
 (deftest simple-hybrid-test
-  (let [env (make-hybrid-blocks-strips-env 7 7 [2 2] '[[a 1 1 2 2] [b 4 1 2 2]] '[[b [[a]]]])]
+  (let [env (make-hybrid-blocks-strips-env 7 7 [2 2] '[[a 1 1 2 2] [b 4 1 2 2]] '[[b [[a]]]])] ;test progression. 
     (is 
      (envs/satisfies-condition?  
        (envs/safe-apply-actions (envs/get-initial-state env)
@@ -116,7 +120,10 @@
 	   (hs/get-hs-action env 'up-holding '{?b a ?ngy 4})
 	   (hs/get-hs-action env 'right-holding '{?b a ?ngx 5})
 	   (hs/get-hs-action env 'put '{?b a ?c b})])
-       (envs/get-goal env)))))
+       (envs/get-goal env))))
+  (let [args  '[10 4 [1 1] [[a 1 3 6 1] [b 7 1 2 1 [[c 0 1 2 2]]]] [[a [[b] [c]]]]]] ; test solution, split points/discrete/
+    (doseq [[e s] (map vector (map #(apply make-hybrid-blocks-strips-env %) [args (conj args 1)]) [-75 -69])]
+      (is (= s (second (algs/a-star-graph-search (ss/ss-node e))))))))
 
 
 
@@ -242,60 +249,10 @@
  (let [env (make-hybrid-blocks-strips-env 11 8 [9 8] '[[d 1 1 2 2 [[e 0 1 2 2]]] [a 3 3 6 2] [b 9 1 2 4 [[c 0 1 2 4]]]] '[[a [[b] [c [[e]]] [d]]]]) [as rew] (time (a-star-graph-search (ss-node env)))] (animate-hb-seq env (map :name as) 500) rew)
 
 
-
-
-
-
-)
-
-
-(comment 
-
-(defn- get-and-check-sol [env]
-  (map :name
-    (first
-     (envs/check-solution env
-       (edu.berkeley.ai.search.algorithms.textbook/a-star-search 
-	(edu.berkeley.ai.search/make-initial-state-space-node 
-	 env   
-	 (constantly 0)))))))
-
-(deftest flat-nav-switch
-  (testing "non-strips"
-    (is (= ['left 'flip 'down]
-     (get-and-check-sol 
-      (make-nav-switch-env 2 2 [[0 0]] [1 0] true [0 1])))))
-  (testing "strips"
-    (is (= '[[good-left x1 x0] [flip-v x0 y0] [good-down y0 y1]]
-     (get-and-check-sol
-      (make-nav-switch-strips-env 2 2 [[0 0]] [1 0] true [0 1]))))
-    (is (= '[[good-left x1 x0] [flip-v x0 y0] [good-down y0 y1]]
-     (get-and-check-sol
-      (strips/constant-predicate-simplify
-       (make-nav-switch-strips-env 2 2 [[0 0]] [1 0] true [0 1])))))
-    (is (= '[[good-left x1 x0] [flip-v x0 y0] [good-down y0 y1]]
-     (get-and-check-sol
-      (strips/flatten-strips-instance
-       (strips/constant-predicate-simplify
-	(make-nav-switch-strips-env 2 2 [[0 0]] [1 0] true [0 1]))))))))
+(def *env* (make-hybrid-blocks-strips-env 22 20 [10 15] '[[a 1 4 10 5 [[b 1 3 5 2] [c 6 1 2 8]]] [d 11 2 3 7] [e 15 4 7 8 [[f 0 3 7 4]]]] '[[a [[f]]]]))
+(def *sol* (map :name (first (a-star-graph-search (ss-node *env*))))) 
 
 
 )
-  
-  
-(comment 
-  (u util search search.algorithms.textbook domains.nav-switch)
-  (binding [*debug-level* 1] (lrta-star (make-nav-switch-env 2 2 [[0 0]] [1 0] true [0 1]) (constantly 0) 100 1))
-  (map :name (first (a-star-search (state-space-search-node (make-nav-switch-env 2 2 [[0 0]] [1 0] true [0 1]) (constantly 0)))))
-  (binding [*debug-level* 1] (lrta-star (make-nav-switch-env 2 2 [[0 0]] [1 0] true [0 1]) #(reduce + (map (comp (fn [x] (* -2 (Math/abs x))) -) (:pos %) [0 1])) 10 1))
 
-  (dotimes [_ 3] (time (map :name (first (a-star-search (state-space-search-node (make-nav-switch-strips-env 6 6 [[1 1]] [5 0] true [0 5]) (constantly 0)))))))
-  ; right now STRIPS is about equal in speed to hand-coded, with new successor generator!
-    ; TODO: reachability analysis (planning graph?)
 
-  (time (second (a-star-search (make-initial-state-space-node (make-nav-switch-strips-env 6 6 [[1 1]] [5 0] true [0 5]) (constantly 0)))))
- ; "Elapsed time: 3596.095 msecs"
-
-  (time (second (a-star-search (make-initial-state-space-node (constant-predicate-simplify (make-nav-switch-strips-env 2 2 [[0 0]] [1 0] true [0 1])) (constantly 0)))))
-
-  )

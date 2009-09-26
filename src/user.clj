@@ -24,7 +24,7 @@
      ;domains
        domains.strips domains.strips.smart-csps
        domains.nav-switch domains.warehouse domains.vac-rooms domains.discrete-road-trip
-       domains.hybrid-strips domains.hybrid-blocks domains.road-trip
+       domains.hybrid-strips domains.hybrid-blocks domains.road-trip domains.simple-road-trip
      scripts.experiments scripts.z09-icaps08-tr ;scripts.z09-aij scripts.z09-aima
      ))
 
