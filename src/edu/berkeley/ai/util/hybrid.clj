@@ -1,6 +1,10 @@
 (ns edu.berkeley.ai.util.hybrid
   (:use clojure.test  edu.berkeley.ai.util  )
-  (:require [edu.berkeley.ai.util [propositions :as props] [intervals :as iv]]))
+  (:require [edu.berkeley.ai.util [propositions :as props] [intervals :as iv]]
+	    [clojure.contrib.generic.arithmetic :as ga]
+ ;           [clojure.contrib.generic.comparison :as gc]
+            [clojure.contrib.generic.math-functions :as gm]))
+
 
 
 ;;; Helper types for expressions, assignments, and conditions
@@ -130,7 +134,7 @@
         (contains? numeric-functions (first expr))
 	  (make-numeric-form (check-hybrid-atom expr numeric-functions discrete-vars))
         :else 
-	  (let [[op arity]   (safe-get {'* [* 2] '+ [+ 2] '- [- 2] 'abs [abs 1]} (first expr))]
+	  (let [[op arity]   (safe-get {'* [ga/* 2] '+ [ga/+ 2] '- [ga/- 2] 'abs [gm/abs 1]} (first expr))]
 	    (assert-is (= arity (count (next expr))) "%s" expr)
 	    (make-numeric-expression op 
 	      (map #(parse-and-check-numeric-expression % 
