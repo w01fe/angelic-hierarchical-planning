@@ -1,4 +1,6 @@
-(in-ns 'edu.berkeley.ai.util)
+(ns edu.berkeley.ai.util.intervals
+  (:use edu.berkeley.ai.util)
+  )
 
 (defstruct interval :left :left-open :right :right-open)
 
@@ -81,6 +83,14 @@
     [(make-interval left left-open mid false)
      (make-interval mid true       right right-open)]))
 
+
+
+
+
+
+
+
+(comment 
 ;; Convex Polytopes
 
 (defmulti polytope-intersection (fn [t1 t2] [(:class t1) (:class t2)]))
@@ -98,3 +108,4 @@
 
 (defmethod polytope-empty? ::Orthotope [p]
   (some interval-empty? (vals (:imap p))))
+)

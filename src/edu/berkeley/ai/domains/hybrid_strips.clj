@@ -2,6 +2,7 @@
  (:use     edu.berkeley.ai.util.hybrid)
  (:require [edu.berkeley.ai.util.hybrid :as hybrid]
            [edu.berkeley.ai.util.propositions :as props]
+           [edu.berkeley.ai.util.intervals :as iv]
            [edu.berkeley.ai [util :as util] [envs :as envs]]
            [edu.berkeley.ai.envs.states.binary :as binary-states])
  )
@@ -272,8 +273,8 @@
 	      (assoc action :num {}))
 	(assoc action :num
  	  {(first num-vars) 
-	   (reduce util/intersect-intervals
-		   util/*real-line*
+	   (reduce iv/intersect-intervals
+		   iv/*real-line*
 		   (for [c num]
 		     (let [{:keys [pred left right]} c
 			   rval (:constant right)] 
@@ -283,11 +284,11 @@
 		       (util/assert-is (isa? (:class right) ::hybrid/NumConst))
 		       (util/assert-is (= (first num-vars) (:var left)))
 		       (condp = pred
-			 =  (util/make-interval rval false rval false)
-			 <  (util/make-interval Double/NEGATIVE_INFINITY true rval true)
-			 <= (util/make-interval Double/NEGATIVE_INFINITY true rval false)
-			 >  (util/make-interval rval true Double/POSITIVE_INFINITY true)
-			 >= (util/make-interval rval false Double/POSITIVE_INFINITY true)))))})))))
+			 =  (iv/make-interval rval false rval false)
+			 <  (iv/make-interval Double/NEGATIVE_INFINITY true rval true)
+			 <= (iv/make-interval Double/NEGATIVE_INFINITY true rval false)
+			 >  (iv/make-interval rval true Double/POSITIVE_INFINITY true)
+			 >= (iv/make-interval rval false Double/POSITIVE_INFINITY true)))))})))))
 
 
 (defn quasi-action-numeric-intervals [action] ; Returns map from num-vars to intervals.
@@ -304,7 +305,7 @@
       [(ground-quasi-action action nil action-space)]
     (let [[var interval]  (first (:num action))]
  ;     (println (:name (:schema action)) (:var-map action) var interval)
-      (for [i (util/interval-grid-points interval grid)]		     
+      (for [i (iv/interval-grid-points interval grid)]		     
 	(ground-quasi-action action {var i} action-space)))))
 
 (defn split-quasi-action-instantiations [[discrete-atoms numeric-vals] action action-space]
@@ -327,7 +328,7 @@
 				(util/safe-get right :constant))))]
     ;  (println (:name (:schema action)) (:var-map action) interval split-points)
       (for [x split-points 
-	    :when (util/interval-contains? interval x)]
+	    :when (iv/interval-contains? interval x)]
 	(ground-quasi-action action {var x} action-space)))))
 
       
@@ -337,7 +338,7 @@
   (if (empty? (:num-vars action))
       [(ground-quasi-action action nil action-space)]
     (repeatedly #(ground-quasi-action action
-				      (util/map-vals util/interval-rand (:num action))
+				      (util/map-vals iv/interval-rand (:num action))
 				      action-space))))
 
 (defn applicable-discrete-actions [[discrete-atoms numeric-vals] action-space grid]

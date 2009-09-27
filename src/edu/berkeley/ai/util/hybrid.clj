@@ -40,7 +40,7 @@
 ;(defmethod translate-numeric-expr-vars        ::Num [expr var-map] expr) 
 
 
-
+;; A constant.
 (derive ::NumConst ::Num)
 (defstruct hybrid-strips-numeric-constant :class :constant)
 (defn make-numeric-constant [constant]
@@ -50,7 +50,7 @@
 (defmethod evaluate-numeric-expr ::NumConst [expr var-map numeric-vals]
   (:constant expr))
 
-
+;; A grounded numeric variable, .e.g., (gas)
 (derive ::NumVar ::Num)
 (defstruct hybrid-strips-numeric-var :class :var)
 (defn make-numeric-var [var]
@@ -63,7 +63,8 @@
 ;  (make-numeric-var (safe-get var-map (:var expr)))) 
 
 
-
+; An ungrounded form, i.e., var with unfilled arguments, e.g., (distance-to ?x)
+; Arguments come from discrete action arguments.
 (derive ::NumForm ::Num)
 (defstruct hybrid-strips-numeric-form :class :form)
 (defn make-numeric-form [form]
@@ -83,8 +84,7 @@
   [expr 0])
 
 
-
-
+; An expression.  Currently limited to +/- constant in some settings (i.e., effects?)
 (derive ::NumExpr ::Num)
 (defstruct hybrid-strips-numeric-expression :class :op :args)
 (defn make-numeric-expression [op args]

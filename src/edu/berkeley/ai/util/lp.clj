@@ -242,11 +242,13 @@
 ;; An incremental LP always comes with a feasible solution, definitely optimal if cost is set.
 ;  Unsolvable LPs will be nil.
 
+(derive ::IncrementalLP ::LP)
+
 (defn make-incremental-lp [bounds objective constraints]
   (let [lp (make-lp bounds objective constraints)
 	[sol cost] (solve-lp-clp lp)]
     (when cost
-      (assoc lp :solution sol :cost cost))))
+      (assoc lp :class ::IncrementalLP :solution sol :cost cost))))
 
 (defn solve-incremental-lp [lp]
   (or (and (:cost lp) [(:solution lp) (:cost lp)]) (solve-lp-clp lp)))
