@@ -1,6 +1,6 @@
 (ns edu.berkeley.ai.envs
  (:require [edu.berkeley.ai.util :as util] 
-           [edu.berkeley.ai.util [propositions :as props] [hybrid :as hybrid]])
+           [edu.berkeley.ai.util [propositions :as props] [hybrid-constraints :as hc]])
  )
 
 (defmulti #^{:doc "Get metafied initial state"}   get-initial-state :class)

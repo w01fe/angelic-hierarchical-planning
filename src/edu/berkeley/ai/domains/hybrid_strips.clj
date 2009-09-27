@@ -1,6 +1,10 @@
 (ns edu.berkeley.ai.domains.hybrid-strips
  (:use     edu.berkeley.ai.util.hybrid)
- (:require [edu.berkeley.ai.util.hybrid :as hybrid]
+ (:require [edu.berkeley.ai.util 
+	    [hybrid :as hybrid]
+	    [linear-expressions :as le]
+	    [hybrid-constraints :as hc]
+	    [hybrid-effects :as he]]
            [edu.berkeley.ai.util.propositions :as props]
            [edu.berkeley.ai.util.intervals :as iv]
            [edu.berkeley.ai [util :as util] [envs :as envs]]
@@ -56,10 +60,10 @@
       (make-hybrid-action-schema
        name
        vars 
-       (parse-and-check-constraint split-points discrete-vars predicates numeric-vars numeric-functions true)
-       (parse-and-check-constraint precondition discrete-vars predicates numeric-vars numeric-functions true)
-       (parse-and-check-effect     effect       discrete-vars predicates numeric-vars numeric-functions)
-       (parse-and-check-numeric-expression (or cost 1) discrete-vars numeric-vars numeric-functions)))))
+       (hc/parse-and-check-constraint split-points discrete-vars predicates numeric-vars numeric-functions true)
+       (hc/parse-and-check-constraint precondition discrete-vars predicates numeric-vars numeric-functions true)
+       (he/parse-and-check-effect     effect       discrete-vars predicates numeric-vars numeric-functions)
+       (le/parse-and-check-numeric-expression (or cost 1) discrete-vars numeric-vars numeric-functions)))))
 
 
 
@@ -127,11 +131,11 @@
        (util/difference (util/keyset predicates)
 	 (apply util/union 
 	   (for [as action-schemata]
-	     (hybrid/effected-predicates (:effect as)))))
+	     (he/effected-predicates (:effect as)))))
        (util/difference (util/keyset numeric-functions)
 	 (apply util/union
 	   (for [as action-schemata]
-	     (hybrid/effected-functions (:effect as)))))
+	     (he/effected-functions (:effect as)))))
 
        ))))
  
@@ -176,8 +180,8 @@
     (envs/make-action 
      (vec (cons (:name schema) (map #(util/safe-get var-map (second %)) (:vars schema))))
      (fn [state] 
-       [(execute-effect effect var-map state)
-	(- (evaluate-numeric-expr cost-expr var-map (second state)))])
+       [(he/execute-effect effect var-map state)
+	(- (le/evaluate-numeric-expr cost-expr var-map (second state)))])
      (envs/make-constraint-condition (util/safe-get schema :precondition) (util/safe-get action-space :objects) var-map))))
 
 (defn get-hs-action 
@@ -248,7 +252,7 @@
 		      [d-vars n-vars] (split-with #(contains? discrete-types (first %)) vars)]
 		args (apply util/cartesian-product (map #(util/safe-get objects (first %)) d-vars))]
 	  (let [var-map (into {} (map vector (map second d-vars) args))
-		[p n num] (split-constraint precondition var-map objects)]
+		[p n num] (hc/split-constraint precondition var-map objects)]
 	    ;(println (:name schema) var-map p n)
 	    (struct hybrid-strips-quasi-action schema var-map (set p) (set n) (set (map second n-vars)) num))))
 	objects
@@ -260,10 +264,12 @@
 (defmulti applicable-quasi-actions (fn [state action-space] (:class action-space)))
 
 ; TODO: prune empty intervals.
+
+;; TODO: this specificity doesn't belong here...
 (defmethod applicable-quasi-actions ::HybridActionSpace [[discrete-atoms numeric-vals] action-space]
   (for [action ((:discrete-generator action-space) discrete-atoms)
 	:let [{:keys [var-map num]} action ;(do (println (:name (:schema action)) (:var-map action)) action)
-	      num (get-numeric-yield num var-map (:objects action-space) [discrete-atoms numeric-vals])]
+	      num (hc/get-numeric-yield num var-map (:objects action-space) [discrete-atoms numeric-vals])]
 	:when num]
     (let [num-vars    (:num-vars action)]
 ;      (println "done")
@@ -279,9 +285,9 @@
 		     (let [{:keys [pred left right]} c
 			   rval (:constant right)] 
 			   ;(evaluate-numeric-expr right var-map numeric-vals)]
-		       (util/assert-is (isa? (:class c) ::hybrid/NumConstraint))
-		       (util/assert-is (isa? (:class left) ::hybrid/NumVar))
-		       (util/assert-is (isa? (:class right) ::hybrid/NumConst))
+		       (util/assert-is (isa? (:class c) ::hc/NumConstraint))
+		       (util/assert-is (isa? (:class left) ::le/NumVar))
+		       (util/assert-is (isa? (:class right) ::le/NumConst))
 		       (util/assert-is (= (first num-vars) (:var left)))
 		       (condp = pred
 			 =  (iv/make-interval rval false rval false)
@@ -308,23 +314,24 @@
       (for [i (iv/interval-grid-points interval grid)]		     
 	(ground-quasi-action action {var i} action-space)))))
 
+;; TODO: this specificity doesn't belong here.
 (defn split-quasi-action-instantiations [[discrete-atoms numeric-vals] action action-space]
   (if (empty? (:num-vars action))
       [(ground-quasi-action action nil action-space)]
     (let [[var interval]   (first (:num action))
 	  split-constraint (util/safe-get-in action [:schema :split-points])
-	  split-clauses    (get-numeric-yield split-constraint 
+	  split-clauses    (hc/get-numeric-yield split-constraint 
 			     (:var-map action) 
 			     (:objects action-space) 
 			     [discrete-atoms numeric-vals])
 	  split-points     (distinct 
 			    (for [c split-clauses]
 			      (let [{:keys [class pred left right]} c]
-				(util/assert-is (= class ::hybrid/NumConstraint))
+				(util/assert-is (= class ::hc/NumConstraint))
 				(util/assert-is (= pred =))
-				(util/assert-is (= (:class left) ::hybrid/NumVar))
+				(util/assert-is (= (:class left) ::le/NumVar))
 				(util/assert-is (= (:var left) var))
-				(util/assert-is (= (:class right) ::hybrid/NumConst))
+				(util/assert-is (= (:class right) ::le/NumConst))
 				(util/safe-get right :constant))))]
     ;  (println (:name (:schema action)) (:var-map action) interval split-points)
       (for [x split-points 
@@ -430,8 +437,8 @@
 (defmethod envs/get-goal          ::HybridStripsPlanningInstance [instance]
 ;  (println (:goal-atoms instance))
   (envs/make-constraint-condition
-   (make-conjunctive-constraint
-    (map #(make-discrete-pos-constraint %) (:goal-atoms instance)))
+   (hc/make-conjunctive-constraint
+    (map #(hc/make-discrete-pos-constraint %) (:goal-atoms instance)))
    nil 
    nil))
 ;  (envs/make-conjunctive-condition (:goal-atoms instance) nil))

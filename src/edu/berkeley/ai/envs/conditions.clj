@@ -129,7 +129,7 @@
   (struct constraint-condition ::ConstraintCondition constraint objects var-map))
 
 (defmethod satisfies-condition? ::ConstraintCondition [s c]
-  (hybrid/evaluate-constraint (:constraint c) (:var-map c) (:objects c) s))
+  (hc/evaluate-constraint (:constraint c) (:var-map c) (:objects c) s))
 
 (defmethod consistent-condition? ::ConstraintCondition [condition]
   (throw (UnsupportedOperationException.)))
