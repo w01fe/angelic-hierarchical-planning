@@ -1,6 +1,6 @@
 (ns edu.berkeley.ai.util.hybrid
-  (:use clojure.test  edu.berkeley.ai.util)
-  (:require [edu.berkeley.ai.util [propositions :as props]]))
+  (:use clojure.test  edu.berkeley.ai.util  )
+  (:require [edu.berkeley.ai.util [propositions :as props] [intervals :as iv]]))
 
 
 ;;; Helper types for expressions, assignments, and conditions
@@ -77,7 +77,7 @@
 (defmethod ground-and-simplify-numeric-expr   ::NumForm [expr var-map constant-numeric-fns numeric-vals]
   (let [form (props/simplify-atom var-map (:form expr))]
     (if (contains? constant-numeric-fns (first form))
-        (make-numeric-constant (interval-point (safe-get numeric-vals form)))
+        (make-numeric-constant (iv/interval-point (safe-get numeric-vals form)))
       (make-numeric-form form))))
 
 (defmethod extract-numeric-expr-form-and-diff ::NumForm [expr]         
