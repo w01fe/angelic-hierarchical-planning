@@ -10,7 +10,7 @@
 (defn uall [] 
   (u util 
        util.charts util.datasets util.disjoint-sets util.graphs
-       util.graphviz util.hybrid util.pdf util.propositions util.queues     
+       util.graphviz util.hybrid util.pdf util.propositions util.queues util.lp    
      envs envs.states.binary envs.states.explicit
      search
        search.state-space

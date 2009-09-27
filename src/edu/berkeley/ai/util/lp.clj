@@ -234,6 +234,91 @@
   (is (approx-=-lp-sols (solve-lp-clp *another-lp*) *another-lp-sol*)))
 
 
+
+;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
+;                              Incremental LPs
+;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
+
+;; An incremental LP always comes with a feasible solution, definitely optimal if cost is set.
+;  Unsolvable LPs will be nil.
+
+(defn make-incremental-lp [bounds objective constraints]
+  (let [lp (make-lp bounds objective constraints)
+	[sol cost] (solve-lp-clp lp)]
+    (when cost
+      (assoc lp :solution sol :cost cost))))
+
+(defn solve-incremental-lp [lp]
+  (or (and (:cost lp) [(:solution lp) (:cost lp)]) (solve-lp-clp lp)))
+
+(defn lp-interval-violation 
+  "Return nil if no violation, or an interval with just the violated part."
+  [[l u] v]
+  (cond (< v (or l Double/NEGATIVE_INFINITY)) [l nil]
+	(> v (or u Double/POSITIVE_INFINITY)) [nil u]
+	:else nil))
+
+(defn intersect-lp-intervals [[l1 u1] [l2 u2]]
+  (let [l (cond (and l1 l2) (max l1 l2) l1 l1 l2 l2 :else nil)
+	u (cond (and u1 u2) (min u1 u2) u1 u1 u2 u2 :else nil)]
+    (when (and l u) (assert (<= l u)))
+    [l u]))
+							      
+(defn lp-constraint-violation 
+  "Return [c-map violated-i] or nil for no violation."
+  [[c-map i] sol]
+  (when-let [i (lp-interval-violation i (apply + (for [[v m] c-map] (* m (sol v)))))]
+    [c-map i]))
+
+(defn lp-constraints-violation
+  "Return a constraint violation, or nil for all satisfied."
+  [constraints sol]
+  (some #(lp-constraint-violation % sol) constraints))
+
+(defn lp-constraint-hessian 
+  "Get the hessian [[a b ...] p] for an equality constraint. http://mathworld.wolfram.com/Plane.html"
+  [[v-map rhs]]
+  (let [den (sqrt (apply + (map #(* % %) (vals v-map))))]
+    [(map-vals #(/ % den) v-map) (/ rhs den -1)]))
+
+(defn lp-constraint-projection 
+  "Project the solution onto the given equality constraint."
+  [constraint sol]
+  (let [[norm p] (lp-constraint-hessian constraint)
+	dist     (+ p (apply + (map #(* (norm %) (sol %)) (keys norm))))]
+    (reduce (fn [sol [k v]] (assoc sol k (- (sol k) (* dist v)))) sol norm)))
+
+;; TODO: better projection; find feasible solution with simple matrix operation, or switch to Octave/Matlab/R.
+;; TODO: for single variable, do feasibility check against bounds/constraints before trying to fix.
+(defn add-lp-constraint [lp constraint-pair]
+ (let [new-lp (update-in lp [:constraints (first constraint-pair)] intersect-lp-intervals (second constraint-pair))]
+   (if-let [[vc [vl vh]] (lp-constraint-violation constraint-pair (:solution lp))]
+       (do (println "current lp infeasible with new constraint.")
+	   (let [epsilon 0.00000000001
+		 target (if vl (+ vl epsilon) (- vh epsilon))
+		 proj (lp-constraint-projection (assoc constraint-pair 1 target) (:solution lp))]
+	     (assert (not (lp-constraint-violation constraint-pair proj)))
+	     (if (not (lp-constraints-violation (:constraints lp) proj))
+	       (do (println "Projecting fixed it.")
+		   (assoc new-lp :solution proj :cost nil))
+	       (do (println "Projecting failed; trying from scratch")
+		   (make-incremental-lp (:bounds lp) (:objective lp) (:constraints new-lp))))))
+     (do (println "lucky; still feasible with new constraint")
+	  new-lp))))
+
+
+; What happens when we assign a variable?  (to a constant/var), or add to another const/var? 
+; All conditions, costs, etc refer to the variable *at that particular time*
+; Thus, note that effect cannot fail; in principle, it creates a new variable.
+; Way 1: rename old var everywhere, assign to new var.
+; Way 2: keep mapping from variables to current const vals / LP vars. 
+ ; Can even allow linear functions of LP vars.
+ ; Then, we just update this mapping.
+ ; Nice part: this scales from pure primitive setting (no LP) to hierarchical setting smoothely
+ ; (no cost for constants...)
+  ; Each HLA token maintains gensyms for its non-conrete vars ?
+
+
      
 
 (set! *warn-on-reflection* false)
