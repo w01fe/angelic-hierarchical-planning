@@ -4,8 +4,8 @@
   (:import [java.util ArrayList])
   (:require [edu.berkeley.ai.util :as util] 
             [edu.berkeley.ai.util.propositions :as props]
-            [edu.berkeley.ai.domains.strips :as strips]
-	    [edu.berkeley.ai.domains.strips.smart-csps :as smart-csps])
+            [edu.berkeley.ai.envs.strips :as strips]
+	    [edu.berkeley.ai.envs.strips.smart-csps :as smart-csps])
   )
 
 ;;; NCStrips descriptions
@@ -81,7 +81,7 @@
   (struct ncstrips-description-schema ::NCStripsDescriptionSchema (doall (filter identity (map (partial check-ncstrips-effect types vars-and-objects predicates) effects))) vars))
 
 (defmethod parse-description :ncstrips [desc domain vars]  
-  (util/assert-is (isa? (:class domain) :edu.berkeley.ai.domains.strips/StripsPlanningDomain))
+  (util/assert-is (isa? (:class domain) :edu.berkeley.ai.envs.strips/StripsPlanningDomain))
   (make-ncstrips-description-schema 
    (util/safe-get domain :types) 
    (props/check-objects (util/safe-get domain :types) (concat (util/safe-get domain :guaranteed-objs) vars)) 
@@ -161,7 +161,7 @@
        (util/safe-get effect :cost-fn)))))
 
 (defmethod instantiate-description-schema ::NCStripsDescriptionSchema [desc instance]
-  (util/assert-is (isa? (:class instance) :edu.berkeley.ai.domains.strips/StripsPlanningInstance))
+  (util/assert-is (isa? (:class instance) :edu.berkeley.ai.envs.strips/StripsPlanningInstance))
   (assoc desc :effects (doall (map #(instantiate-ncstrips-effect-schema % (util/safe-get desc :vars) instance) 
 				   (util/safe-get desc :effects)))
 	 :const-pred-map (get instance :const-pred-map)))

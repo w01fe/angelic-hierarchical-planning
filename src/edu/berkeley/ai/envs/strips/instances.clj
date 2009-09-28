@@ -1,4 +1,4 @@
-(in-ns 'edu.berkeley.ai.domains.strips)
+(in-ns 'edu.berkeley.ai.envs.strips)
 
 ;;; STRIPS problem instances
 ;; MAYBE: normalize schema instances! (see next)

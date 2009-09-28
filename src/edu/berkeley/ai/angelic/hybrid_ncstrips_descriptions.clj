@@ -3,7 +3,7 @@
   (:use edu.berkeley.ai.angelic)
   (:require [edu.berkeley.ai.util :as util] 
             [edu.berkeley.ai.util [propositions :as props] [hybrid :as hybrid]]
-            [edu.berkeley.ai.domains.hybrid-strips :as hs]
+            [edu.berkeley.ai.envs.hybrid-strips :as hs]
             [edu.berkeley.ai.angelic.hybrid-dnf-simple-valuations :as hdsv]
 	    [edu.berkeley.ai.search.smart-csps :as smart-csps])
   )
@@ -138,7 +138,7 @@
        (util/safe-get effect :cost-fn)))))
 
 (defmethod instantiate-description-schema ::NCStripsDescriptionSchema [desc instance]
-  (util/assert-is (isa? (:class instance) :edu.berkeley.ai.domains.strips/StripsPlanningInstance))
+  (util/assert-is (isa? (:class instance) :edu.berkeley.ai.envs.strips/StripsPlanningInstance))
   (assoc desc :effects (doall (map #(instantiate-ncstrips-effect-schema % (util/safe-get desc :vars) instance) 
 				   (util/safe-get desc :effects)))))
 

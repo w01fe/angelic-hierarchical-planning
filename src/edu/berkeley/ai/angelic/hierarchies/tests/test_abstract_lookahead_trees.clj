@@ -4,9 +4,9 @@
   (:import [java.util HashMap Map$Entry HashSet])
   (:require [edu.berkeley.ai [util :as util] [envs :as envs] [search :as search]]
 	    [edu.berkeley.ai.util.graphs :as graphs]
+		[edu.berkeley.ai.envs.strips :as strips]
 	    [edu.berkeley.ai.domains 
 	     [nav-switch :as nav-switch]
-	     [strips :as strips]
 	     [warehouse :as warehouse]]
 	    [edu.berkeley.ai.angelic.hierarchies.strips-hierarchies :as strips-hierarchies]
 	    [edu.berkeley.ai.search.algorithms.textbook :as textbook]

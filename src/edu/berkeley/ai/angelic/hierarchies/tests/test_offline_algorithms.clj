@@ -3,7 +3,8 @@
 	edu.berkeley.ai.angelic.hierarchies.offline-algorithms)
   (:require [edu.berkeley.ai [util :as util] [search :as search] [envs :as envs]]
 	    [edu.berkeley.ai.util.queues :as queues]
-	    [edu.berkeley.ai.domains [nav-switch :as nav-switch] [strips :as strips] [warehouse :as warehouse]]
+		[edu.berkeley.ai.envs.strips :as strips]	
+	    [edu.berkeley.ai.domains [nav-switch :as nav-switch] [warehouse :as warehouse]]
 	    [edu.berkeley.ai.angelic.hierarchies.abstract-lookahead-trees :as alts]
 	    )
   )

@@ -4,9 +4,9 @@
         [edu.berkeley.ai.angelic.hierarchies :as hierarchies])
   (:require [edu.berkeley.ai [util :as util] [envs :as envs]]
         [edu.berkeley.ai.util.propositions :as props]
-        [edu.berkeley.ai.domains.strips :as strips]
+        [edu.berkeley.ai.envs.strips :as strips]
         [edu.berkeley.ai.angelic.ncstrips-descriptions :as ncstrips]
-	[edu.berkeley.ai.domains.strips.smart-csps :as smart-csps]
+	[edu.berkeley.ai.envs.strips.smart-csps :as smart-csps]
 	[edu.berkeley.ai.angelic.hierarchies.flat-hierarchies :as flat-hierarchies]
         )
   )
@@ -148,7 +148,7 @@
 ;; Parse and check an entire hierarchy   
      
 (defmethod parse-hierarchy-type :strips-hierarchy [type contents domain]
-  (util/assert-is (isa? (:class domain) :edu.berkeley.ai.domains.strips/StripsPlanningDomain))
+  (util/assert-is (isa? (:class domain) :edu.berkeley.ai.envs.strips/StripsPlanningDomain))
   (util/match [[[:multiple (:hla ~@hlas)]] contents]
     {:class ::StripsHierarchySchema, :hlas
      (check-hla-schemata (:types domain) (:guaranteed-objs domain) (:predicates domain) (:action-schemata domain)
@@ -170,7 +170,7 @@
 
 ; Immediate refinements are [name pos-prec neg-prec unk-types expansion]
 (defn make-flat-strips-hierarchy-schema [domain upper-reward-fn]
-  (util/assert-is (isa? (:class domain) :edu.berkeley.ai.domains.strips/StripsPlanningDomain))
+  (util/assert-is (isa? (:class domain) :edu.berkeley.ai.envs.strips/StripsPlanningDomain))
   {:class ::StripsHierarchySchema
    :hlas 
      (util/map-map #(vector (:name %) %) 
@@ -292,7 +292,7 @@
 
 
 (defmethod instantiate-hierarchy ::StripsHierarchySchema [hierarchy instance] 
-  (util/assert-is (isa? (:class instance) :edu.berkeley.ai.domains.strips/StripsPlanningInstance))
+  (util/assert-is (isa? (:class instance) :edu.berkeley.ai.envs.strips/StripsPlanningInstance))
   (let [old-hla-map    (util/safe-get hierarchy :hlas)
 	act-vars       (util/safe-get-in old-hla-map ['act :vars])
 	root-hla-name  (gensym "strips-top-level-action")

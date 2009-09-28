@@ -1,7 +1,7 @@
 (ns edu.berkeley.ai.domains.simple-road-trip
  (:use clojure.test )
  (:require [edu.berkeley.ai [util :as util] [envs :as envs]] 
-           [edu.berkeley.ai.domains.hybrid-strips :as hs])
+           [edu.berkeley.ai.envs.hybrid-strips :as hs])
  )
 
 ; simple-road-trip is like road-trip but tank size is always 100, 

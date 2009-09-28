@@ -1,13 +1,12 @@
-(ns edu.berkeley.ai.domains.hybrid-strips
+(ns edu.berkeley.ai.envs.hybrid-strips
  (:use     edu.berkeley.ai.util.hybrid)
  (:require [edu.berkeley.ai.util 
-	    [hybrid :as hybrid]
-	    [linear-expressions :as le]
-	    [hybrid-constraints :as hc]
-	    [hybrid-effects :as he]]
-           [edu.berkeley.ai.util.propositions :as props]
-           [edu.berkeley.ai.util.intervals :as iv]
+	    [hybrid :as hybrid] [propositions :as props] [intervals :as iv]
+		[linear-expressions :as le]]
            [edu.berkeley.ai [util :as util] [envs :as envs]]
+	   [edu.berkeley.ai.envs.hybrid-strips 
+	    	[hybrid-constraints :as hc]
+	    	[hybrid-effects :as he] [hybrid-lp-states :as hls]]
            [edu.berkeley.ai.envs.states.binary :as binary-states])
  )
 
@@ -182,7 +181,7 @@
      (fn [state] 
        [(he/execute-effect effect var-map state)
 	(- (le/evaluate-numeric-expr cost-expr var-map (second state)))])
-     (envs/make-constraint-condition (util/safe-get schema :precondition) (util/safe-get action-space :objects) var-map))))
+     (hc/make-constraint-condition (util/safe-get schema :precondition) (util/safe-get action-space :objects) var-map))))
 
 (defn get-hs-action 
   ([instance full-name]
@@ -436,7 +435,7 @@
 
 (defmethod envs/get-goal          ::HybridStripsPlanningInstance [instance]
 ;  (println (:goal-atoms instance))
-  (envs/make-constraint-condition
+  (hc/make-constraint-condition
    (hc/make-conjunctive-constraint
     (map #(hc/make-discrete-pos-constraint %) (:goal-atoms instance)))
    nil 

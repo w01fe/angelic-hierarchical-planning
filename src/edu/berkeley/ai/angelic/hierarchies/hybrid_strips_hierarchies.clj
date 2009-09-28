@@ -3,7 +3,7 @@
         [edu.berkeley.ai.angelic.hierarchies :as hierarchies])
   (:require [edu.berkeley.ai [util :as util] [envs :as envs]]
         [edu.berkeley.ai.util [propositions :as props] [hybrid :as hybrid]]
-        [edu.berkeley.ai.domains.hybrid-strips :as hs]
+        [edu.berkeley.ai.envs.hybrid-strips :as hs]
         [edu.berkeley.ai.angelic.hybrid-ncstrips-descriptions :as hybrid-ncstrips]
         [edu.berkeley.ai.angelic.hybrid-dnf-simple-valuations :as hdsv]
 	[edu.berkeley.ai.search.smart-csps :as smart-csps]
@@ -498,7 +498,7 @@
 
 
 (defmethod instantiate-hierarchy ::StripsHierarchySchema [hierarchy instance] 
-  (util/assert-is (isa? (:class instance) :edu.berkeley.ai.domains.strips/StripsPlanningInstance))
+  (util/assert-is (isa? (:class instance) :edu.berkeley.ai.envs.strips/StripsPlanningInstance))
   (let [old-hla-map    (util/safe-get hierarchy :hlas)
 	act-vars       (util/safe-get-in old-hla-map ['act :vars])
 	root-hla-name  (gensym "strips-top-level-action")

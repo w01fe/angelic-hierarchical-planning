@@ -1,7 +1,7 @@
 (ns edu.berkeley.ai.scripts.timing-nav-switch
  (:require [edu.berkeley.ai [util :as util] [envs :as envs] [search :as search] [angelic :as angelic]] 
            [edu.berkeley.ai.envs.states :as states]
-           [edu.berkeley.ai.domains.strips :as strips]
+           [edu.berkeley.ai.envs.strips :as strips]
 	   [edu.berkeley.ai.domains.nav-switch :as nav-switch]
 	   [edu.berkeley.ai.search.algorithms.textbook :as textbook]
 	   [edu.berkeley.ai.angelic [dnf-valuations :as dnf-valuations]

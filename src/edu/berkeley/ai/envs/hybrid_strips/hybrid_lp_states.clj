@@ -11,7 +11,7 @@
 
 ;; By default, returned states are guaranteed to be feasible.
 
-(ns edu.berkeley.ai.util.lp-state
+(ns edu.berkeley.ai.envs.hybrid-strips.hybrid-lp-states
   (:use clojure.test 
 	[edu.berkeley.ai.util :as util]
 	[edu.berkeley.ai.util [hybrid :as hybrid] [lp :as lp]]))

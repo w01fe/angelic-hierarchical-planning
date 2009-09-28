@@ -120,16 +120,3 @@
 
 
 
-; Constraints for hybrid state spaces
-
-(derive ::ConstraintCondition ::Condition)
-(defstruct constraint-condition :class :constraint :objects :var-map)
-
-(defn make-constraint-condition [constraint objects var-map] 
-  (struct constraint-condition ::ConstraintCondition constraint objects var-map))
-
-(defmethod satisfies-condition? ::ConstraintCondition [s c]
-  (hc/evaluate-constraint (:constraint c) (:var-map c) (:objects c) s))
-
-(defmethod consistent-condition? ::ConstraintCondition [condition]
-  (throw (UnsupportedOperationException.)))

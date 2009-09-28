@@ -1,7 +1,6 @@
-(ns edu.berkeley.ai.domains.strips.smart-csps
+(ns edu.berkeley.ai.envs.strips.smart-csps
  (:import [java.util HashMap Map ArrayList])
  (:require [edu.berkeley.ai.util :as util] 
-	   [edu.berkeley.ai.util.propositions :as props]
 	   [edu.berkeley.ai.envs :as envs]
 	   )
  )

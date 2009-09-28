@@ -1,7 +1,7 @@
 (ns edu.berkeley.ai.angelic
   (:import [java.util HashMap])
 	 (:require  [edu.berkeley.ai [util :as util] [envs :as envs]]
-	            [edu.berkeley.ai.domains.strips :as strips])
+	            [edu.berkeley.ai.envs.strips :as strips])
 	 )
 
 

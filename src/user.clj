@@ -12,6 +12,9 @@
        util.charts util.datasets util.disjoint-sets util.graphs
        util.graphviz util.hybrid util.pdf util.propositions util.queues util.lp    
      envs envs.states.binary envs.states.explicit
+       envs.strips envs.strips.smart-csps 
+       envs.hybrid-strips envs.hybrid-strips.hybrid-constraints
+       envs.hybrid-strips.hybrid-effects envs.hybrid-strips.hybrid-lp-states
      search
        search.state-space
        search.algorithms.real-time search.algorithms.textbook
@@ -22,9 +25,8 @@
 	 angelic.hierarchies.abstract-lookahead-graphs angelic.hierarchies.abstract-lookahead-trees
 	 angelic.hierarchies.offline-algorithms angelic.hierarchies.online-algorithms
      ;domains
-       domains.strips domains.strips.smart-csps
        domains.nav-switch domains.warehouse domains.vac-rooms domains.discrete-road-trip
-       domains.hybrid-strips domains.hybrid-blocks domains.road-trip domains.simple-road-trip
+       domains.hybrid-blocks domains.road-trip domains.simple-road-trip
      scripts.experiments scripts.z09-icaps08-tr ;scripts.z09-aij scripts.z09-aima
      ))
 

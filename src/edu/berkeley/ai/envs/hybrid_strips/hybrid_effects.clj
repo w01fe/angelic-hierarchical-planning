@@ -1,7 +1,8 @@
-(ns edu.berkeley.ai.util.hybrid-effects
+(ns edu.berkeley.ai.envs.hybrid-strips.hybrid-effects
   (:use clojure.test  edu.berkeley.ai.util  )
   (:require [edu.berkeley.ai.util [propositions :as props] [intervals :as iv]
-	     [hybrid :as hybrid] [linear-expressions :as le] [hybrid-constraints :as hc]]))
+	     [hybrid :as hybrid] [linear-expressions :as le]]
+	 	[edu.berkeley.ai.envs.hybrid-strips.hybrid-constraints :as hc]))
 
 
 

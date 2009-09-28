@@ -2,7 +2,7 @@
 ; (:import [java.util HashMap HashSet])
  (:use clojure.test )
  (:require [edu.berkeley.ai [util :as util] [envs :as envs]] 
-           [edu.berkeley.ai.domains.hybrid-strips :as hs])
+           [edu.berkeley.ai.envs.hybrid-strips :as hs])
  )
 
 

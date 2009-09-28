@@ -3,7 +3,7 @@
        edu.berkeley.ai.search.algorithms.textbook 
        edu.berkeley.ai.search.state-space)
  (:require [edu.berkeley.ai [util :as util] [envs :as envs]] 
-           [edu.berkeley.ai.domains.strips :as strips])
+           [edu.berkeley.ai.envs.strips :as strips])
  )
 
 

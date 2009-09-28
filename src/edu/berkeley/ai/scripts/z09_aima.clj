@@ -1,7 +1,9 @@
 (ns edu.berkeley.ai.scripts.z09-aima
  (:require [edu.berkeley.ai [util :as util] [envs :as envs] [search :as search] [angelic :as angelic]] 
+	   [edu.berkeley.ai.envs.strips :as strips]
+	
 	   [edu.berkeley.ai.util [charts :as charts] [datasets :as datasets]]
-           [edu.berkeley.ai.domains [strips :as strips] [vac-rooms :as vac-rooms]]
+           [edu.berkeley.ai.domains [vac-rooms :as vac-rooms]]
 	   [edu.berkeley.ai.search.algorithms.textbook :as textbook]
 	   [edu.berkeley.ai.angelic [dnf-valuations :as dv]
 	                            [hierarchies :as hierarchies]]

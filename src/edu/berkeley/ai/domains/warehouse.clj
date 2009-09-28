@@ -1,7 +1,7 @@
 (ns edu.berkeley.ai.domains.warehouse
  (:import [java.util HashSet HashMap])
  (:require [edu.berkeley.ai [util :as util] [envs :as envs]] 
-           [edu.berkeley.ai.domains.strips :as strips]
+           [edu.berkeley.ai.envs.strips :as strips]
 	   [edu.berkeley.ai.angelic :as angelic]
 	   [edu.berkeley.ai.angelic.dnf-valuations :as dv])
  )
@@ -280,7 +280,7 @@
 
 
 (comment 
-  (u util domains.strips domains.warehouse envs search search.algorithms.textbook)
+  (u util envs.strips domains.warehouse envs search search.algorithms.textbook)
   (time (map :name (first (a-star-search (make-initial-state-space-node (constant-predicate-simplify (make-warehouse-strips-env 2 2 [1 1] false {0 '[a]} nil ['[a table1]])) (constantly 0))))))
   (time (map :name (first (a-star-search (make-initial-state-space-node (constant-predicate-simplify (make-warehouse-strips-env 3 3 [1 1] false {0 '[a] 2 '[b]} nil ['[a b]])) (constantly 0))))))
   (time (map :name (first (a-star-search (make-initial-state-space-node (constant-predicate-simplify (make-warehouse-strips-env 3 3 [1 1] false {0 '[a] 2 '[b]} nil ['[b a]])) (constantly 0))))))

@@ -2,7 +2,7 @@
  (:use clojure.test )
  (:require [edu.berkeley.ai [util :as util] [envs :as envs]] 
            [edu.berkeley.ai.envs.states :as states]
-           [edu.berkeley.ai.domains.strips :as strips]
+           [edu.berkeley.ai.envs.strips :as strips]
            [edu.berkeley.ai.angelic.hierarchies :as hierarchies]	  
            [edu.berkeley.ai.angelic :as angelic])	  
  )

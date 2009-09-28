@@ -1,7 +1,8 @@
-(ns edu.berkeley.ai.util.hybrid-constraints
+(ns edu.berkeley.ai.envs.hybrid-strips.hybrid-constraints
   (:use clojure.test  edu.berkeley.ai.util  )
   (:require [edu.berkeley.ai.util [propositions :as props] [intervals :as iv]
 	     [hybrid :as hybrid] [linear-expressions :as le]]
+		[edu.berkeley.ai.envs :as envs]
 	    ))
 
 ;; Here, we assume a hybrid state is a [discrete-atom-set numeric-val-map] pair.
@@ -197,6 +198,21 @@
 	(for [sub (next constraint)] 
 	 (parse-and-check-nonconjunctive-constraint sub discrete-vars predicates numeric-vars numeric-functions only-atomic-var?))))
     (parse-and-check-nonconjunctive-constraint constraint discrete-vars predicates numeric-vars numeric-functions only-atomic-var?))))
+
+; Constraints as envs.conditions.
+
+	(derive ::ConstraintCondition ::envs/Condition)
+	(defstruct constraint-condition :class :constraint :objects :var-map)
+
+	(defn make-constraint-condition [constraint objects var-map] 
+	  (struct constraint-condition ::ConstraintCondition constraint objects var-map))
+
+	(defmethod envs/satisfies-condition? ::ConstraintCondition [s c]
+	  (evaluate-constraint (:constraint c) (:var-map c) (:objects c) s))
+
+	(defmethod envs/consistent-condition? ::ConstraintCondition [condition]
+	  (throw (UnsupportedOperationException.)))
+
 
 
 (deftest constraints

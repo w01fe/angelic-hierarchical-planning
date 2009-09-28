@@ -1,4 +1,4 @@
-(in-ns 'edu.berkeley.ai.domains.strips)
+(in-ns 'edu.berkeley.ai.envs.strips)
 
 ;;; STRIPS domains
 
@@ -44,7 +44,7 @@
      (atom-checker (:add-list      action-schema))
      (atom-checker (:delete-list   action-schema))
      (:cost action-schema)
-     (binding [*ns* (find-ns 'edu.berkeley.ai.domains.strips)]
+     (binding [*ns* (find-ns 'edu.berkeley.ai.envs.strips)]
        (eval `(fn strips-cost-fn ~(vec (map second (:vars action-schema))) ~(:cost action-schema))))
      )))
 
