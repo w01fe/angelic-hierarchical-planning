@@ -1,6 +1,6 @@
-(ns edu.berkeley.ai.angelic.hierarchies.tests.test-abstract-lookahead-trees
+(ns edu.berkeley.ai.angelic.algorithms.tests.test-abstract-lookahead-trees
   (:use clojure.test edu.berkeley.ai.angelic edu.berkeley.ai.angelic.hierarchies
-	edu.berkeley.ai.angelic.hierarchies.abstract-lookahead-trees)
+	edu.berkeley.ai.angelic.algorithms.abstract-lookahead-trees)
   (:import [java.util HashMap Map$Entry HashSet])
   (:require [edu.berkeley.ai [util :as util] [envs :as envs] [search :as search]]
 	    [edu.berkeley.ai.util.graphs :as graphs]

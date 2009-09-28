@@ -22,8 +22,9 @@
        angelic.dnf-valuations angelic.ncstrips-descriptions
        angelic.hierarchies
          angelic.hierarchies.flat-hierarchies angelic.hierarchies.strips-hierarchies
-	 angelic.hierarchies.abstract-lookahead-graphs angelic.hierarchies.abstract-lookahead-trees
-	 angelic.hierarchies.offline-algorithms angelic.hierarchies.online-algorithms
+       ; angelic.algorithms
+         angelic.algorithms.abstract-lookahead-graphs angelic.algorithms.abstract-lookahead-trees
+	 angelic.algorithms.offline-algorithms angelic.algorithms.online-algorithms
      ;domains
        domains.nav-switch domains.warehouse domains.vac-rooms domains.discrete-road-trip
        domains.hybrid-blocks domains.road-trip domains.simple-road-trip

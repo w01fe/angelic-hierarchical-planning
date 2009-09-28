@@ -1,4 +1,4 @@
-(ns edu.berkeley.ai.angelic.hierarchies.abstract-lookahead-trees
+(ns edu.berkeley.ai.angelic.algorithms.abstract-lookahead-trees
   (:use edu.berkeley.ai.angelic edu.berkeley.ai.angelic.hierarchies)
   (:import [java.util HashMap Map$Entry HashSet])
   (:require [edu.berkeley.ai [util :as util] [envs :as envs] [search :as search]]

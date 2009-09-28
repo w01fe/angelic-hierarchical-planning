@@ -343,8 +343,8 @@
   (is (= '[dr ur connect right connect right right right dr]
        (map :name 
 	   (first 
-	    (edu.berkeley.ai.angelic.hierarchies.offline-algorithms/aha-star-search 
-	     (edu.berkeley.ai.angelic.hierarchies.abstract-lookahead-trees/alt-node
+	    (edu.berkeley.ai.angelic.algorithms.offline-algorithms/aha-star-search 
+	     (edu.berkeley.ai.angelic.algorithms.abstract-lookahead-trees/alt-node
 	       (make-nav-regions-hierarchy  
 		(make-nav-regions-env 
 		 (fn [[x y]]

@@ -7,9 +7,11 @@
 	   [edu.berkeley.ai.search.algorithms.textbook :as textbook]
 	   [edu.berkeley.ai.angelic [dnf-valuations :as dv]
 	                            [hierarchies :as hierarchies]]
-	   [edu.berkeley.ai.angelic.hierarchies [strips-hierarchies :as strips-hierarchies] 
-	    [abstract-lookahead-trees :as alts] [offline-algorithms :as offline]
-	    [online-algorithms :as online]]
+								[edu.berkeley.ai.angelic.hierarchies.strips-hierarchies :as strips-hierarchies]
+								   [edu.berkeley.ai.angelic.algorithms
+	[abstract-lookahead-trees :as alts]
+	[offline-algorithms :as offline] [online-algorithms :as online]]
+		   [edu.berkeley.ai.scripts.experiments :as experiments]
 	   [edu.berkeley.ai.scripts.experiments :as experiments]
 	   )
  )

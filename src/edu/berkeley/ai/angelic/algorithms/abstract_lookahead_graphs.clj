@@ -1,4 +1,4 @@
-(ns edu.berkeley.ai.angelic.hierarchies.abstract-lookahead-graphs
+(ns edu.berkeley.ai.angelic.algorithms.abstract-lookahead-graphs
   (:import [java.util HashMap WeakHashMap])
   (:use edu.berkeley.ai.angelic edu.berkeley.ai.angelic.hierarchies)
   (:require [edu.berkeley.ai [util :as util] [envs :as envs] [search :as search]]

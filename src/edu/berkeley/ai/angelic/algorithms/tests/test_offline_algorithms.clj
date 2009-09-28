@@ -1,11 +1,11 @@
-(ns edu.berkeley.ai.angelic.hierarchies.tests.test-offline-algorithms
+(ns edu.berkeley.ai.angelic.algorithms.tests.test-offline-algorithms
   (:use clojure.test edu.berkeley.ai.angelic.hierarchies
-	edu.berkeley.ai.angelic.hierarchies.offline-algorithms)
+	edu.berkeley.ai.angelic.algorithms.offline-algorithms)
   (:require [edu.berkeley.ai [util :as util] [search :as search] [envs :as envs]]
 	    [edu.berkeley.ai.util.queues :as queues]
 		[edu.berkeley.ai.envs.strips :as strips]	
 	    [edu.berkeley.ai.domains [nav-switch :as nav-switch] [warehouse :as warehouse]]
-	    [edu.berkeley.ai.angelic.hierarchies.abstract-lookahead-trees :as alts]
+	    [edu.berkeley.ai.angelic.algorithms.abstract-lookahead-trees :as alts]
 	    )
   )
   

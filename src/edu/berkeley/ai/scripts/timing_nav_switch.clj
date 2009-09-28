@@ -6,7 +6,8 @@
 	   [edu.berkeley.ai.search.algorithms.textbook :as textbook]
 	   [edu.berkeley.ai.angelic [dnf-valuations :as dnf-valuations]
 	                            [hierarchies :as hierarchies]]
-	   [edu.berkeley.ai.angelic.hierarchies [strips-hierarchies :as strips-hierarchies]
+	   [edu.berkeley.ai.angelic.hierarchies.strips-hierarchies :as strips-hierarchies]
+	   [edu.berkeley.ai.angelic.algorithms
 	                                        [abstract-lookahead-trees :as alts]
 	                                        [offline-algorithms :as algs]]
 	   )
@@ -153,7 +154,7 @@
 (defn- time-and-check-hierarchical [str reward hierarchy-schema env val-type]
   (println str)
   (let [initial-hla (hierarchies/instantiate-hierarchy hierarchy-schema env)
-	node (edu.berkeley.ai.angelic.hierarchies.abstract-lookahead-trees/make-initial-alt-node initial-hla {:valuation-type val-type :cache? false :graph? false})]
+	node (edu.berkeley.ai.angelic.algorithms.abstract-lookahead-trees/make-initial-alt-node initial-hla {:valuation-type val-type :cache? false :graph? false})]
   (util/assert-is 
    (= reward (second (envs/check-solution (hierarchies/hla-environment initial-hla)
      (time 

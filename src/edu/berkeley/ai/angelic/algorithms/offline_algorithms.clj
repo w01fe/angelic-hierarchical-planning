@@ -1,8 +1,8 @@
-(ns edu.berkeley.ai.angelic.hierarchies.offline-algorithms
+(ns edu.berkeley.ai.angelic.algorithms.offline-algorithms
   (:use clojure.test edu.berkeley.ai.angelic.hierarchies)
   (:require [edu.berkeley.ai [util :as util] [search :as search]]
 	    [edu.berkeley.ai.util.queues :as queues]
-	    [edu.berkeley.ai.angelic.hierarchies.abstract-lookahead-trees :as alts])
+	    [edu.berkeley.ai.angelic.algorithms.abstract-lookahead-trees :as alts])
   )
   
 
