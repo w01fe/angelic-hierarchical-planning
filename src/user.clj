@@ -14,7 +14,7 @@
      envs envs.states.binary envs.states.explicit
        envs.strips envs.strips.smart-csps 
        envs.hybrid-strips envs.hybrid-strips.hybrid-constraints
-       envs.hybrid-strips.hybrid-effects envs.hybrid-strips.hybrid-lp-states
+       envs.hybrid-strips.hybrid-effects ;envs.hybrid-strips.hybrid-lp-states
      search
        search.state-space
        search.algorithms.real-time search.algorithms.textbook

@@ -6,7 +6,7 @@
            [edu.berkeley.ai [util :as util] [envs :as envs]]
 	   [edu.berkeley.ai.envs.hybrid-strips 
 	    	[hybrid-constraints :as hc]
-	    	[hybrid-effects :as he] [hybrid-lp-states :as hls]]
+	    	[hybrid-effects :as he]]
            [edu.berkeley.ai.envs.states.binary :as binary-states])
  )
 

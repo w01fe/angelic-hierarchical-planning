@@ -14,15 +14,6 @@
   ; Get nil (false) or a possibly-empty list of numeric constraints, where the :left is a single ::NumVar expression.
 
 
-; Idea: left - right = diff, diff is a number, left may be a var or form, right must be a form or constant .
-; This is the restricted form of numeric constraint allowed in hybrid-strips-hierarchies for now.
-(defstruct hybrid-strips-difference-constraint :pred :left :right :diff)
-(defn make-hybrid-strips-difference-constraint [pred left right diff]
-  (struct hybrid-strips-difference-constraint pred left right diff))
-
-(defmulti extract-difference-constraints (fn [constraint var-map constant-numeric-functions numeric-vals] (:class constraint)))
-
-;; Extract a set of difference constraints
 
 
 (derive ::NumConstraint ::Constraint)
@@ -45,17 +36,7 @@
 	 (le/make-numeric-constant (le/evaluate-numeric-expr (:right constraint) var-map numeric-vals)))]
     (when (evaluate-constraint constraint var-map objects [discrete-atoms numeric-vals]) [])))
 
-;; TODO: abstraction violations.
-(defmethod extract-difference-constraints ::NumConstraint 
-  [constraint var-map constant-numeric-functions numeric-vals] 
-  (let [{:keys [pred left right]} constraint
-	left  (le/ground-and-simplify-numeric-expr left var-map constant-numeric-functions numeric-vals)
-	right (le/ground-and-simplify-numeric-expr right var-map constant-numeric-functions numeric-vals)]
-    (assert-is (contains? #{::le/NumVar ::le/NumForm} (:class left)))
-    (apply make-hybrid-strips-difference-constraint 
-	   pred 
-	   left
-	   (le/extract-numeric-expr-form-and-diff right))))					
+					
 
 
 
@@ -107,8 +88,7 @@
 	  (recur (next constraints) (into yield c)))
       yield)))
 
-(defmethod extract-difference-constraints ::ConjunctiveConstraint [constraint var-map constant-numeric-functions numeric-vals] 
-  (apply concat (map #(extract-difference-constraints % var-map constant-numeric-functions numeric-vals) (:constraints constraint))))
+
 
 
 
@@ -201,17 +181,17 @@
 
 ; Constraints as envs.conditions.
 
-	(derive ::ConstraintCondition ::envs/Condition)
-	(defstruct constraint-condition :class :constraint :objects :var-map)
+(derive ::ConstraintCondition ::envs/Condition)
+(defstruct constraint-condition :class :constraint :objects :var-map)
 
-	(defn make-constraint-condition [constraint objects var-map] 
-	  (struct constraint-condition ::ConstraintCondition constraint objects var-map))
+(defn make-constraint-condition [constraint objects var-map] 
+  (struct constraint-condition ::ConstraintCondition constraint objects var-map))
 
-	(defmethod envs/satisfies-condition? ::ConstraintCondition [s c]
-	  (evaluate-constraint (:constraint c) (:var-map c) (:objects c) s))
+(defmethod envs/satisfies-condition? ::ConstraintCondition [s c]
+  (evaluate-constraint (:constraint c) (:var-map c) (:objects c) s))
 
-	(defmethod envs/consistent-condition? ::ConstraintCondition [condition]
-	  (throw (UnsupportedOperationException.)))
+(defmethod envs/consistent-condition? ::ConstraintCondition [condition]
+  (throw (UnsupportedOperationException.)))
 
 
 
@@ -258,3 +238,32 @@
   
 
 
+
+
+(comment ;old, not in use
+
+; Idea: left - right = diff, diff is a number, left may be a var or form, right must be a form or constant .
+; This is the restricted form of numeric constraint allowed in hybrid-strips-hierarchies for now.
+(defstruct hybrid-strips-difference-constraint :pred :left :right :diff)
+(defn make-hybrid-strips-difference-constraint [pred left right diff]
+  (struct hybrid-strips-difference-constraint pred left right diff))
+
+(defmulti extract-difference-constraints (fn [constraint var-map constant-numeric-functions numeric-vals] (:class constraint)))
+
+;; Extract a set of difference constraints
+
+;; TODO: abstraction violations.
+(defmethod extract-difference-constraints ::NumConstraint 
+  [constraint var-map constant-numeric-functions numeric-vals] 
+  (let [{:keys [pred left right]} constraint
+	left  (le/ground-and-simplify-numeric-expr left var-map constant-numeric-functions numeric-vals)
+	right (le/ground-and-simplify-numeric-expr right var-map constant-numeric-functions numeric-vals)]
+    (assert-is (contains? #{::le/NumVar ::le/NumForm} (:class left)))
+    (apply make-hybrid-strips-difference-constraint 
+	   pred 
+	   left
+	   (le/extract-numeric-expr-form-and-diff right))))
+
+(defmethod extract-difference-constraints ::ConjunctiveConstraint [constraint var-map constant-numeric-functions numeric-vals] 
+  (apply concat (map #(extract-difference-constraints % var-map constant-numeric-functions numeric-vals) (:constraints constraint))))
+)
