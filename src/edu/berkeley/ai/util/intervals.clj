@@ -36,6 +36,14 @@
 				       (or u Double/POSITIVE_INFINITY) (if u false true))))
 	:else (throw (Exception. "I don't know how to make an interval out of " x))))
 
+(defn unparse-interval
+  "Inverse of parse-interval.  Ignores open/closed distinction."
+  [i]
+  (let [l (:left i) r (:right i)]
+    [(when (> l Double/NEGATIVE_INFINITY) l)
+     (when (< r Double/POSITIVE_INFINITY) r)]))
+     
+
 (defn interval-empty? [interval]
   (or (< (:right interval) (:left interval))
       (and (= (:right interval) (:left interval))

@@ -15,7 +15,8 @@
 
 
 (ns edu.berkeley.ai.util.lp
-  (:use clojure.test [edu.berkeley.ai.util :as util])
+  (:use clojure.test [edu.berkeley.ai.util :as util]
+	[edu.berkeley.ai.util [linear-expressions :as le] [intervals :as iv]])
   (:import [java.util HashMap] [java.text DecimalFormat]))
 
 (set! *warn-on-reflection* true)
@@ -272,8 +273,8 @@
 (defn intersect-lp-intervals [[l1 u1] [l2 u2]]
   (let [l (cond (and l1 l2) (max l1 l2) l1 l1 l2 l2 :else nil)
 	u (cond (and u1 u2) (min u1 u2) u1 u1 u2 u2 :else nil)]
-    (when (and l u) (assert (<= l u)))
-    [l u]))
+    (when-not (and l u (> l u))
+      [l u])))
 							      
 (defn lp-constraint-violation 
   "Return [c-map violated-i] or nil for no violation."
@@ -293,6 +294,7 @@
   (let [den (sqrt (apply + (map #(* % %) (vals v-map))))]
     [(map-vals #(/ % den) v-map) (/ rhs den -1)]))
 
+;; TODO: better projection; find feasible solution with simple matrix operation, or switch to Octave/Matlab/R.
 (defn lp-constraint-projection 
   "Project the solution onto the given equality constraint."
   [constraint sol]
@@ -300,30 +302,65 @@
 	dist     (+ p (apply + (map #(* (norm %) (sol %)) (keys norm))))]
     (reduce (fn [sol [k v]] (assoc sol k (- (sol k) (* dist v)))) sol norm)))
 
-;; TODO: better projection; find feasible solution with simple matrix operation, or switch to Octave/Matlab/R.
+
+(defn adjust-lp-var-bounds [lp var new-bounds]
+  (let [old-bounds   (safe-get (:bounds lp) var)
+	final-bounds (intersect-lp-intervals old-bounds new-bounds)]
+    (if (not final-bounds) (print-debug 2 "New bounds for" var "are inconsistent.") 
+      (let [sol          (:solution lp)
+	    cur-val      (safe-get sol var)
+	    [l-v u-v]    (lp-interval-violation final-bounds cur-val)
+	    new-lp       (assoc (assoc-in lp [:bounds var] final-bounds) :cost nil)]
+	(if (not (or l-v u-v)) 
+	    (do (print-debug 2 "Solution within new bounds!") new-lp)
+	  (let [new-sol (assoc sol var (or l-v u-v))]
+	    (if (not (lp-constraints-violation (:constraints new-lp) new-sol))
+	        (do (print-debug 2 "Solution fixed by projecting to new bounds.")
+		    (assoc new-lp :solution new-sol))
+	      (do (print-debug 2 "All else failed with new bounds; solving again from scratch.")
+		  (solve-incremental-lp new-lp)))))))))
+			      
+
+(defn adjust-lp-constraint-bounds [lp constraint new-bounds]
+  (let [old-bounds (get (:constraints lp) constraint)
+	computed-bounds (iv/unparse-interval
+			 (le/evaluate-linear-expr-ga 
+			  #(iv/parse-interval (safe-get (:bounds lp) %))
+			  constraint))
+	final-bounds (intersect-lp-intervals (intersect-lp-intervals old-bounds new-bounds) computed-bounds)]
+    (print-debug 3  "For" constraint "have old bounds" old-bounds "new" new-bounds
+	     "computed" computed-bounds)
+    (if (not final-bounds) (print-debug 2 "New bounds for constraint are inconsistent.")
+      (let [new-lp (assoc-in lp [:constraints constraint] final-bounds)]
+	(if-let [[vc [vl vh]] (lp-constraint-violation [constraint final-bounds] (:solution lp))]
+	    (or (print-debug 2 "current lp infeasible with new constraint.")
+		(and (not (apply = final-bounds))
+		     (let [epsilon 0.00000000001
+			   target (if vl (+ vl epsilon) (- vh epsilon))
+			   proj (lp-constraint-projection [constraint target] (:solution lp))]
+		       (and (not (lp-constraints-violation (:constraints lp) proj))
+			    (do (print-debug 2 "Projecting fixed it.")
+				(assoc new-lp :solution proj :cost nil)))))
+		(do (print-debug 2 "Projecting failed, or not attempted for eq; trying from scratch")
+		    (make-incremental-lp (:bounds lp) (:objective lp) (:constraints new-lp))))
+	  (do (print-debug 2 "lucky; still feasible with new constraint")
+	      new-lp))))))  
+
+
 ;; TODO: for single variable, do feasibility check against bounds/constraints before trying to fix.
-;; TODO: for single var, update bounds rather than constraints.  All constraints should be binary or greater.
-(defn add-lp-constraint [lp constraint-pair]
-;  (println "adding constraint" constraint-pair)
- (let [new-lp (update-in lp [:constraints (first constraint-pair)] intersect-lp-intervals (second constraint-pair))]
-   (if-let [[vc [vl vh]] (lp-constraint-violation constraint-pair (:solution lp))]
-       (do (println "current lp infeasible with new constraint.")
-	   (if (not (= (first (second constraint-pair)) (second (second constraint-pair))))
-	    (let [epsilon 0.00000000001
-		 target (if vl (+ vl epsilon) (- vh epsilon))
-		 proj (lp-constraint-projection (assoc constraint-pair 1 target) (:solution lp))]
-	      (println vc vl vh)
-	     (assert (not (lp-constraint-violation constraint-pair proj)))
-	     (if (not (lp-constraints-violation (:constraints lp) proj))
-	       (do (println "Projecting fixed it.")
-		   (assoc new-lp :solution proj :cost nil))
-	       (do (println "Projecting failed; trying from scratch")
-		   (make-incremental-lp (:bounds lp) (:objective lp) (:constraints new-lp)))))
-	    (do (println "Not projecting for equality; trying from scratch.")
-;		(println (:bounds lp) (:objective lp) (:constraints new-lp))
-		 (make-incremental-lp (:bounds lp) (:objective lp) (:constraints new-lp)))))
-     (do (println "lucky; still feasible with new constraint")
-	  new-lp))))
+(defn add-lp-constraint 
+  "Add a new constraint, specified as [linear-expr-map [lb ub]] to the LP.  The constraint should
+   be <=, =, or >=, but not multiple (i.e., if both lb and ub are provided, they should be equal.
+   Ideally, linear-expr-map should be normalized."  
+  [lp [constraint-lm new-bounds]]
+  (if (== (count constraint-lm) 1)
+      (let [[var wt] (first constraint-lm)]
+	(cond (== wt 1) (adjust-lp-var-bounds lp var new-bounds)
+	      (>= wt 0) (adjust-lp-var-bounds lp var (map #(when % (/ % wt)) new-bounds))
+	      (< wt 0)  (let [[l u] new-bounds] 
+			  (adjust-lp-var-bounds lp var (map #(when % (/ % wt)) [u l])))))
+    (adjust-lp-constraint-bounds lp constraint-lm new-bounds)))
+
 
 (defn add-lp-var [lp var [l u]]
   (assert (not (get (:bounds lp) var)))
@@ -334,6 +371,14 @@
 (defn increment-lp-objective [lp v-map]
   "Increment the objective of the LP; v-map maps from variables to multipliers."
   (assoc lp :objective (merge-with + (:objective lp) v-map) :cost nil))
+
+
+(deftest test-incremental-lp ;TODO: improve
+  (is (= (-> (make-incremental-lp {} {} {}) (add-lp-var :bam nil) (add-lp-constraint [{:bam 1} [-1 nil]]) (add-lp-constraint [{:bam -1} [-1 nil]]) (add-lp-var :boo [-1 1]))
+	 {:cost nil, :solution {:boo -1, :bam 0}, :class ::IncrementalLP, :constraints {}, :objective {}, :bounds {:boo [-1 1], :bam [-1 1]}}))
+  (is (= (:constraints (-> (make-incremental-lp {} {} {}) (add-lp-var :bam nil) (add-lp-constraint [{:bam 1} [-1 nil]]) (add-lp-constraint [{:bam -1} [-1 nil]]) (add-lp-var :boo [-1 1]) (add-lp-constraint [{:bam 1 :boo 1} [-3 4]]) (add-lp-constraint (linear-expr-lez->normalized-inequality {:bam -1 :boo -1 nil 1}))))
+	 {{:bam 1, :boo 1} [1 2]})))
+  
 
 ; What happens when we assign a variable?  (to a constant/var), or add to another const/var? 
 ; All conditions, costs, etc refer to the variable *at that particular time*

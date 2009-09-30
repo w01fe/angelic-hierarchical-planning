@@ -49,6 +49,32 @@
     (assert (= (count result) 1))
     (get result nil)))
 
+(defn map-linear-expr-vars-ga
+  "Same as map-linear-expr-vars, but use generic arithmetic.  Assume maps with type
+   metadata are generic numbers..."
+  [f le]
+  (persistent!
+   (reduce (fn [result [var mult]]
+	     (let [new-var (f var)]
+	       (cond (and (map? new-var) (not (:type ^new-var)))
+  		       (reduce (fn [result [var inner-mult]]
+				 (assoc! result var (ga/+ (ga/* mult inner-mult) (get result var 0))))
+			       result new-var)
+		     (or (number? new-var) (map? new-var))
+                       (assoc! result nil (ga/+ (ga/* mult new-var) (get result nil 0)))
+		     (nil? new-var)
+		       (assoc! result var (ga/+ mult (get result var 0)))
+		     :else ;assume new var
+		       (assoc! result new-var (ga/+ mult (get result new-var 0))))))
+	   (transient {nil (get le nil 0)}) (dissoc le nil))))
+
+(defn evaluate-linear-expr-ga
+  "Same as evaluate-linear-expr, but use generic arithmetic."
+  [f le]
+  (let [result (merge {nil 0} (map-linear-expr-vars-ga f le))]
+    (assert (= (count result) 1))
+    (get result nil)))
+
 
 
 (deftest test-map-linear-expression-vars 
