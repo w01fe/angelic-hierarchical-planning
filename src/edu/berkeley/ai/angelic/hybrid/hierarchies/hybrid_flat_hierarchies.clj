@@ -6,6 +6,9 @@
 ;; Flat hybrid hierarchies, which do a usual primitive forward search
 ;; but are angelic about continuous parameters to the "primitives".
 
+;; TODO: two versions, with and without "splitting."
+; need to think more about splitting ...
+
 ;;; Flat hierarchy
 
 (defstruct hybrid-flat-hierarchy-schema :class :upper-reward-fn)

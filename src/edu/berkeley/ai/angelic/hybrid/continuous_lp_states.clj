@@ -61,13 +61,18 @@
 
 (defn make-lp-state 
   "Take a concrete assignment from all state variables to numeric values, and make a fresh
-   lp-state.  nil acts like a special lp parameter, set to unity."
+   (immutable) lp-state.  nil acts like a special lp parameter, set to unity."
   [initial-state-map]
 ;  (assert (every? vector? (keys initial-state-map)))
   (make-lp-state* 
    (map-vals #(hash-map nil %) initial-state-map)
    (lp/make-incremental-lp {} {} {})
    0))
+
+
+;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
+;                                   Updating
+;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
 
 (defn add-lp-state-param 
   "Add a new parameter to the LP, with optional bounds.  If no bounds give, param will start unbounded."
@@ -125,6 +130,11 @@
 
 
 
+
+;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
+;                                   Solving
+;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
+
 (defn solve-lp-state
   "Return [cont-state var-map rew], where cont-state maps state variables to values (a ContinuousMapState),
    var-map is a mapping from continuous parameters to to optimal values, and rew is the corresponding 
@@ -137,6 +147,12 @@
      (+ rew (get-reward-const state))]))
 
 
+
+
+
+;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
+;                                   Tests
+;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
 
 (deftest continuous-lp-states 
   ;Simple example, test bounds etc.
@@ -158,6 +174,32 @@
 	     (solve-lp-state)
 	     )
 	 [{[:pos] 3} {:right 2} 12]))
+
+  ; More complex example; simulate a "right1" action
+  ; that uses less of a resource but costs more, followed by 
+  ; a "right2" action that uses more resource but is cheaper.
+  ; Thus, we have to optimize resource use vs. cost.
+  (is (= (-> (make-lp-state {[:pos] 0 [:resource] 15}) 
+
+	     (add-lp-state-param :right1)
+	     (constrain-lp-state-gez {:right1 1})
+	     (constrain-lp-state-lez {:right1 1 nil -10})
+	     (update-lp-state {[:pos] {:right1 1 [:pos] 1}
+			       [:resource] {[:resource] 1 :right1 -1}}
+			      {:right1 -2 nil -10})
+
+	     (add-lp-state-param :right2)
+	     (constrain-lp-state-gez {:right2 1})
+	     (constrain-lp-state-lez {:right2 1 nil -10})
+	     (update-lp-state {[:pos] {:right2 1 [:pos] 1}
+			       [:resource] {[:resource] 1 :right2 -2}}
+			      {:right2 -1 nil -10})
+
+	     (constrain-lp-state-eqz {[:pos] 1 nil -10})
+	     (constrain-lp-state-gez {[:resource] 1})
+	     (solve-lp-state)
+	     )
+	 [{[:pos] 10 [:resource] 0} {:right1 5 :right2 5} -35]))
 
   )
 

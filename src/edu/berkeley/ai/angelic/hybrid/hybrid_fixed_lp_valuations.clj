@@ -7,23 +7,40 @@
 (ns edu.berkeley.ai.angelic.hybrid.hybrid-fixed-lp-valuations
   (:use clojure.test 
 	[edu.berkeley.ai.util :as util]
-	[edu.berkeley.ai.util [hybrid :as hybrid] [lp :as lp]]))
+	[edu.berkeley.ai.util [hybrid :as hybrid] [lp :as lp] [linear-expressions :as le]]
+	[edu.berkeley.ai.envs.hybrid-stripns [hybrid-constraints :as hc]
+	 [hybrid-effects :as he]]
+	[edu.berkeley.angelic.hybrid [hybrid-fixed-lp-valuations :as hflv]]))
 
 (set! *warn-on-reflection* true)
 
 
-;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
-;                            Creating lp-state. 
-;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
+
 
 (defstruct lp-state-struct :state-var-map :incremental-lp)
-
 
 (defn make-lp-state 
   "Take an assignment from all state variables to numeric values, and make a fresh
    lp-state.  A new variable called [:reward] will be assumed, with val 0, unless provided."
   [initial-state-map]
   )
+
+(defmethod map->valuation ::HybridFixedLPValuation [type m]
+  )
+
+(defmethod explicit-valuation-map ::ExplicitValuationMap [val]
+  )
+
+(defmethod restrict-valuation [::ExplicitValuationMap ...] [val condition]
+  )
+
+(defmethod union-valuations [::ExplicitValuationMap ::ExplicitValuationMap] [v1 v2]
+  )
+
+(defmethod progress-valuation [::ExplicitValuationMap ...] [val desc]
+  ...)
+
+
 
 (defn constrain-lp-state 
   "Apply a hybrid constraint (i.e., precondition).  Return nil for infeasible."
@@ -48,15 +65,7 @@
   )
 
 
-;; TODO: split up hybrid first
-;; Then, replicate existing functionality here & verify.
-;; Finally, add pass-thru to LP.
 
-;(defn make-lp [bounds objective constraints]
-;  {:class ::LP 
-;   :constraints constraints
-;   :objective   objective
-;   :bounds      bounds})
 
 
 (set! *warn-on-reflection* false)
