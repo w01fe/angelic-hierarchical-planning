@@ -25,14 +25,15 @@
 
 
 ;(derive ::ContinuousLPState ::le/ContinuousState)
-(defstruct lp-state-struct :state-var-map :incremental-lp)
+(defstruct lp-state-struct :state-var-map :incremental-lp :reward-const)
 (util/deftype ::ContinuousLPState make-lp-state*
-  (fn [state-var-map incremental-lp] 
-    (struct lp-state-struct state-var-map incremental-lp))
+  (fn [state-var-map incremental-lp reward-const] 
+    (struct lp-state-struct state-var-map incremental-lp reward-const))
   (fn [lps] (vals lps)))
 
 (def get-state-var-map (accessor lp-state-struct :state-var-map))
 (def get-incremental-lp (accessor lp-state-struct :incremental-lp))
+(def get-reward-const (accessor lp-state-struct :reward-const))
 
 ; LP variables are verbatim HLA parameters, and should be unique symbols or keywords.  
 ; State variables should be vectors.  We will make explicit use of this here ...
@@ -60,12 +61,13 @@
 
 (defn make-lp-state 
   "Take a concrete assignment from all state variables to numeric values, and make a fresh
-   lp-state.  nil will be a special lp parameter, set to unity."
+   lp-state.  nil acts like a special lp parameter, set to unity."
   [initial-state-map]
 ;  (assert (every? vector? (keys initial-state-map)))
   (make-lp-state* 
    (map-vals #(hash-map nil %) initial-state-map)
-   (lp/make-incremental-lp {nil [1 1]} {} {})))
+   (lp/make-incremental-lp {} {} {})
+   0))
 
 (defn add-lp-state-param 
   "Add a new parameter to the LP, with optional bounds.  If no bounds give, param will start unbounded."
@@ -76,27 +78,30 @@
 
 
 
-(defn- constrain-lp-state [state constraint-lm bounds]
-  (when-let [new-lp (add-lp-constraint 
-		     (get-incremental-lp state)
-		     [(le/map-linear-expr-vars (get-state-var-map state) constraint-lm) bounds])]
+(defn- constrain-lp-state [state constraint]
+  (println constraint)
+  (when-let [new-lp (add-lp-constraint (get-incremental-lp state) constraint)]
     (assoc state :incremental-lp new-lp)))
 				       
 
 (defn constrain-lp-state-gez 
   "Constrain constraint-lm linear-map to evaluate >= 0.  Return nil for inconsistent."
   [state constraint-lm]
-  (constrain-lp-state state constraint-lm [0 nil]))
+  (constrain-lp-state state (le/linear-expr-gez->normalized-inequality 
+			     (le/map-linear-expr-vars (get-state-var-map state) constraint-lm))))
+
 
 (defn constrain-lp-state-lez 
   "Constrain constraint-lm linear-map to evaluate <= 0.  Return nil for inconsistent."
   [state constraint-lm]
-  (constrain-lp-state state constraint-lm [nil 0]))
+  (constrain-lp-state state (le/linear-expr-lez->normalized-inequality
+			     (le/map-linear-expr-vars (get-state-var-map state) constraint-lm))))
 
 (defn constrain-lp-state-eqz 
   "Constrain constraint-lm linear-map to evaluate = 0.  Return nil for inconsistent."
   [state constraint-lm]
-  (constrain-lp-state state constraint-lm [0 0]))
+  (constrain-lp-state state (le/linear-expr-eqz->normalized-inequality
+			     (le/map-linear-expr-vars (get-state-var-map state) constraint-lm))))
   
 	    
 
@@ -106,7 +111,8 @@
    Reward is another linear combination term that will be added to the reward."  
   [state effects reward]
   (let [old-state-var-map (get-state-var-map state)
-	lp                (get-incremental-lp state)]
+	lp                (get-incremental-lp state)
+	reward            (map-linear-expr-vars old-state-var-map reward)]
     (make-lp-state* 
      (persistent!
       (reduce (fn [new-state-var-map [effect-var effect-lm]]
@@ -114,7 +120,8 @@
 		(assoc! new-state-var-map effect-var 
 			(map-linear-expr-vars old-state-var-map effect-lm)))
 	      (transient old-state-var-map) effects))
-     (increment-lp-objective lp (map-linear-expr-vars old-state-var-map reward)))))
+     (increment-lp-objective lp (dissoc reward nil))
+     (+ (get-reward-const state) (get reward nil 0)))))
 
 
 
@@ -124,11 +131,10 @@
    maximal reward."
   [state]
   (let [[var-map rew] (lp/solve-incremental-lp (get-incremental-lp state))]
-    (assert (== 1 (get var-map nil)))
-    [(map-vals (fn [lm] (evaluate-linear-expr var-map lm))
+    [(map-vals (fn [lm] (le/evaluate-linear-expr var-map lm))
 	       (get-state-var-map state))
-     (dissoc var-map nil)
-     rew]))
+     var-map
+     (+ rew (get-reward-const state))]))
 
 
 
