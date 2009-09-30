@@ -20,6 +20,13 @@
 (defn make-effect [adds deletes assignments]
   (struct hybrid-strips-effect ::Effect adds deletes assignments))
 
+;(defn ground-hybrid-effect [effect disc-var-map constant-numeric-vals]
+;  (assoc effect 
+;    :assignments (map (fn [ass] 
+;			(assoc ass :expr (le/ground-hybrid-linear-expr (:expr ass) 
+;					    disc-var-map constant-numeric-vals)))
+;		      (:assignments effect))))
+
 (defn execute-effect [effect var-map [discrete-atoms numeric-vals]]
   (let [simplifier (fn [atoms] (map #(props/simplify-atom var-map %) atoms))]
     [(reduce conj 
@@ -30,7 +37,7 @@
 
 (def *empty-effect* (make-effect nil nil nil))
 
-(defn parse-and-check-effect [effect discrete-vars predicates numeric-vars numeric-functions]
+(defn parse-and-check-effect [effect discrete-vars predicates numeric-vars numeric-functions const-numeric-fns]
   (let [effects (if (or (empty? effect) (= (first effect) 'and)) (next effect) (list effect))
 	{:keys [adds deletes assignments]}
           (group-by (fn [[a]] (cond (= a '=) :assignments (= a 'not) :deletes :else :adds)) effects)]
@@ -44,14 +51,17 @@
      (doall (for [a assignments] 
 	      (do (assert-is (= 3 (count a))) 
 		  (make-assignment (hybrid/check-hybrid-atom (nth a 1) numeric-functions discrete-vars)
-				   (le/parse-and-check-hybrid-linear-expression (nth a 2) discrete-vars numeric-vars numeric-functions))))))))
+				   (le/parse-and-check-hybrid-linear-expression (nth a 2) discrete-vars numeric-vars numeric-functions const-numeric-fns))))))))
 	 
 
 (defn effected-predicates [effect]
   (set (map first (concat (:adds effect) (:deletes effect)))))
 
-(defn effected-functions [effect]
-  (set (map first (map :form (:assignments effect)))))
+(defn effected-functions [unparsed-effect]
+  (set (map #(first (second %))
+	    (filter #(= (first %) '=)
+		    (if (or (empty? unparsed-effect) (= (first unparsed-effect) 'and)) 
+		        (next unparsed-effect) (list unparsed-effect))))))
 
 (deftest hybrid-effects
   (is
@@ -59,6 +69,6 @@
       (execute-effect 
        (parse-and-check-effect '(and (fee) (frob x) (not (foo x)) (not (bar x)) (bar x) 
 				     (= (fra) z) (= (frax x) (+ (frax x) (- (fra) 2)))) 
-			       '{x xt} '{foo [xt] frob [xt] bar [xt] fee []} '{z zt} '{frax [xt] fra []})
+			       '{x xt} '{foo [xt] frob [xt] bar [xt] fee []} '{z zt} '{frax [xt] fra []} nil)
        '{x xv z 17} ['#{[foo xv] [bar xv]} '{[frax xv] 1 [fra] 14}]))))
 

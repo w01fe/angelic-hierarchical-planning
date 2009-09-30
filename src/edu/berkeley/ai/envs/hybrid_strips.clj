@@ -43,7 +43,7 @@
   (struct hybrid-strips-action-schema ::HybridActionSchema 
     name vars split-points precondition effect cost-expr))
 
-(defn- parse-hybrid-action-schema [action discrete-types numeric-types predicates numeric-functions]
+(defn- parse-hybrid-action-schema [action discrete-types numeric-types predicates numeric-functions constant-numeric-functions]
 ;  (println action discrete-types numeric-types predicates numeric-functions)
   (util/match [[[:action       ~name]
 		[:parameters   ~parameters]
@@ -59,11 +59,20 @@
       (make-hybrid-action-schema
        name
        vars 
-       (hc/parse-and-check-constraint split-points discrete-vars predicates numeric-vars numeric-functions true)
-       (hc/parse-and-check-constraint precondition discrete-vars predicates numeric-vars numeric-functions true)
-       (he/parse-and-check-effect     effect       discrete-vars predicates numeric-vars numeric-functions)
-       (le/parse-and-check-hybrid-linear-expression (or cost 1) discrete-vars numeric-vars numeric-functions)))))
+       (hc/parse-and-check-constraint split-points discrete-vars predicates numeric-vars numeric-functions constant-numeric-functions true)
+       (hc/parse-and-check-constraint precondition discrete-vars predicates numeric-vars numeric-functions constant-numeric-functions true)
+       (he/parse-and-check-effect     effect       discrete-vars predicates numeric-vars numeric-functions constant-numeric-functions)
+       (le/parse-and-check-hybrid-linear-expression (or cost 1) discrete-vars numeric-vars numeric-functions constant-numeric-functions)))))
 
+(defn- effected-functions [action] 
+  (he/effected-functions (util/safe-get (into {} (map vec (util/partition-all 2 action))) :effect)))
+
+;(defn- ground-hybrid-action-schema [schema disc-var-map const-num-fns]
+;  (assoc schema 
+;    :split-points (hc/ground-hybrid-constraint (:split-points schema) disc-var-map const-num-fns)
+;    :precondition (hc/ground-hybrid-constraint (:precondition schema) disc-var-map const-num-fns)
+;    :effect       (he/ground-hybrid-effect     (:effect schema)       disc-var-map const-num-fns)
+;    :cost-expr    (le/ground-hybrid-linear-expr (:cost-expr schema)   disc-var-map const-num-fns)))
 
 
 	    
@@ -110,7 +119,9 @@
 			   (concat (map props/parse-pddl-predicate predicates)
 			     (when equality? (map #(vector (util/symbol-cat % '=) % %) discrete-types))))
 	  numeric-functions (check-numeric-functions numeric-functions discrete-type-map numeric-types)
-	  action-schemata   (map #(parse-hybrid-action-schema % discrete-types numeric-types predicates numeric-functions)
+	  constant-numeric-fns (util/difference (util/keyset numeric-functions)
+					(apply util/union (map effected-functions actions)))
+	  action-schemata   (map #(parse-hybrid-action-schema % discrete-types numeric-types predicates numeric-functions constant-numeric-fns)
 				 actions)]
       (util/assert-is (util/subset? requirements #{:strips :typing :equality :numbers}))
       (util/assert-is (util/subset? #{:strips :typing :numbers} requirements))
@@ -131,11 +142,7 @@
 	 (apply util/union 
 	   (for [as action-schemata]
 	     (he/effected-predicates (:effect as)))))
-       (util/difference (util/keyset numeric-functions)
-	 (apply util/union
-	   (for [as action-schemata]
-	     (he/effected-functions (:effect as)))))
-
+       constant-numeric-fns
        ))))
  
 
@@ -267,6 +274,7 @@
 (defmethod applicable-quasi-actions ::HybridActionSpace has-applicable-quasi-actions [[discrete-atoms numeric-vals] action-space]
   (for [action ((:discrete-generator action-space) discrete-atoms)
 	:let [{:keys [var-map num]} action ;(do (println (:name (:schema action)) (:var-map action)) action)
+;	      action (ground-hybrid-action-schema var-map numeric-vals)
 	      num (hc/get-numeric-yield num var-map (:objects action-space) [discrete-atoms numeric-vals])]
 	:when num]
     (let [num-vars    (:num-vars action)]

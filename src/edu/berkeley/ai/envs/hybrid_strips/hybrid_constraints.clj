@@ -7,6 +7,9 @@
 
 ;; Here, we assume a hybrid state is a [discrete-atom-set numeric-val-map] pair.
 
+;; Just ground the expr for now, for kicks. 
+;(defmulti ground-hybrid-constraint (fn [constraint discrete-var-map constant-numeric-vals] (:class; constraint)))
+
 (defmulti evaluate-constraint (fn [constraint var-map objects [discrete-atoms numeric-vals]] (:class constraint))) 
 (defmulti split-constraint (fn [constraint var-map objects] (:class constraint)))
   ; Get [pos-atoms neg-atoms only-numeric-constraint]
@@ -20,6 +23,11 @@
 (defstruct hybrid-strips-numeric-constraint :class :pred :left :right)
 (defn make-numeric-constraint [pred left right]
   (struct hybrid-strips-numeric-constraint ::NumConstraint pred left right))
+
+;(defmethod ground-hybrid-constraint ::NumConstraint [constraint disc-var-map const-num-vals]
+;  (assoc constraint 
+;    :left (le/ground-hybrid-linear-expr (:left constraint) disc-var-map const-num-vals)
+;    :right (le/ground-hybrid-linear-expr (:right constraint) disc-var-map const-num-vals)))
 
 (defmethod evaluate-constraint ::NumConstraint [constraint var-map objects [discrete-atoms numeric-vals]]
   ((:pred constraint)
@@ -46,6 +54,10 @@
 (defn make-discrete-pos-constraint [atom]
   (struct hybrid-strips-discrete-pos-constraint ::DiscPosConstraint atom))
 
+;(defmethod ground-hybrid-constraint ::DiscPosConstraint [constraint disc-var-map const-num-vals]
+;  constraint)
+
+
 (defmethod evaluate-constraint ::DiscPosConstraint [constraint var-map objects [discrete-atoms numeric-vals]]
   (contains? discrete-atoms (props/simplify-atom var-map (:atom constraint))))
 
@@ -57,6 +69,9 @@
 (defstruct hybrid-strips-discrete-neg-constraint :class :atom)
 (defn make-discrete-neg-constraint [atom]
   (struct hybrid-strips-discrete-neg-constraint ::DiscNegConstraint atom))
+
+;(defmethod ground-hybrid-constraint ::DiscNegConstraint [constraint disc-var-map const-num-vals]
+;  constraint)
 
 (defmethod evaluate-constraint ::DiscNegConstraint [constraint var-map objects [discrete-atoms numeric-vals]]
   (not (contains? discrete-atoms (props/simplify-atom var-map (:atom constraint)))))
@@ -70,6 +85,10 @@
 (defstruct hybrid-strips-conjuntive-constraint :class :constraints)
 (defn make-conjunctive-constraint [constraints]
   (struct hybrid-strips-conjuntive-constraint ::ConjunctiveConstraint constraints))
+
+;(defmethod ground-hybrid-constraint ::ConjunctiveConstraint [constraint disc-var-map const-num-vals]
+;  (assoc constraint :constraints
+;    (map #(ground-hybrid-constraint % disc-var-map const-num-vals) (:constraints constraint))))
 
 (defmethod evaluate-constraint ::ConjunctiveConstraint [constraint var-map objects [discrete-atoms numeric-vals]]
 ;  (doseq [x (:constraints constraint)] (println x (evaluate-constraint x var-map objects [discrete-atoms numeric-vals])))
@@ -96,6 +115,13 @@
 (defstruct hybrid-strips-forall-constraint :class :vars :condition :yield)
 (defn make-forall-constraint [vars condition yield]
   (struct hybrid-strips-forall-constraint ::ForallConstraint vars condition yield))
+
+;(defmethod ground-hybrid-constraint ::ForallConstraint [constraint disc-var-map const-num-vals]
+;  constraint)
+;  (assoc constraint
+;    :condition (ground-hybrid-constraint (:condition constraint) disc-var-map const-num-vals)
+;    :yield     (ground-hybrid-constraint (:yield constraint) disc-var-map const-num-vals)))
+
 
 (defmethod evaluate-constraint ::ForallConstraint [constraint var-map objects [discrete-atoms numeric-vals]]
   (every? (fn [full-var-map] 
@@ -139,7 +165,7 @@
 
 
 (declare parse-and-check-constraint)
-(defn parse-and-check-nonconjunctive-constraint [constraint discrete-vars predicates numeric-vars numeric-functions only-atomic-var?]
+(defn parse-and-check-nonconjunctive-constraint [constraint discrete-vars predicates numeric-vars numeric-functions const-numeric-functions only-atomic-var?]
   (let [[f & r] constraint]
     (cond (and (= f 'not) (contains? predicates (ffirst r)))
 	    (make-discrete-neg-constraint (hybrid/check-hybrid-atom (second constraint) predicates discrete-vars))
@@ -153,31 +179,33 @@
 		   vars
 		   (parse-and-check-constraint (nth constraint 2) all-discrete predicates 
 					       (when-not only-atomic-var? numeric-vars)
-					       numeric-functions only-atomic-var?)
+					       numeric-functions const-numeric-functions 
+					       only-atomic-var?)
 		   (parse-and-check-constraint (nth constraint 3) all-discrete predicates 
 					       numeric-vars 
-					       numeric-functions only-atomic-var?))))
+					       numeric-functions const-numeric-functions
+					       only-atomic-var?))))
 	  :else
 	    (do (assert-is (= (count constraint) 3) "%s" constraint)
 		(make-numeric-constraint 
 		 (safe-get {'= = '< < '> > '<= <= '>= >=} f)
 		 (le/parse-and-check-hybrid-linear-expression (nth constraint 1)
-		   discrete-vars numeric-vars numeric-functions true)
+		   discrete-vars numeric-vars numeric-functions const-numeric-functions true)
 		 (le/parse-and-check-hybrid-linear-expression (nth constraint 2)
 		   discrete-vars  (when-not only-atomic-var? numeric-vars)
-		   numeric-functions))))))
+		   numeric-functions const-numeric-functions))))))
 		      
 (defn parse-and-check-constraint 
-  ([constraint discrete-vars predicates numeric-vars numeric-functions]
-     (parse-and-check-constraint constraint discrete-vars predicates numeric-vars numeric-functions false))
-  ([constraint discrete-vars predicates numeric-vars numeric-functions only-atomic-var?]
+  ([constraint discrete-vars predicates numeric-vars numeric-functions const-numeric-functions]
+     (parse-and-check-constraint constraint discrete-vars predicates numeric-vars numeric-functions const-numeric-functions false))
+  ([constraint discrete-vars predicates numeric-vars numeric-functions const-numeric-functions only-atomic-var?]
 ;  (println constraint)
   (if (or (empty? constraint) (= (first constraint) 'and))
       (make-conjunctive-constraint 
        (doall
 	(for [sub (next constraint)] 
-	 (parse-and-check-nonconjunctive-constraint sub discrete-vars predicates numeric-vars numeric-functions only-atomic-var?))))
-    (parse-and-check-nonconjunctive-constraint constraint discrete-vars predicates numeric-vars numeric-functions only-atomic-var?))))
+	 (parse-and-check-nonconjunctive-constraint sub discrete-vars predicates numeric-vars numeric-functions const-numeric-functions only-atomic-var?))))
+    (parse-and-check-nonconjunctive-constraint constraint discrete-vars predicates numeric-vars numeric-functions const-numeric-functions only-atomic-var?))))
 
 ; Constraints as envs.conditions.
 
@@ -196,45 +224,47 @@
 
 
 (deftest constraints
-  (is (evaluate-constraint (parse-and-check-constraint '(= 1 1) nil nil nil nil) nil nil [nil nil]))
-  (is (not (evaluate-constraint (parse-and-check-constraint '(= 1 2) nil nil nil nil) nil nil [nil nil])))
-  (is (evaluate-constraint (parse-and-check-constraint '(= x y) nil nil {'x 't 'y 't} nil) {'x 1 'y 1} nil [nil nil]))
-  (is (not (evaluate-constraint (parse-and-check-constraint '(= x y) nil nil {'x 't 'y 't} nil) {'x 2 'y 1} nil [nil nil])))
-  (is (evaluate-constraint (parse-and-check-constraint '(abc x y) '{x xt y yt} '{abc [xt yt]} nil nil) 
+  (is (evaluate-constraint (parse-and-check-constraint '(= 1 1) nil nil nil nil nil) nil nil [nil nil]))
+  (is (not (evaluate-constraint (parse-and-check-constraint '(= 1 2) nil nil nil nil nil) nil nil [nil nil])))
+  (is (evaluate-constraint (parse-and-check-constraint '(= x y) nil nil {'x 't 'y 't} nil nil) {'x 1 'y 1} nil [nil nil]))
+  (is (not (evaluate-constraint (parse-and-check-constraint '(= x y) nil nil {'x 't 'y 't} nil nil) {'x 2 'y 1} nil [nil nil])))
+  (is (evaluate-constraint (parse-and-check-constraint '(abc x y) '{x xt y yt} '{abc [xt yt]} nil nil nil) 
 				'{x x1 y y1} '{xt [x1] yt [y1]} ['#{[abc x1 y1]} nil]))
-  (is (not (evaluate-constraint (parse-and-check-constraint '(not (abc x y)) '{x xt y yt} '{abc [xt yt]} nil nil) 
+  (is (not (evaluate-constraint (parse-and-check-constraint '(not (abc x y)) '{x xt y yt} '{abc [xt yt]} nil nil nil) 
 				'{x x1 y y1} '{xt [x1] yt [y1]} ['#{[abc x1 y1]} nil])))
-  (is (not (evaluate-constraint (parse-and-check-constraint '(abc x y) '{x xt y yt} '{abc [xt yt]} nil nil) 
+  (is (not (evaluate-constraint (parse-and-check-constraint '(abc x y) '{x xt y yt} '{abc [xt yt]} nil nil nil) 
 				     '{x x1 y y1} '{xt [x1] yt [y1]} ['#{[abc x1 y2]} nil])))
-  (is (evaluate-constraint (parse-and-check-constraint '(and (= 1 1) (= 2 2)) nil nil nil nil) nil nil [nil nil]))
-  (is (not (evaluate-constraint (parse-and-check-constraint '(and (= 1 1) (= 2 1)) nil nil nil nil) nil nil [nil nil])))
-  (is (not (evaluate-constraint (parse-and-check-constraint '(and (= 2 1) (= 1 1)) nil nil nil nil) nil nil [nil nil])))
+  (is (evaluate-constraint (parse-and-check-constraint '(and (= 1 1) (= 2 2)) nil nil nil nil nil) nil nil [nil nil]))
+  (is (not (evaluate-constraint (parse-and-check-constraint '(and (= 1 1) (= 2 1)) nil nil nil nil nil) nil nil [nil nil])))
+  (is (not (evaluate-constraint (parse-and-check-constraint '(and (= 2 1) (= 1 1)) nil nil nil nil nil) nil nil [nil nil])))
   (is (evaluate-constraint 
 	    (parse-and-check-constraint 
 	     '(forall (x - xt) (foo x) (bar x)) 
-	     '{} '{foo [xt] bar [xt]} nil nil) 
+	     '{} '{foo [xt] bar [xt]} nil nil nil) 
 	    {} '{xt [x1 x2 x3]} ['#{[foo x1] [foo x2] [bar x1] [bar x2]} nil]))
   (is (not (evaluate-constraint 
 	    (parse-and-check-constraint 
 	     '(forall (x - xt) (foo x) (bar x)) 
-	     '{} '{foo [xt] bar [xt]} nil nil) 
+	     '{} '{foo [xt] bar [xt]} nil nil nil) 
 	    {} '{xt [x1 x2 x3]} ['#{[foo x1] [foo x3] [bar x1] [bar x2]} nil])))
   (is (evaluate-constraint 
 	    (parse-and-check-constraint 
 	     '(forall (x - xt) (and (foo x y) (< (frox x) (froy y))) (and (bar x) (= (froxy x y) z))) 
-	     '{y yt} '{foo [xt yt] bar [xt]} '{z zt} '{frox [xt] froy [yt] froxy [xt yt]}) 
+	     '{y yt} '{foo [xt yt] bar [xt]} '{z zt} '{frox [xt] froy [yt] froxy [xt yt]} nil) 
 	    '{y yv z 17} '{xt [x1 x2 x3 x4] yt [yv]} 
 	    ['#{[foo x1 yv] [foo x2 yv] [foo x3 yv] [bar x1] [bar x2]}
 	    '{[frox x1] 1, [frox x2] 2, [frox x3] 3, [frox x4] 1, [froy yv] 3,
 	      [froxy x1 yv] 17, [froxy x2 yv] 17, [froxy x3 yv] 19, [froxy x4 yv] 17}]))
   (is (not (evaluate-constraint 
+;	      (ground-hybrid-constraint 
 		 (parse-and-check-constraint 
 		  '(forall (x - xt) (and (foo x y) (< (frox x) (froy y))) (and (bar x) (= (froxy x y) z))) 
-		  '{y yt} '{foo [xt yt] bar [xt]} '{z zt} '{frox [xt] froy [yt] froxy [xt yt]}) 
-		 '{y yv z 17} '{xt [x1 x2 x3 x4] yt [yv]} 
-		 ['#{[foo x1 yv] [foo x2 yv] [foo x3 yv] [bar x1] [bar x2]}
-		 '{[frox x1] 1, [frox x2] 2, [frox x3] 3, [frox x4] 1, [froy yv] 3,
-		   [froxy x1 yv] 17, [froxy x2 yv] 16, [froxy x3 yv] 19, [froxy x4 yv] 17}]))))
+		  '{y yt} '{foo [xt yt] bar [xt]} '{z zt} '{frox [xt] froy [yt] froxy [xt yt]} nil)
+;		 '{y yv} {})
+	      '{z 17 y yv} '{xt [x1 x2 x3 x4] yt [yv]} 
+	      ['#{[foo x1 yv] [foo x2 yv] [foo x3 yv] [bar x1] [bar x2]}
+	       '{[frox x1] 1, [frox x2] 2, [frox x3] 3, [frox x4] 1, [froy yv] 3,
+		 [froxy x1 yv] 17, [froxy x2 yv] 16, [froxy x3 yv] 19, [froxy x4 yv] 17}]))))
   
 
 

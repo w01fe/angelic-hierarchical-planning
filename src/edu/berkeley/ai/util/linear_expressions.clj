@@ -191,64 +191,100 @@
   (if (empty? expr) 0
       (and (= (count expr) 1)
 	   (get expr nil))))
-    
-(defn evaluate-hybrid-linear-expr [expr var-map cont-state]
+
+
+(defn ground-hybrid-linear-expr 
+  "Assign all discrete variables and evaluate constants, producing a 
+   concrete linear expression in remaining grounded state vars and parameters."
+  [expr disc-var-map const-fns]
+  (into {} 
+    (for [[k v] expr]
+      [(if (coll? k) (props/simplify-atom disc-var-map k) k)
+       (if (number? v) v (v disc-var-map const-fns))])))
+	     
+(defn evaluate-grounded-hybrid-linear-expr 
+  "Evaluate the expression given continuous parameters + state variables.  
+   Assumes ground-hybrid-linear-expr has already been called."
+  [expr cont-var-map cont-state]
   (evaluate-linear-expr 
    (fn [var] 
      (if (coll? var)
-         (evaluate-hybrid-var (props/simplify-atom var-map var) cont-state)
-       (safe-get var-map var)))
+         (evaluate-hybrid-var var cont-state)
+       (safe-get cont-var-map var)))
    expr))
 
-(defn ground-and-simplify-hybrid-linear-expr [expr var-map constant-linear-fns cont-state]
-  (map-linear-expr-vars
-   (fn [var] 
-     (if (coll? var)
-         (if (contains? constant-linear-fns (first var))
-	     (evaluate-hybrid-var (props/simplify-atom var-map var) cont-state)
-	   (props/simplify-atom var-map var))
-       (let [n (safe-get var-map var)]
-	 (assert (number? n))
-	 n)))     
-   expr))
+(defn evaluate-hybrid-linear-expr 
+  "Ground and evaluate the expression."
+  [expr var-map cont-state]
+  (evaluate-grounded-hybrid-linear-expr 
+   (ground-hybrid-linear-expr expr var-map cont-state)
+   var-map cont-state))
+
+(defn- combine [op vs]
+  (if (every? number? vs) 
+    (apply op vs)
+    (fn [dvm cf]
+      (apply op (for [v vs] (if (number? v) v (v dvm cf)))))))
+ 
 
 (defn parse-and-check-hybrid-linear-expression
-  ([expr discrete-vars linear-vars linear-functions]
-     (parse-and-check-hybrid-linear-expression expr discrete-vars linear-vars linear-functions false))
-  ([expr discrete-vars linear-vars linear-functions only-atomic-var?]
+  ([expr discrete-vars numeric-vars numeric-functions constant-numeric-functions]
+     (parse-and-check-hybrid-linear-expression expr discrete-vars numeric-vars numeric-functions constant-numeric-functions false))
+  ([expr discrete-vars numeric-vars numeric-functions constant-numeric-functions only-atomic-var?]
 ;     (println expr)
   (cond (number? expr) 
           {nil expr}
-	(contains? linear-vars expr)
+	(contains? numeric-vars expr)
 	  {expr 1}
-        (contains? linear-functions (first expr))
-	  {(hybrid/check-hybrid-atom expr linear-functions discrete-vars) 1}
+	(contains? constant-numeric-functions (first expr))
+	  (let [checked (hybrid/check-hybrid-atom expr numeric-functions discrete-vars)]	   
+	    {nil (fn [disc-var-map const-fns] 
+		   (safe-get const-fns (props/simplify-atom disc-var-map checked)))})
+        (contains? numeric-functions (first expr))
+	  {(hybrid/check-hybrid-atom expr numeric-functions discrete-vars) 1}
         :else 
 	  (let [[op & args] expr
 		parsed-args (map #(parse-and-check-hybrid-linear-expression %
-				    discrete-vars (when-not only-atomic-var?  linear-vars) 
-				    linear-functions)
+				    discrete-vars (when-not only-atomic-var?  numeric-vars) 
+				    numeric-functions constant-numeric-functions false)
 				 args)]
 	    (condp = op
-	      '+ (apply merge-with + parsed-args)
-	      '- (apply merge-with + (first parsed-args) (map #(map-vals - %) (next parsed-args)))
+	      '+ (apply merge-all-with #(combine + %) parsed-args)
+	      '- (apply merge-all-with #(combine + %) 
+			    (cons (first parsed-args)
+				  (map (fn [m] (map-vals #(if (number? %) (- %) 
+							      (fn [x y] (- (% x y)))) m)) 
+				       (next parsed-args))))
 	      '* (let [[const-args var-args] (separate #(= (keys %) [nil]) parsed-args)
-		       c (apply * (map #(get % nil) const-args))]
-;		   (println var-args)
+		       consts (map #(get % nil) const-args)
+		       var-arg (or (first var-args) {nil 1})]
 		   (assert (<= (count var-args) 1))
-		   (map-vals #(* c %) (or (first var-args) {nil 1}))))))))
+		   (map-vals #(combine * (cons % consts)) var-arg)))))))
 
 
 (deftest linear-exprs 
-  (is (= (parse-and-check-hybrid-linear-expression '(- (* y 3) 1 (* 2 (+ x 5))) {} '#{x y} #{})
-	 {:x -2 :y 3 nil -11 }))
-  (is (thrown? Exception (parse-and-check-hybrid-linear-expression '(* x y) {} '#{x y} #{})))
+  (is (= (parse-and-check-hybrid-linear-expression 
+	  '(- (* y 3) 1 (* 2 (+ x 5))) {} '#{x y} #{} #{})
+	 '{x -2 y 3 nil -11 }))
+  (is (thrown? Exception (parse-and-check-hybrid-linear-expression '(* x y) {} '#{x y} #{} #{})))
+  (is (= (ground-hybrid-linear-expr 
+          (parse-and-check-hybrid-linear-expression 
+	   '(* [x a] [y b]) {'a 't1 'b 't2} {} '{x [t1] y [t2]} '#{x})
+	  '{a aa b bb} '{[x aa] 12})
+	 '{[y bb] 12}))
+  (is (= (ground-hybrid-linear-expr 
+          (parse-and-check-hybrid-linear-expression 
+	   '(* (+ [x a] 3) (- [y b] [x a] 4)) {'a 't1 'b 't2} {} '{x [t1] y [t2]} '#{x})
+	  '{a aa b bb} '{[x aa] 12})
+	 '{[y bb] 15 nil -240}))
   (is (= 25
-	 (evaluate-hybrid-linear-expr 
-	  (parse-and-check-hybrid-linear-expression 
-	   '(+ (- c 2) [gt a b]) 
-	   {'a 't1 'b 't2} {'c 'x} {'gt ['t1 't2]} )
-	  {'c 12 'a 'aa 'b 'bb} {'[gt aa bb] 15} ))))				   
+	 (evaluate-grounded-hybrid-linear-expr 
+	  (ground-hybrid-linear-expr
+	    (parse-and-check-hybrid-linear-expression 
+	     '(+ (- c 2) [gt a b]) 
+	     {'a 't1 'b 't2} {'c 'x} {'gt ['t1 't2]} #{})
+	    {'a 'aa 'b 'bb} {})
+	  {'c 12} {'[gt aa bb] 15}))))				   
 
 	  
 (comment 

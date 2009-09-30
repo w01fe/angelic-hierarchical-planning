@@ -76,6 +76,12 @@
 	      (assoc m k v)))
 	  m (apply concat entry-seqs)))
 	      
+(import '[java.util HashMap])
+(defn merge-all-with [f & ms]
+  (let [h (HashMap.)]
+    (doseq [m ms [k v] m] 
+      (.put h k (cons v (.get h k))))
+    (into {} (map-vals f h))))
 
 (defn assoc-cat "Like assoc but for maps to lists"
   [m k v]
