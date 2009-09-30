@@ -62,7 +62,7 @@
        (hc/parse-and-check-constraint split-points discrete-vars predicates numeric-vars numeric-functions true)
        (hc/parse-and-check-constraint precondition discrete-vars predicates numeric-vars numeric-functions true)
        (he/parse-and-check-effect     effect       discrete-vars predicates numeric-vars numeric-functions)
-       (le/parse-and-check-numeric-expression (or cost 1) discrete-vars numeric-vars numeric-functions)))))
+       (le/parse-and-check-hybrid-linear-expression (or cost 1) discrete-vars numeric-vars numeric-functions)))))
 
 
 
@@ -180,7 +180,7 @@
      (vec (cons (:name schema) (map #(util/safe-get var-map (second %)) (:vars schema))))
      (fn [state] 
        [(he/execute-effect effect var-map state)
-	(- (le/evaluate-numeric-expr cost-expr var-map (second state)))])
+	(- (le/evaluate-hybrid-linear-expr cost-expr var-map (second state)))])
      (hc/make-constraint-condition (util/safe-get schema :precondition) (util/safe-get action-space :objects) var-map))))
 
 (defn get-hs-action 
@@ -264,8 +264,7 @@
 
 ; TODO: prune empty intervals.
 
-;; TODO: this specificity doesn't belong here...
-(defmethod applicable-quasi-actions ::HybridActionSpace [[discrete-atoms numeric-vals] action-space]
+(defmethod applicable-quasi-actions ::HybridActionSpace has-applicable-quasi-actions [[discrete-atoms numeric-vals] action-space]
   (for [action ((:discrete-generator action-space) discrete-atoms)
 	:let [{:keys [var-map num]} action ;(do (println (:name (:schema action)) (:var-map action)) action)
 	      num (hc/get-numeric-yield num var-map (:objects action-space) [discrete-atoms numeric-vals])]
@@ -282,12 +281,12 @@
 		   iv/*real-line*
 		   (for [c num]
 		     (let [{:keys [pred left right]} c
-			   rval (:constant right)] 
-			   ;(evaluate-numeric-expr right var-map numeric-vals)]
+			   lval (le/extract-singleton-var left)
+			   rval (le/extract-constant right)]
 		       (util/assert-is (isa? (:class c) ::hc/NumConstraint))
-		       (util/assert-is (isa? (:class left) ::le/NumVar))
-		       (util/assert-is (isa? (:class right) ::le/NumConst))
-		       (util/assert-is (= (first num-vars) (:var left)))
+		       (util/assert-is (and lval (not (coll? lval))))
+		       (assert rval)
+		       (util/assert-is (= (first num-vars) lval))
 		       (condp = pred
 			 =  (iv/make-interval rval false rval false)
 			 <  (iv/make-interval Double/NEGATIVE_INFINITY true rval true)
@@ -325,13 +324,14 @@
 			     [discrete-atoms numeric-vals])
 	  split-points     (distinct 
 			    (for [c split-clauses]
-			      (let [{:keys [class pred left right]} c]
+			      (let [{:keys [class pred left right]} c
+				    lval (le/extract-singleton-var left)
+				    rval (le/extract-constant right)]
 				(util/assert-is (= class ::hc/NumConstraint))
 				(util/assert-is (= pred =))
-				(util/assert-is (= (:class left) ::le/NumVar))
-				(util/assert-is (= (:var left) var))
-				(util/assert-is (= (:class right) ::le/NumConst))
-				(util/safe-get right :constant))))]
+				(util/assert-is (= lval var))
+				(assert rval)
+				rval)))]
     ;  (println (:name (:schema action)) (:var-map action) interval split-points)
       (for [x split-points 
 	    :when (iv/interval-contains? interval x)]

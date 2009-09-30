@@ -13,7 +13,7 @@
 (defn execute-assignment [assignment var-map numeric-vals old-numeric-vals]
   (assoc numeric-vals
     (props/simplify-atom var-map (:form assignment))
-    (le/evaluate-numeric-expr (:expr assignment) var-map old-numeric-vals)))
+    (le/evaluate-hybrid-linear-expr (:expr assignment) var-map old-numeric-vals)))
 
 
 (defstruct hybrid-strips-effect :class :adds :deletes :assignments)
@@ -44,7 +44,7 @@
      (doall (for [a assignments] 
 	      (do (assert-is (= 3 (count a))) 
 		  (make-assignment (hybrid/check-hybrid-atom (nth a 1) numeric-functions discrete-vars)
-				   (le/parse-and-check-numeric-expression (nth a 2) discrete-vars numeric-vars numeric-functions))))))))
+				   (le/parse-and-check-hybrid-linear-expression (nth a 2) discrete-vars numeric-vars numeric-functions))))))))
 	 
 
 (defn effected-predicates [effect]

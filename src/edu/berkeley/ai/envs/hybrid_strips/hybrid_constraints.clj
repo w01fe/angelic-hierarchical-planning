@@ -23,18 +23,18 @@
 
 (defmethod evaluate-constraint ::NumConstraint [constraint var-map objects [discrete-atoms numeric-vals]]
   ((:pred constraint)
-   (le/evaluate-numeric-expr (:left constraint) var-map numeric-vals)
-   (le/evaluate-numeric-expr (:right constraint) var-map numeric-vals)))
+   (le/evaluate-hybrid-linear-expr (:left constraint) var-map numeric-vals)
+   (le/evaluate-hybrid-linear-expr (:right constraint) var-map numeric-vals)))
 
 (defmethod split-constraint ::NumConstraint [constraint var-map objects]
   [nil nil constraint])
 
-;; TODO: abstraction violation.
 (defmethod get-numeric-yield ::NumConstraint [constraint var-map objects [discrete-atoms numeric-vals]]
-  (if (isa? (:class (:left constraint)) ::le/NumVar) 
+  (let [sv (le/extract-singleton-var (:left constraint))]
+    (if (and sv (not (coll? sv)))
       [(make-numeric-constraint (:pred constraint) (:left constraint) 
-	 (le/make-numeric-constant (le/evaluate-numeric-expr (:right constraint) var-map numeric-vals)))]
-    (when (evaluate-constraint constraint var-map objects [discrete-atoms numeric-vals]) [])))
+	 {nil (le/evaluate-hybrid-linear-expr (:right constraint) var-map numeric-vals)})]
+    (when (evaluate-constraint constraint var-map objects [discrete-atoms numeric-vals]) []))))
 
 					
 
@@ -161,9 +161,9 @@
 	    (do (assert-is (= (count constraint) 3) "%s" constraint)
 		(make-numeric-constraint 
 		 (safe-get {'= = '< < '> > '<= <= '>= >=} f)
-		 (le/parse-and-check-numeric-expression (nth constraint 1)
+		 (le/parse-and-check-hybrid-linear-expression (nth constraint 1)
 		   discrete-vars numeric-vars numeric-functions true)
-		 (le/parse-and-check-numeric-expression (nth constraint 2)
+		 (le/parse-and-check-hybrid-linear-expression (nth constraint 2)
 		   discrete-vars  (when-not only-atomic-var? numeric-vars)
 		   numeric-functions))))))
 		      
@@ -256,13 +256,13 @@
 (defmethod extract-difference-constraints ::NumConstraint 
   [constraint var-map constant-numeric-functions numeric-vals] 
   (let [{:keys [pred left right]} constraint
-	left  (le/ground-and-simplify-numeric-expr left var-map constant-numeric-functions numeric-vals)
-	right (le/ground-and-simplify-numeric-expr right var-map constant-numeric-functions numeric-vals)]
+	left  (le/ground-and-simplify-hybrid-linear-expr left var-map constant-numeric-functions numeric-vals)
+	right (le/ground-and-simplify-hybrid-linear-expr right var-map constant-numeric-functions numeric-vals)]
     (assert-is (contains? #{::le/NumVar ::le/NumForm} (:class left)))
     (apply make-hybrid-strips-difference-constraint 
 	   pred 
 	   left
-	   (le/extract-numeric-expr-form-and-diff right))))
+	   (le/extract-hybrid-linear-expr-form-and-diff right))))
 
 (defmethod extract-difference-constraints ::ConjunctiveConstraint [constraint var-map constant-numeric-functions numeric-vals] 
   (apply concat (map #(extract-difference-constraints % var-map constant-numeric-functions numeric-vals) (:constraints constraint))))

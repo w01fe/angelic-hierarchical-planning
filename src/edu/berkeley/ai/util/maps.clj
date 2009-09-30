@@ -17,6 +17,9 @@
 (defn map-vals [f m]
   (into {} (map (fn [[k v]] [k (f v)]) m)))
 
+(defn filter-map [f m]
+  (reduce (fn [m e] (if (f e) m (dissoc m (key e))))
+	  m m))
 
 (defn assoc-f [m k f]
   (assoc m k
@@ -26,6 +29,15 @@
   (assoc m k
     (cons v
       (get m k))))
+
+(defn update!
+  "'Updates' a value in a transient associative structure, where ks is a
+  key and f is a function that will take the old value
+  and any supplied args and return the new value, and returns a new
+  nested structure."
+  ([m k f & args]
+     (assoc! m k (apply f (get m k) args))))
+
 
 (defmacro lazy-get "Like get but lazy about default"
   [m k d]

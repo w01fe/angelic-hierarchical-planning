@@ -9,7 +9,7 @@
   (doseq [v (ns-utils/ns-vars (ns-utils/get-ns ns))]
     (eval `(def/defalias ~v ~(symbol (str ns "/" v))))))
 
-(def *ns-to-slurp* '(cond combinatorics cond def duck-streams fcase lazy-seqs math repl-utils seq-utils shell-out str-utils trace))
+(def *ns-to-slurp* '(cond combinatorics cond def duck-streams fcase lazy-seqs math repl-utils seq-utils shell-out str-utils trace types))
 
 (doseq [n *ns-to-slurp*]
   (slurp-ns (symbol (str 'clojure.contrib. n))))

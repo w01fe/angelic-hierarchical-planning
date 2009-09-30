@@ -1,3 +1,7 @@
+; This file defines methods for handing linear (actually affine) expressions, represented as 
+; maps from variable names to multipliers.  nil is a 'special' variable that will
+; always be bound to one, for constant terms.  
+
 (ns edu.berkeley.ai.util.linear-expressions
   (:use clojure.test  edu.berkeley.ai.util  )
   (:require [edu.berkeley.ai.util [propositions :as props] [intervals :as iv] [hybrid :as hybrid]]
@@ -6,117 +10,256 @@
             [clojure.contrib.generic.math-functions :as gm]))
 
 
-;; Expressions
+
+;; TODO: allow intervals, etc? 
+
+
+;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
+;               Main machinery for dealing with affine expressions
+;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
+
+(defn map-linear-expr-vars 
+  "le is a linear expression, and f is a map that will be applied to all non-nil
+   vars in le, which can output a new variable name, numeric value, or assignment map.
+   nil is interpreted as 'no change', so we can use maps; to map to constant nil, use
+   1 instead.  If f maps each var to a matrix, implements matrix-vector product.  If 
+   f maps each var to a number, implements dot product."
+  [f le]
+  (persistent!
+   (reduce (fn [result [var mult]]
+	     (let [new-var (f var)]
+	       (cond (map? new-var)
+  		       (reduce (fn [result [var inner-mult]]
+				 (assoc! result var (+ (* mult inner-mult) (get result var 0))))
+			       result new-var)
+		     (number? new-var) 
+                       (assoc! result nil (+ (* mult new-var) (get result nil 0)))
+		     (nil? new-var)
+		       (assoc! result var (+ mult (get result var 0)))
+		     :else ;assume new var
+		       (assoc! result new-var (+ mult (get result new-var 0))))))
+	   (transient {nil (get le nil 0)}) (dissoc le nil))))
+
+(defn evaluate-linear-expr 
+  "Like map-linear-expr-vars, but enforces that the expression evaluates to a constant,
+   which is returned.  Typically, f will map each var to a number, in which case this
+   is like a dot product."
+  [f le]
+  (let [result (merge {nil 0} (map-linear-expr-vars f le))]
+    (assert (= (count result) 1))
+    (get result nil)))
+
+
+
+(deftest test-map-linear-expression-vars 
+  (is (= (map-linear-expr-vars
+	  {:a 5 
+	   :b {:f 2 :g 6 :h 9}
+	   :c :f
+	   :d {:f -1 :i 4 nil 1}
+	   :x 17
+	   nil 42}
+	  {:a 1 :b 2 :c -3 :d 3 :e 4 :g -3 nil 14})
+	 {:e 4 :f -2 :g 9 :h 18 :i 12 nil 22})))
+
+(deftest test-evaluate-linear-expr 
+  (is (= (evaluate-linear-expr {:a 1} {}) 0))
+  (is (= (evaluate-linear-expr
+	  {:a 5 :b -2 :c 5 :d {nil -7} :e -1 :g 1 nil 42}
+	  {:a 1 :b 2 :c -3 :d 3 :e 4 :g -3 nil 14})
+	 -28))
+  (is (thrown? Exception 
+	(evaluate-linear-expr
+	  {:a 5 :b -2 :c 5 :d {nil -7} :e -1 nil 42}
+	  {:a 1 :b 2 :c -3 :d 3 :e 4 :g -3 nil 14}))))
+
+
+
+;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
+;          Extracting normalized (in)equalities from affine expresisons.
+;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
+
+(defn- linear-expr-norm-scaling 
+  "Take an expression without a constant term, and return a numeric scaling to 
+   normalize it so that some canonical variable will have weight 1."
+  [le]
+  (assert (not (contains? le nil)))
+  (/ 1 (val (first (sort-by #(str (key %)) le)))))
+
+  
+(defn linear-expr-eqz->normalized-inequality
+  "Interpret le as an equality = 0, and return 
+   Return [norm-expr bounds], where norm-expr is a normalized linear expr
+   with no constant term, and bound are the corresponding bounds.
+   Returns true/false if the inequality is trivially satisfied or not."
+  [le]
+  (let [c (get le nil 0)
+	le (filter-map #(not (zero? (val %))) (dissoc le nil))]
+    (if (empty? le) (= c 0)
+      (let [m  (linear-expr-norm-scaling le)]
+	[(map-vals #(* m %) le) [(* -1 c m) (* -1 c m)]]))))
+
+(defn linear-expr-gez->normalized-inequality
+  "Interpret le as an inequality >= 0, and return 
+   Return [norm-expr bounds], where norm-expr is a normalized linear expr
+   with no constant term, and bound are the corresponding bounds.
+   Returns true/false if the inequality is trivially satisfied or not."
+  [le]
+  (let [c (get le nil 0)
+	le (filter-map #(not (zero? (val %))) (dissoc le nil))]
+    (if (empty? le) (>= c 0)
+      (let [m  (linear-expr-norm-scaling le)]
+	[(map-vals #(* m %) le) (if (< m 0) [nil (* -1 c m)] [(* -1 c m) nil])]))))
+
+(defn linear-expr-lez->normalized-inequality
+  "Interpret le as an inequality <= 0, and return 
+   Return [norm-expr bounds], where norm-expr is a normalized linear expr
+   with no constant term, and bound are the corresponding bounds.
+   Returns true/false if the inequality is trivially satisfied or not."
+  [le]
+  (let [c (get le nil 0)
+	le (filter-map #(not (zero? (val %))) (dissoc le nil))]
+    (if (empty? le) (<= c 0)
+      (let [m  (linear-expr-norm-scaling le)]
+	[(map-vals #(* m %) le) (if (< m 0) [(* -1 c m) nil] [nil (* -1 c m)])])) ))
+
+
+(deftest test-linear-expr-norm-scaling
+  (is (= (linear-expr-norm-scaling {:a 4 :b 3}) (/ 1 4)))
+  (is (= (linear-expr-norm-scaling {:a -7}) (/ 1 -7)))
+  (is (thrown? Exception (linear-expr-norm-scaling {})))
+  (is (thrown? Exception (linear-expr-norm-scaling {:a 3 nil 5}))))
+
+(deftest test-linear-expr-inequalities 
+  (is (= (linear-expr-eqz->normalized-inequality
+	  {:a 5 :b 10 :c 0 nil -10})
+	 [{:a 1 :b 2} [2 2]]))
+  (is (= (linear-expr-eqz->normalized-inequality
+	  {:a 5 :b 10})
+	 [{:a 1 :b 2} [0 0]]))
+  (is (= (map #(linear-expr-eqz->normalized-inequality %)
+	      [{nil -1} {nil 0} {nil 1} {}])
+	 [false true false true]))
+
+  (is (= (linear-expr-gez->normalized-inequality
+	  {:a 5 :b 10 :d 0 :e 0 nil -10})
+	 [{:a 1 :b 2} [2 nil]]))
+  (is (= (linear-expr-gez->normalized-inequality
+	  {:a -5 :b 10 nil -10})
+	 [{:a 1 :b -2} [nil -2]]))
+  (is (= (map #(linear-expr-gez->normalized-inequality %)
+	      [{nil -1} {nil 0} {nil 1} {}])
+	 [false true true true]))
+
+  (is (= (linear-expr-lez->normalized-inequality
+	  {:a 5 :b 10 :f 0 nil -10})
+	 [{:a 1 :b 2} [nil 2]]))
+  (is (= (linear-expr-lez->normalized-inequality
+	  {:a -5 :b 10 nil -10})
+	 [{:a 1 :b -2} [-2 nil]]))
+  (is (= (map #(linear-expr-lez->normalized-inequality %)
+	      [{nil -1} {nil 0} {nil 1} {}])
+	 [true true false true])))
+
+
+
+
+;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
+;                    Stuff useful for hybrid linear systems         
+;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
+
+;; Here things are a bit tricky, since it may be the case that things are not 
+;; actually linear until the values of constant numeric functions are known. 
+;; For these cases, we will allow the value of a linear map to be a function,
+;; which when called on a var-map and map from constant state variables to values,
+;; must evaluate to a constant.  This imposes the requirement that 
+;; before calling any of the above functions, we must know we have a grounded
+;; (constant simplified) expression first.
 
 (derive ::ContinuousMapState ::ContinuousState)
-
-(defmulti evaluate-numeric-expr
-  "Evaluate the given numeric expression in continuous state cont-state, after applying
-   the variable mappings in var-map.  A default implementation is provided for simple continuous
-   states represented as a maps from variables to numeric values, with metadata ::ContinuousMapState."
-  (fn [expr var-map cont-state] [(:class expr) (type cont-state)])) 
+(defmulti evaluate-hybrid-var (fn [var cont-state] (type cont-state)))
+(defmethod evaluate-hybrid-var ::ContinuousMapState [var cont-state] (safe-get cont-state var))
+(defmethod evaluate-hybrid-var clojure.lang.IPersistentMap [var cont-state] (safe-get cont-state var))
 
 
-;; Defualt method.  TODO: remove.
-(defmethod evaluate-numeric-expr :default [expr var-map cont-state]
-  (let [cont-state (or cont-state {})]
-    (assert-is (isa? (type cont-state) clojure.lang.IPersistentMap))
-    (evaluate-numeric-expr expr var-map (vary-meta cont-state assoc :type ::ContinuousMapState))))
+(defn extract-singleton-var [expr]
+  (when (= (count expr) 1)
+    (let [[k v] (first expr)]
+      (when (= v 1) k))))
 
+(defn extract-constant [expr]
+  (if (empty? expr) 0
+      (and (= (count expr) 1)
+	   (get expr nil))))
+    
+(defn evaluate-hybrid-linear-expr [expr var-map cont-state]
+  (evaluate-linear-expr 
+   (fn [var] 
+     (if (coll? var)
+         (evaluate-hybrid-var (props/simplify-atom var-map var) cont-state)
+       (safe-get var-map var)))
+   expr))
 
+(defn ground-and-simplify-hybrid-linear-expr [expr var-map constant-linear-fns cont-state]
+  (map-linear-expr-vars
+   (fn [var] 
+     (if (coll? var)
+         (if (contains? constant-linear-fns (first var))
+	     (evaluate-hybrid-var (props/simplify-atom var-map var) cont-state)
+	   (props/simplify-atom var-map var))
+       (let [n (safe-get var-map var)]
+	 (assert (number? n))
+	 n)))     
+   expr))
 
-(defmulti ground-and-simplify-numeric-expr 
-  "Simplify the expression given a set of constant-named numeric functions and mappings for these.
-   By default, does nothing."
-  (fn [expr var-map constant-numeric-fns numeric-vals] (:class expr)))
-
-(defmethod ground-and-simplify-numeric-expr   ::Num [expr var-map constant-numeric-fns numeric-vals] expr)
-
-
-;; A constant.
-(derive ::NumConst ::Num)
-(defstruct hybrid-strips-numeric-constant :class :constant)
-(defn make-numeric-constant [constant]
-;  (assert-is (number? constant))
-  (struct hybrid-strips-numeric-constant ::NumConst constant))
-
-(defmethod evaluate-numeric-expr [::NumConst ::ContinuousMapState] [expr var-map numeric-vals]
-  (:constant expr))
-
-
-;; A continuous parameter to an action.
-(derive ::NumVar ::Num)
-(defstruct hybrid-strips-numeric-var :class :var)
-(defn make-numeric-var [var]
-  (struct hybrid-strips-numeric-var ::NumVar var))
-
-(defmethod evaluate-numeric-expr [::NumVar ::ContinuousState]  [expr var-map numeric-vals]
-  (safe-get var-map (:var expr)))
-
-
-
-; An ungrounded form, i.e., var with unfilled arguments, e.g., (distance-to ?x)
-; Arguments come from discrete action arguments.
-(derive ::NumForm ::Num)
-(defstruct hybrid-strips-numeric-form :class :form)
-(defn make-numeric-form [form]
-  (struct hybrid-strips-numeric-form ::NumForm form))
-
-(defmethod evaluate-numeric-expr [::NumForm ::ContinuousMapState] [expr var-map numeric-vals]
-  ;(println var-map)
-  (safe-get numeric-vals (props/simplify-atom var-map (:form expr))))
-
-(defmethod ground-and-simplify-numeric-expr   ::NumForm [expr var-map constant-numeric-fns cont-state]
-  (if (contains? constant-numeric-fns (first (:form expr)))
-      (make-numeric-constant (make-safe (iv/interval-point (evaluate-numeric-expr expr var-map cont-state))))
-    (make-numeric-form (props/simplify-atom var-map (:form expr)))))
-
-
-
-; An expression.  Currently limited to +/- constant in some settings (i.e., effects?)
-(derive ::NumExpr ::Num)
-(defstruct hybrid-strips-numeric-expression :class :op :args)
-(defn make-numeric-expression [op args]
-  (struct hybrid-strips-numeric-expression ::NumExpr op args))
-
-(defmethod evaluate-numeric-expr [::NumExpr ::ContinuousMapState] [expr var-map numeric-vals]
-  (apply (:op expr) (map #(evaluate-numeric-expr % var-map numeric-vals) (:args expr))))
-
-(defmethod ground-and-simplify-numeric-expr   ::NumExpr [expr var-map constant-numeric-fns cont-state]
-  (let [op (:op expr)
-	args (map #(ground-and-simplify-numeric-expr % var-map constant-numeric-fns cont-state) (:args expr))]
-    (if (every? #(isa? (:class %) ::NumConst) args)
-        (make-numeric-constant (apply op (map :constant args)))
-      (make-numeric-expression op args))))
-
-
-
-(defn parse-and-check-numeric-expression 
-  ([expr discrete-vars numeric-vars numeric-functions]
-     (parse-and-check-numeric-expression expr discrete-vars numeric-vars numeric-functions false))
-;  (println expr)
-  ([expr discrete-vars numeric-vars numeric-functions only-atomic-var?]
+(defn parse-and-check-hybrid-linear-expression
+  ([expr discrete-vars linear-vars linear-functions]
+     (parse-and-check-hybrid-linear-expression expr discrete-vars linear-vars linear-functions false))
+  ([expr discrete-vars linear-vars linear-functions only-atomic-var?]
+;     (println expr)
   (cond (number? expr) 
-          (make-numeric-constant expr)
-	(contains? numeric-vars expr)
-	  (make-numeric-var expr)
-        (contains? numeric-functions (first expr))
-	  (make-numeric-form (hybrid/check-hybrid-atom expr numeric-functions discrete-vars))
+          {nil expr}
+	(contains? linear-vars expr)
+	  {expr 1}
+        (contains? linear-functions (first expr))
+	  {(hybrid/check-hybrid-atom expr linear-functions discrete-vars) 1}
         :else 
-	  (let [[op arity]   (safe-get {'* [ga/* 2] '+ [ga/+ 2] '- [ga/- 2] 'abs [gm/abs 1]} (first expr))]
-	    (assert-is (= arity (count (next expr))) "%s" expr)
-	    (make-numeric-expression op 
-	      (map #(parse-and-check-numeric-expression % 
-		     discrete-vars (when-not only-atomic-var?  numeric-vars) numeric-functions)
-		   (next expr)))))))
+	  (let [[op & args] expr
+		parsed-args (map #(parse-and-check-hybrid-linear-expression %
+				    discrete-vars (when-not only-atomic-var?  linear-vars) 
+				    linear-functions)
+				 args)]
+	    (condp = op
+	      '+ (apply merge-with + parsed-args)
+	      '- (apply merge-with + (first parsed-args) (map #(map-vals - %) (next parsed-args)))
+	      '* (let [[const-args var-args] (separate #(= (keys %) [nil]) parsed-args)
+		       c (apply * (map #(get % nil) const-args))]
+;		   (println var-args)
+		   (assert (<= (count var-args) 1))
+		   (map-vals #(* c %) (or (first var-args) {nil 1}))))))))
+
+
+(deftest linear-exprs 
+  (is (= (parse-and-check-hybrid-linear-expression '(- (* y 3) 1 (* 2 (+ x 5))) {} '#{x y} #{})
+	 {:x -2 :y 3 nil -11 }))
+  (is (thrown? Exception (parse-and-check-hybrid-linear-expression '(* x y) {} '#{x y} #{})))
+  (is (= 25
+	 (evaluate-hybrid-linear-expr 
+	  (parse-and-check-hybrid-linear-expression 
+	   '(+ (- c 2) [gt a b]) 
+	   {'a 't1 'b 't2} {'c 'x} {'gt ['t1 't2]} )
+	  {'c 12 'a 'aa 'b 'bb} {'[gt aa bb] 15} ))))				   
 
 	  
-(deftest numeric-exprs 
-  (is (= 25
-	 (evaluate-numeric-expr 
-	  (parse-and-check-numeric-expression '(+ (- c 2) [gt a b]) 
-					      {'a 't1 'b 't2} {'c 'x} {'gt ['t1 't2]} )
-	  {'c 12 'a 'aa 'b 'bb} {'[gt aa bb] 15} ))))
+(comment 
+  (let [[op arity]   (safe-get {'* [ga/* 2] '+ [ga/+ 2] '- [ga/- 2] 'abs [gm/abs 1]} (first expr))]
+	    (assert-is (= arity (count (next expr))) "%s" expr)
+	    (make-linear-expression op 
+	      (map #(parse-and-check-linear-expression % 
+		     discrete-vars (when-not only-atomic-var?  linear-vars) linear-functions)
+		   (next expr)))))
+
+	  
 
 
 
@@ -124,45 +267,3 @@
 
 
 
-
-
-
-
-
-
-
-
-(comment ;old stuff
-
-
-(defmulti extract-numeric-expr-form-and-diff (fn [expr] (:class expr)))  
-;(defmulti translate-numeric-expr-vars (fn [expr var-map] (:class expr))) 
-(defmethod extract-numeric-expr-form-and-diff ::Num [expr]         (throw (UnsupportedOperationException.)))
-
-;(defmethod translate-numeric-expr-vars        ::Num [expr var-map] expr) 
-
-;(defmethod translate-numeric-expr-vars        ::NumVar [expr var-map] 
-;  (make-numeric-var (safe-get var-map (:var expr)))) 
-
-
-
-(defmethod extract-numeric-expr-form-and-diff ::NumForm [expr]         
-  [expr 0])
-
-
-(defmethod extract-numeric-expr-form-and-diff ::NumExpr [expr] 
-  (let [op (:op expr)
-	args (:args expr)
-	[left right] args]
-;    (println "ARGS" args)
-    (assert-is (contains? #{+ -} op))
-    (assert-is (= 2 (count args)))
-    (assert-is (isa? (:class right) ::NumConst))
-    (let [[e diff] (extract-numeric-expr-form-and-diff left)]
-      [e (op diff (:constant right))])))
-
-;(defmethod translate-numeric-expr-vars        ::NumExpr [expr var-map] 
-;  (make-numeric-expression (:op expr) (map #(translate-numeric-expr-vars % var-map) (:args expr))))
-
-
-)

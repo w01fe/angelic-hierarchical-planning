@@ -1,17 +1,10 @@
-;; This file provides code to represent (the continuous portions of)
-;; planning problem states via LPs.  This includes tracking which LP variable or 
-;; constant each state variable refers to at a particular moment, and doing so 
-;; in such a way that minimizes the number of LP variables constructed.
-;; If called on a concrete hybrid sequence, should never need to make any LP calls. 
+;; This file defines valuations for hybrid problems, where the discrete part of the state
+;; is always known but we may be angelic about the continuous part.  
 
-;; Have to deal with two kinds of variables: grounded numeric state variables,
-;; and dummy numeric parameters for an HLA (always unique).
-;; Numeric parameters don't change, and always correspond to LP vars directly.
-;; If they are grounded, we should already get a number, so we have to deal with those too (maybe)?
+;; In particular, a hybrid-fixed-lp-valuation consists of a set of true discrete propositions,
+;; together with a continuous-lp-state for the continuous variables.  
 
-;; By default, returned states are guaranteed to be feasible.
-
-(ns edu.berkeley.ai.envs.hybrid-strips.hybrid-lp-states
+(ns edu.berkeley.ai.angelic.hybrid.hybrid-fixed-lp-valuations
   (:use clojure.test 
 	[edu.berkeley.ai.util :as util]
 	[edu.berkeley.ai.util [hybrid :as hybrid] [lp :as lp]]))

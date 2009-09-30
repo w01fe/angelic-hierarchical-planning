@@ -68,14 +68,15 @@
 
 (defn lp->mps* 
   "Turn the lp into an MPS file string.
-   Returns [mps-file-string namer var-order]"
+   Returns [mps-file-string namer var-order dummy-solutions]"
   [lp]
   (let [bounds      (:bounds lp)
 	constraints (:constraints lp)
 	objective   (:objective lp)
 	namer       (make-mps-namer)
 	out         (StringBuilder.)
-	cols        (HashMap.)]
+	cols        (HashMap.)
+	dummies     (HashMap.)]
     (.append out (str (fix "NAME" 14) "LP\n"))
     
     (.append out "ROWS\n")
@@ -143,10 +144,12 @@
 	  (.append out "  ")
 	  (when u (.append out (encode-mps-num u)))
 	  (.append out "\n")))
-       (println "Warning: skipping variable" v [l u] "which does not appear in obj or constraints.")))        
+       (do (println "Warning: skipping variable" v [l u] "which does not appear in obj or constraints.")
+	   (.put dummies v (or l u 0)))
+	   ))        
 
     (.append out "ENDATA\n")
-    [(.toString out) namer (keys cols)]))
+    [(.toString out) namer (keys cols) dummies]))
 
 
 
@@ -161,7 +164,7 @@
   "Solve the LP and return [var-binding-map sol-max-reward].  Returns nil for infeasible.
    Requrires GLPK (gnu LP solver kit) on the path."
   [lp]
-  (let [[mps-file-data namer var-order] (lp->mps* lp)
+  (let [[mps-file-data namer var-order dummies] (lp->mps* lp)
 	in-file (util/fresh-random-filename "/tmp/lp")
 	out-file (str in-file ".out")]
     (util/spit in-file mps-file-data)
@@ -169,7 +172,9 @@
     (let [[[rows cols] [stat1 stat2 rew] & body] (map #(read-string (str "[" % "]")) (util/read-lines out-file))]
       (cond (= stat1 stat2 1) nil ;infeasible
 	    (= stat1 stat2 2) ; solved
-	      [(into {} (map (fn [[status val marginal] var] [var val]) (drop rows body) var-order)) rew]
+	      [(merge (into {} dummies)
+		      (into {} (map (fn [[status val marginal] var] [var val]) (drop rows body) var-order)))
+	       rew]
 	    :else ;huh?
 	      (throw (RuntimeException. (str "Unknown result statuses from glpk: " stat1 " "  stat2)))
 	      ))))
@@ -179,7 +184,7 @@
   "Solve the LP and return [var-binding-map sol-max-reward].  Returns nil for infeasible.
    Requrires CLP (COIN_OR LP solver) on the path."  
   [lp]
-  (let [[mps-file-data namer var-order] (lp->mps* lp)
+  (let [[mps-file-data namer var-order dummies] (lp->mps* lp)
 	in-file (util/fresh-random-filename "/tmp/lp")
 	out-file (str in-file ".out")]
 ;    (println in-file)
@@ -189,7 +194,9 @@
       (assert (is (= [obj val] '[Objective value])))
       (cond (= status 'infeasible) nil 
 	    (= status 'optimal)
-	      [(into {} (map (fn [[_ _ val _] var] [var val]) body var-order)) (- rew)]
+	      [(merge (into {} dummies)
+		      (into {} (map (fn [[_ _ val _] var] [var val]) body var-order))) 
+	       (- rew)]
 	      ;; NOTE negation of reward due to apparent bug in CLP's handling of max.
 	    :else ;huh?
 	      (throw (RuntimeException. (str "Unknown result statuses from clp: " status)))
@@ -242,6 +249,8 @@
 ;; An incremental LP always comes with a feasible solution, definitely optimal if cost is set.
 ;  Unsolvable LPs will be nil.
 
+; TODO: normalize constraints somehow (i.e., lexicographically first var always = 1)
+
 (derive ::IncrementalLP ::LP)
 
 (defn make-incremental-lp [bounds objective constraints]
@@ -269,6 +278,7 @@
 (defn lp-constraint-violation 
   "Return [c-map violated-i] or nil for no violation."
   [[c-map i] sol]
+;  (println c-map i sol)
   (when-let [i (lp-interval-violation i (apply + (for [[v m] c-map] (* m (sol v)))))]
     [c-map i]))
 
@@ -292,22 +302,38 @@
 
 ;; TODO: better projection; find feasible solution with simple matrix operation, or switch to Octave/Matlab/R.
 ;; TODO: for single variable, do feasibility check against bounds/constraints before trying to fix.
+;; TODO: for single var, update bounds rather than constraints.  All constraints should be binary or greater.
 (defn add-lp-constraint [lp constraint-pair]
+;  (println "adding constraint" constraint-pair)
  (let [new-lp (update-in lp [:constraints (first constraint-pair)] intersect-lp-intervals (second constraint-pair))]
    (if-let [[vc [vl vh]] (lp-constraint-violation constraint-pair (:solution lp))]
        (do (println "current lp infeasible with new constraint.")
-	   (let [epsilon 0.00000000001
+	   (if (not (= (first (second constraint-pair)) (second (second constraint-pair))))
+	    (let [epsilon 0.00000000001
 		 target (if vl (+ vl epsilon) (- vh epsilon))
 		 proj (lp-constraint-projection (assoc constraint-pair 1 target) (:solution lp))]
+	      (println vc vl vh)
 	     (assert (not (lp-constraint-violation constraint-pair proj)))
 	     (if (not (lp-constraints-violation (:constraints lp) proj))
 	       (do (println "Projecting fixed it.")
 		   (assoc new-lp :solution proj :cost nil))
 	       (do (println "Projecting failed; trying from scratch")
-		   (make-incremental-lp (:bounds lp) (:objective lp) (:constraints new-lp))))))
+		   (make-incremental-lp (:bounds lp) (:objective lp) (:constraints new-lp)))))
+	    (do (println "Not projecting for equality; trying from scratch.")
+;		(println (:bounds lp) (:objective lp) (:constraints new-lp))
+		 (make-incremental-lp (:bounds lp) (:objective lp) (:constraints new-lp)))))
      (do (println "lucky; still feasible with new constraint")
 	  new-lp))))
 
+(defn add-lp-var [lp var [l u]]
+  (assert (not (get (:bounds lp) var)))
+  (when (and l u) (assert (<= l u)))
+  (assoc lp :bounds (assoc (:bounds lp) var [l u])
+	    :solution (assoc (:solution lp) var (or l u 0))))
+
+(defn increment-lp-objective [lp v-map]
+  "Increment the objective of the LP; v-map maps from variables to multipliers."
+  (assoc lp :objective (merge-with + (:objective lp) v-map) :cost nil))
 
 ; What happens when we assign a variable?  (to a constant/var), or add to another const/var? 
 ; All conditions, costs, etc refer to the variable *at that particular time*

@@ -1,6 +1,6 @@
 (ns edu.berkeley.ai.util.intervals
   (:use edu.berkeley.ai.util
-	[clojure.contrib.types :only (deftype)]
+;	[clojure.contrib.types :only (deftype)]
         [clojure.contrib.generic :only (root-type)])
   (:require [clojure.contrib.generic.arithmetic :as ga]
  ;           [clojure.contrib.generic.comparison :as gc]
