@@ -7,7 +7,7 @@
 	     [hybrid-constraints :as hc]
 	     [hybrid-effects :as he]]
 	    [edu.berkeley.ai.angelic.hybrid 
-	     [hybrid_fixed_lp_valuations :as hflv]])
+	     [hybrid-fixed-lp-valuations :as hflv]])
   )
 
 ;; Flat hybrid hierarchies, which do a usual primitive forward search
@@ -32,9 +32,11 @@
 (defn- make-hybrid-flat-act-hla [env opt-desc action-space]
   (struct hybrid-flat-act-hla ::HybridFlatActHLA env opt-desc action-space))
 
-(defstruct hybrid-flat-primitive-hla :class :action :env)
+(defstruct hybrid-flat-primitive-hla :class :env :desc)
 (defn- make-hybrid-flat-primitive-hla [env action]
-  (struct hybrid-flat-primitive-hla ::HybridFlatPrimitiveHLA action env))
+  (struct hybrid-flat-primitive-hla ::HybridFlatPrimitiveHLA env
+	  (hflv/make-quasiground-primitive-description action 
+	    (util/safe-get env :objects) (util/safe-get env :constant-numeric-vals))))
 
 (defstruct hybrid-flat-finish-hla :class :desc :env)
 (derive ::HybridFlatFinishHLA ::HybridFlatPrimitiveHLA)
@@ -42,9 +44,6 @@
   (struct hybrid-flat-finish-hla ::HybridFlatFinishHLA 
 	  (instantiate-description-schema *finish-description* env) env))
 
-(defn fully-ground-hybrid-solution [hlas final-val]
-  (assert (seq hlas))
-  ...)
 
 ; Special descriptions for Act.
 
@@ -78,13 +77,13 @@
   ::hflv/HybridFixedLPValuation)
 
 (defmethod hla-primitive? ::HybridFlatPrimitiveHLA [hla] true)
-(defmethod hla-primitive ::HybridFlatPrimitiveHLA [hla] (:action hla))
+(defmethod hla-primitive ::HybridFlatPrimitiveHLA [hla] (util/safe-get (:desc hla) :action))
 (defmethod hla-primitive ::HybridFlatFinishHLA [hla] :noop)
 
 (defmethod hla-primitive? ::HybridFlatActHLA [hla] false)
 (defmethod hla-primitive ::HybridFlatActHLA [hla] (throw (UnsupportedOperationException.)))
 
-(defmethod hla-name ::HybridFlatPrimitiveHLA [hla] (:name (:action hla)))
+(defmethod hla-name ::HybridFlatPrimitiveHLA [hla] (:name (:action (:desc hla)))) ;; TODO
 (defmethod hla-name ::HybridFlatFinishHLA [hla] 'finish)
 (defmethod hla-name ::HybridFlatActHLA [hla] 'act)
 
@@ -92,7 +91,7 @@
 (defmethod hla-immediate-refinements [::HybridFlatActHLA ::hflv/HybridFixedLPValuation]            [hla val]
   (cons [] 
 	(for [action ((util/safe-get (:action-space hla) :discrete-generator) (util/safe-get val :discrete-state))]
-	  [(make-hybrid-flat-primitive-hla (:env hla) action) hla])))))
+	  [(make-hybrid-flat-primitive-hla (:env hla) action) hla])))
 
 
 (defmethod hla-hierarchical-preconditions ::HybridFlatPrimitiveHLA [hla] 
@@ -100,8 +99,7 @@
 (defmethod hla-hierarchical-preconditions ::HybridFlatActHLA [hla] 
   envs/*true-condition*) 
 
-(defmethod hla-optimistic-description ::HybridFlatPrimitiveHLA [hla]
-  (make-explicit-description (envs/make-enumerated-action-space [(:action hla)])))
+(defmethod hla-optimistic-description ::HybridFlatPrimitiveHLA [hla] (:desc hla))
 
 (defmethod hla-optimistic-description ::HybridFlatFinishHLA [hla]
   (util/safe-get hla :desc))
@@ -109,8 +107,7 @@
 (defmethod hla-optimistic-description ::HybridFlatActHLA [hla] 
   (:opt-desc hla))
 
-(defmethod hla-pessimistic-description ::HybridFlatPrimitiveHLA [hla] 
-  (make-explicit-description (envs/make-enumerated-action-space [(:action hla)])))
+(defmethod hla-pessimistic-description ::HybridFlatPrimitiveHLA [hla] (:desc hla))
 
 (defmethod hla-pessimistic-description ::HybridFlatFinishHLA [hla]
   (util/safe-get hla :desc))

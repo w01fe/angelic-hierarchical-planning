@@ -285,7 +285,7 @@
   (let [#^HashMap graph-map (util/safe-get ^alt :graph-map)
 	subsumption-info    (util/safe-get alt :subsumption-info)
 	pess-val              (pessimistic-valuation node)]
-    (when (> (valuation-max-reward pess-val) Double/NEGATIVE_INFINITY)
+    (when-not (empty-valuation? pess-val) 
       (let [[pess-states pess-si] (get-valuation-states pess-val subsumption-info)
 	    pair [pess-states rest-plan]
 	    graph-tuples          (.get graph-map pair)]
@@ -404,7 +404,7 @@
   (if (empty? actions) 
     (make-alt-plan-node (:class node) alt name previous (inc parent-depth) )
     (let [nxt (get-alt-node alt (first actions) previous was-tight?)]
-      (if (and (or (> (valuation-max-reward (optimistic-valuation nxt)) Double/NEGATIVE_INFINITY)
+      (if (and (or (not (empty-valuation? (optimistic-valuation nxt)))
 		   (and (util/sref-set! (:fate ^nxt) :dead) false))
 	       (or (next actions) 
 		   (not (util/sref-get (:was-final? ^nxt)))
@@ -437,8 +437,7 @@
       (util/sref-up! search/*ref-counter* inc)
       (let [was-tight?  (and (contains? #{true :full} graph?) 
 			 (or (util/safe-get ^ref-node :was-tight?)
-			     (> (valuation-max-reward (pessimistic-valuation ref-node)) 
-				Double/NEGATIVE_INFINITY)))
+			     (not (empty-valuation? (pessimistic-valuation ref-node)))))
 			  ;   (= (valuation-max-reward (optimistic-valuation ref-node))
 			  ;	(valuation-max-reward (pessimistic-valuation ref-node)))))
 	    after-actions  (map :hla (reverse (take-while #(not (identical? % ref-node)) 

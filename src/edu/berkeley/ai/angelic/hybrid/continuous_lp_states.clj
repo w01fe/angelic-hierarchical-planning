@@ -68,7 +68,7 @@
    (make-lp-state* 
     (map-vals #(hash-map nil %) initial-state-map)
     (lp/make-incremental-lp {} {} {})
-    initial-world)))
+    initial-reward)))
 
 
 ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;

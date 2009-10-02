@@ -8,11 +8,12 @@
 ;; but continuous-ungrounded hybrid strips action, is also defined.
 
 (ns edu.berkeley.ai.angelic.hybrid.hybrid-fixed-lp-valuations
-  (:use clojure.test 
+  (:use clojure.test edu.berkeley.ai.angelic
 	[edu.berkeley.ai.util :as util]
 	[edu.berkeley.ai.util [hybrid :as hybrid] [lp :as lp] [linear-expressions :as le]]
+	[edu.berkeley.ai.envs.hybrid-strips :as hs]
 	[edu.berkeley.ai.envs.hybrid-strips [hybrid-constraints :as hc] [hybrid-effects :as he]]
-	[edu.berkeley.angelic.hybrid [continuous-lp-states :as cls]]))
+	[edu.berkeley.ai.angelic.hybrid [continuous-lp-states :as cls]]))
 
 (set! *warn-on-reflection* true)
 
@@ -48,7 +49,7 @@
 (defmethod valuation-max-reward ::HybridFixedLPValuation [val]
   (apply max (map #(last (cls/solve-lp-state %)) (:continuous-lp-states val))))
 
-
+(defmethod empty-valuation? ::HybridFixedLPValuation [val] false)
 
 ;(defmethod restrict-valuation [::HybridFixedLPValuation ...] [val condition]
   ; constrain-lp-state-??z
@@ -74,14 +75,14 @@
 	[adds deletes assignment-lm] (he/get-hybrid-effect-info (util/safe-get schema :effect) var-map)
 	{:keys [discrete-state continuous-lp-states]} val]
     (make-hybrid-fixed-lp-valuation
-     (apply assoc (apply dissoc discrete-state (simplify deletes)) (simplify adds))
+     (apply assoc (apply dissoc discrete-state deletes) adds)
      (for [cont continuous-lp-states
 	   cont (hc/apply-constraint (reduce cls/add-lp-state-param cont (vals num-var-map))
 				  num var-map num-var-map objects constant-fns 
 				  (fn [s a] (when (contains? discrete-state a) s))
 				  (fn [s a] (when-not (contains? discrete-state a) s))
-				  cls/constrain-lp-state-leq cls/constrain-lp-state-eqz cls/constrain-lp-state-gez)]
-       (cljs/update-lp-state cont assignment-lm 
+				  cls/constrain-lp-state-lez cls/constrain-lp-state-eqz cls/constrain-lp-state-gez)]
+       (cls/update-lp-state cont assignment-lm 
 	 (util/map-vals - (le/hybrid-linear-expr->grounded-lm (util/safe-get schema :cost-expr) 
 							   var-map num-var-map constant-fns)))))))
 
@@ -95,12 +96,12 @@
 	objects      (util/safe-get env :objects)
 	const-fns    (util/safe-get env :constant-numeric-vals)
 	final-val    (reduce (fn [val act]
-			       (progress-valation val
+			       (progress-valuation val
 			         {:class ::QuasigroundPrimitiveDescription :objects objects :constant-fns const-fns :action act}))
 			     act-seq)
 	[cont-result num-var-map rew] (util/first-maximal-element #(nth % 2)
 				       (map #(cls/solve-lp-state %) (util/safe-get final-val :continous-lp-states)))]
-    (map #(hybrid-action->action %
+    (map #(hs/hybrid-strips-action->action %
 	   (into (util/safe-get % :var-map) 
 		 (for [nv (safe-get % :num-vars)] [nv (util/safe-get num-var-map nv)]))
 	   action-space) act-seq)))
