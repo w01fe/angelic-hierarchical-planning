@@ -117,6 +117,10 @@
 (defn iterate-while [f x]
   (take-while identity (iterate f x)))
 
+(defn reduce-while [f a c]
+  (if (empty? c) a
+      (recur f (f a (first c)) (rest c))))
+
 (defn report-seq [msg coll]
   (lazy-seq (cons
     (do (println "(first" msg (first coll) ")") (first coll))

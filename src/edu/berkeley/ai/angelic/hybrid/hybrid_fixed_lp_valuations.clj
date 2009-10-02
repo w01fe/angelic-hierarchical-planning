@@ -4,66 +4,106 @@
 ;; In particular, a hybrid-fixed-lp-valuation consists of a set of true discrete propositions,
 ;; together with a continuous-lp-state for the continuous variables.  
 
+;; A corresponding kind of description, corresponding to a primitive, discrete-grounded
+;; but continuous-ungrounded hybrid strips action, is also defined.
+
 (ns edu.berkeley.ai.angelic.hybrid.hybrid-fixed-lp-valuations
   (:use clojure.test 
 	[edu.berkeley.ai.util :as util]
 	[edu.berkeley.ai.util [hybrid :as hybrid] [lp :as lp] [linear-expressions :as le]]
-	[edu.berkeley.ai.envs.hybrid-stripns [hybrid-constraints :as hc]
-	 [hybrid-effects :as he]]
-	[edu.berkeley.angelic.hybrid [hybrid-fixed-lp-valuations :as hflv]]))
+	[edu.berkeley.ai.envs.hybrid-strips [hybrid-constraints :as hc] [hybrid-effects :as he]]
+	[edu.berkeley.angelic.hybrid [continuous-lp-states :as cls]]))
 
 (set! *warn-on-reflection* true)
 
 
+; To potentially combine LPs, need: 
+;   Bigger feasible region, & dominated reward over intersection.
 
+(derive ::HybridFixedLPValuation :edu.berkeley.ai.angelic/Valuation)
 
-(defstruct lp-state-struct :state-var-map :incremental-lp)
+(defstruct hybrid-fixed-lp-valuation-struct :class :discrete-state :continuous-lp-states)
 
-(defn make-lp-state 
+(defn make-hybrid-fixed-lp-valuation
   "Take an assignment from all state variables to numeric values, and make a fresh
    lp-state.  A new variable called [:reward] will be assumed, with val 0, unless provided."
-  [initial-state-map]
-  )
+  [discrete-state continuous-lp-states]
+  (if (empty? continuous-lp-states)
+      *pessimal-valuation*
+    (struct hybrid-fixed-lp-valuation-struct ::HybridFixedLPValuation discrete-state continuous-lp-states)))
+  
 
 (defmethod map->valuation ::HybridFixedLPValuation [type m]
-  )
+  (if (empty? m) *pessimal-valuation*
+    (let [disc-states (map first (keys m))]
+      (assert (apply = disc-states))
+      (make-hybrid-fixed-lp-valuation 
+       (first disc-states)
+       (for [[[disc cont] rew] m]
+	 (make-lp-state cont rew))))))
 
-(defmethod explicit-valuation-map ::ExplicitValuationMap [val]
-  )
+(defmethod explicit-valuation-map ::HybridFixedLPValuation [val]
+  (throw (UnsupportedOperationException.)))
 
-(defmethod restrict-valuation [::ExplicitValuationMap ...] [val condition]
-  )
-
-(defmethod union-valuations [::ExplicitValuationMap ::ExplicitValuationMap] [v1 v2]
-  )
-
-(defmethod progress-valuation [::ExplicitValuationMap ...] [val desc]
-  ...)
+(defmethod valuation-max-reward ::HybridFixedLPValuation [val]
+  (apply max (map #(last (cls/solve-lp-state %)) (:continuous-lp-states val))))
 
 
 
-(defn constrain-lp-state 
-  "Apply a hybrid constraint (i.e., precondition).  Return nil for infeasible."
-  [state constraint]
-  )
+;(defmethod restrict-valuation [::HybridFixedLPValuation ...] [val condition]
+  ; constrain-lp-state-??z
+;  )
 
-(defn split-lp-state 
-  "Apply a hybrid constraint (i.e., precondition) and its negation, return [state-if-true, state-if-false].  
-   Nil for infeasible."
-  [state constraint]
-  )
 
-(defn update-lp-state
-  "Apply an effect to the state."
-  [state constraint]
-  )
 
-(defn solve-lp-state
-  "Return [var-map rew], where var-map is a mapping from all current state variables and 
-   all previous continuous parameters to optimal values, and rew is the corresponding maximal reward."
-  [state]
-  )
 
+; Descriptions for primitives.
+ ; :upper-reward-fn upper-reward-fn})
+
+(defn make-quasiground-primitive-description [quasiground-action objects constant-fns]
+  {:class ::QuasigroundPrimitiveDescription :objects objects :constant-fns constant-fns
+   :action (assoc quasiground-action
+	     :num-var-map (util/map-map #(vector % (atom nil)) 
+					(util/safe-get quasiground-action :num-vars)))})
+
+(defmethod progress-valuation 
+  [::HybridFixedLPValuation ::QuasigroundPrimitiveDescription] 
+  [val desc]
+  (let [{:keys [action objects constant-fns]} (:action desc)
+	{:keys [schema var-map num-var-map num]} action
+	[adds deletes assignment-lm] (he/get-hybrid-effect-info (util/safe-get schema :effect) var-map)
+	{:keys [discrete-state continuous-lp-states]} val]
+    (make-hybrid-fixed-lp-valuation
+     (apply assoc (apply dissoc discrete-state (simplify deletes)) (simplify adds))
+     (for [cont continuous-lp-states
+	   cont (hc/apply-constraint (reduce cls/add-lp-state-param cont (vals num-var-map))
+				  num var-map num-var-map objects constant-fns 
+				  (fn [s a] (when (contains? discrete-state a) s))
+				  (fn [s a] (when-not (contains? discrete-state a) s))
+				  cls/constrain-lp-state-leq cls/constrain-lp-state-eqz cls/constrain-lp-state-gez)]
+       (cljs/update-lp-state cont assignment-lm 
+	 (util/map-vals - (le/hybrid-linear-expr->grounded-lm (util/safe-get schema :cost-expr) 
+							   var-map num-var-map constant-fns)))))))
+
+
+(defn extract-fully-primitive-solution 
+  "Take a solution (quasi-ground) primitive sequence and the final
+   outcome, a hybrid-fixed-LP-valuation, and return a fully grounded
+   sequence of hybrid-strips actions that achieves the optimal reward."
+  [env act-seq]
+  (let [action-space (:action-space env)
+	objects      (util/safe-get env :objects)
+	const-fns    (util/safe-get env :constant-numeric-vals)
+	final-val    (reduce (fn [val act]
+			       (progress-valation val
+			         {:class ::QuasigroundPrimitiveDescription :objects objects :constant-fns const-fns :action act}))
+			     act-seq)
+	[cont-result num-var-map rew] (util/first-maximal-element #(nth % 2)
+				       (map #(cls/solve-lp-state %) (util/safe-get final-val :continous-lp-states)))]
+    (map #(hybrid-action->action %
+	   (into (util/safe-get % :var-map) 
+		 (for [nv (safe-get % :num-vars)] [nv (util/safe-get num-var-map nv)]))
+	   action-space) act-seq)))
 
 
 

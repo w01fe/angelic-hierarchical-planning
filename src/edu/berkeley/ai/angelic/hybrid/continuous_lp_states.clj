@@ -62,12 +62,13 @@
 (defn make-lp-state 
   "Take a concrete assignment from all state variables to numeric values, and make a fresh
    (immutable) lp-state.  nil acts like a special lp parameter, set to unity."
-  [initial-state-map]
+  ([initial-state-map] (make-lp-state initial-state-map 0))
+  ([initial-state-map initial-reward]
 ;  (assert (every? vector? (keys initial-state-map)))
-  (make-lp-state* 
-   (map-vals #(hash-map nil %) initial-state-map)
-   (lp/make-incremental-lp {} {} {})
-   0))
+   (make-lp-state* 
+    (map-vals #(hash-map nil %) initial-state-map)
+    (lp/make-incremental-lp {} {} {})
+    initial-world)))
 
 
 ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
@@ -85,8 +86,10 @@
 
 (defn- constrain-lp-state [state constraint]
   (println constraint)
-  (when-let [new-lp (add-lp-constraint (get-incremental-lp state) constraint)]
-    (assoc state :incremental-lp new-lp)))
+  (cond (true? constraint) state
+	(false? constraint) nil
+	:else (when-let [new-lp (add-lp-constraint (get-incremental-lp state) constraint)]
+		(assoc state :incremental-lp new-lp))))
 				       
 
 (defn constrain-lp-state-gez 

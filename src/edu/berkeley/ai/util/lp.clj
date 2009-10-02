@@ -363,7 +363,7 @@
 
 
 (defn add-lp-var [lp var [l u]]
-  (assert (not (get (:bounds lp) var)))
+  (assert (not (contains? (:bounds lp) var)))
   (when (and l u) (assert (<= l u)))
   (assoc lp :bounds (assoc (:bounds lp) var [l u])
 	    :solution (assoc (:solution lp) var (or l u 0))))

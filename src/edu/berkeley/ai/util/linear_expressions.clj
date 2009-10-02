@@ -252,6 +252,8 @@
     (fn [dvm cf]
       (apply op (for [v vs] (if (number? v) v (v dvm cf)))))))
  
+(defn hybrid-linear-expr->grounded-lm [expr disc-var-map cont-var-map const-fns]
+  (map-linear-expr-vars cont-var-map (ground-hybrid-linear-expr expr disc-var-map const-fns)))
 
 (defn parse-and-check-hybrid-linear-expression
   ([expr discrete-vars numeric-vars numeric-functions constant-numeric-functions]

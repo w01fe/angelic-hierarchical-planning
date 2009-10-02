@@ -1,6 +1,7 @@
 (ns edu.berkeley.ai.envs.hybrid-strips.hybrid-constraints
-  (:use clojure.test  edu.berkeley.ai.util  )
-  (:require [edu.berkeley.ai.util [propositions :as props] [intervals :as iv]
+  (:use clojure.test   )
+  (:require [edu.berkeley.ai.util :as util] 
+            [edu.berkeley.ai.util [propositions :as props] [intervals :as iv]
 	     [hybrid :as hybrid] [linear-expressions :as le]]
 		[edu.berkeley.ai.envs :as envs]
 	    ))
@@ -10,12 +11,31 @@
 ;; Just ground the expr for now, for kicks. 
 ;(defmulti ground-hybrid-constraint (fn [constraint discrete-var-map constant-numeric-vals] (:class; constraint)))
 
-(defmulti evaluate-constraint (fn [constraint var-map objects [discrete-atoms numeric-vals]] (:class constraint))) 
-(defmulti split-constraint (fn [constraint var-map objects] (:class constraint)))
-  ; Get [pos-atoms neg-atoms only-numeric-constraint]
-(defmulti get-numeric-yield (fn [constraint var-map objects [discrete-atoms numeric-vals]] (:class constraint)))
-  ; Get nil (false) or a possibly-empty list of numeric constraints, where the :left is a single ::NumVar expression.
+(defmulti evaluate-constraint 
+  "Evaluate if the constraint is true or false in the given state."
+  (fn [constraint var-map objects [discrete-atoms numeric-vals]] (:class constraint))) 
 
+(defmulti split-constraint 
+  "Split a constraint into [pos-atoms neg-atoms only-numeric-constraint]"
+  (fn [constraint var-map objects] (:class constraint)))
+
+(defmulti get-numeric-yield 
+  "Get nil (false) or a possibly-empty list of numeric constraints, 
+   where the :left is a single ::NumVar expression."
+  (fn [constraint var-map objects [discrete-atoms numeric-vals]] (:class constraint)))
+  
+(defmulti apply-constraint 
+  "Apply the constraint, and return a seq of resulting states.
+   pos/neg-fun applies a single discrete effect to the state, returning a new state or nil.
+   lez-fn, eqz-fn, and gez-fn do the same thing for a numeric constraint."
+  (fn [state constraint disc-var-map cont-var-map objects const-fns pos-fn neg-fn lez-fn eqz-fn gez-fn] (:class constraint)))
+
+(defmulti apply-constraint-and-negation
+  "Do our best to apply the constraint and its negation, and return a pair of seqs of resulting states [pos neg].
+   Ignore inversions of strict equality. 
+   pos/neg-fun applies a single discrete effect to the state, returning a new state or nil.
+   lez-fn, eqz-fn, and gez-fn do the same thing for a numeric constraint."
+  (fn [state constraint disc-var-map cont-var-map objects const-fns pos-fn neg-fn lez-fn eqz-fn gez-fn] (:class constraint)))
 
 
 
@@ -44,7 +64,25 @@
 	 {nil (le/evaluate-hybrid-linear-expr (:right constraint) var-map numeric-vals)})]
     (when (evaluate-constraint constraint var-map objects [discrete-atoms numeric-vals]) []))))
 
-					
+(defmethod apply-constraint ::NumConstraint [state constraint disc-var-map cont-var-map objects const-fns pos-fn neg-fn lez-fn eqz-fn gez-fn]
+  (let [lm (merge-with + (le/hybrid-linear-expr->grounded-lm (:left constraint) disc-var-map cont-var-map const-fns)
+	      (util/map-vals - (le/hybrid-linear-expr->grounded-lm (:right constraint) disc-var-map cont-var-map const-fns)))]
+    (when-let [new-state (condp = (:pred constraint)
+			   <= (lez-fn state lm)
+			   =  (eqz-fn state lm)
+			   >= (gez-fn state lm))]
+      [new-state])))
+
+(defmethod apply-constraint-and-negation ::NumConstraint 
+  [state constraint disc-var-map cont-var-map objects const-fns pos-fn neg-fn lez-fn eqz-fn gez-fn]
+  (let [pos (apply-constraint state constraint disc-var-map cont-var-map objects const-fns pos-fn neg-fn lez-fn eqz-fn gez-fn)]
+    (if (empty? pos) 
+        [[] [state]]
+      [pos 
+       (if (= = (:pred constraint)) [state]
+	 (apply-constraint state 
+	   (update-in constraint :pred #(condp = % <= >= >= <=))
+	   disc-var-map cont-var-map objects const-fns pos-fn neg-fn lez-fn eqz-fn gez-fn))])))
 
 
 
@@ -64,6 +102,20 @@
 (defmethod split-constraint ::DiscPosConstraint [constraint var-map objects]
   [[(props/simplify-atom var-map (:atom constraint))] nil nil])
 
+(defmethod apply-constraint ::DiscPosConstraint
+  [state constraint disc-var-map cont-var-map objects const-fns pos-fn neg-fn lez-fn eqz-fn gez-fn]
+  (when-let [new-state (pos-fn state (props/simplify-atom (:atom constraint) disc-var-map))]
+    [new-state]))
+
+(defmethod apply-constraint-and-negation ::DiscPosConstraint 
+  [state constraint disc-var-map cont-var-map objects const-fns pos-fn neg-fn lez-fn eqz-fn gez-fn]
+ (let [pos (apply-constraint state constraint disc-var-map cont-var-map objects const-fns pos-fn neg-fn lez-fn eqz-fn gez-fn)]
+    (if (empty? pos) [[] [state]]
+      [pos
+       (apply-constraint state (assoc constraint :class ::DiscNegConstraint)
+			 disc-var-map cont-var-map objects const-fns pos-fn neg-fn lez-fn eqz-fn gez-fn)])))
+
+
 
 (derive ::DiscNegConstraint ::Constraint)
 (defstruct hybrid-strips-discrete-neg-constraint :class :atom)
@@ -72,12 +124,26 @@
 
 ;(defmethod ground-hybrid-constraint ::DiscNegConstraint [constraint disc-var-map const-num-vals]
 ;  constraint)
-
+ 
 (defmethod evaluate-constraint ::DiscNegConstraint [constraint var-map objects [discrete-atoms numeric-vals]]
   (not (contains? discrete-atoms (props/simplify-atom var-map (:atom constraint)))))
 
 (defmethod split-constraint ::DiscNegConstraint [constraint var-map objects]
   [nil [(props/simplify-atom var-map (:atom constraint))] nil])
+
+(defmethod apply-constraint ::DiscNegConstraint
+  [state constraint disc-var-map cont-var-map objects const-fns pos-fn neg-fn lez-fn eqz-fn gez-fn]
+  (when-let [new-state (neg-fn state (props/simplify-atom (:atom constraint) disc-var-map))]
+    [new-state]))
+
+(defmethod apply-constraint-and-negation ::DiscNegConstraint 
+  [state constraint disc-var-map cont-var-map objects const-fns pos-fn neg-fn lez-fn eqz-fn gez-fn]
+ (let [pos (apply-constraint state constraint disc-var-map cont-var-map objects const-fns pos-fn neg-fn lez-fn eqz-fn gez-fn)]
+    (if (empty? pos) [[] [state]]
+      [pos
+       (apply-constraint state (assoc constraint :class ::DiscPosConstraint)
+			 disc-var-map cont-var-map objects const-fns pos-fn neg-fn lez-fn eqz-fn gez-fn)])))
+
 
 
 
@@ -107,6 +173,33 @@
 	  (recur (next constraints) (into yield c)))
       yield)))
 
+(defmethod apply-constraint ::ConjunctiveConstraint
+  [state constraint disc-var-map cont-var-map objects const-fns pos-fn neg-fn lez-fn eqz-fn gez-fn]
+  (let [constraints (util/group-by :class (util/safe-get constraint :constraints))]
+    (util/reduce-while 
+     (fn [states constraint] 
+       (mapcat #(apply-constraint % constraint disc-var-map cont-var-map objects 
+				  const-fns pos-fn neg-fn lez-fn eqz-fn gez-fn)
+	       states))
+     [state]
+     (apply concat (map constraints [::DiscNegConstraint ::DiscPosConstraint 
+				     ::NumConstraint ::ForallConstraint])))))
+
+
+;; Here we're guaranteed to have no "Forall" constraints. 
+; Decompose things as TTTTT vs F, TF, TTF, TTTF, TTTF.
+(defmethod apply-constraint-and-negation ::ConjunctiveConstraint 
+  [state constraint disc-var-map cont-var-map objects const-fns pos-fn neg-fn lez-fn eqz-fn gez-fn]
+  (loop [constraints (safe-get constraint :constraints) pos-state state neg-states []]
+    (if (empty? constraints) [[pos-state] neg-states]
+      (let [[constraint & more-constraints] constraints
+	    [pos neg] (apply-constraint-and-negation pos-state constraint)]
+	(if (empty? pos)
+	    [nil [state]]
+	  (recur more-constraints
+		 (util/safe-singleton pos)
+		 (if (empty? neg neg-states) (conj neg-states (util/safe-singleton neg)))))))))
+	  
 
 
 
@@ -159,6 +252,26 @@
         (when-let [c (get-numeric-yield (:yield constraint) (first var-maps) objects [discrete-atoms numeric-vals])]
 	  (recur (next var-maps) (into yield c)))
 	yield))))
+
+(defmethod apply-constraint ::ForallConstraint
+  [state constraint disc-var-map cont-var-map objects const-fns pos-fn neg-fn lez-fn eqz-fn gez-fn]
+  (let [vars (seq (:vars constraint))]
+    (loop [var-maps (for [combo (apply cartesian-product (map #(get objects (first %)) vars))]
+		      (into disc-var-map (map (fn [val tv] [(second tv) val]) combo vars)))
+	   states [state]]
+      (cond (empty? states) nil
+	    (empty? var-maps) states 
+	    :else 
+	 (recur 
+	  (rest var-maps)
+	  (apply concat      
+  	    (for [state states]
+	      (let [[pos neg] (apply-constraint-and-negation state (:condition constraint) (first var-maps) cont-var-map 
+							     objects const-fns pos-fn neg-fn lez-fn eqz-fn gez-fn)]
+		(concat (mapcat #(apply-constraint state (:yield constraint) (first var-maps) cont-var-map 
+						   objects const-fns pos-fn neg-fn lez-fn eqz-fn gez-fn) 
+				pos)
+			neg)))))))))
 
 
 (def *true-constraint* (make-conjunctive-constraint nil))

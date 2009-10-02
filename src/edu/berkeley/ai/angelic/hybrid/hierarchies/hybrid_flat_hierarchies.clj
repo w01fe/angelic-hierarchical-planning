@@ -1,68 +1,81 @@
 (ns edu.berkeley.ai.angelic.hierarchies.flat-hierarchies
   (:use edu.berkeley.ai.angelic edu.berkeley.ai.angelic.hierarchies)
-  (:require [edu.berkeley.ai [util :as util] [envs :as envs]])
+  (:require [edu.berkeley.ai [util :as util] [envs :as envs]]
+	    [edu.berkeley.ai.util [linear-expressions :as le]]
+	    [edu.berkeley.ai.envs.hybrid-strips :as hs]
+	    [edu.berkeley.ai.envs.hybrid-strips 
+	     [hybrid-constraints :as hc]
+	     [hybrid-effects :as he]]
+	    [edu.berkeley.ai.angelic.hybrid 
+	     [hybrid_fixed_lp_valuations :as hflv]])
   )
 
 ;; Flat hybrid hierarchies, which do a usual primitive forward search
 ;; but are angelic about continuous parameters to the "primitives".
 
 ;; TODO: two versions, with and without "splitting."
-; need to think more about splitting ...
+;; Splitting is complex in full angelic setting, but trivial here ...
 
 ;;; Flat hierarchy
 
-(defstruct hybrid-flat-hierarchy-schema :class :upper-reward-fn)
-(defn make-hybrid-flat-hierarchy-schema [upper-reward-fn]
-  (struct hybrid-flat-hierarchy-schema ::HybridFlatHierarchySchema upper-reward-fn))
+(defstruct hybrid-flat-hierarchy-schema :class #_ :upper-reward-fn)
+(defn make-hybrid-flat-hierarchy-schema [#_upper-reward-fn]
+  (struct hybrid-flat-hierarchy-schema ::HybridFlatHierarchySchema)); upper-reward-fn))
 
 (defn get-hybrid-flat-hierarchy 
-  ([env] (get-hybrid-flat-hierarchy env (constantly 0)))
-  ([env upper-reward-fn]
-   (instantiate-hierarchy (make-hybrid-flat-hierarchy-schema upper-reward-fn) env)))
+  ([env] (instantiate-hierarchy (make-hybrid-flat-hierarchy-schema) env)))
+;  ([env] (get-hybrid-flat-hierarchy env (constantly 0))))
+;  ([env upper-reward-fn]
+;   (instantiate-hierarchy (make-hybrid-flat-hierarchy-schema upper-reward-fn) env)))
 
-(defstruct flat-act-hla :class :env :opt-desc :action-space)
-;(derive ::HybridFlatActHLA ::HLA)
-(defn- make-flat-act-hla [env opt-desc action-space]
-  (struct flat-act-hla ::HybridFlatActHLA env opt-desc action-space))
+(defstruct hybrid-flat-act-hla :class :env :opt-desc :action-space)
+(defn- make-hybrid-flat-act-hla [env opt-desc action-space]
+  (struct hybrid-flat-act-hla ::HybridFlatActHLA env opt-desc action-space))
 
-(defstruct flat-primitive-hla :class :action :env)
-;(derive ::HybridFlatPrimitiveHLA ::HLA)
-(defn- make-flat-primitive-hla [env action]
-  (struct flat-primitive-hla ::HybridFlatPrimitiveHLA action env))
+(defstruct hybrid-flat-primitive-hla :class :action :env)
+(defn- make-hybrid-flat-primitive-hla [env action]
+  (struct hybrid-flat-primitive-hla ::HybridFlatPrimitiveHLA action env))
 
-(defstruct flat-finish-hla :class :desc :env)
+(defstruct hybrid-flat-finish-hla :class :desc :env)
 (derive ::HybridFlatFinishHLA ::HybridFlatPrimitiveHLA)
-(defn- make-flat-finish-hla [env]
-  (struct flat-finish-hla ::HybridFlatFinishHLA (instantiate-description-schema *finish-description* env) env))
+(defn- make-hybrid-flat-finish-hla [env]
+  (struct hybrid-flat-finish-hla ::HybridFlatFinishHLA 
+	  (instantiate-description-schema *finish-description* env) env))
 
+(defn fully-ground-hybrid-solution [hlas final-val]
+  (assert (seq hlas))
+  ...)
 
 ; Special descriptions for Act.
 
-(defn make-flat-act-optimistic-description [goal upper-reward-fn]
-  {:class ::HybridFlatActOptimisticDescription :goal goal :upper-reward-fn upper-reward-fn})
+(defn make-hybrid-flat-act-optimistic-description [goal #_upper-reward-fn]
+  {:class ::HybridFlatActOptimisticDescription :goal goal}) ; :upper-reward-fn upper-reward-fn})
 
 (defmethod progress-valuation [:edu.berkeley.ai.angelic/Valuation ::HybridFlatActOptimisticDescription] [val desc]
-  (let [state-map (explicit-valuation-map val)]
-    (util/assert-is (= (count state-map) 1))
-    (let [[prev-state prev-reward] (first state-map)]
+;  (let [state-map (explicit-valuation-map val)]
+;    (util/assert-is (= (count state-map) 1))
+;    (let [[prev-state prev-reward] (first state-map)]
       (make-conditional-valuation 
        (:goal desc)
-       (+ prev-reward ((:upper-reward-fn desc) prev-state))))))
+       (valuation-max-reward val)))
+;       (+ prev-reward ((:upper-reward-fn desc) prev-state))))))
    
 
 
+
 (defmethod instantiate-hierarchy ::HybridFlatHierarchySchema [hierarchy instance]
-  [(make-flat-act-hla 
+  [(make-hybrid-flat-act-hla 
     instance 
-    (make-flat-act-optimistic-description (envs/get-goal instance) (:upper-reward-fn hierarchy))
+    (make-hybrid-flat-act-optimistic-description 
+     (envs/get-goal instance) #_(:upper-reward-fn hierarchy))
     (envs/get-action-space instance))
-   (make-flat-finish-hla instance)])
+   (make-hybrid-flat-finish-hla instance)])
 
 (defmethod hla-default-optimistic-valuation-type ::HybridFlatActHLA [hla] 
-  :edu.berkeley.ai.angelic/ExplicitValuation)
+  ::hflv/HybridFixedLPValuation)
 
 (defmethod hla-default-pessimistic-valuation-type ::HybridFlatActHLA [hla] 
-  :edu.berkeley.ai.angelic/ExplicitValuation)
+  ::hflv/HybridFixedLPValuation)
 
 (defmethod hla-primitive? ::HybridFlatPrimitiveHLA [hla] true)
 (defmethod hla-primitive ::HybridFlatPrimitiveHLA [hla] (:action hla))
@@ -76,16 +89,11 @@
 (defmethod hla-name ::HybridFlatActHLA [hla] 'act)
 
 (defmethod hla-immediate-refinements [::HybridFlatPrimitiveHLA :edu.berkeley.ai.angelic/Valuation] [hla val] nil)
-(defmethod hla-immediate-refinements [::HybridFlatActHLA :edu.berkeley.ai.angelic/Valuation]       [hla val]
-  (let [state-map (explicit-valuation-map val)]
-    (util/assert-is (= (count state-map) 1))
-    (let [[prev-state prev-reward] (first state-map)]
-      (cons [] 
-	    (for [action (envs/applicable-actions prev-state (:action-space hla))]
-	      [(make-flat-primitive-hla (:env hla) action) hla])))))
-;	(if (envs/satisfies-condition? prev-state (envs/get-goal (:env hla)))
-;	    (cons [] prim-act-refs)
-;	  prim-act-refs)))))
+(defmethod hla-immediate-refinements [::HybridFlatActHLA ::hflv/HybridFixedLPValuation]            [hla val]
+  (cons [] 
+	(for [action ((util/safe-get (:action-space hla) :discrete-generator) (util/safe-get val :discrete-state))]
+	  [(make-hybrid-flat-primitive-hla (:env hla) action) hla])))))
+
 
 (defmethod hla-hierarchical-preconditions ::HybridFlatPrimitiveHLA [hla] 
   envs/*true-condition*) 

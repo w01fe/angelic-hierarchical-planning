@@ -1,6 +1,7 @@
 (ns edu.berkeley.ai.envs.hybrid-strips.hybrid-effects
-  (:use clojure.test  edu.berkeley.ai.util  )
-  (:require [edu.berkeley.ai.util [propositions :as props] [intervals :as iv]
+  (:use clojure.test   )
+  (:require [edu.berkeley.ai.util :as util] 
+	    [edu.berkeley.ai.util [propositions :as props] [intervals :as iv]
 	     [hybrid :as hybrid] [linear-expressions :as le]]
 	 	[edu.berkeley.ai.envs.hybrid-strips.hybrid-constraints :as hc]))
 
@@ -62,6 +63,19 @@
 	    (filter #(= (first %) '=)
 		    (if (or (empty? unparsed-effect) (= (first unparsed-effect) 'and)) 
 		        (next unparsed-effect) (list unparsed-effect))))))
+
+(defn get-hybrid-effect-info 
+  "Return [simplified-adds simplified-deletes simplified-effect-map] where simplified-effect-map
+   is a map from variables to linear maps specifying their new values"
+  [effect disc-var-map num-var-map constant-fns]
+  (let [{:keys [adds deletes assignments]} effect
+	simplify (fn [atoms] (map #(props/simplify-atom disc-var-map %) atoms))]
+    [(simplify adds)
+     (simplify deletes)
+     (map-map (fn [{:keys [form expr]}] 
+		[(props/simplify-atom disc-var-map form)
+		 (le/hybrid-linear-expr->grounded-lm expr disc-var-map num-var-map constant-fns)]) 
+	      assignments)]))
 
 (deftest hybrid-effects
   (is
