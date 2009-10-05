@@ -42,7 +42,9 @@
 (derive ::HybridFlatFinishHLA ::HybridFlatPrimitiveHLA)
 (defn- make-hybrid-flat-finish-hla [env]
   (struct hybrid-flat-finish-hla ::HybridFlatFinishHLA 
-	  (instantiate-description-schema *finish-description* env) env))
+    (hflv/make-hybrid-finish-description (envs/get-goal env) 
+      (util/safe-get env :objects) (util/safe-get env :constant-numeric-vals))
+    env))
 
 
 ; Special descriptions for Act.
@@ -51,6 +53,7 @@
   {:class ::HybridFlatActOptimisticDescription :goal goal}) ; :upper-reward-fn upper-reward-fn})
 
 (defmethod progress-valuation [:edu.berkeley.ai.angelic/Valuation ::HybridFlatActOptimisticDescription] [val desc]
+;  (println val)
 ;  (let [state-map (explicit-valuation-map val)]
 ;    (util/assert-is (= (count state-map) 1))
 ;    (let [[prev-state prev-reward] (first state-map)]
@@ -83,7 +86,12 @@
 (defmethod hla-primitive? ::HybridFlatActHLA [hla] false)
 (defmethod hla-primitive ::HybridFlatActHLA [hla] (throw (UnsupportedOperationException.)))
 
-(defmethod hla-name ::HybridFlatPrimitiveHLA [hla] (:name (:action (:desc hla)))) ;; TODO
+(defmethod hla-name ::HybridFlatPrimitiveHLA [hla] 
+  (let [a (:action (:desc hla))
+	s (util/safe-get a :schema)]
+    (vec (cons (:name s)
+	       (concat (map (:var-map a)  (util/difference (set (map second  (:vars s))) (set (:num-vars a))))
+		       (vals (:num-var-map a)))))))
 (defmethod hla-name ::HybridFlatFinishHLA [hla] 'finish)
 (defmethod hla-name ::HybridFlatActHLA [hla] 'act)
 

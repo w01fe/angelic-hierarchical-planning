@@ -28,6 +28,7 @@
 (defstruct lp-state-struct :state-var-map :incremental-lp :reward-const)
 (util/deftype ::ContinuousLPState make-lp-state*
   (fn [state-var-map incremental-lp reward-const] 
+    (assert (isa? (:class incremental-lp) ::lp/IncrementalLP))
     (struct lp-state-struct state-var-map incremental-lp reward-const))
   (fn [lps] (vals lps)))
 
@@ -85,7 +86,7 @@
 
 
 (defn- constrain-lp-state [state constraint]
-  (println constraint)
+;  (println constraint)
   (cond (true? constraint) state
 	(false? constraint) nil
 	:else (when-let [new-lp (add-lp-constraint (get-incremental-lp state) constraint)]

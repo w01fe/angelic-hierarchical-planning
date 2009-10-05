@@ -181,6 +181,7 @@
 	      ))))
       
 	  
+(def *bad-lp* nil)
 (defn solve-lp-clp
   "Solve the LP and return [var-binding-map sol-max-reward].  Returns nil for infeasible.
    Requrires CLP (COIN_OR LP solver) on the path."  
@@ -200,7 +201,8 @@
 	       (- rew)]
 	      ;; NOTE negation of reward due to apparent bug in CLP's handling of max.
 	    :else ;huh?
-	      (throw (RuntimeException. (str "Unknown result statuses from clp: " status)))
+	    (do  (println "Offending lp: " lp) (def *bad-lp* lp)
+		 (throw (RuntimeException. (str "Unknown result statuses from clp: " status))))
 	      ))))
 
 
@@ -318,16 +320,17 @@
 	        (do (print-debug 2 "Solution fixed by projecting to new bounds.")
 		    (assoc new-lp :solution new-sol))
 	      (do (print-debug 2 "All else failed with new bounds; solving again from scratch.")
-		  (solve-incremental-lp new-lp)))))))))
+		  (make-incremental-lp (:bounds new-lp) (:objective new-lp) (:constraints new-lp)) ))))))))
 			      
 
 (defn adjust-lp-constraint-bounds [lp constraint new-bounds]
   (let [old-bounds (get (:constraints lp) constraint)
-	computed-bounds (iv/unparse-interval
-			 (le/evaluate-linear-expr-ga 
-			  #(iv/parse-interval (safe-get (:bounds lp) %))
-			  constraint))
-	final-bounds (intersect-lp-intervals (intersect-lp-intervals old-bounds new-bounds) computed-bounds)]
+	merged-bounds (intersect-lp-intervals old-bounds new-bounds)
+	computed-bounds (when merged-bounds (iv/unparse-interval
+					     (le/evaluate-linear-expr-ga 
+					      #(iv/parse-interval (safe-get (:bounds lp) %))
+					      constraint)))
+	final-bounds (when merged-bounds (intersect-lp-intervals (intersect-lp-intervals old-bounds new-bounds) computed-bounds))]
     (print-debug 3  "For" constraint "have old bounds" old-bounds "new" new-bounds
 	     "computed" computed-bounds)
     (if (not final-bounds) (print-debug 2 "New bounds for constraint are inconsistent.")
@@ -353,6 +356,7 @@
    be <=, =, or >=, but not multiple (i.e., if both lb and ub are provided, they should be equal.
    Ideally, linear-expr-map should be normalized."  
   [lp [constraint-lm new-bounds]]
+  (assert (isa? (:class lp) ::IncrementalLP))
   (if (== (count constraint-lm) 1)
       (let [[var wt] (first constraint-lm)]
 	(cond (== wt 1) (adjust-lp-var-bounds lp var new-bounds)

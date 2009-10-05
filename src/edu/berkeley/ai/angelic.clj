@@ -141,6 +141,11 @@
 	(= (:reward-seq val1) (:reward-seq val2))                        :equal
 	(every? identity (map >= (:reward-seq val1) (:reward-seq val2))) :weak))
 
+(defmethod restrict-valuation [::Valuation :edu.berkeley.ai.envs/TrueCondition]
+  [val condition]
+  val)
+
+
 
 
 
@@ -378,6 +383,8 @@ improve efficiency of regression."
 		       (dissoc m k)))
 	   (:state-map val) (keys (:state-map val)))))
 
+(prefer-method restrict-valuation [::Valuation :edu.berkeley.ai.envs/TrueCondition] [::ExplicitValuation :edu.berkeley.ai.envs/Condition])
+
 (defmethod union-valuations [::ExplicitValuation ::ExplicitValuation] [v1 v2]
   (make-explicit-valuation 
    (util/merge-best > (:state-map v1) (:state-map v2))))
@@ -500,6 +507,8 @@ improve efficiency of regression."
    (envs/conjoin-conditions (:condition val) cond) 
    (:max-reward val)))
 
+(prefer-method restrict-valuation [::Valuation :edu.berkeley.ai.envs/TrueCondition] [::ConditionalValuation :edu.berkeley.ai.envs/Condition])
+
 (defmethod empty-valuation? ::ConditionalValuation [val] false)
 
 (defmethod get-valuation-states ::ConditionalValuation [val subsumption-map] [(gensym) nil])
@@ -538,6 +547,8 @@ improve efficiency of regression."
     (cond (empty? comps) *pessimal-valuation*
 	  (util/singleton? comps) (first comps)
 	  :else (assoc v :components comps))))
+
+(prefer-method restrict-valuation [::Valuation :edu.berkeley.ai.envs/TrueCondition] [::UnionValuation :edu.berkeley.ai.envs/Condition])
 
 (defmethod empty-valuation? ::UnionValuation [v] (every? empty-valuation? (:components v)))
 

@@ -37,7 +37,7 @@
        (and (not (gripperempty))
 	    (not (on ?b ?c))
 	    (holding ?b))
-      :cost 10)
+      :cost 1)
 
   (:action put
      :parameters   (?b - block ?c - block)
@@ -50,7 +50,7 @@
        (and (not (holding ?b))
 	    (on ?b ?c)
 	    (gripperempty))
-     :cost 10)
+     :cost 1)
 
 
   (:action left-empty
@@ -69,7 +69,7 @@
 			 (>= (gripperx) (blockcx ?b)))
 		    (>= ?ngx (+ (blockcx ?b) (blockrw ?b)))))
      :effect (= (gripperx) ?ngx)
-     :cost   (* 1 (- (gripperx) ?ngx)))
+     :cost   (+ 1 (* 1 (- (gripperx) ?ngx))))
 
   (:action right-empty
      :parameters   (?ngx - x)
@@ -87,7 +87,7 @@
 			 (<= (gripperx) (blockcx ?b)))
 		    (<= ?ngx (- (blockcx ?b) (blocklw ?b)))))
      :effect (= (gripperx) ?ngx)
-     :cost   (* 1 (- ?ngx (gripperx))))
+     :cost   (+ 1 (* 1 (- ?ngx (gripperx)))))
 
   (:action up-empty
      :parameters   (?ngy - y)
@@ -100,7 +100,7 @@
 	    (>= ?ngy (grippery))
 	    (<= ?ngy (height)))
      :effect (= (grippery) ?ngy)
-     :cost   (* 1 (- ?ngy (grippery))))
+     :cost   (+ 1 (* 1 (- ?ngy (grippery)))))
 
   (:action down-empty
      :parameters   (?ngy - y)
@@ -117,7 +117,7 @@
 			 (> (+ (blockcx ?b) (blockrw ?b)) (gripperx)))
 		    (>= ?ngy (blockty ?b))))
      :effect (= (grippery) ?ngy)
-     :cost   (* 1 (- (grippery) ?ngy)))
+     :cost   (+ 1  (* 1 (- (grippery) ?ngy))))
 
 
   (:action up-holding
@@ -133,7 +133,7 @@
      :effect       
        (and (= (grippery) ?ngy)
 	    (= (blockty ?b) ?ngy))
-     :cost (* 2 (- ?ngy (grippery))))
+       :cost (+ 1 (* 2 (- ?ngy (grippery)))))
 
 
   (:action down-holding
@@ -154,7 +154,7 @@
      :effect       
        (and (= (grippery)   ?ngy)
 	    (= (blockty ?b) ?ngy))
-     :cost (* 2 (- (grippery) ?ngy)))
+       :cost (+ 1 (* 2 (- (grippery) ?ngy))))
 
 
   (:action left-holding
@@ -179,7 +179,7 @@
      :effect       
        (and (= (gripperx)   ?ngx)
 	    (= (blockcx ?b) ?ngx))
-     :cost (* 2 (- (gripperx) ?ngx)))
+       :cost (+ 1  (* 2 (- (gripperx) ?ngx))))
 
   (:action right-holding
      :parameters   (?b - block ?ngx - x)
@@ -203,6 +203,6 @@
      :effect       
        (and (= (gripperx)   ?ngx)
 	    (= (blockcx ?b) ?ngx))
-     :cost (* 2 (- ?ngx (gripperx))))
+       :cost (+ 1  (* 2 (- ?ngx (gripperx)))))
 
   )

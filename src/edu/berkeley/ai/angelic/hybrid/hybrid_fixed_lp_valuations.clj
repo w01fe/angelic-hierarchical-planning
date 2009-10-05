@@ -9,7 +9,7 @@
 
 (ns edu.berkeley.ai.angelic.hybrid.hybrid-fixed-lp-valuations
   (:use clojure.test edu.berkeley.ai.angelic
-	[edu.berkeley.ai.util :as util]
+	[edu.berkeley.ai [ util :as util] [envs :as envs]]
 	[edu.berkeley.ai.util [hybrid :as hybrid] [lp :as lp] [linear-expressions :as le]]
 	[edu.berkeley.ai.envs.hybrid-strips :as hs]
 	[edu.berkeley.ai.envs.hybrid-strips [hybrid-constraints :as hc] [hybrid-effects :as he]]
@@ -20,6 +20,7 @@
 
 ; To potentially combine LPs, need: 
 ;   Bigger feasible region, & dominated reward over intersection.
+;; TODO: do seomthing smarter about duplicates
 
 (derive ::HybridFixedLPValuation :edu.berkeley.ai.angelic/Valuation)
 
@@ -31,7 +32,7 @@
   [discrete-state continuous-lp-states]
   (if (empty? continuous-lp-states)
       *pessimal-valuation*
-    (struct hybrid-fixed-lp-valuation-struct ::HybridFixedLPValuation discrete-state continuous-lp-states)))
+      (struct hybrid-fixed-lp-valuation-struct ::HybridFixedLPValuation discrete-state (set  continuous-lp-states))))
   
 
 (defmethod map->valuation ::HybridFixedLPValuation [type m]
@@ -60,22 +61,22 @@
 
 ; Descriptions for primitives.
  ; :upper-reward-fn upper-reward-fn})
+(derive ::QuasigroundPrimitiveDescription :edu.berkeley.ai.angelic/Description)
 
 (defn make-quasiground-primitive-description [quasiground-action objects constant-fns]
   {:class ::QuasigroundPrimitiveDescription :objects objects :constant-fns constant-fns
    :action (assoc quasiground-action
-	     :num-var-map (util/map-map #(vector % (atom nil)) 
+	     :num-var-map (util/map-map #(vector % (gensym (str %))) 
 					(util/safe-get quasiground-action :num-vars)))})
 
-(defmethod progress-valuation 
-  [::HybridFixedLPValuation ::QuasigroundPrimitiveDescription] 
-  [val desc]
-  (let [{:keys [action objects constant-fns]} (:action desc)
+(defn- progress-qps [val desc]
+;  (println (keys (:schema  (:action  desc))))
+  (let [{:keys [action objects constant-fns]} desc
 	{:keys [schema var-map num-var-map num]} action
-	[adds deletes assignment-lm] (he/get-hybrid-effect-info (util/safe-get schema :effect) var-map)
+	[adds deletes assignment-lm] (he/get-hybrid-effect-info (util/safe-get schema :effect) var-map num-var-map constant-fns)
 	{:keys [discrete-state continuous-lp-states]} val]
     (make-hybrid-fixed-lp-valuation
-     (apply assoc (apply dissoc discrete-state deletes) adds)
+     (reduce conj (reduce disj discrete-state deletes) adds)
      (for [cont continuous-lp-states
 	   cont (hc/apply-constraint (reduce cls/add-lp-state-param cont (vals num-var-map))
 				  num var-map num-var-map objects constant-fns 
@@ -85,6 +86,37 @@
        (cls/update-lp-state cont assignment-lm 
 	 (util/map-vals - (le/hybrid-linear-expr->grounded-lm (util/safe-get schema :cost-expr) 
 							   var-map num-var-map constant-fns)))))))
+
+(defmethod progress-valuation 
+  [::HybridFixedLPValuation ::QuasigroundPrimitiveDescription] 
+  [val desc]
+  (progress-qps val desc))
+
+
+
+(derive ::HybridFinishDescription ::QuasigroundPrimitiveDescription)
+
+(defn make-hybrid-finish-description [goal objects constant-fns]
+  (assoc (make-quasiground-primitive-description  
+	  {:schema 
+	   {:effect (he/make-effect nil nil nil) :cost-expr {}} 
+	   :var-map {} :num-vars [] :num (util/safe-get goal :constraint)}
+	  objects constant-fns)
+    :class ::HybridFinishDescription))
+
+(defn make-hybrid-finish-valuation [rew extra-keys]
+  (merge extra-keys (map->valuation :edu.berkeley.ai.angelic.dnf-valuations/DNFSimpleValuation {*finish-state* rew})))
+
+
+(defmethod progress-valuation    [::HybridFixedLPValuation ::HybridFinishDescription] [val desc]
+  (let [result (progress-qps val desc)]
+    (if (empty-valuation? result) *pessimal-valuation*
+      (make-hybrid-finish-valuation (valuation-max-reward val) result))))
+
+;; TODO: fix
+(defmethod progress-valuation    [:edu.berkeley.ai.angelic/ConditionalValuation ::HybridFinishDescription] [val desc]
+  (map->valuation :edu.berkeley.ai.angelic.dnf-valuations/DNFSimpleValuation {*finish-state* (valuation-max-reward val)}))
+
 
 
 (defn extract-fully-primitive-solution 
@@ -97,14 +129,16 @@
 	const-fns    (util/safe-get env :constant-numeric-vals)
 	final-val    (reduce (fn [val act]
 			       (progress-valuation val
-			         {:class ::QuasigroundPrimitiveDescription :objects objects :constant-fns const-fns :action act}))
+						   {:class ::QuasigroundPrimitiveDescription :objects objects :constant-fns const-fns :action act}))
+			     (map->valuation ::HybridFixedLPValuation {(envs/get-initial-state env) 0})
 			     act-seq)
 	[cont-result num-var-map rew] (util/first-maximal-element #(nth % 2)
-				       (map #(cls/solve-lp-state %) (util/safe-get final-val :continous-lp-states)))]
-    (map #(hs/hybrid-strips-action->action %
-	   (into (util/safe-get % :var-map) 
-		 (for [nv (safe-get % :num-vars)] [nv (util/safe-get num-var-map nv)]))
-	   action-space) act-seq)))
+								  (map #(cls/solve-lp-state %) (util/safe-get final-val :continuous-lp-states)))]
+;    (println num-var-map)
+    (map #(hs/hybrid-strips-action->action (:schema  %)
+					   (into (util/safe-get % :var-map) 
+						 (for [nv (util/safe-get % :num-vars)] [nv (util/safe-get num-var-map (util/safe-get (:num-var-map %) nv))]))
+					   action-space) act-seq)))
 
 
 

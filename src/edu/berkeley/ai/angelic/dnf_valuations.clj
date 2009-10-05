@@ -63,6 +63,7 @@
 	    :when restricted]
 	[restricted bound]))))
 
+(prefer-method restrict-valuation [:edu.berkeley.ai.angelic/Valuation :edu.berkeley.ai.envs/TrueCondition] [::DNFValuation :edu.berkeley.ai.envs/ConjunctiveCondition])
 
 (defmethod union-valuations         [::DNFValuation ::DNFValuation] union-valuations-dnf [val1 val2]
   (util/assert-is (= (:class val1) (:class val2)))

@@ -188,7 +188,7 @@
      (fn [state] 
        [(he/execute-effect effect var-map state)
 	(- (le/evaluate-hybrid-linear-expr cost-expr var-map (second state)))])
-     (hc/make-constraint-condition (util/safe-get schema :precondition) (util/safe-get action-space :objects) var-map))))
+     (hc/make-constraint-condition (util/safe-get schema :precondition) (util/safe-get action-space :objects) var-map false))))
 
 (defn get-hs-action 
   ([instance full-name]
@@ -447,7 +447,7 @@
    (hc/make-conjunctive-constraint
     (map #(hc/make-discrete-pos-constraint %) (:goal-atoms instance)))
    nil 
-   nil))
+   nil true))
 ;  (envs/make-conjunctive-condition (:goal-atoms instance) nil))
 
 	   

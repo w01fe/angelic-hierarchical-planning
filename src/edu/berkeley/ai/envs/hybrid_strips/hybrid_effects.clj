@@ -41,16 +41,16 @@
 (defn parse-and-check-effect [effect discrete-vars predicates numeric-vars numeric-functions const-numeric-fns]
   (let [effects (if (or (empty? effect) (= (first effect) 'and)) (next effect) (list effect))
 	{:keys [adds deletes assignments]}
-          (group-by (fn [[a]] (cond (= a '=) :assignments (= a 'not) :deletes :else :adds)) effects)]
+          (util/group-by (fn [[a]] (cond (= a '=) :assignments (= a 'not) :deletes :else :adds)) effects)]
 ;    (println adds deletes assignments)
     (make-effect 
      (doall (for [a adds] 
 	      (hybrid/check-hybrid-atom a predicates discrete-vars)))
      (doall (for [a deletes] 
-	      (do (assert-is (= 2 (count a))) 
+	      (do (util/assert-is (= 2 (count a))) 
 		  (hybrid/check-hybrid-atom (second a) predicates discrete-vars))))
      (doall (for [a assignments] 
-	      (do (assert-is (= 3 (count a))) 
+	      (do (util/assert-is (= 3 (count a))) 
 		  (make-assignment (hybrid/check-hybrid-atom (nth a 1) numeric-functions discrete-vars)
 				   (le/parse-and-check-hybrid-linear-expression (nth a 2) discrete-vars numeric-vars numeric-functions const-numeric-fns))))))))
 	 
@@ -72,7 +72,7 @@
 	simplify (fn [atoms] (map #(props/simplify-atom disc-var-map %) atoms))]
     [(simplify adds)
      (simplify deletes)
-     (map-map (fn [{:keys [form expr]}] 
+     (util/map-map (fn [{:keys [form expr]}] 
 		[(props/simplify-atom disc-var-map form)
 		 (le/hybrid-linear-expr->grounded-lm expr disc-var-map num-var-map constant-fns)]) 
 	      assignments)]))
