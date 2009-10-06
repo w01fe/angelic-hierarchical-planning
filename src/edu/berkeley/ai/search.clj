@@ -115,11 +115,11 @@
 	    dead-end (dead-end? next)
 	    sol      (extract-a-solution next)
 	    refs (when-not (or dead-end sol) (immediate-refinements next))]
-	(print "\n\n" (node-str next) p (reward-bounds next))
+	(print "\n\n" (node-str next) p (upper-reward-bound next) #_(reward-bounds next))
 	(cond dead-end     (print " is a dead end.")
 	      sol          (print " is a solution.")
 	  :else (print " has refinements \n                    " 
-                        (util/str-join "\n                     " (map #(str (reward-bounds %) " " 
+                        (util/str-join "\n                     " (map #(str  (upper-reward-bound %) #_(reward-bounds %) " " 
 									(node-str %)) refs)) "\n"))
 	(or sol
 	(when (or (when (> (util/sref-get n-skip) 0)
