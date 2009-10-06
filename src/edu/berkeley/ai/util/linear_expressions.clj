@@ -132,10 +132,10 @@
    Return [norm-expr bounds], where norm-expr is a normalized linear expr
    with no constant term, and bound are the corresponding bounds.
    Returns true/false if the inequality is trivially satisfied or not."
-  [le]
+  [le strict?]
   (let [c (get le nil 0)
 	le (filter-map #(not (zero? (val %))) (dissoc le nil))]
-    (if (empty? le) (>= c 0)
+    (if (empty? le) ((if strict? > >=) c 0)
       (let [m  (linear-expr-norm-scaling le)]
 	[(map-vals #(* m %) le) (if (< m 0) [nil (* -1 c m)] [(* -1 c m) nil])]))))
 
@@ -144,10 +144,10 @@
    Return [norm-expr bounds], where norm-expr is a normalized linear expr
    with no constant term, and bound are the corresponding bounds.
    Returns true/false if the inequality is trivially satisfied or not."
-  [le]
+  [le strict?]
   (let [c (get le nil 0)
 	le (filter-map #(not (zero? (val %))) (dissoc le nil))]
-    (if (empty? le) (<= c 0)
+    (if (empty? le) ((if strict? < <=) c 0)
       (let [m  (linear-expr-norm-scaling le)]
 	[(map-vals #(* m %) le) (if (< m 0) [(* -1 c m) nil] [nil (* -1 c m)])])) ))
 

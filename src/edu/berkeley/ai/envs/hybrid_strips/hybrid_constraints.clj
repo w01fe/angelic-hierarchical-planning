@@ -70,11 +70,11 @@
   (let [lm (merge-with + (le/hybrid-linear-expr->grounded-lm (:left constraint) disc-var-map cont-var-map const-fns)
 	      (util/map-vals - (le/hybrid-linear-expr->grounded-lm (:right constraint) disc-var-map cont-var-map const-fns)))]
     (when-let [new-state (condp = (:pred constraint)
-			   < (lez-fn state lm)
-			   <= (lez-fn state lm)
+			   < (lez-fn state lm true)
+			   <= (lez-fn state lm false)
 			   =  (eqz-fn state lm)
-			   >= (gez-fn state lm)
-			   > (gez-fn state lm))]
+			   >= (gez-fn state lm false)
+			   > (gez-fn state lm true))]
 ;      (println "new state: " new-state "\n")
       [new-state])))
 
@@ -86,7 +86,7 @@
       [pos 
        (if (= = (:pred constraint)) [state]
 	 (apply-constraint state 
-	   (update-in constraint [:pred] #(condp = % <= >= >= <= > <= < >=))
+	   (update-in constraint [:pred] #(condp = % <= > >= < > <= < >=))
 	   disc-var-map cont-var-map objects const-fns pos-fn neg-fn lez-fn eqz-fn gez-fn))])))
 
 

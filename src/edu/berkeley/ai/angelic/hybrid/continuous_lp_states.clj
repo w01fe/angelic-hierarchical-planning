@@ -85,32 +85,37 @@
 
 
 
-(defn- constrain-lp-state [state constraint]
+(defn- constrain-lp-state [state constraint strict?]
 ;  (println constraint)
   (cond (true? constraint) state
 	(false? constraint) nil
-	:else (when-let [new-lp (add-lp-constraint (get-incremental-lp state) constraint)]
+	:else (when-let [new-lp (add-lp-constraint (get-incremental-lp state) constraint strict?)]
 		(assoc state :incremental-lp new-lp))))
 				       
 
 (defn constrain-lp-state-gez 
   "Constrain constraint-lm linear-map to evaluate >= 0.  Return nil for inconsistent."
-  [state constraint-lm]
+  [state constraint-lm strict?]
   (constrain-lp-state state (le/linear-expr-gez->normalized-inequality 
-			     (le/map-linear-expr-vars (get-state-var-map state) constraint-lm))))
+			     (le/map-linear-expr-vars (get-state-var-map state) constraint-lm)
+			     strict?)
+		      strict?))
 
 
 (defn constrain-lp-state-lez 
   "Constrain constraint-lm linear-map to evaluate <= 0.  Return nil for inconsistent."
-  [state constraint-lm]
+  [state constraint-lm strict?]
   (constrain-lp-state state (le/linear-expr-lez->normalized-inequality
-			     (le/map-linear-expr-vars (get-state-var-map state) constraint-lm))))
+			     (le/map-linear-expr-vars (get-state-var-map state) constraint-lm)
+			     strict?)
+		      strict?))
 
 (defn constrain-lp-state-eqz 
   "Constrain constraint-lm linear-map to evaluate = 0.  Return nil for inconsistent."
   [state constraint-lm]
   (constrain-lp-state state (le/linear-expr-eqz->normalized-inequality
-			     (le/map-linear-expr-vars (get-state-var-map state) constraint-lm))))
+			     (le/map-linear-expr-vars (get-state-var-map state) constraint-lm))
+		      false))
   
 	    
 

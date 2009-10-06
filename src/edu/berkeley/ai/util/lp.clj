@@ -13,6 +13,8 @@
 ;; Bounds is like constraints, but instead of LC have just vars.  Every
 ;; var must be mentioned.  Can map to nil for unbounded.
 
+;; Currently, we try to handle strict inequalities on a best-effort basis.
+;; TODO: extend from bounds to constraints?
 
 (ns edu.berkeley.ai.util.lp
   (:use clojure.test [edu.berkeley.ai.util :as util]
@@ -310,10 +312,12 @@
     (reduce (fn [sol [k v]] (assoc sol k (- (sol k) (* dist v)))) sol norm)))
 
 
-(defn adjust-lp-var-bounds [lp var new-bounds]
+(defn adjust-lp-var-bounds [lp var new-bounds strict?]
   (let [old-bounds   (safe-get (:bounds lp) var)
 	final-bounds (intersect-lp-intervals old-bounds new-bounds)]
-    (if (not final-bounds) (print-debug 2 "New bounds for" var "are inconsistent.") 
+    (if (or (not final-bounds)
+	    (and strict? (let [[l u] final-bounds] (and l u (= l u))))) 
+        (print-debug 2 "New bounds for" var "are inconsistent.") 
       (let [sol          (:solution lp)
 	    cur-val      (safe-get sol var)
 	    [l-v u-v]    (lp-interval-violation final-bounds cur-val)
@@ -361,14 +365,14 @@
   "Add a new constraint, specified as [linear-expr-map [lb ub]] to the LP.  The constraint should
    be <=, =, or >=, but not multiple (i.e., if both lb and ub are provided, they should be equal.
    Ideally, linear-expr-map should be normalized."  
-  [lp [constraint-lm new-bounds]]
+  [lp [constraint-lm new-bounds] strict?]
   (assert (isa? (:class lp) ::IncrementalLP))
   (if (== (count constraint-lm) 1)
       (let [[var wt] (first constraint-lm)]
-	(cond (== wt 1) (adjust-lp-var-bounds lp var new-bounds)
-	      (>= wt 0) (adjust-lp-var-bounds lp var (map #(when % (/ % wt)) new-bounds))
+	(cond (== wt 1) (adjust-lp-var-bounds lp var new-bounds strict?)
+	      (>= wt 0) (adjust-lp-var-bounds lp var (map #(when % (/ % wt)) new-bounds) strict?)
 	      (< wt 0)  (let [[l u] new-bounds] 
-			  (adjust-lp-var-bounds lp var (map #(when % (/ % wt)) [u l])))))
+			  (adjust-lp-var-bounds lp var (map #(when % (/ % wt)) [u l]) strict?))))
     (adjust-lp-constraint-bounds lp constraint-lm new-bounds)))
 
 
