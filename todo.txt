@@ -14,10 +14,19 @@ Heuristic for hybrid blocks
 
 ; Batch changes to LPs, so we don't do lots of unnecessary solves. 
 
+;; TODO: heuristics
+ ;; TODO: absolute values.
+
+;; TODO: when we commit to a provably optimal high-level plan, 
+we should also commit to these state variable values...
 
 ;; Allow for exact descriptions
 ;; Upper bounds rather than solving LPs? 
-;; ...?
+
+;; Note:  incremental improvements
+;; Note: strict inequalities.
+
+
 
 ;;;;;;;;;;;;;;;; General TODO
 

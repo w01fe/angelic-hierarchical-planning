@@ -76,12 +76,15 @@
 ;                                   Updating
 ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
 
+
 (defn add-lp-state-param 
-  "Add a new parameter to the LP, with optional bounds.  If no bounds give, param will start unbounded."
-  ([state param] (add-lp-state-param state param [nil nil]))
-  ([state param bounds]
+  "Add a new parameter to the LP, with optional bounds and direction it will appear in
+   the reward expression (pos, neg, or 0/nil).   If no bounds give, param will 
+   start unbounded at 0. "
+  ([state param] (add-lp-state-param state param [nil nil] nil))
+  ([state param bounds dir]
      (assert (not (get (get-state-var-map state) param)))
-     (assoc state :incremental-lp (add-lp-var (get-incremental-lp state) param bounds))))
+     (assoc state :incremental-lp (add-lp-var (get-incremental-lp state) param bounds dir))))
 
 
 
@@ -169,7 +172,7 @@
 (deftest continuous-lp-states 
   ;Simple example, test bounds etc.
   (is (= (-> (make-lp-state {[:a] 1}) 
-	     (add-lp-state-param :c [0 2]) 
+	     (add-lp-state-param :c [0 2] nil) 
 	     (update-lp-state nil {:c 5 nil 2 [:a] 1}) 
 	     (solve-lp-state))
 	 [{[:a] 1} {:c 2} 13]))

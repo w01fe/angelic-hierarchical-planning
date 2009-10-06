@@ -48,7 +48,7 @@
   (throw (UnsupportedOperationException.)))
 
 (defmethod valuation-max-reward ::HybridFixedLPValuation [val]
-  (println "Solving Lps:" (count (:continuous-lp-states val)))
+;  (println "Solving Lps:" (count (:continuous-lp-states val)))
   (apply max (map #(last (cls/solve-lp-state %)) (:continuous-lp-states val))))
 
 (defmethod empty-valuation? ::HybridFixedLPValuation [val] false)
@@ -75,18 +75,19 @@
   (let [{:keys [action objects constant-fns]} desc
 	{:keys [schema var-map num-var-map num]} action
 	[adds deletes assignment-lm] (he/get-hybrid-effect-info (util/safe-get schema :effect) var-map num-var-map constant-fns)
-	{:keys [discrete-state continuous-lp-states]} val]
+	{:keys [discrete-state continuous-lp-states]} val
+	reward-lm (util/map-vals - (le/hybrid-linear-expr->grounded-lm (util/safe-get schema :cost-expr) 
+								       var-map num-var-map constant-fns))]
     (make-hybrid-fixed-lp-valuation
      (reduce conj (reduce disj discrete-state deletes) adds)
      (for [cont continuous-lp-states
-	   cont (hc/apply-constraint (reduce cls/add-lp-state-param cont (vals num-var-map))
+	   cont (hc/apply-constraint (reduce (fn [c v] (cls/add-lp-state-param c v [] (get reward-lm v))) 
+					     cont (vals num-var-map))
 				  num var-map num-var-map objects constant-fns 
 				  (fn [s a] (when (contains? discrete-state a) s))
 				  (fn [s a] (when-not (contains? discrete-state a) s))
 				  cls/constrain-lp-state-lez cls/constrain-lp-state-eqz cls/constrain-lp-state-gez)]
-       (cls/update-lp-state cont assignment-lm 
-	 (util/map-vals - (le/hybrid-linear-expr->grounded-lm (util/safe-get schema :cost-expr) 
-							   var-map num-var-map constant-fns)))))))
+       (cls/update-lp-state cont assignment-lm reward-lm)))))
 
 (defmethod progress-valuation 
   [::HybridFixedLPValuation ::QuasigroundPrimitiveDescription] 

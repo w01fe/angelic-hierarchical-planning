@@ -1,6 +1,8 @@
 ; This file provides utilities for caching functions of objects in their metadata.
 ; This provies functionality similar to memoization, but without leaking memory.
 
+;; TODO: handle identity problem elegantly, i.e., consistency of metadata with object.
+
 (ns edu.berkeley.ai.util.caches
   (:use clojure.test edu.berkeley.ai.util))
 

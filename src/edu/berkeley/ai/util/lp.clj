@@ -254,6 +254,9 @@
 ;; An incremental LP always comes with a feasible solution, definitely optimal if cost is set.
 ;  Unsolvable LPs will be nil.
 
+;; The only valid way to modify an incremental LP is to call make-incremental-lp*.  
+;; Associng-on to it may render the metadata inconsistent.  
+
 ; TODO: normalize constraints somehow (i.e., lexicographically first var always = 1)
 
 (derive ::IncrementalLP ::LP)
@@ -265,6 +268,7 @@
 
 (defn solve-incremental-lp [lp]
   (or (when (get-cache lp :cost) [(get-cache lp :solution) (get-cache lp :cost)])
+      (print-debug 2 "Actually solving incremental lp...")
       (when-let [[sol cost] (solve-lp-clp lp)]
 	(set-cache lp :solution sol)
 	(set-cache lp :cost cost)
@@ -344,7 +348,8 @@
 	  (let [new-sol (assoc sol var (or l-v u-v))]
 	    (if (not (lp-constraints-violation (:constraints lp) new-sol))
 	        (do (print-debug 2 "Solution fixed by projecting to new bounds.")
-		    (make-incremental-lp* new-bounds (:objective lp) (:constraints lp) new-sol nil))
+		    (make-incremental-lp* new-bounds (:objective lp) (:constraints lp) new-sol 
+					  (if (= 0 (get (:objective lp) var 0)) (current-optimal-cost lp) nil)))
 	      (do (print-debug 2 "All else failed with new bounds; solving again from scratch.")
 		  (make-incremental-lp new-bounds (:objective lp) (:constraints lp)) ))))))))
 			      
@@ -371,7 +376,7 @@
 		       (and (not (lp-constraints-violation (:constraints lp) proj))
 			    (not (lp-bounds-violation (:bounds lp) proj))
 			    (do (print-debug 2 "Projecting fixed it.")
-				(make-incremental-lp (:bounds lp) (:objective lp) new-constraints
+				(make-incremental-lp* (:bounds lp) (:objective lp) new-constraints
 						     proj nil)))))
 		(do (print-debug 2 "Projecting failed, or not attempted for eq; trying from scratch")
 		    (make-incremental-lp (:bounds lp) (:objective lp) new-constraints)))
@@ -379,7 +384,7 @@
 	      (make-incremental-lp* (:bounds lp) (:objective lp) new-constraints sol (current-optimal-cost lp))))))))  
 
 
-;; TODO: for single variable, do feasibility check against bounds/constraints before trying to fix.
+;; TODO: smarter handling of some things with constraints, i.e., free variables.?
 (defn add-lp-constraint 
   "Add a new constraint, specified as [linear-expr-map [lb ub]] to the LP.  The constraint should
    be <=, =, or >=, but not multiple (i.e., if both lb and ub are provided, they should be equal.
@@ -395,26 +400,40 @@
     (adjust-lp-constraint-bounds lp constraint-lm new-bounds)))
 
 
-(defn add-lp-var [lp var [l u]]
+;; TODO: idea here with dir is to supply an optimal initial value for the variable.
+(defn add-lp-var [lp var [l u] dir]
   (assert (not (contains? (:bounds lp) var)))
   (when (and l u) (assert (<= l u)))
   (make-incremental-lp* (assoc (:bounds lp) var [l u]) (:objective lp) (:constraints lp)
-			(assoc (current-feasible-solution lp) var (or l u 0))
+			(assoc (current-feasible-solution lp) var ;(or l u 0)
+			       (cond (or (not dir) (zero? dir)) (or l u 0)
+				     (pos? dir) (or u 100000000)
+				     (neg? dir) (or l -100000000)))
 			(current-optimal-cost lp)))
+
+(defn- pegged? [lp var val dir]
+  (cond (or (not dir) (zero? dir)) true
+        (pos? dir) (= val (second (safe-get (:bounds lp) var)))
+	(neg? dir) (= val (first (safe-get (:bounds lp) var)))))
 
 (defn increment-lp-objective [lp v-map]
   "Increment the objective of the LP; v-map maps from variables to multipliers."
-  (make-incremental-lp* (:bounds lp) (merge-with + (:objective lp) v-map) (:constraints lp)
-			(current-feasible-solution lp)
-			nil))
+  (let [sol (current-feasible-solution lp)
+	cost (current-optimal-cost lp)]
+    (make-incremental-lp* 
+     (:bounds lp) (merge-with + (:objective lp) v-map) (:constraints lp)
+     sol			
+     (when (and cost (every? (fn [[var val]] (pegged? lp var (safe-get sol var) val)) v-map))
+       (print-debug 2 "Got pegged solution when incrementing objective!")
+       (apply + cost (map (fn [[var val]] (* val (safe-get sol var))) v-map))))))
 
 
 (deftest test-incremental-lp ;TODO: improve
-  (let [lp1 (-> (make-incremental-lp {} {} {}) (add-lp-var :bam nil) (add-lp-constraint [{:bam 1} [-1 nil]] false) (add-lp-constraint [{:bam -1} [-1 nil]] false) (add-lp-var :boo [-1 1]))]
+  (let [lp1 (-> (make-incremental-lp {} {} {}) (add-lp-var :bam nil nil) (add-lp-constraint [{:bam 1} [-1 nil]] false) (add-lp-constraint [{:bam -1} [-1 nil]] false) (add-lp-var :boo [-1 1] nil))]
     (is (= lp1 {:class ::IncrementalLP, :constraints {}, :objective {}, :bounds {:boo [-1 1], :bam [-1 1]}}))
     (is (= (current-feasible-solution lp1)  {:boo -1, :bam 0}))
     (is (= (current-optimal-cost lp1) 0)))
-  (is (= (:constraints (-> (make-incremental-lp {} {} {}) (add-lp-var :bam nil) (add-lp-constraint [{:bam 1} [-1 nil]] false) (add-lp-constraint [{:bam -1} [-1 nil]] false) (add-lp-var :boo [-1 1]) (add-lp-constraint [{:bam 1 :boo 1} [-3 4]] false) (add-lp-constraint (linear-expr-lez->normalized-inequality {:bam -1 :boo -1 nil 1} false) false)))
+  (is (= (:constraints (-> (make-incremental-lp {} {} {}) (add-lp-var :bam nil nil) (add-lp-constraint [{:bam 1} [-1 nil]] false) (add-lp-constraint [{:bam -1} [-1 nil]] false) (add-lp-var :boo [-1 1] nil) (add-lp-constraint [{:bam 1 :boo 1} [-3 4]] false) (add-lp-constraint (linear-expr-lez->normalized-inequality {:bam -1 :boo -1 nil 1} false) false)))
 	 {{:bam 1, :boo 1} [1 2]})))
   
 
