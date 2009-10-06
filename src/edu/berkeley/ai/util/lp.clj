@@ -411,7 +411,10 @@
 				     (neg? dir) (or l -100000000)))
 			(current-optimal-cost lp)))
 
-(defn- pegged? [lp var val dir]
+(defn- pegged? 
+  "Is this variable already pegged against its bound in the provided direction (i.e., the direction 
+   it appears in the objective function?)"
+  [lp var val dir]
   (cond (or (not dir) (zero? dir)) true
         (pos? dir) (= val (second (safe-get (:bounds lp) var)))
 	(neg? dir) (= val (first (safe-get (:bounds lp) var)))))

@@ -13,21 +13,21 @@
        util.graphviz util.hybrid util.pdf util.propositions util.queues util.lp    
      envs envs.states.binary envs.states.explicit
        envs.strips envs.strips.smart-csps 
-       envs.hybrid-strips envs.hybrid-strips.hybrid-constraints
-       envs.hybrid-strips.hybrid-effects ;envs.hybrid-strips.hybrid-lp-states
+       envs.hybrid-strips envs.hybrid-strips.constraints
+       envs.hybrid-strips.effects ;envs.hybrid-strips.hybrid-lp-states
      search
        search.state-space
        search.algorithms.real-time search.algorithms.textbook
      angelic 
        angelic.dnf-valuations angelic.ncstrips-descriptions
        angelic.hierarchies
-         angelic.hierarchies.flat-hierarchies angelic.hierarchies.strips-hierarchies
+         angelic.hierarchies.flat angelic.hierarchies.strips
        ; angelic.algorithms
          angelic.algorithms.abstract-lookahead-graphs angelic.algorithms.abstract-lookahead-trees
-	 angelic.algorithms.offline-algorithms angelic.algorithms.online-algorithms
+	 angelic.algorithms.offline angelic.algorithms.online
        ;angelid.hybrid
-         angelic.hybrid.continuous-lp-states angelic.hybrid.hybrid-fixed-lp-valuations
-         angelic.hybrid.hierarchies.hybrid-flat-hierarchies
+         angelic.hybrid.continuous-lp-states angelic.hybrid.fixed-lp-valuations
+         angelic.hybrid.hierarchies.flat
      ;domains
        domains.nav-switch domains.warehouse domains.vac-rooms domains.discrete-road-trip
        domains.hybrid-blocks domains.road-trip domains.simple-road-trip
@@ -45,7 +45,7 @@
 
 
 
-;   util envs search search.algorithms.textbook angelic angelic.hierarchies domains.nav-switch domains.strips  angelic.dnf-valuations angelic.ncstrips-descriptions angelic.hierarchies.strips-hierarchies util.queues util.graphs domains.warehouse  domains.discrete-road-trip domains.road-trip angelic.hierarchies.abstract-lookahead-trees angelic.hierarchies.abstract-lookahead-graphs #_ angelic.hierarchies.clause-graphs angelic.hierarchies.offline-algorithms angelic.hierarchies.online-algorithms scripts.experiments scripts.cluster #_ scripts.z09-aij scripts.z09-icaps08-tr scripts.z09-aima util.datasets util.charts util.graphviz scripts.timing-warehouse scripts.timing-nav-switch ))
+;   util envs search search.algorithms.textbook angelic angelic.hierarchies domains.nav-switch domains.strips  angelic.dnf-valuations angelic.ncstrips-descriptions angelic.hierarchies.strips util.queues util.graphs domains.warehouse  domains.discrete-road-trip domains.road-trip angelic.hierarchies.abstract-lookahead-trees angelic.hierarchies.abstract-lookahead-graphs #_ angelic.hierarchies.clause-graphs angelic.hierarchies.offline angelic.hierarchies.online scripts.experiments scripts.cluster #_ scripts.z09-aij scripts.z09-icaps08-tr scripts.z09-aima util.datasets util.charts util.graphviz scripts.timing-warehouse scripts.timing-nav-switch ))
 ; domains.hybrid-strips domains.hybrid-blocks
 
 (defmacro uros []

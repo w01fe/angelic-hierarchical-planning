@@ -1,4 +1,4 @@
-(ns edu.berkeley.ai.envs.hybrid-strips.hybrid-constraints
+(ns edu.berkeley.ai.envs.hybrid-strips.constraints
   (:use clojure.test   )
   (:require [edu.berkeley.ai.util :as util] 
             [edu.berkeley.ai.util [propositions :as props] [intervals :as iv]
@@ -394,7 +394,7 @@
 (comment ;old, not in use
 
 ; Idea: left - right = diff, diff is a number, left may be a var or form, right must be a form or constant .
-; This is the restricted form of numeric constraint allowed in hybrid-strips-hierarchies for now.
+; This is the restricted form of numeric constraint allowed in hybrid-strips for now.
 (defstruct hybrid-strips-difference-constraint :pred :left :right :diff)
 (defn make-hybrid-strips-difference-constraint [pred left right diff]
   (struct hybrid-strips-difference-constraint pred left right diff))

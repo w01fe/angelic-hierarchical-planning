@@ -7,12 +7,12 @@
 ;; A corresponding kind of description, corresponding to a primitive, discrete-grounded
 ;; but continuous-ungrounded hybrid strips action, is also defined.
 
-(ns edu.berkeley.ai.angelic.hybrid.hybrid-fixed-lp-valuations
+(ns edu.berkeley.ai.angelic.hybrid.fixed-lp-valuations
   (:use clojure.test edu.berkeley.ai.angelic
 	[edu.berkeley.ai [ util :as util] [envs :as envs]]
 	[edu.berkeley.ai.util [hybrid :as hybrid] [lp :as lp] [linear-expressions :as le]]
 	[edu.berkeley.ai.envs.hybrid-strips :as hs]
-	[edu.berkeley.ai.envs.hybrid-strips [hybrid-constraints :as hc] [hybrid-effects :as he]]
+	[edu.berkeley.ai.envs.hybrid-strips [constraints :as hc] [effects :as he]]
 	[edu.berkeley.ai.angelic.hybrid [continuous-lp-states :as cls]]))
 
 (set! *warn-on-reflection* true)

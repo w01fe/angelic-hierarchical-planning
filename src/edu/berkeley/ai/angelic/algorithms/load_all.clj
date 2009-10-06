@@ -2,7 +2,7 @@
   (:require 
    [edu.berkeley.ai.angelic.algorithms
 	     abstract-lookahead-trees abstract-lookahead-graphs 
-	     offline-algorithms online-algorithms]
+	     offline online]
    edu.berkeley.ai.angelic.algorithms.tests.load-all))
   
             

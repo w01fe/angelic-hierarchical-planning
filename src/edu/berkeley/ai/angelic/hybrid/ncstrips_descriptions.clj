@@ -1,4 +1,4 @@
-(ns edu.berkeley.ai.angelic.hybrid-ncstrips-descriptions
+(ns edu.berkeley.ai.angelic.hybrid.ncstrips-descriptions
   (:refer-clojure)
   (:use edu.berkeley.ai.angelic)
   (:require [edu.berkeley.ai.util :as util] 

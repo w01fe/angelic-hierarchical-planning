@@ -1,13 +1,13 @@
-(ns edu.berkeley.ai.angelic.hybrid.hierarchies.hybrid-flat-hierarchies
+(ns edu.berkeley.ai.angelic.hybrid.hierarchies.flat
   (:use edu.berkeley.ai.angelic edu.berkeley.ai.angelic.hierarchies)
   (:require [edu.berkeley.ai [util :as util] [envs :as envs]]
 	    [edu.berkeley.ai.util [linear-expressions :as le]]
 	    [edu.berkeley.ai.envs.hybrid-strips :as hs]
 	    [edu.berkeley.ai.envs.hybrid-strips 
-	     [hybrid-constraints :as hc]
-	     [hybrid-effects :as he]]
+	     [constraints :as hc]
+	     [effects :as he]]
 	    [edu.berkeley.ai.angelic.hybrid 
-	     [hybrid-fixed-lp-valuations :as hflv]])
+	     [fixed-lp-valuations :as hflv]])
   )
 
 ;; Flat hybrid hierarchies, which do a usual primitive forward search

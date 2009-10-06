@@ -1,4 +1,4 @@
-(ns edu.berkeley.ai.angelic.algorithms.tests.test-abstract-lookahead-trees
+(ns edu.berkeley.ai.angelic.algorithms.tests.abstract-lookahead-trees
   (:use clojure.test edu.berkeley.ai.angelic edu.berkeley.ai.angelic.hierarchies
 	edu.berkeley.ai.angelic.algorithms.abstract-lookahead-trees)
   (:import [java.util HashMap Map$Entry HashSet])
@@ -8,9 +8,9 @@
 	    [edu.berkeley.ai.domains 
 	     [nav-switch :as nav-switch]
 	     [warehouse :as warehouse]]
-	    [edu.berkeley.ai.angelic.hierarchies.strips-hierarchies :as strips-hierarchies]
+	    [edu.berkeley.ai.angelic.hierarchies.strips :as strips-hierarchies]
 	    [edu.berkeley.ai.search.algorithms.textbook :as textbook]
-	    [edu.berkeley.ai.angelic.hierarchies.flat-hierarchies :as flat-hierarchies]
+	    [edu.berkeley.ai.angelic.hierarchies.flat :as flat]
 	    ))
 
 
@@ -55,12 +55,12 @@
 
 (deftest alt-nav-switch
    (testing "flat hierarchy, non-strips"
-     (get-and-check-sol *flat-ns-sol* (flat-hierarchies/get-flat-hierarchy *flat-ns*))
-     (get-and-check-sol *flat-ns-sol* (flat-hierarchies/get-flat-hierarchy *flat-ns* *flat-ns-heur*)))
+     (get-and-check-sol *flat-ns-sol* (flat/get-flat-hierarchy *flat-ns*))
+     (get-and-check-sol *flat-ns-sol* (flat/get-flat-hierarchy *flat-ns* *flat-ns-heur*)))
    (testing "flat hierarchy, strips"
-     (get-and-check-sol *strips-ns-sol* (flat-hierarchies/get-flat-hierarchy *strips-ns* *strips-ns-heur*))
+     (get-and-check-sol *strips-ns-sol* (flat/get-flat-hierarchy *strips-ns* *strips-ns-heur*))
      (doseq [simplifier *simplifiers*]
-       (get-and-check-sol *strips-ns-sol* (flat-hierarchies/get-flat-hierarchy (simplifier *strips-ns*)))))
+       (get-and-check-sol *strips-ns-sol* (flat/get-flat-hierarchy (simplifier *strips-ns*)))))
    (testing "flat-strips hierarchy"
      (get-and-check-sol *strips-ns-sol* (strips-hierarchies/get-flat-strips-hierarchy *strips-ns* *strips-ns-heur*))
      (doseq [simplifier (butlast *simplifiers*)]

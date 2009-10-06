@@ -1,10 +1,10 @@
-(ns edu.berkeley.ai.angelic.hierarchies.hybrid-strips-hierarchies
+(ns edu.berkeley.ai.angelic.hybrid.hierarchies.strips
   (:use [edu.berkeley.ai.angelic :as angelic] 
         [edu.berkeley.ai.angelic.hierarchies :as hierarchies])
   (:require [edu.berkeley.ai [util :as util] [envs :as envs]]
         [edu.berkeley.ai.util [propositions :as props] [hybrid :as hybrid]]
         [edu.berkeley.ai.envs.hybrid-strips :as hs]
-        [edu.berkeley.ai.angelic.hybrid-ncstrips-descriptions :as hybrid-ncstrips]
+        [edu.berkeley.ai.angelic.hybrid.ncstrips-descriptions :as hybrid-ncstrips]
         [edu.berkeley.ai.angelic.hybrid-dnf-simple-valuations :as hdsv]
 	[edu.berkeley.ai.search.smart-csps :as smart-csps]
         )

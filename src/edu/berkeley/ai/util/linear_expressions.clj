@@ -204,6 +204,8 @@
 ;; before calling any of the above functions, we must know we have a grounded
 ;; (constant simplified) expression first.
 
+; We will also allow absolute values; if a var is a map, we assume it's an absolute-value LM.
+
 (derive ::ContinuousMapState ::ContinuousState)
 (defmulti evaluate-hybrid-var (fn [var cont-state] (type cont-state)))
 (defmethod evaluate-hybrid-var ::ContinuousMapState [var cont-state] (safe-get cont-state var))
@@ -289,7 +291,11 @@
 		       consts (map #(get % nil) const-args)
 		       var-arg (or (first var-args) {nil 1})]
 		   (assert (<= (count var-args) 1))
-		   (map-vals #(combine * (cons % consts)) var-arg)))))))
+		   (map-vals #(combine * (cons % consts)) var-arg))
+	      'abs (let [arg (safe-singleton parsed-args)]
+		     (if (and (= (count arg) 1) (contains? arg nil))
+		         {nil (abs  (first (vals arg)))}
+		       {(safe-singleton parsed-args) 1})))))))
 
 
 (deftest linear-exprs 

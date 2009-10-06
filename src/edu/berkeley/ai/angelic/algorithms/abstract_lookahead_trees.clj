@@ -536,7 +536,7 @@
     (map 
      (fn [[s s2] a] 
        (make-initial-alt-node 
-	(edu.berkeley.ai.angelic.hierarchies.strips-hierarchies/sub-environment-hla 
+	(edu.berkeley.ai.angelic.hierarchies.strips/sub-environment-hla 
 	  (:hla a) s (state->condition s2 env))
 	(util/safe-get alt :arg-map)))
      (partition 2 1 state-seq)

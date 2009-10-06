@@ -1,4 +1,4 @@
-(ns edu.berkeley.ai.angelic.hierarchies.strips-hierarchies
+(ns edu.berkeley.ai.angelic.hierarchies.strips
   (:refer-clojure)
   (:use [edu.berkeley.ai.angelic :as angelic] 
         [edu.berkeley.ai.angelic.hierarchies :as hierarchies])
@@ -7,7 +7,7 @@
         [edu.berkeley.ai.envs.strips :as strips]
         [edu.berkeley.ai.angelic.ncstrips-descriptions :as ncstrips]
 	[edu.berkeley.ai.envs.strips.smart-csps :as smart-csps]
-	[edu.berkeley.ai.angelic.hierarchies.flat-hierarchies :as flat-hierarchies]
+	[edu.berkeley.ai.angelic.hierarchies.flat :as flat]
         )
   )
 
@@ -163,9 +163,9 @@
   (make-flat-act-optimistic-description-schema (second desc)))
 
 (defmethod instantiate-description-schema ::FlatActOptimisticDescriptionSchema [desc instance]
-  (flat-hierarchies/make-flat-act-optimistic-description (envs/get-goal instance) (:upper-reward-fn desc)))
+  (flat/make-flat-act-optimistic-description (envs/get-goal instance) (:upper-reward-fn desc)))
 
-(defmethod ground-description :edu.berkeley.ai.angelic.hierarchies.flat-hierarchies/FlatActOptimisticDescription [desc var-map] desc)
+(defmethod ground-description :edu.berkeley.ai.angelic.hierarchies.flat/FlatActOptimisticDescription [desc var-map] desc)
 
 
 ; Immediate refinements are [name pos-prec neg-prec unk-types expansion]

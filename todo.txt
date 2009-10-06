@@ -10,6 +10,9 @@ Heuristic for hybrid blocks
  - Allow absolute value in cost expressions. ?  Can minimize absolute
  values, can't maximize them.  
 
+;; Look at incanter/ clojueratica
+;; Consider MIPS as representation for valuations.
+
 ; Combine LPs, 
 
 ; Batch changes to LPs, so we don't do lots of unnecessary solves. 

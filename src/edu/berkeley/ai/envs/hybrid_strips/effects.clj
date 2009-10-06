@@ -1,9 +1,9 @@
-(ns edu.berkeley.ai.envs.hybrid-strips.hybrid-effects
+(ns edu.berkeley.ai.envs.hybrid-strips.effects
   (:use clojure.test   )
   (:require [edu.berkeley.ai.util :as util] 
 	    [edu.berkeley.ai.util [propositions :as props] [intervals :as iv]
 	     [hybrid :as hybrid] [linear-expressions :as le]]
-	 	[edu.berkeley.ai.envs.hybrid-strips.hybrid-constraints :as hc]))
+	 	[edu.berkeley.ai.envs.hybrid-strips.constraints :as hc]))
 
 
 
@@ -77,7 +77,7 @@
 		 (le/hybrid-linear-expr->grounded-lm expr disc-var-map num-var-map constant-fns)]) 
 	      assignments)]))
 
-(deftest hybrid-effects
+(deftest effects
   (is
    (= ['#{[fee] [frob xv] [bar xv]} '{[fra] 17 [frax xv] 13 }]
       (execute-effect 

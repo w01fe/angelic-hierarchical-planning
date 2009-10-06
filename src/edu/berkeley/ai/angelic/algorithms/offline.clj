@@ -1,4 +1,4 @@
-(ns edu.berkeley.ai.angelic.algorithms.offline-algorithms
+(ns edu.berkeley.ai.angelic.algorithms.offline
   (:use clojure.test edu.berkeley.ai.angelic.hierarchies)
   (:require [edu.berkeley.ai [util :as util] [search :as search]]
 	    [edu.berkeley.ai.util.queues :as queues]

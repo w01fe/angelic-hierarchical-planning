@@ -5,8 +5,8 @@
 		[linear-expressions :as le]]
            [edu.berkeley.ai [util :as util] [envs :as envs]]
 	   [edu.berkeley.ai.envs.hybrid-strips 
-	    	[hybrid-constraints :as hc]
-	    	[hybrid-effects :as he]]
+	    	[constraints :as hc]
+	    	[effects :as he]]
            [edu.berkeley.ai.envs.states.binary :as binary-states])
  )
 
