@@ -179,8 +179,8 @@
   ; that we get to state 3.
   (is (= (-> (make-lp-state {[:pos] 1}) 
 	     (add-lp-state-param :right)
-	     (constrain-lp-state-gez {:right 1})
-	     (constrain-lp-state-lez {:right 1 nil -5})
+	     (constrain-lp-state-gez {:right 1} false)
+	     (constrain-lp-state-lez {:right 1 nil -5} false)
 	     (update-lp-state {[:pos] {:right 1 [:pos] 1}} {:right 1 nil 10})
 	     (constrain-lp-state-eqz {[:pos] 1 nil -3})
 	     (solve-lp-state)
@@ -194,21 +194,21 @@
   (is (= (-> (make-lp-state {[:pos] 0 [:resource] 15}) 
 
 	     (add-lp-state-param :right1)
-	     (constrain-lp-state-gez {:right1 1})
-	     (constrain-lp-state-lez {:right1 1 nil -10})
+	     (constrain-lp-state-gez {:right1 1} false)
+	     (constrain-lp-state-lez {:right1 1 nil -10} false)
 	     (update-lp-state {[:pos] {:right1 1 [:pos] 1}
 			       [:resource] {[:resource] 1 :right1 -1}}
 			      {:right1 -2 nil -10})
 
 	     (add-lp-state-param :right2)
-	     (constrain-lp-state-gez {:right2 1})
-	     (constrain-lp-state-lez {:right2 1 nil -10})
+	     (constrain-lp-state-gez {:right2 1} false)
+	     (constrain-lp-state-lez {:right2 1 nil -10} false)
 	     (update-lp-state {[:pos] {:right2 1 [:pos] 1}
 			       [:resource] {[:resource] 1 :right2 -2}}
 			      {:right2 -1 nil -10})
 
-	     (constrain-lp-state-eqz {[:pos] 1 nil -10})
-	     (constrain-lp-state-gez {[:resource] 1})
+	     (constrain-lp-state-eqz {[:pos] 1 nil -10} )
+	     (constrain-lp-state-gez {[:resource] 1} false)
 	     (solve-lp-state)
 	     )
 	 [{[:pos] 10 [:resource] 0} {:right1 5 :right2 5} -35]))

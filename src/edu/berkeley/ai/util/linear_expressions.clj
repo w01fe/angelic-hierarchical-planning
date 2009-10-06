@@ -170,22 +170,22 @@
 	 [false true false true]))
 
   (is (= (linear-expr-gez->normalized-inequality
-	  {:a 5 :b 10 :d 0 :e 0 nil -10})
+	  {:a 5 :b 10 :d 0 :e 0 nil -10} false)
 	 [{:a 1 :b 2} [2 nil]]))
   (is (= (linear-expr-gez->normalized-inequality
-	  {:a -5 :b 10 nil -10})
+	  {:a -5 :b 10 nil -10} false)
 	 [{:a 1 :b -2} [nil -2]]))
-  (is (= (map #(linear-expr-gez->normalized-inequality %)
+  (is (= (map #(linear-expr-gez->normalized-inequality % false)
 	      [{nil -1} {nil 0} {nil 1} {}])
 	 [false true true true]))
 
   (is (= (linear-expr-lez->normalized-inequality
-	  {:a 5 :b 10 :f 0 nil -10})
+	  {:a 5 :b 10 :f 0 nil -10} false)
 	 [{:a 1 :b 2} [nil 2]]))
   (is (= (linear-expr-lez->normalized-inequality
-	  {:a -5 :b 10 nil -10})
+	  {:a -5 :b 10 nil -10} false)
 	 [{:a 1 :b -2} [-2 nil]]))
-  (is (= (map #(linear-expr-lez->normalized-inequality %)
+  (is (= (map #(linear-expr-lez->normalized-inequality % false)
 	      [{nil -1} {nil 0} {nil 1} {}])
 	 [true true false true])))
 

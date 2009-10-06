@@ -48,6 +48,7 @@
   (throw (UnsupportedOperationException.)))
 
 (defmethod valuation-max-reward ::HybridFixedLPValuation [val]
+  (println "Solving Lps:" (count (:continuous-lp-states val)))
   (apply max (map #(last (cls/solve-lp-state %)) (:continuous-lp-states val))))
 
 (defmethod empty-valuation? ::HybridFixedLPValuation [val] false)
