@@ -145,6 +145,9 @@
    maximal reward."
   [state]
   (let [[var-map rew] (lp/solve-incremental-lp (get-incremental-lp state))]
+    (when (nil? var-map) 
+      (println "bad LP: " (get-incremental-lp state))
+      (throw (RuntimeException. "Bad lp in solve-lp-state")))
     [(map-vals (fn [lm] (le/evaluate-linear-expr var-map lm))
 	       (get-state-var-map state))
      var-map

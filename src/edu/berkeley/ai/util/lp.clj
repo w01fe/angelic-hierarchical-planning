@@ -290,6 +290,11 @@
   [constraints sol]
   (some #(lp-constraint-violation % sol) constraints))
 
+(defn lp-bounds-violation
+  "Return [var violated-i] or nil for no violation"
+  [bounds sol]
+  (some (fn [[var val]] (lp-interval-violation (safe-get bounds var) val)) sol))
+
 (defn lp-constraint-hessian 
   "Get the hessian [[a b ...] p] for an equality constraint. http://mathworld.wolfram.com/Plane.html"
   [[v-map rhs]]
@@ -342,6 +347,7 @@
 			   target (if vl (+ vl epsilon) (- vh epsilon))
 			   proj (lp-constraint-projection [constraint target] (:solution lp))]
 		       (and (not (lp-constraints-violation (:constraints lp) proj))
+			    (not (lp-bounds-violation (:bounds lp) proj))
 			    (do (print-debug 2 "Projecting fixed it.")
 				(assoc new-lp :solution proj :cost nil)))))
 		(do (print-debug 2 "Projecting failed, or not attempted for eq; trying from scratch")

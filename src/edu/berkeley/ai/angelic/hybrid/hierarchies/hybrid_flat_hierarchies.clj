@@ -1,4 +1,4 @@
-(ns edu.berkeley.ai.angelic.hierarchies.flat-hierarchies
+(ns edu.berkeley.ai.angelic.hybrid.hierarchies.hybrid-flat-hierarchies
   (:use edu.berkeley.ai.angelic edu.berkeley.ai.angelic.hierarchies)
   (:require [edu.berkeley.ai [util :as util] [envs :as envs]]
 	    [edu.berkeley.ai.util [linear-expressions :as le]]

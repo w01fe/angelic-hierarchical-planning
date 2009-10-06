@@ -40,11 +40,13 @@
 		       (assoc! result new-var (+ mult (get result new-var 0))))))
 	   (transient {nil (get le nil 0)}) (dissoc le nil))))
 
+(def *last-expr* nil)
 (defn evaluate-linear-expr 
   "Like map-linear-expr-vars, but enforces that the expression evaluates to a constant,
    which is returned.  Typically, f will map each var to a number, in which case this
    is like a dot product."
   [f le]
+;  (def *last-expr* [f le])
   (let [result (merge {nil 0} (map-linear-expr-vars f le))]
     (assert (= (count result) 1))
     (get result nil)))

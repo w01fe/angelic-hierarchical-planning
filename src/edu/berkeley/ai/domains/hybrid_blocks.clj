@@ -122,7 +122,7 @@
 	   (hs/get-hs-action env 'put '{?b a ?c b})])
        (envs/get-goal env))))
   (let [args  '[10 4 [1 1] [[a 1 3 6 1] [b 7 1 2 1 [[c 0 1 2 2]]]] [[a [[b] [c]]]]]] ; test solution, split points/discrete/
-    (doseq [[e s] (map vector (map #(apply make-hybrid-blocks-strips-env %) [args (conj args 1)]) [-75 -69])]
+    (doseq [[e s] (map vector (map #(apply make-hybrid-blocks-strips-env %) [args (conj args 1)]) [-46 -40] #_ [-75 -69])]
       (is (= s (second (algs/a-star-graph-search (ss/ss-node e))))))))
 
 

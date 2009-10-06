@@ -1,9 +1,14 @@
 ;;;;;;;;;;;;;;;; Implement
 
+Hybrid Speedups
+Hybrid heuristics
+Hybrid convergence.  
+
 TWO approaches to hybrid; LP splitting, vs. MIP.
 
 Heuristic for hybrid blocks
-
+ - Allow absolute value in cost expressions. ?  Can minimize absolute
+ values, can't maximize them.  
 
 
 ;;;;;;;;;;;;;;;; General TODO
