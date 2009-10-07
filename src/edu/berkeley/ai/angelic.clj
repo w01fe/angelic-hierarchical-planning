@@ -250,6 +250,14 @@
 	      (= :true (get clause (first neg))) nil
 	      :else  (recur (next neg) (dissoc clause (first neg))))))))
 
+(defn restrict-clause-pos [clause atom]
+  (when (contains? clause atom)
+    (assoc clause atom :true)))
+
+(defn restrict-clause-neg [clause atom]
+  (when-not (= :true (get clause atom))
+    (dissoc clause atom)))
+
 ;;; Descriptions only
 
 (derive ::PropositionalDescription ::Description)

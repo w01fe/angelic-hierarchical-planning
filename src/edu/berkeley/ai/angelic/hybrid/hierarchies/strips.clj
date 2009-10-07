@@ -1,34 +1,32 @@
 (ns edu.berkeley.ai.angelic.hybrid.hierarchies.strips
-  (:use [edu.berkeley.ai.angelic :as angelic] 
-        [edu.berkeley.ai.angelic.hierarchies :as hierarchies])
+  (:use edu.berkeley.ai.angelic 
+        edu.berkeley.ai.angelic.hierarchies)
   (:require [edu.berkeley.ai [util :as util] [envs :as envs]]
-        [edu.berkeley.ai.util [propositions :as props] [hybrid :as hybrid]]
+        [edu.berkeley.ai.util [propositions :as props] [hybrid :as hybrid] 
+	 [intervals :as iv] [linear-expressions :as le]]
+	[edu.berkeley.ai.envs.strips.smart-csps :as smart-csps]
         [edu.berkeley.ai.envs.hybrid-strips :as hs]
+	[edu.berkeley.ai.envs.hybrid-strips [constraints :as hc] [effects :as he]]
         [edu.berkeley.ai.angelic.hybrid.ncstrips-descriptions :as hybrid-ncstrips]
-        [edu.berkeley.ai.angelic.hybrid-dnf-simple-valuations :as hdsv]
-	[edu.berkeley.ai.search.smart-csps :as smart-csps]
+        [edu.berkeley.ai.angelic.hybrid.dnf-lp-valuations :as hdlv]
         )
   )
 
 
 ;;;; A hybrid version of strips_hierarchies that allows numeric variables and states.
 
-;; For now, hierarchical and refinement preconditions must either be
-  ; discrete, or simple range conditions on dummy numeric vars.  
- ; All of the interesting (read difficult) conditions will be handled by ncstrips,
-   ; since they may require splits, etc etc.  
- ; I.e., hierarchical preconditions will be simple pos-atoms, neg-atoms, and 
-   ; interval constraints on state variables.  
-   ; (not really strictly enforced then ???)
-   ; constraints on state variables in terms of (!translated!) hierarchical vars?; OK, don't get to prune range of HLA vars, BUT at least correct.
+;; The only restriction imposed is that the conditions for forall clauses in 
+;; hierarchical and refinement preconditions must be fully known when an HLA is created.
+;; (this could be relazed a bit).  In other words, they must involve only constant
+;; propositions/variables, or at least be guaranteed to hold one way or another
+;; based on the optimistic description.  
 
+;; TODO: be careful about mapping numeric varaibles, so that if they appear multiple times
+;; in a refinement they end up mapping to the same LP variables.
 
+;; TODO: provide a mechanism to ground variables in advance based on optimal high-level solutions (?)
+;; i.e., just add this to hierarchical preconditions. 
 
-; TODO: MUST enforce that each numeric state variable is used EXACTLY once in each refinement? (????)
-
-
-
-;; Refinement schemata
 
 ; hla-nv-pos-trans gives [position trans-name] for each var in hla's numeric vars.
 (defstruct hybrid-strips-refinement-schema :name  :discrete-vars :numeric-vars :hla-nv-pos-trans :precondition :expansion)
@@ -62,7 +60,7 @@
        (or ref-name (gensym))
        more-discrete-vars more-numeric-vars
        {} ; Do later
-       (hybrid/parse-and-check-constraint precondition 
+       (hc/parse-and-check-constraint precondition 
 				   (util/merge-disjoint discrete-vars more-discrete-vars) predicates
 				   (util/merge-disjoint numeric-vars more-numeric-vars) numeric-functions true)
        (or (seq expansion) [[*noop-hs-hla-name*]])))))
@@ -77,7 +75,7 @@
 	  refinement-schemata optimistic-schema pessimistic-schema primitive))
 
 (def *noop-hs-hla-schema* 
-     (make-hybrid-strips-hla-schema *noop-hs-hla-name* nil nil nil nil hybrid/*true-constraint*
+     (make-hybrid-strips-hla-schema *noop-hs-hla-name* nil nil nil nil hc/*true-constraint*
 				    nil *identity-description* *identity-description* :noop))
 
 
@@ -108,7 +106,7 @@
        name
        vars discrete-vars numeric-vars
        nil
-       (hybrid/parse-and-check-constraint precondition discrete-vars predicates numeric-vars numeric-functions true)
+       (hc/parse-and-check-constraint precondition discrete-vars predicates numeric-vars numeric-functions true)
        (doall (map #(parse-hybrid-strips-refinement-schema % discrete-types discrete-vars predicates numeric-types numeric-vars numeric-functions)
 		   refinements))
        (parse-description (or optimistic exact [:opt]) domain vars)
@@ -116,13 +114,12 @@
        nil)))))
 
 
-
 (defn- make-hybrid-strips-primitive-hla-schema [hs-schema discrete-types numeric-types]
   (let [{:keys [name vars split-points precondition effect cost-expr]} hs-schema
 	[discrete-vars numeric-vars] (hybrid/split-var-maps vars discrete-types numeric-types)
 	desc (hybrid-ncstrips/make-hybrid-ncstrips-description-schema discrete-vars numeric-vars
-	       [(hybrid-ncstrips/make-hybrid-ncstrips-effect-schema precondition effect hybrid/*empty-effect* cost-expr)])]
-    (make-hybrid-strips-hla-schema name vars discrete-vars numeric-vars split-points hybrid/*true-constraint* :primitive desc desc hs-schema)))
+	       [(hybrid-ncstrips/make-hybrid-ncstrips-effect-schema precondition effect he/*empty-effect* cost-expr)])]
+    (make-hybrid-strips-hla-schema name vars discrete-vars numeric-vars split-points hc/*true-constraint* :primitive desc desc hs-schema)))
 
 
 
@@ -174,7 +171,7 @@
 (defn make-hybrid-strips-hla [hierarchy schema var-map precondition primitive]
   (struct hybrid-strips-hla 
 	  (cond (= primitive :noop) ::HybridStripsNoopHLA
-		(and primitive (not-every? #(util/interval-point (util/safe-get var-map %)) 
+		(and primitive (not-every? #(iv/interval-point (util/safe-get var-map %)) 
 					   (keys (util/safe-get schema :numeric-vars))))
                                     ::HybridStripsQuasiPrimitiveHLA
 		primitive           ::HybridStripsPrimitiveHLA 
@@ -209,7 +206,7 @@
 (defn instantiate-hybrid-strips-refinement-schema [ref hla-discrete-vars hla-numeric-vars hla-map objects]
   (let [{:keys [discrete-vars precondition expansion]} ref
 	all-discrete-vars     (util/merge-disjoint hla-discrete-vars discrete-vars)
-	[pos neg numeric]     (hybrid/split-constraint precondition {} objects)
+	[pos neg numeric]     (hc/split-constraint precondition {} objects)
 	[first-pos first-neg] (extract-preconditions (first expansion) hla-map)
 ;	bla (println pos first-pos neg first-neg (util/trans-map hla-discrete-vars objects) (util/trans-map discrete-vars objects))
  	csp (smart-csps/create-smart-csp (set (concat pos first-pos)) (set (concat neg first-neg))
@@ -236,7 +233,7 @@
 (defn instantiate-hybrid-strips-hla-schema1 [schema instance objects]
   (let [{:keys [precondition optimistic-schema pessimistic-schema]} schema]
     (assoc schema
-      :precondition       (hybrid/split-constraint precondition {} objects)
+      :precondition       (hc/split-constraint precondition {} objects)
       :optimistic-schema  (instantiate-description-schema optimistic-schema instance)
       :pessimistic-schema (instantiate-description-schema optimistic-schema instance))))
 
@@ -246,6 +243,8 @@
 
 (defstruct hybrid-strips-hierarchy :class :hla-map :problem-instance)
 
+;; (2009-09) commented out for now, refers to valuaitons.
+#_
 (defmethod instantiate-hierarchy ::HybridStripsHierarchySchema [hierarchy instance] 
   (util/assert-is (isa? (:class instance) ::hs/HybridStripsPlanningInstance))
   (let [old-hla-map    (util/safe-get hierarchy :hlas)
@@ -253,15 +252,15 @@
 	{:keys [vars discrete-vars numeric-vars]} act-schema
 	root-hla-name  (gensym "hybrid-strips-top-level-action")
 	old-hla-map    (assoc old-hla-map root-hla-name
-			 (make-hybrid-strips-hla-schema root-hla-name [] nil nil nil hybrid/*true-constraint* 
+			 (make-hybrid-strips-hla-schema root-hla-name [] nil nil nil hc/*true-constraint* 
 			   [(make-hybrid-strips-refinement-schema 
-			     "act" discrete-vars numeric-vars {} hybrid/*true-constraint* [(into '[act] (map second vars))])] 
+			     "act" discrete-vars numeric-vars {} hc/*true-constraint* [(into '[act] (map second vars))])] 
 			   (parse-description [:opt] :dummy :dummy)
 			   (parse-description [:pess] :dummy :dummy)
 			   nil))
 	objects        (util/safe-get instance :objects)
 	tmp-hla-map    (util/map-vals #(instantiate-hybrid-strips-hla-schema1 % instance objects) old-hla-map)
-	new-hla-map    (util/map-vals #(instantiate-hybrid-strips-hla-schema2 % tmp-hla-map objects) tmp-hla-map)]
+        new-hla-map    (util/map-vals #(instantiate-hybrid-strips-hla-schema2 % tmp-hla-map objects) tmp-hla-map)]
     (make-hybrid-strips-hla 
      (struct hybrid-strips-hierarchy ::StripsHierarchy new-hla-map instance)
      (util/safe-get new-hla-map root-hla-name)
@@ -283,7 +282,8 @@
 ;; Node methods
 
 
-
+;; (2009-09) Needs fixing, bla bla bla
+#_
 (defmethod hla-default-valuation-type ::HybridStripsHLA [hla] 
   :edu.berkeley.ai.angelic.hybrid-dnf-simple-valuations/HybridDNFSimpleValuation)
 
@@ -317,14 +317,15 @@
 (defmethod hla-immediate-refinements [::HybridStripsPrimitiveHLA :edu.berkeley.ai.angelic/Valuation] [hla] (throw (UnsupportedOperationException.)))
 
 
-;; TODO: split points -- just bisects for now.
-(defmethod hla-immediate-refinements     [::HybridStripsQuasiPrimitiveHLA ::hdsv/HybridDNFSimpleValuation] [hla opt-val]
-  (let [{:keys [var-map precondition num-vars]} hla
-	var-map (hdsv/restrict-var-map opt-val precondition var-map)
-	nv (first num-vars)]
-    (util/assert-is (= 1 (count num-vars)))
-    (for [i (util/bisect-interval (util/safe-get var-map nv))]
-      (assoc hla :var-map (assoc var-map nv i)))))
+;; TODO: commneted out for now, blablabla
+
+;(defmethod hla-immediate-refinements     [::HybridStripsQuasiPrimitiveHLA ::hdsv/HybridDNFSimpleValuation] [hla opt-val]
+;  (let [{:keys [var-map precondition num-vars]} hla
+;	var-map (hdsv/restrict-var-map opt-val precondition var-map)
+;	nv (first num-vars)]
+ ;   (util/assert-is (= 1 (count num-vars)))
+;    (for [i (iv/bisect-interval (util/safe-get var-map nv))]
+;      (assoc hla :var-map (assoc var-map nv i)))))
 
 (defn- translate-var-map "Get the var mappings for hla, given this args and var-map" [hla args var-map]
   (let [hla-vars (:vars hla)]
@@ -334,39 +335,41 @@
 	(recur (assoc ret (second (first vars)) (util/safe-get var-map (first args)))
 	       (next args) (next vars))))))
 
-(defmethod hla-immediate-refinements     [::HybridStripsHLA ::hdsv/HybridDNFSimpleValuation] [hla opt-val]
-  (let [{:keys [var-map num-vars hierarchy precondition]} hla
-	hierarchical-precondition                precondition
-	opt-val                                  (restrict-valuation opt-val hierarchical-precondition)
-	{:keys [hla-map problem-instance]}       hierarchy
-	{:keys [domain constant-numeric-vals]}   problem-instance
-	{:keys [constant-numeric-functions]}     domain]               
-    (when-not (empty-valuation? opt-val)
-      (let [val-pred-maps (valuation->pred-maps opt-val)]
-	(for [{:keys [discrete-vars numeric-vars hla-nv-pos-trans precondition expansion csp]} (:refinement-schemata (:schema hla))
-	      discrete-var-map          (smart-csps/get-smart-csp-solutions csp var-map val-pred-maps)]
-	  (let [final-discrete-var-map    (merge var-map discrete-var-map)
-		[pos-pre neg-pre num-pre] precondition
-		precondition              (hdsv/extract-hybrid-hierarchical-precondition
-					   pos-pre neg-pre num-pre final-discrete-var-map
-					   constant-numeric-functions constant-numeric-vals)
-		new-hierarchical-precondition (hdsv/conjoin-hybrid-hierarchical-preconditions hierarchical-precondition precondition)
-		final-var-map           (hdsv/restrict-var-map opt-val new-hierarchical-precondition
-					  (util/merge-disjoint final-discrete-var-map 
-					    (util/map-vals numeric-vars (constantly util/*real-line*)))) ]
-	    (map (fn [call extra-preconditions]
-		   (let [hla (util/safe-get hla-map (first call))
-			 trans-var-map (translate-var-map hla (next call) final-var-map)
-			 [pos-hla neg-hla num-hla] (util/safe-get hla precondition)
-			 precondition
-			    (hdsv/extract-hybrid-hierarchical-precondition
-			     pos-hla neg-hla num-hla trans-var-map constant-numeric-functions constant-numeric-vals)
-			 trans-var-map (hdsv/restrict-var-map opt-val precondition trans-var-map)
-			 all-preconditions 
-  			   (hdsv/conjoin-hybrid-hierarchical-preconditions precondition extra-preconditions)]
-		     (make-hybrid-strips-hla hierarchy hla trans-var-map all-preconditions (:primitive hla)))) 
-		 expansion
-		 (hdsv/split-and-var-translate-hhp new-hierarchical-precondition hla-nv-pos-trans (count expansion)))))))))
+;; TODO: blabla bla
+;
+;(defmethod hla-immediate-refinements     [::HybridStripsHLA ::hdsv/HybridDNFSimpleValuation] [hla opt-val]
+;  (let [{:keys [var-map num-vars hierarchy precondition]} hla
+;	hierarchical-precondition                precondition
+;	opt-val                                  (restrict-valuation opt-val hierarchical-precondition)
+;	{:keys [hla-map problem-instance]}       hierarchy
+;	{:keys [domain constant-numeric-vals]}   problem-instance
+;	{:keys [constant-numeric-functions]}     domain]               
+;    (when-not (empty-valuation? opt-val)
+;      (let [val-pred-maps (valuation->pred-maps opt-val)]
+;	(for [{:keys [discrete-vars numeric-vars hla-nv-pos-trans precondition expansion csp]} (:refinement-schemata (:schema hla))
+;	      discrete-var-map          (smart-csps/get-smart-csp-solutions csp var-map val-pred-maps)]
+;	  (let [final-discrete-var-map    (merge var-map discrete-var-map)
+;		[pos-pre neg-pre num-pre] precondition
+;		precondition              (hdsv/extract-hybrid-hierarchical-precondition
+;					   pos-pre neg-pre num-pre final-discrete-var-map
+;					   constant-numeric-functions constant-numeric-vals)
+;		new-hierarchical-precondition (hdsv/conjoin-hybrid-hierarchical-preconditions hierarchical-precondition precondition)
+;		final-var-map           (hdsv/restrict-var-map opt-val new-hierarchical-precondition
+;					  (util/merge-disjoint final-discrete-var-map 
+;					    (util/map-vals numeric-vars (constantly util/*real-line*)))) ]
+;	    (map (fn [call extra-preconditions]
+;		   (let [hla (util/safe-get hla-map (first call))
+;			 trans-var-map (translate-var-map hla (next call) final-var-map)
+;			 [pos-hla neg-hla num-hla] (util/safe-get hla precondition)
+;			 precondition
+;			    (hdsv/extract-hybrid-hierarchical-precondition
+;			     pos-hla neg-hla num-hla trans-var-map constant-numeric-functions constant-numeric-vals)
+;			 trans-var-map (hdsv/restrict-var-map opt-val precondition trans-var-map)
+;			 all-preconditions 
+ ; 			   (hdsv/conjoin-hybrid-hierarchical-preconditions precondition extra-preconditions)]
+;		     (make-hybrid-strips-hla hierarchy hla trans-var-map all-preconditions (:primitive hla)))) 
+;		 expansion
+;		 (hdsv/split-and-var-translate-hhp new-hierarchical-precondition hla-nv-pos-trans (count expansion)))))))))
 
 
 

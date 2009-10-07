@@ -27,12 +27,10 @@
 (defstruct hybrid-fixed-lp-valuation-struct :class :discrete-state :continuous-lp-states)
 
 (defn make-hybrid-fixed-lp-valuation
-  "Take an assignment from all state variables to numeric values, and make a fresh
-   lp-state.  A new variable called [:reward] will be assumed, with val 0, unless provided."
   [discrete-state continuous-lp-states]
   (if (empty? continuous-lp-states)
       *pessimal-valuation*
-      (struct hybrid-fixed-lp-valuation-struct ::HybridFixedLPValuation discrete-state (set  continuous-lp-states))))
+      (struct hybrid-fixed-lp-valuation-struct ::HybridFixedLPValuation discrete-state (util/to-set  continuous-lp-states))))
   
 
 (defmethod map->valuation ::HybridFixedLPValuation [type m]
@@ -53,9 +51,20 @@
 
 (defmethod empty-valuation? ::HybridFixedLPValuation [val] false)
 
-;(defmethod restrict-valuation [::HybridFixedLPValuation ...] [val condition]
-  ; constrain-lp-state-??z
-;  )
+
+;(defn restrict-hflv-clp [cont disc constraint]
+;  (hc/apply-constraint cont
+;     num var-map num-var-map objects constant-fns  ; TODO: ?????
+;     (fn [s a] (when (contains? disc a) s))
+;     (fn [s a] (when-not (contains? disc a) s))
+;     cls/constrain-lp-state-lez cls/constrain-lp-state-eqz cls/constrain-lp-state-gez))
+
+;(defmethod restrict-valuation [::HybridFixedLPValuation ::hc/ConstraintCondition] [val condition]
+;  (make-hybrid-fixed-lp-valuation
+;   (:discrete-state val)
+;   (apply concat (map #(restrict-hflv-clp % (:discrete-state val) (util/safe-get condition :constraint)) 
+;		      (:continuous-lp-states val)))))
+
 
 
 

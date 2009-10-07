@@ -1,6 +1,6 @@
-(ns edu.berkeley.ai.angelic.hierarchies.load-all
+(ns edu.berkeley.ai.angelic.hybrid.hierarchies.load-all
   (:require 
-   [edu.berkeley.ai.angelic.hybrid.hierarchies flat]
+   [edu.berkeley.ai.angelic.hybrid.hierarchies flat strips]
    ))
   
             

@@ -10,7 +10,7 @@
 (defn uall [] 
   (u util 
        util.charts util.datasets util.disjoint-sets util.graphs
-       util.graphviz util.hybrid util.pdf util.propositions util.queues util.lp    
+       util.graphviz util.hybrid util.pdf util.propositions util.queues util.lp util.linear-expressions
      envs envs.states.binary envs.states.explicit
        envs.strips envs.strips.smart-csps 
        envs.hybrid-strips envs.hybrid-strips.constraints
@@ -27,7 +27,8 @@
 	 angelic.algorithms.offline angelic.algorithms.online
        ;angelid.hybrid
          angelic.hybrid.continuous-lp-states angelic.hybrid.fixed-lp-valuations
-         angelic.hybrid.hierarchies.flat
+         angelic.hybrid.dnf-lp-valuations angelic.hybrid.ncstrips-descriptions
+         angelic.hybrid.hierarchies.flat angelic.hybrid.hierarchies.strips
      ;domains
        domains.nav-switch domains.warehouse domains.vac-rooms domains.discrete-road-trip
        domains.hybrid-blocks domains.road-trip domains.simple-road-trip

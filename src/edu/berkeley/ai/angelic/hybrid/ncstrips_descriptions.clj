@@ -1,14 +1,15 @@
 (ns edu.berkeley.ai.angelic.hybrid.ncstrips-descriptions
-  (:refer-clojure)
   (:use edu.berkeley.ai.angelic)
   (:require [edu.berkeley.ai.util :as util] 
-            [edu.berkeley.ai.util [propositions :as props] [hybrid :as hybrid]]
+            [edu.berkeley.ai.util [propositions :as props] [hybrid :as hybrid]
+             [linear-expressions :as le]]
+	    [edu.berkeley.ai.envs.strips.smart-csps :as smart-csps]
             [edu.berkeley.ai.envs.hybrid-strips :as hs]
-            [edu.berkeley.ai.angelic.hybrid-dnf-simple-valuations :as hdsv]
-	    [edu.berkeley.ai.search.smart-csps :as smart-csps])
-  )
+            [edu.berkeley.ai.envs.hybrid-strips [constraints :as hc] [effects :as he]]
+            [edu.berkeley.ai.angelic.hybrid.dnf-lp-valuations :as hdlv]
+            ))
 
-;;; NCStrips descriptions
+;;; Hybrid NCStrips descriptions
 
 
 ;; Effect schemata
@@ -27,10 +28,10 @@
 	       (util/partition-all 2 effect)]
     (util/assert-is (empty? poss))
     (make-hybrid-ncstrips-effect-schema
-     (hybrid/parse-and-check-constraint pre discrete-vars predicates numeric-vars numeric-fns)
-     (hybrid/parse-and-check-effect eff discrete-vars predicates numeric-vars numeric-fns)
-     (hybrid/parse-and-check-effect poss discrete-vars predicates numeric-vars numeric-fns)
-     (hybrid/parse-and-check-numeric-expression cost-expr discrete-vars numeric-vars numeric-fns))))
+     (hc/parse-and-check-constraint pre discrete-vars predicates numeric-vars numeric-fns)
+     (he/parse-and-check-effect eff discrete-vars predicates numeric-vars numeric-fns)
+     (he/parse-and-check-effect poss discrete-vars predicates numeric-vars numeric-fns)
+     (le/parse-and-check-hybrid-linear-expression cost-expr discrete-vars numeric-vars numeric-fns))))
      
 
 ;; Description schemata
@@ -74,11 +75,9 @@
 (defmethod ground-description ::HybridNCStripsDescriptionSchema [schema var-map]
   (throw (UnsupportedOperationException.)))
 
-(defmethod progress-optimistic [::hdsv/HybridDNFSimpleValuation ::HybridNCStripsDescription] [val desc]
+(defmethod progress-valuation [::hdlv/HybridDNFLPValuation ::HybridNCStripsDescription] [val desc]
   (throw (UnsupportedOperationException.)))
 
-(defmethod progress-pessimistic [::hdsv/HybridDNFSimpleValuation ::HybridNCStripsDescription] [val desc]
-  (throw (UnsupportedOperationException.)))
 
 
 
