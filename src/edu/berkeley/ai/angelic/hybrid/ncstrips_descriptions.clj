@@ -19,7 +19,7 @@
 (defn make-hybrid-ncstrips-effect-schema [precondition effect possible-effect cost-expr]
   (struct hybrid-ncstrips-effect-schema precondition effect possible-effect cost-expr))
 
-(defn parse-hybrid-ncstrips-effect-schema [effect discrete-vars predicates numeric-vars numeric-fns]
+(defn parse-hybrid-ncstrips-effect-schema [effect discrete-vars predicates numeric-vars numeric-fns const-numeric-fns]
 ;  (println effect)
   (util/match [#{[:optional [:precondition    ~pre]]
 		 [:optional [:effect          ~eff]]
@@ -28,10 +28,10 @@
 	       (util/partition-all 2 effect)]
     (util/assert-is (empty? poss))
     (make-hybrid-ncstrips-effect-schema
-     (hc/parse-and-check-constraint pre discrete-vars predicates numeric-vars numeric-fns)
-     (he/parse-and-check-effect eff discrete-vars predicates numeric-vars numeric-fns)
-     (he/parse-and-check-effect poss discrete-vars predicates numeric-vars numeric-fns)
-     (le/parse-and-check-hybrid-linear-expression cost-expr discrete-vars numeric-vars numeric-fns))))
+     (hc/parse-and-check-constraint pre discrete-vars predicates numeric-vars numeric-fns const-numeric-fns)
+     (he/parse-and-check-effect eff discrete-vars predicates numeric-vars numeric-fns const-numeric-fns)
+     (he/parse-and-check-effect poss discrete-vars predicates numeric-vars numeric-fns const-numeric-fns)
+     (le/parse-and-check-hybrid-linear-expression cost-expr discrete-vars numeric-vars numeric-fns const-numeric-fns))))
      
 
 ;; Description schemata
@@ -45,10 +45,10 @@
 
 (defmethod parse-description :hybrid-ncstrips [desc domain vars]  
   (util/assert-is (isa? (:class domain) ::hs/HybridStripsPlanningDomain))
-  (let [{:keys [discrete-types numeric-types predicates numeric-functions]} domain
+  (let [{:keys [discrete-types numeric-types predicates numeric-functions constant-numeric-functions]} domain
 	[discrete-vars numeric-vars] (hybrid/split-var-maps vars discrete-types numeric-types)]
     (make-hybrid-ncstrips-description-schema discrete-vars numeric-vars
-      (doall (map #(parse-hybrid-ncstrips-effect-schema % discrete-vars predicates numeric-vars numeric-functions) (next desc))))))
+      (doall (map #(parse-hybrid-ncstrips-effect-schema % discrete-vars predicates numeric-vars numeric-functions constant-numeric-functions) (next desc))))))
 
 
 

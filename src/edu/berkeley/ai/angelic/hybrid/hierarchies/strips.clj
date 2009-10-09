@@ -48,7 +48,7 @@
 	   (vec action)))))))
 
 
-(defn parse-hybrid-strips-refinement-schema [ref discrete-types discrete-vars predicates numeric-types numeric-vars numeric-functions]
+(defn parse-hybrid-strips-refinement-schema [ref discrete-types discrete-vars predicates numeric-types numeric-vars numeric-functions const-numeric-functions]
   (util/match [[[:optional [:name ~ref-name]]
 		[:optional [:parameters ~parameters]]
 		[:optional [:precondition ~precondition]]
@@ -62,7 +62,8 @@
        {} ; Do later
        (hc/parse-and-check-constraint precondition 
 				   (util/merge-disjoint discrete-vars more-discrete-vars) predicates
-				   (util/merge-disjoint numeric-vars more-numeric-vars) numeric-functions true)
+				   (util/merge-disjoint numeric-vars more-numeric-vars) numeric-functions 
+                                   const-numeric-functions true)
        (or (seq expansion) [[*noop-hs-hla-name*]])))))
 
 
@@ -90,7 +91,7 @@
 
 (defn parse-hybrid-strips-hla-schema [hla domain]
 ;  (println hla)
-  (let [{:keys [discrete-types numeric-types predicates numeric-functions action-schemata]} domain]
+  (let [{:keys [discrete-types numeric-types predicates numeric-functions action-schemata constant-numeric-functions]} domain]
    (util/match [#{[:optional [:parameters   ~parameters]]
 		 [:optional [:precondition ~precondition]]
 		 [:multiple [:refinement   ~refinements]]
@@ -106,8 +107,8 @@
        name
        vars discrete-vars numeric-vars
        nil
-       (hc/parse-and-check-constraint precondition discrete-vars predicates numeric-vars numeric-functions true)
-       (doall (map #(parse-hybrid-strips-refinement-schema % discrete-types discrete-vars predicates numeric-types numeric-vars numeric-functions)
+       (hc/parse-and-check-constraint precondition discrete-vars predicates numeric-vars numeric-functions constant-numeric-functions true)
+       (doall (map #(parse-hybrid-strips-refinement-schema % discrete-types discrete-vars predicates numeric-types numeric-vars numeric-functions constant-numeric-functions)
 		   refinements))
        (parse-description (or optimistic exact [:opt]) domain vars)
        (parse-description (or pessimistic exact [:pess]) domain vars)
