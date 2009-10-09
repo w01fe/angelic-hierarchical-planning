@@ -5,6 +5,14 @@
            [edu.berkeley.ai.envs.hybrid-strips :as hs])
  )
 
+;; Idea for heuristic: have "goal-cx", "goal-ty" variables for each block.  
+;; Constrain these to match goal configuration as much as possible.
+;; Penalize absolute-value distances from current positions (requires second set of vars).  
+
+;; Can't easily do this, even in NCStrips, since we must introduce a parameterized set of variables.
+
+;; Would be easier if we had state abstraction hierarchy, since we wouldn't have to explicitly
+;; constrain goal positions (would be handled by "finish").
 
 
 (let [f (util/path-local "hybrid_blocks.pddl")]

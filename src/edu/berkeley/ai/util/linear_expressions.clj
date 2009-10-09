@@ -205,6 +205,10 @@
 ;; (constant simplified) expression first.
 
 ; We will also allow absolute values; if a var is a map, we assume it's an absolute-value LM.
+; We assume these will only be used in cost expressions, and don't implement them for inequalities.
+;; Do we want min/max also?  What do we need to make a reasonable heuristic?  
+;; Can always just hard-code it as numeric parameters.  But, we need a forall.  
+
 
 (derive ::ContinuousMapState ::ContinuousState)
 (defmulti evaluate-hybrid-var (fn [var cont-state] (type cont-state)))
@@ -225,11 +229,14 @@
 
 (defn ground-hybrid-linear-expr 
   "Assign all discrete variables and evaluate constants, producing a 
-   concrete linear expression in remaining grounded state vars and parameters."
+   concrete linear expression (poss. including abs valuats) in remaining 
+   grounded state vars and parameters."
   [expr disc-var-map const-fns]
   (into {} 
     (for [[k v] expr]
-      [(if (coll? k) (props/simplify-atom disc-var-map k) k)
+      [(cond (map? k)  (ground-hybrid-linear-expr k disc-var-map const-fns)
+             (coll? k) (props/simplify-atom disc-var-map k) 
+             :else k)
        (if (number? v) v (v disc-var-map const-fns))])))
 	     
 (defn evaluate-grounded-hybrid-linear-expr 
@@ -238,9 +245,9 @@
   [expr cont-var-map cont-state]
   (evaluate-linear-expr 
    (fn [var] 
-     (if (coll? var)
-         (evaluate-hybrid-var var cont-state)
-       (safe-get cont-var-map var)))
+     (cond (map? var)  (abs (evaluate-grounded-hybrid-linear-expr var cont-var-map cont-state))
+           (coll? var) (evaluate-hybrid-var var cont-state)
+           :else       (safe-get cont-var-map var)))
    expr))
 
 (defn evaluate-hybrid-linear-expr 
@@ -320,7 +327,13 @@
 	     '(+ (- c 2) [gt a b]) 
 	     {'a 't1 'b 't2} {'c 'x} {'gt ['t1 't2]} #{})
 	    {'a 'aa 'b 'bb} {})
-	  {'c 12} {'[gt aa bb] 15}))))				   
+	  {'c 12} {'[gt aa bb] 15})))
+  (let [e (ground-hybrid-linear-expr 
+           (parse-and-check-hybrid-linear-expression 
+            '(+ 1 (* [x c] (+ 2 (abs (* (+ [x a] 3) (- [y b] [x a] 4)))))) {'a 't1 'c 't1 'b 't2} {} '{x [t1] y [t2]} '#{x})
+           '{a aa b bb c cc} '{[x aa] 12 [x cc] 2})]
+    (is (= e '{nil 5 {[y bb] 15 nil -240} 2}))
+    (is (= 35 (evaluate-grounded-hybrid-linear-expr e {} '{[y bb] 15})))))				   
 
 	  
 (comment 

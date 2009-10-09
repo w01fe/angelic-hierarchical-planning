@@ -7,10 +7,17 @@
 ; simple-road-trip is like road-trip but tank size is always 100, 
 ; every city sells gas (at some price).  
 
+;; How hard is this?  it's a DP over city x gas.
+;; You always want to either buy nothing, fill up, or get just enough to reach
+;; a city with cheaper gas.  
+
 ; Note domination relation -- more gas is always better, given everything else.
 ; TODO: figure out how to take this into account?
 
 ;; TODO: make regular road trip be this one but with multiple place goals allowed.  
+
+;; A good heuristic is: ?
+
 
 (let [f (util/path-local "simple_road_trip.pddl")]
   (defn make-simple-road-trip-strips-domain []
