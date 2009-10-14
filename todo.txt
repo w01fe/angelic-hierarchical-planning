@@ -3,6 +3,9 @@
 hybrid dnf + ncstrips + tests
 hybrid strips hierarchies.
 
+TODO: don't add vars to LP if consted, at least. (also in fixed-lp-vals)
+;; TODO: handle abs var hints.
+
 ;;;;;;;;;;;;;;;; Implement
 
 Hybrid Speedups

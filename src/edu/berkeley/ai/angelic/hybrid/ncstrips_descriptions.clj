@@ -20,7 +20,7 @@
 
 ;; Effect schemata
 
-(defstruct hybrid-ncstrips-effect-schema :precondition :effect :possible-effect :cost-epxr)
+(defstruct hybrid-ncstrips-effect-schema :precondition :effect :possible-effect :cost-expr)
 
 (defn make-hybrid-ncstrips-effect-schema [precondition effect possible-effect cost-expr]
   (struct hybrid-ncstrips-effect-schema precondition effect possible-effect cost-expr))
@@ -31,7 +31,6 @@
 		 [:optional [:possible-effect ~poss]]
 		 [:cost-expr ~cost-expr]}
 	       (util/partition-all 2 effect)]
-    (util/assert-is (empty? poss))
     (make-hybrid-ncstrips-effect-schema
      (hc/parse-and-check-constraint pre discrete-vars predicates numeric-vars numeric-fns const-numeric-fns)
      (he/parse-and-check-effect eff discrete-vars predicates numeric-vars numeric-fns const-numeric-fns)
@@ -80,7 +79,7 @@
     (assoc desc
       :class ::UngroundedHybridNCStripsDescription 
       :objects objects
-      :const-fns (util/safe-get instance :constant-numeric-fns)
+      :const-fns (util/safe-get instance :constant-numeric-vals)
       :effects (for [e effects] (instantiate-hybrid-effect-schema e discrete-vars numeric-vars objects)))))
 
 
@@ -90,13 +89,16 @@
 
 (derive ::HybridNCStripsDescription :edu.berkeley.ai.angelic/PropositionalDescription)
 
+;; Var-map can for cont vars point at either: number, or unique LP-var symbol.
+
 (defmethod ground-description ::UngroundedHybridNCStripsDescription [schema var-map]
   (let [{:keys [discrete-vars numeric-vars]} schema
-        discrete-var-map (util/filter-map (util/keyset discrete-vars) var-map)
-        numeric-var-map  (util/filter-map (util/keyset numeric-vars) var-map)]
-    (assert (= (count var-map) 
-               (+ (count discrete-vars) (count numeric-vars))
-               (+ (count discrete-var-map) (count numeric-var-map))))
+        discrete-var-map (util/restrict-map var-map (keys discrete-vars))
+        numeric-var-map  (util/restrict-map var-map (keys numeric-vars))]
+;    (println var-map discrete-vars numeric-vars)
+    (util/assert-is (= (count var-map) 
+                       (+ (count discrete-vars) (count numeric-vars))
+                       (+ (count discrete-var-map) (count numeric-var-map))))
     (assoc schema 
       :class ::HybridNCStripsDescription 
       :discrete-var-map discrete-var-map 
@@ -107,15 +109,19 @@
 ;                                    Applying
 ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
 
+
+
 (defn progress-clause-lp-pair [[clause clp] effect discrete-var-map numeric-var-map objects constant-fns]
   (let [{:keys [pos-pres neg-pres num-pres effect possible-effect cost-expr]} effect
        [adds dels assignments]      (he/get-hybrid-effect-info effect discrete-var-map numeric-var-map constant-fns)
        [poss-adds poss-dels x]      (he/get-hybrid-effect-info possible-effect discrete-var-map numeric-var-map constant-fns)        
-        grounder #(props/simplify-atom % discrete-var-map)
-        [ground-pos-pres ground-neg-pres ground-adds ground-dels ground-poss-adds ground-poss-dels]
-          (map grounder [pos-pres neg-pres adds dels poss-adds poss-dels])
+;               _ (println pos-pres neg-pres num-pres effect possible-effect cost-expr adds dels assignments poss-adds poss-dels x)
+        grounder #(props/simplify-atom discrete-var-map %) 
+        ground-pos-pres (map grounder pos-pres)
+        ground-neg-pres (map grounder neg-pres)
         reward-lm (util/map-vals - (le/hybrid-linear-expr->grounded-lm cost-expr discrete-var-map
                                                                        numeric-var-map constant-fns))]
+;    (println numeric-var-map)
     (assert (empty? x))
     (when (and (every? clause ground-pos-pres)
                (every? #(not (= :true (clause %))) ground-neg-pres)
@@ -123,7 +129,7 @@
       (for [[clause clp] 
             (hc/apply-constraint 
              [(reduce #(assoc %1 %2 :true) (apply dissoc clause ground-neg-pres) ground-pos-pres)
-              (reduce (fn [c v] (cls/add-lp-state-param c v [] (get reward-lm v))) 
+              (reduce (fn [c v] (if (number? v) c (cls/add-lp-state-param c v [] (get reward-lm v)))) 
                       clp (vals numeric-var-map))]
              num-pres discrete-var-map numeric-var-map  objects constant-fns 
              (fn [[d c] a] (when (contains? d a) [(assoc d a :true) c]))
