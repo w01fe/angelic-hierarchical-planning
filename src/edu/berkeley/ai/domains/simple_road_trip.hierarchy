@@ -2,7 +2,7 @@
 ;;; 4 Op-blocks world
 ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
 
-(define (hierarchy road-trip)
+(define (hierarchy simple-road-trip)
   (:type :hybrid-strips-hierarchy)
   (:hla act
        :parameters   (?cx - loc)

@@ -41,10 +41,12 @@
 
 (defmethod empty-valuation? ::HybridDNFLPValuation [val] false)
 
-(defn restrict-hdlv-pair [clause-lp-pair condition]
+;; Assume this is only called for hierarchical preconditions.  
+;; Assume everything is grounded, with no foralls, so we don't need any fancy business.
+(defn restrict-hdlv-pair [clause-lp-pair constraint var-map num-var-map objects constant-fns]
   (hc/apply-constraint 
    clause-lp-pair
-;   num var-map num-var-map objects constant-fns  ; TODO: ?????
+   constraint var-map num-var-map objects constant-fns
    (fn [[d c] a] (when-let [nd (restrict-clause-pos d a)] [nd c]))
    (fn [[d c] a] (when-let [nd (restrict-clause-neg d a)] [nd c]))
    (fn [[d c] clm strict?] (when-let [nc (constrain-lp-state-lez c clm strict?)] [d nc]))
@@ -53,7 +55,8 @@
 
 (defmethod restrict-valuation [::HybridDNFLPValuation ::hc/ConstraintCondition] [val condition]
   (make-hybrid-dnf-lp-valuation
-   (apply concat (map #(restrict-hdlv-pair % (util/safe-get condition :constraint)) (:clause-lp-set val)))))
+   (apply concat (map #(restrict-hdlv-pair % (util/safe-get condition :constraint) :dummy :dummy :dummy :dummy) 
+                      (:clause-lp-set val)))))
 
 
 (comment 

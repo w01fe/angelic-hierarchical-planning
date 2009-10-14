@@ -16,7 +16,10 @@
   (fn [constraint var-map objects [discrete-atoms numeric-vals]] (:class constraint))) 
 
 (defmulti split-constraint 
-  "Split a constraint into [pos-atoms neg-atoms only-numeric-constraint]"
+  "Return [pos-atoms neg-atoms remaining-constraints], where we've pulled out as much of the 
+   propositional content as possible, including expanding forall conditions with 
+   empty conditions.  If no foralls have propositional yields, remaining-constraints
+   will include only numeric (and numeric forall) constraints. "
   (fn [constraint var-map objects] (:class constraint)))
 
 (defmulti get-numeric-yield 

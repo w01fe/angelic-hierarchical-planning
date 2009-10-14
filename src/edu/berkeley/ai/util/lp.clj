@@ -331,7 +331,7 @@
 	dist     (+ p (apply + (map #(* (norm %) (sol %)) (keys norm))))]
     (reduce (fn [sol [k v]] (assoc sol k (- (sol k) (* dist v)))) sol norm)))
 
-
+;; TODO: factor out assigned variables?
 (defn adjust-lp-var-bounds [lp var new-bounds strict?]
   (let [old-bounds   (safe-get (:bounds lp) var)
 	final-bounds (intersect-lp-intervals old-bounds new-bounds)]

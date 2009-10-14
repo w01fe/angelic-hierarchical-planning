@@ -29,6 +29,8 @@
 
 ;; STRIPS action schemata
 
+;; TODO: add constant simplification ?
+
 
 ;;; States are [discrete-atoms numeric-vals]
 
@@ -257,10 +259,10 @@
 	        :let [{:keys [vars precondition]} schema
 		      [d-vars n-vars] (split-with #(contains? discrete-types (first %)) vars)]
 		args (apply util/cartesian-product (map #(util/safe-get objects (first %)) d-vars))]
-	  (let [var-map (into {} (map vector (map second d-vars) args))
-		[p n num] (hc/split-constraint precondition var-map objects)]
-	    ;(println (:name schema) var-map p n)
-	    (struct hybrid-strips-quasi-action schema var-map (set p) (set n) (set (map second n-vars)) num))))
+            (let [var-map (into {} (map vector (map second d-vars) args))
+                  [p n num] (hc/split-constraint precondition var-map objects)]
+	      ;(println (:name schema) var-map p n)
+              (struct hybrid-strips-quasi-action schema var-map (set p) (set n) (set (map second n-vars)) num))))
 	objects
 	discrete-grid-size))
     

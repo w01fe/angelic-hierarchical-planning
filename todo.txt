@@ -1,3 +1,8 @@
+;;; Today
+
+hybrid dnf + ncstrips + tests
+hybrid strips hierarchies.
+
 ;;;;;;;;;;;;;;;; Implement
 
 Hybrid Speedups
@@ -26,10 +31,13 @@ we should also commit to these state variable values...
 ;; Allow for exact descriptions
 ;; Upper bounds rather than solving LPs? 
 
-;; Note:  incremental improvements
-;; Note: strict inequalities.
 
+Remember: strips, flat hierarchy uses successor generator for primitives; flat-strips
+hierarchy uses smart-csp.
 
+;; Domains
+trading game (cities, items, capacities)
+parking
 
 ;;;;;;;;;;;;;;;; General TODO
 

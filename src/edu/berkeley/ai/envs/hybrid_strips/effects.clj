@@ -28,6 +28,9 @@
 ;					    disc-var-map constant-numeric-vals)))
 ;		      (:assignments effect))))
 
+;(defn get-hybrid-effect-parts [e]
+;  (map e [:adds :deletes :assignments]))
+
 (defn execute-effect [effect var-map [discrete-atoms numeric-vals]]
   (let [simplifier (fn [atoms] (map #(props/simplify-atom var-map %) atoms))]
     [(reduce conj 
