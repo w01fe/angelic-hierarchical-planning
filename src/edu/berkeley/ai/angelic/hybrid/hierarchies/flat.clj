@@ -1,5 +1,6 @@
 (ns edu.berkeley.ai.angelic.hybrid.hierarchies.flat
-  (:use edu.berkeley.ai.angelic edu.berkeley.ai.angelic.hierarchies)
+  (:use edu.berkeley.ai.angelic edu.berkeley.ai.angelic.hierarchies
+        edu.berkeley.ai.angelic.hybrid)
   (:require [edu.berkeley.ai [util :as util] [envs :as envs]]
 	    [edu.berkeley.ai.util [linear-expressions :as le]]
 	    [edu.berkeley.ai.envs.hybrid-strips :as hs]
@@ -42,7 +43,7 @@
 (derive ::HybridFlatFinishHLA ::HybridFlatPrimitiveHLA)
 (defn- make-hybrid-flat-finish-hla [env]
   (struct hybrid-flat-finish-hla ::HybridFlatFinishHLA 
-    (hflv/make-hybrid-finish-description (envs/get-goal env) 
+    (make-hybrid-finish-description (envs/get-goal env) 
       (util/safe-get env :objects) (util/safe-get env :constant-numeric-vals))
     env))
 

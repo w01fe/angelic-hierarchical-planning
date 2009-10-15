@@ -4,6 +4,7 @@
 	 [edu.berkeley.ai.angelic ncstrips-descriptions dnf-valuations] 
 	 edu.berkeley.ai.angelic.hierarchies.load-all
 	edu.berkeley.ai.angelic.algorithms.load-all
+        edu.berkeley.ai.angelic.hybrid
 	edu.berkeley.ai.angelic.hybrid.load-all))
  
 

@@ -25,10 +25,11 @@
        ; angelic.algorithms
          angelic.algorithms.abstract-lookahead-graphs angelic.algorithms.abstract-lookahead-trees
 	 angelic.algorithms.offline angelic.algorithms.online
-       ;angelid.hybrid
+       angelic.hybrid
          angelic.hybrid.continuous-lp-states angelic.hybrid.fixed-lp-valuations
          angelic.hybrid.dnf-lp-valuations angelic.hybrid.ncstrips-descriptions
          angelic.hybrid.hierarchies.flat angelic.hybrid.hierarchies.strips
+         angelic.hybrid.solutions
      ;domains
        domains.nav-switch domains.warehouse domains.vac-rooms domains.discrete-road-trip
        domains.hybrid-blocks domains.road-trip domains.simple-road-trip

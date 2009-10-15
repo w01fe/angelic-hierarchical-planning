@@ -107,8 +107,9 @@
 (defmethod evaluate-constraint ::DiscPosConstraint [constraint var-map objects [discrete-atoms numeric-vals]]
   (contains? discrete-atoms (props/simplify-atom var-map (:atom constraint))))
 
+(declare make-conjunctive-constraint)
 (defmethod split-constraint ::DiscPosConstraint [constraint var-map objects]
-  [[(props/simplify-atom var-map (:atom constraint))] nil nil])
+  [[(props/simplify-atom var-map (:atom constraint))] nil (make-conjunctive-constraint nil)])
 
 (defmethod apply-constraint ::DiscPosConstraint
   [state constraint disc-var-map cont-var-map objects const-fns pos-fn neg-fn lez-fn eqz-fn gez-fn]
@@ -137,7 +138,7 @@
   (not (contains? discrete-atoms (props/simplify-atom var-map (:atom constraint)))))
 
 (defmethod split-constraint ::DiscNegConstraint [constraint var-map objects]
-  [nil [(props/simplify-atom var-map (:atom constraint))] nil])
+  [nil [(props/simplify-atom var-map (:atom constraint))] (make-conjunctive-constraint nil)])
 
 (defmethod apply-constraint ::DiscNegConstraint
   [state constraint disc-var-map cont-var-map objects const-fns pos-fn neg-fn lez-fn eqz-fn gez-fn]
@@ -172,7 +173,11 @@
   (let [bits (map #(split-constraint % var-map objects) (:constraints constraint))]
     [(apply concat (map first bits))
      (apply concat (map second bits))
-     (make-conjunctive-constraint (filter identity (map #(nth % 2) bits)))]))
+     (make-conjunctive-constraint (apply concat (for [b bits 
+                                                      :let [num (nth b 2)] :when num] 
+                                                  (if (isa? (:class b) ::ConjunctiveConstraint)
+                                                    (util/safe-get num :constraints)
+                                                    [num]))))]))
 
 (defmethod get-numeric-yield ::ConjunctiveConstraint  [constraint var-map objects [discrete-atoms numeric-vals]]
   (loop [constraints (seq (:constraints constraint)) yield []]

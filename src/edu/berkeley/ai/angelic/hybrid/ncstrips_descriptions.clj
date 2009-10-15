@@ -60,27 +60,19 @@
 
 (defstruct hybrid-ncstrips-effect :pos-pres :neg-pres :num-pres :effect :possible-effect :cost-expr)
 
-(defn instantiate-hybrid-effect-schema [schema disc-vars num-vars objects]
+(defn instantiate-hybrid-effect-schema [schema objects]
   (let [{:keys [precondition effect possible-effect cost-expr]} schema
-        all-vars (merge disc-vars num-vars)
-        [pos-pres neg-pres num-pres] (hc/split-constraint precondition all-vars objects)
- ;       [adds dels assignments]      (he/get-hybrid-effect-parts effect)
- ;       [poss-adds poss-dels x]      (he/get-hybrid-effect-parts possible-effect)
-        ]
-;    (assert (empty? x))
-    (struct hybrid-ncstrips-effect  pos-pres neg-pres num-pres effect possible-effect cost-expr
-;       adds dels poss-adds poss-dels
-;       assignments cost-expr
-       )))
+;        all-vars (merge disc-vars num-vars)
+        [pos-pres neg-pres num-pres] (hc/split-constraint precondition {} objects)]
+    (struct hybrid-ncstrips-effect  pos-pres neg-pres num-pres effect possible-effect cost-expr)))
 
 (defmethod instantiate-description-schema ::HybridNCStripsDescriptionSchema [desc instance]
-  (let [{:keys [discrete-vars numeric-vars effects]} desc
-        objects (util/safe-get instance :objects)]
-    (assoc desc
-      :class ::UngroundedHybridNCStripsDescription 
-      :objects objects
-      :const-fns (util/safe-get instance :constant-numeric-vals)
-      :effects (for [e effects] (instantiate-hybrid-effect-schema e discrete-vars numeric-vars objects)))))
+  (assoc desc
+    :class ::UngroundedHybridNCStripsDescription 
+    :objects  (util/safe-get instance :objects)
+    :const-fns (util/safe-get instance :constant-numeric-vals)
+    :effects (for [e (util/safe-get desc :effects)] 
+               (instantiate-hybrid-effect-schema e (util/safe-get instance :objects)))))
 
 
 ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
@@ -121,7 +113,7 @@
         ground-neg-pres (map grounder neg-pres)
         reward-lm (util/map-vals - (le/hybrid-linear-expr->grounded-lm cost-expr discrete-var-map
                                                                        numeric-var-map constant-fns))]
-;    (println numeric-var-map)
+;    (println pos-pres neg-pres ground-pos-pres ground-neg-pres clause)
     (assert (empty? x))
     (when (and (every? clause ground-pos-pres)
                (every? #(not (= :true (clause %))) ground-neg-pres)

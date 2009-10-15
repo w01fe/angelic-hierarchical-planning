@@ -402,14 +402,16 @@
 
 ;; TODO: idea here with dir is to supply an optimal initial value for the variable.
 (defn add-lp-var [lp var [l u] dir]
-  (assert (not (contains? (:bounds lp) var)))
   (when (and l u) (assert (<= l u)))
-  (make-incremental-lp* (assoc (:bounds lp) var [l u]) (:objective lp) (:constraints lp)
-			(assoc (current-feasible-solution lp) var ;(or l u 0)
-			       (cond (or (not dir) (zero? dir)) (or l u 0)
-				     (pos? dir) (or u 100000000)
-				     (neg? dir) (or l -100000000)))
-			(current-optimal-cost lp)))
+  (if (contains? (:bounds lp) var) 
+      (do (println "Warning: Duplicate LP var" var "; ignoring new bounds" [l u])
+          lp)
+    (make-incremental-lp* (assoc (:bounds lp) var [l u]) (:objective lp) (:constraints lp)
+                          (assoc (current-feasible-solution lp) var ;(or l u 0)
+                                 (cond (or (not dir) (zero? dir)) (or l u 0)
+                                       (pos? dir) (or u 100000000)
+                                       (neg? dir) (or l -100000000)))
+                          (current-optimal-cost lp))))
 
 (defn- pegged? 
   "Is this variable already pegged against its bound in the provided direction (i.e., the direction 

@@ -8,10 +8,9 @@
 ;; but continuous-ungrounded hybrid strips action, is also defined.
 
 (ns edu.berkeley.ai.angelic.hybrid.fixed-lp-valuations
-  (:use clojure.test edu.berkeley.ai.angelic
+  (:use clojure.test edu.berkeley.ai.angelic [edu.berkeley.ai.angelic.hybrid :as hybrid]
 	[edu.berkeley.ai [ util :as util] [envs :as envs]]
-	[edu.berkeley.ai.util [hybrid :as hybrid] [lp :as lp] [linear-expressions :as le]]
-	[edu.berkeley.ai.envs.hybrid-strips :as hs]
+	[edu.berkeley.ai.util  [linear-expressions :as le]]
 	[edu.berkeley.ai.envs.hybrid-strips [constraints :as hc] [effects :as he]]
 	[edu.berkeley.ai.angelic.hybrid [continuous-lp-states :as cls]]))
 
@@ -52,32 +51,19 @@
 (defmethod empty-valuation? ::HybridFixedLPValuation [val] false)
 
 
-;(defn restrict-hflv-clp [cont disc constraint]
-;  (hc/apply-constraint cont
-;     num var-map num-var-map objects constant-fns  ; TODO: ?????
-;     (fn [s a] (when (contains? disc a) s))
-;     (fn [s a] (when-not (contains? disc a) s))
-;     cls/constrain-lp-state-lez cls/constrain-lp-state-eqz cls/constrain-lp-state-gez))
-
-;(defmethod restrict-valuation [::HybridFixedLPValuation ::hc/ConstraintCondition] [val condition]
-;  (make-hybrid-fixed-lp-valuation
-;   (:discrete-state val)
-;   (apply concat (map #(restrict-hflv-clp % (:discrete-state val) (util/safe-get condition :constraint)) 
-;		      (:continuous-lp-states val)))))
-
-
-
-
 
 ; Descriptions for primitives.
  ; :upper-reward-fn upper-reward-fn})
 (derive ::QuasigroundPrimitiveDescription :edu.berkeley.ai.angelic/Description)
 
-(defn make-quasiground-primitive-description [quasiground-action objects constant-fns]
-  {:class ::QuasigroundPrimitiveDescription :objects objects :constant-fns constant-fns
-   :action (assoc quasiground-action
-	     :num-var-map (util/map-map #(vector % (gensym (str %))) 
-					(util/safe-get quasiground-action :num-vars)))})
+(defn make-quasiground-primitive-description 
+  ([quasiground-action objects constant-fns]
+     (make-quasiground-primitive-description quasiground-action objects constant-fns 
+       (util/map-map #(vector % (gensym (str %))) 
+                     (util/safe-get quasiground-action :num-vars))))
+  ([quasiground-action objects constant-fns num-var-map]
+     {:class ::QuasigroundPrimitiveDescription :objects objects :constant-fns constant-fns
+      :action (assoc quasiground-action :num-var-map num-var-map)}))
 
 (defn- progress-qps [val desc]
 ;  (println (keys (:schema  (:action  desc))))
@@ -98,60 +84,48 @@
 				  cls/constrain-lp-state-lez cls/constrain-lp-state-eqz cls/constrain-lp-state-gez)]
        (cls/update-lp-state cont assignment-lm reward-lm)))))
 
+
 (defmethod progress-valuation 
   [::HybridFixedLPValuation ::QuasigroundPrimitiveDescription] 
   [val desc]
   (progress-qps val desc))
 
 
-
-(derive ::HybridFinishDescription ::QuasigroundPrimitiveDescription)
-
-(defn make-hybrid-finish-description [goal objects constant-fns]
-  (assoc (make-quasiground-primitive-description  
-	  {:schema 
-	   {:effect (he/make-effect nil nil nil) :cost-expr {}} 
-	   :var-map {} :num-vars [] :num (util/safe-get goal :constraint)}
-	  objects constant-fns)
-    :class ::HybridFinishDescription))
-
-(defn make-hybrid-finish-valuation [rew extra-keys]
-  (merge extra-keys (map->valuation :edu.berkeley.ai.angelic.dnf-valuations/DNFSimpleValuation {*finish-state* rew})))
-
-
-(defmethod progress-valuation    [::HybridFixedLPValuation ::HybridFinishDescription] [val desc]
-  (let [result (progress-qps val desc)]
+(defmethod progress-valuation    [::HybridFixedLPValuation ::hybrid/HybridFinishDescription] [val desc]
+  (let [{:keys [objects constant-fns goal]} desc
+        result (progress-qps val   
+                 (make-quasiground-primitive-description  
+                  {:schema 
+                   {:effect (he/make-effect nil nil nil) :cost-expr {}} 
+                   :var-map {} :num-vars [] :num (util/safe-get goal :constraint)}
+                  objects constant-fns))]
     (if (empty-valuation? result) *pessimal-valuation*
       (make-hybrid-finish-valuation (valuation-max-reward val) result))))
 
-;; TODO: fix
-(defmethod progress-valuation    [:edu.berkeley.ai.angelic/ConditionalValuation ::HybridFinishDescription] [val desc]
-  (map->valuation :edu.berkeley.ai.angelic.dnf-valuations/DNFSimpleValuation {*finish-state* (valuation-max-reward val)}))
 
-
-
-(defn extract-fully-primitive-solution 
-  "Take a solution (quasi-ground) primitive sequence and the final
-   outcome, a hybrid-fixed-LP-valuation, and return a fully grounded
-   sequence of hybrid-strips actions that achieves the optimal reward."
-  [env act-seq]
-  (let [action-space (:action-space env)
-	objects      (util/safe-get env :objects)
-	const-fns    (util/safe-get env :constant-numeric-vals)
-	final-val    (reduce (fn [val act]
-			       (progress-valuation val
-						   {:class ::QuasigroundPrimitiveDescription :objects objects :constant-fns const-fns :action act}))
-			     (map->valuation ::HybridFixedLPValuation {(envs/get-initial-state env) 0})
-			     act-seq)
-	[cont-result num-var-map rew] (util/first-maximal-element #(nth % 2)
-								  (map #(cls/solve-lp-state %) (util/safe-get final-val :continuous-lp-states)))]
-;    (println num-var-map)
-    (map #(hs/hybrid-strips-action->action (:schema  %)
-					   (into (util/safe-get % :var-map) 
-						 (for [nv (util/safe-get % :num-vars)] [nv (util/safe-get num-var-map (util/safe-get (:num-var-map %) nv))]))
-					   action-space) act-seq)))
 
 
 
 
 (set! *warn-on-reflection* false)
+
+
+(comment 
+
+
+
+;(defn restrict-hflv-clp [cont disc constraint]
+;  (hc/apply-constraint cont
+;     num var-map num-var-map objects constant-fns  ; TODO: ?????
+;     (fn [s a] (when (contains? disc a) s))
+;     (fn [s a] (when-not (contains? disc a) s))
+;     cls/constrain-lp-state-lez cls/constrain-lp-state-eqz cls/constrain-lp-state-gez))
+
+;(defmethod restrict-valuation [::HybridFixedLPValuation ::hc/ConstraintCondition] [val condition]
+;  (make-hybrid-fixed-lp-valuation
+;   (:discrete-state val)
+;   (apply concat (map #(restrict-hflv-clp % (:discrete-state val) (util/safe-get condition :constraint)) 
+;		      (:continuous-lp-states val)))))
+
+
+)
