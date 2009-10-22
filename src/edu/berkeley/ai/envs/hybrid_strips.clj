@@ -451,8 +451,14 @@
    nil 
    nil true))
 ;  (envs/make-conjunctive-condition (:goal-atoms instance) nil))
-
-	   
+	
+(defmethod envs/expected-domain-size ::HybridStripsPlanningInstance [inst pred arg-pos inst-pos]  
+  (let [atoms (filter #(= (first %) pred) (util/safe-get inst :init-atoms))]
+    (if (empty? atoms) 0
+        (apply util/mean
+               (map (fn [tuples] (count (distinct (map #(nth % arg-pos) tuples))))
+                    (vals
+                     (util/group-by (fn [tuple] (util/vec-map #(nth tuple %) inst-pos)) atoms)))))))   
 
 
 

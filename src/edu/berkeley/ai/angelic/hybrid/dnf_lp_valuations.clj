@@ -41,37 +41,81 @@
 
 (defmethod empty-valuation? ::HybridDNFLPValuation [val] false)
 
-;; Assume this is only called for hierarchical preconditions.  
-;; Assume everything is grounded, with no foralls, so we don't need any fancy business.
-(defn restrict-hdlv-pair [clause-lp-pair constraint var-map num-var-map objects constant-fns]
-  (hc/apply-constraint 
-   clause-lp-pair
-   constraint var-map num-var-map objects constant-fns
-   (fn [[d c] a] (when-let [nd (restrict-clause-pos d a)] [nd c]))
-   (fn [[d c] a] (when-let [nd (restrict-clause-neg d a)] [nd c]))
-   (fn [[d c] clm strict?] (when-let [nc (constrain-lp-state-lez c clm strict?)] [d nc]))
-   (fn [[d c] clm]         (when-let [nc (constrain-lp-state-eqz c clm)] [d nc]))
-   (fn [[d c] clm strict?] (when-let [nc (constrain-lp-state-gez c clm strict?)] [d nc]))))
 
-(defmethod restrict-valuation [::HybridDNFLPValuation ::hc/ConstraintCondition] [val condition]
-  (make-hybrid-dnf-lp-valuation
-   (apply concat (map #(restrict-hdlv-pair % (util/safe-get condition :constraint) :dummy :dummy :dummy :dummy) 
-                      (:clause-lp-set val)))))
+;; Hierarchical preconditions must consist of fully grounded atoms
+;; and grounded or quasi-grounded numeric expressions.  Num-vars
+;; is a map from numeric vars introduced to reward directions.  
+
+;; num-fns are functions that restrict a CLP, i.e., partially evalauted 
+;; constrain-lp-state-??z functions.
+
+(derive ::SimpleConstraintCondition ::envs/Condition)
+(defstruct simple-constraint-condition :class :pos :neg :num-fns :num-vars)
+
+(defn- make-simple-constraint-condition [pos neg num-fns num-vars] 
+  (struct simple-constraint-condition ::SimpleConstraintCondition pos neg num-fns num-vars))
+
+(def *true-scc* (make-simple-constraint-condition nil nil nil nil))
 
 
-;; TODO!
-(comment 
-  (defmethod progress-valuation    [::HybridDNFLPValuation ::hybrid/HybridFinishDescription] [val desc]
-    (let [{:keys [objects constant-fns goal]} desc
-          result (progress-qps val   
-                               (make-quasiground-primitive-description  
-                                {:schema 
-                                 {:effect (he/make-effect nil nil nil) :cost-expr {}} 
-                                 :var-map {} :num-vars [] :num (util/safe-get goal :constraint)}
-                                objects constant-fns))]
-      (if (empty-valuation? result) *pessimal-valuation*
-          (make-hybrid-finish-valuation (valuation-max-reward val) result)))))
+;; TODO: figure out how to guess reward direction here
+(defn constraint->simple-constraint-condition 
+  ([constraint disc-var-map cont-var-map objects const-fns]
+     (constraint->simple-constraint-condition constraint disc-var-map cont-var-map objects const-fns {}))
+  ([constraint disc-var-map cont-var-map objects const-fns reward-direction-map]
+     (let [[pos neg num] (hc/split-constraint constraint disc-var-map objects)]
+       (make-simple-constraint-condition
+         pos neg 
+         (hc/get-fn-yield num disc-var-map cont-var-map const-fns 
+                          constrain-lp-state-lez constrain-lp-state-eqz constrain-lp-state-gez)
+         (util/map-map #(vector (cont-var-map %) (reward-direction-map %)) (keys cont-var-map))))))
+
+(defmethod envs/conjoin-conditions [::SimpleConstraintCondition ::SimpleConstraintCondition] [c1 c2]
+  (update-in    
+   (reduce (fn [c1 v] (update-in c1 [v] concat (c2 v))) c1 [:pos :neg :num-fns])
+   :num-vars merge (:num-vars c2)))
+
+(defmethod envs/satisfies-condition? ::SimpleConstraintCondition [s c] 
+  (throw (UnsupportedOperationException.)))
+
+(defmethod envs/consistent-condition? ::SimpleConstraintCondition [condition] 
+  (throw (UnsupportedOperationException.)))
+
+
+(defmethod restrict-valuation [::HybridDNFLPValuation ::SimpleConstraintCondition] [val condition]
+  (let [{:keys [pos neg num-fns num-vars]} condition]
+    (make-hybrid-dnf-lp-valuation
+     (for [[clause cls] (util/safe-get val :clause-lp-set)
+           :let [new-clause 
+                 (reduce-while restrict-clause-pos 
+                   (reduce-while restrict-clause-neg 
+                     clause pos) neg)]
+           :when new-clause
+           :let [new-cls 
+                 (reduce-while #(%2 %1)
+                   (reduce (fn [cls [var dir]] (cls/add-lp-state-param cls var [] dir)) cls num-vars)
+                   num-fns)]
+           :when new-cls]
+       [new-clause new-cls]))))
+
+
 
 
 
   (set! *warn-on-reflection* false)
+
+
+
+(comment 
+
+;; Assume this is only called for hierarchical preconditions.  
+;; Assume everything is grounded, with no foralls, so we don't need any fancy business.
+  (defn restrict-hdlv-pair [clause-lp-pair constraint var-map num-var-map objects constant-fns]
+    (hc/apply-constraint 
+     clause-lp-pair
+     constraint var-map num-var-map objects constant-fns
+     (fn [[d c] a] (when-let [nd (restrict-clause-pos d a)] [nd c]))
+     (fn [[d c] a] (when-let [nd (restrict-clause-neg d a)] [nd c]))
+     (fn [[d c] clm strict?] (when-let [nc (constrain-lp-state-lez c clm strict?)] [d nc]))
+     (fn [[d c] clm]         (when-let [nc (constrain-lp-state-eqz c clm)] [d nc]))
+     (fn [[d c] clm strict?] (when-let [nc (constrain-lp-state-gez c clm strict?)] [d nc])))))

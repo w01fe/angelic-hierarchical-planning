@@ -9,7 +9,7 @@
 (define (domain hybrid-blocks)
   (:requirements :strips :typing :equality :numbers)
   (:types block)
-  (:numeric-types x y)
+  (:numeric-types x y i)
   (:predicates 
    (on ?b - block ?c - block)
    (holding ?b - block)
@@ -23,20 +23,23 @@
    (blockty ?b - block) - y
    (blocklw ?b - block) - x
    (blockrw ?b - block) - x
-   (blockh ?b - block)  - y)
+   (blockh ?b - block)  - y
+   (nblockson ?b - block) - i)
 
   (:action get
      :parameters   (?b - block ?c - block)
      :precondition 
        (and (on ?b ?c)
-	    (forall (?d - block) nil (not (on ?d ?b)))
+;	    (forall (?d - block) nil (not (on ?d ?b)))
+            (= 0 (nblockson ?b))
 	    (gripperempty)
 	    (= (gripperx) (blockcx ?b))
 	    (= (grippery) (blockty ?b)))
      :effect       
        (and (not (gripperempty))
 	    (not (on ?b ?c))
-	    (holding ?b))
+	    (holding ?b)
+            (= (nblockson ?c) (- (nblockson ?c) 1)))
       :cost 1)
 
   (:action put
@@ -49,7 +52,9 @@
      :effect       
        (and (not (holding ?b))
 	    (on ?b ?c)
-	    (gripperempty))
+	    (gripperempty)
+            (= (nblockson ?c) (+ (nblockson ?c) 1))
+            )
      :cost 1)
 
 

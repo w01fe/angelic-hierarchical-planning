@@ -79,6 +79,8 @@
     (.put num-map ['blockrw 'table] width)
     (.put num-map ['blockh 'table] 1)    
     (process-block-forest stacks 'table 0 width 0 height initial-pos block-set on-set num-map)
+    (doseq [b block-set]    (.put num-map ['nblockson b] 0))
+    (doseq [[_ a b] on-set] (.put num-map ['nblockson b] (inc (.get num-map ['nblockson b]))))
     (hs/make-hybrid-strips-planning-instance 
      "hybrid-blocks"
      (make-hybrid-blocks-strips-domain)

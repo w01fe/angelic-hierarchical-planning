@@ -34,7 +34,8 @@
 
   (:hla go-get
        :parameters (?b - block ?from - block)
-       :precondition (and (gripperempty) (on ?b ?from) (forall (?d - block) nil (not (on ?d ?b))))
+       :precondition (and (gripperempty) (on ?b ?from) (=  0 (nblockson ?b)))
+                                        ;  (forall (?d - block) nil (not (on ?d ?b)))
        :refinement (:parameters (:?dx - x :?dy - y)
 		    :precondition (and (= :?dx (blockcx ?b)) (= :?dy (blockty ?b)))
 		    :expansion ((nav-empty :?dx :?dy)

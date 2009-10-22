@@ -136,7 +136,7 @@
 	    gen-name  (gensym (name pred-name))
 	    args      (next atom)]
 	(util/assert-is (apply distinct? args))  ; For now.
-	(doseq [arg args] (util/assert-is (vars arg)))
+	(doseq [arg args] (util/assert-is (contains? vars arg)))
 	(.put pred-names     pred-name (cons gen-name (.get pred-names pred-name)))
 	(.put pred-instances gen-name  atom)
 	(for [arg args] [arg [gen-name]])))))

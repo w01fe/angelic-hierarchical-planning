@@ -5,6 +5,11 @@ hybrid strips hierarchies.
 
 TODO: don't add vars to LP if consted, at least. (also in fixed-lp-vals)
 ;; TODO: handle abs var hints.
+Do something about conditional descriptions -- need hybrid verison, or
+polymorphic instantiation code.
+
+Add handling of guaranteed objects to smart-csps, so we can use
+foralls in preconditions.
 
 ;;;;;;;;;;;;;;;; Implement
 

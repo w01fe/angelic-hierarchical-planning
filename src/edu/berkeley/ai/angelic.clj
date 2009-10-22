@@ -610,16 +610,19 @@ improve efficiency of regression."
 
 (defmethod instantiate-description-schema ::ConditionalDescription [desc instance] 
 ;  (println "inst!")
-  (let [condition (:condition desc)
-	pos       (envs/get-positive-conjuncts condition)
-	neg       (envs/get-negative-conjuncts condition)]
-    (assoc desc
-      :condition-dnf 
+;  (println (:condition desc))
+  (if (isa? instance ::strips/StripsPlanningInstance)
+    (let [condition (:condition desc)
+          pos       (envs/get-positive-conjuncts condition)
+          neg       (envs/get-negative-conjuncts condition)]
+      (assoc desc
+        :condition-dnf 
         (into 
-	 (apply dissoc 
-		(util/map-map #(vector % :unknown) (util/safe-get instance :all-atoms))
-		neg)
-	 (map #(vector % :true) pos)))))
+         (apply dissoc 
+                (util/map-map #(vector % :unknown) (util/safe-get instance :all-atoms))
+                neg)
+         (map #(vector % :true) pos))))
+    desc))
 
 (defmethod ground-description ::ConditionalDescription [desc var-map]
   (assoc desc 

@@ -1,5 +1,5 @@
 (ns edu.berkeley.ai.angelic.hybrid.ncstrips-descriptions
-  (:use edu.berkeley.ai.angelic)
+  (:use edu.berkeley.ai.angelic edu.berkeley.ai.angelic.hybrid)
   (:require [edu.berkeley.ai.util :as util] 
             [edu.berkeley.ai.util [propositions :as props] [hybrid :as hybrid]
              [linear-expressions :as le]]
@@ -143,6 +143,16 @@
                   effect         effects]
               (progress-clause-lp-pair clause-lp-pair effect discrete-var-map numeric-var-map objects constant-fns))))))
 
+
+(defmethod progress-valuation    [::HybridDNFLPValuation ::hybrid/HybridFinishDescription] [val desc]
+  (let [[pos neg num] (hc/split-constraint (util/safe-get (:goal desc) :constraint)
+                                           {} (util/safe-get desc :objects))
+        result (progress-valuation val
+                 (assoc desc 
+                   :class ::HybridNCStripsDescription 
+                   :effects {:pos-pres pos :neg-pres neg :num-pres num}))]
+    (if (empty-valuation? result) *pessimal-valuation*
+      (make-hybrid-finish-valuation (valuation-max-reward val) result))))
 
 
 

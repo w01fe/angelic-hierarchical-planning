@@ -26,6 +26,10 @@
   "Get nil (false) or a possibly-empty list of numeric constraints, 
    where the :left is a single ::NumVar expression."
   (fn [constraint var-map objects [discrete-atoms numeric-vals]] (:class constraint)))
+
+(defmulti get-fn-yield 
+  "Get a list of functions that can be applied to constrain the state."
+  (fn [constraint disc-var-map cont-var-map const-fns lez-fn eqz-fn gez-fn] (:class constraint)))
   
 (defmulti apply-constraint 
   "Apply the constraint, and return a seq of resulting states.
@@ -67,19 +71,26 @@
 	 {nil (le/evaluate-hybrid-linear-expr (:right constraint) var-map numeric-vals)})]
     (when (evaluate-constraint constraint var-map objects [discrete-atoms numeric-vals]) []))))
 
+(defmethod get-fn-yield ::NumConstraint [constraint disc-var-map cont-var-map const-fns lez-fn eqz-fn gez-fn]
+  (let [lm (merge-with + (le/hybrid-linear-expr->grounded-lm (:left constraint) disc-var-map 
+                                                             cont-var-map const-fns)
+                (util/map-vals - (le/hybrid-linear-expr->grounded-lm (:right constraint) disc-var-map 
+                                                                     cont-var-map const-fns)))]
+    [(condp = (:pred constraint)
+        <  #(lez-fn % lm true)
+        <= #(lez-fn % lm false)
+        =  #(eqz-fn % lm)
+        >= #(gez-fn % lm false)
+        >  #(gez-fn % lm true))]))
+
 ;; TODO: figure out strict constraints.
 (defmethod apply-constraint ::NumConstraint [state constraint disc-var-map cont-var-map objects const-fns pos-fn neg-fn lez-fn eqz-fn gez-fn]
-;  (println "Apply num constraint!" constraint "\n")
-  (let [lm (merge-with + (le/hybrid-linear-expr->grounded-lm (:left constraint) disc-var-map cont-var-map const-fns)
-	      (util/map-vals - (le/hybrid-linear-expr->grounded-lm (:right constraint) disc-var-map cont-var-map const-fns)))]
-    (when-let [new-state (condp = (:pred constraint)
-			   < (lez-fn state lm true)
-			   <= (lez-fn state lm false)
-			   =  (eqz-fn state lm)
-			   >= (gez-fn state lm false)
-			   > (gez-fn state lm true))]
-;      (println "new state: " new-state "\n")
-      [new-state])))
+  (when-let [new-state 
+             ((util/safe-singleton (get-fn-yield constraint disc-var-map cont-var-map 
+                                                 const-fns lez-fn eqz-fn gez-fn))
+              state)]
+    [new-state]))
+
 
 (defmethod apply-constraint-and-negation ::NumConstraint 
   [state constraint disc-var-map cont-var-map objects const-fns pos-fn neg-fn lez-fn eqz-fn gez-fn]
@@ -185,6 +196,10 @@
         (when-let [c (get-numeric-yield (first constraints) var-map objects [discrete-atoms numeric-vals])]
 	  (recur (next constraints) (into yield c)))
       yield)))
+
+(defmethod get-fn-yield ::ConjunctiveConstraint [constraint disc-var-map cont-var-map const-fns lez-fn eqz-fn gez-fn]
+  (mapcat #(get-fn-yield % disc-var-map cont-var-map const-fns lez-fn eqz-fn gez-fn)
+          (util/safe-get constraint :constraints)))
 
 (defmethod apply-constraint ::ConjunctiveConstraint
   [state constraint disc-var-map cont-var-map objects const-fns pos-fn neg-fn lez-fn eqz-fn gez-fn]
