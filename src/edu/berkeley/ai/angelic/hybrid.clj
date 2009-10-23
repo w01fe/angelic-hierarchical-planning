@@ -11,12 +11,19 @@
 ;; key that maps each numeric variable to either a number, or an LP variable name.  
 ;; TODO: the latter more or less preculdes proper duplicate detection. solutions?
 
+(def *hybrid-finish-description-schema* {:class ::HybridFinishDescriptionSchema})
 
 (defn make-hybrid-finish-description [goal objects constant-fns]
   {:class ::HybridFinishDescription
    :goal goal 
    :objects objects
    :constant-fns constant-fns})
+
+(defmethod instantiate-description-schema ::HybridFinishDescriptionSchema [desc instance]
+  (make-hybrid-finish-description 
+   (envs/get-goal instance) (util/safe-get instance :objects) (util/safe-get instance :constant-numeric-vals)))
+
+(defmethod ground-description             ::HybridFinishDescription [desc var-map]  desc)
 
 (defn make-hybrid-finish-valuation [rew extra-keys]
   (merge extra-keys 

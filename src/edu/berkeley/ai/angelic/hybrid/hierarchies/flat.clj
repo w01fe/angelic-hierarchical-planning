@@ -43,9 +43,7 @@
 (derive ::HybridFlatFinishHLA ::HybridFlatPrimitiveHLA)
 (defn- make-hybrid-flat-finish-hla [env]
   (struct hybrid-flat-finish-hla ::HybridFlatFinishHLA 
-    (make-hybrid-finish-description (envs/get-goal env) 
-      (util/safe-get env :objects) (util/safe-get env :constant-numeric-vals))
-    env))
+    (instantiate-description-schema *hybrid-finish-description-schema* env)))
 
 
 ; Special descriptions for Act.

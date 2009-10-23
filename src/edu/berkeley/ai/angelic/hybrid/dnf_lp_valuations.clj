@@ -7,7 +7,7 @@
 (ns edu.berkeley.ai.angelic.hybrid.dnf-lp-valuations
   (:use clojure.test edu.berkeley.ai.angelic
 	[edu.berkeley.ai [ util :as util] [envs :as envs]]
-	[edu.berkeley.ai.util [hybrid :as hybrid] [lp :as lp] [linear-expressions :as le]]
+	[edu.berkeley.ai.util [propositions :as props] [hybrid :as hybrid] [lp :as lp] [linear-expressions :as le]]
 	[edu.berkeley.ai.envs.hybrid-strips :as hs]
 	[edu.berkeley.ai.envs.hybrid-strips [constraints :as hc] [effects :as he]]
 	[edu.berkeley.ai.angelic.hybrid [continuous-lp-states :as cls]]))
@@ -41,6 +41,8 @@
 
 (defmethod empty-valuation? ::HybridDNFLPValuation [val] false)
 
+(defmethod valuation->pred-maps ::HybridDNFLPValuation valuation->pred-maps-dnf [val]
+  (map #(clause->pred-maps (first %)) (:clause-lp-set val)))
 
 ;; Hierarchical preconditions must consist of fully grounded atoms
 ;; and grounded or quasi-grounded numeric expressions.  Num-vars
@@ -70,16 +72,25 @@
                           constrain-lp-state-lez constrain-lp-state-eqz constrain-lp-state-gez)
          (util/map-map #(vector (cont-var-map %) (reward-direction-map %)) (keys cont-var-map))))))
 
+;(defn translate-simple-constraint-condition [scc trans-disc-var-map]
+;  (assert (= (:class scc) ::SimpleConstraintCondition))
+;  (reduce (fn [scc key]
+;            (update-in scc [key] #(for [atom %] (props/simplify-atom trans-disc-var-map atom))))
+;          scc [:pos :neg]))
+
 (defmethod envs/conjoin-conditions [::SimpleConstraintCondition ::SimpleConstraintCondition] [c1 c2]
   (update-in    
    (reduce (fn [c1 v] (update-in c1 [v] concat (c2 v))) c1 [:pos :neg :num-fns])
-   :num-vars merge (:num-vars c2)))
+   [:num-vars] merge (:num-vars c2)))
 
 (defmethod envs/satisfies-condition? ::SimpleConstraintCondition [s c] 
   (throw (UnsupportedOperationException.)))
 
-(defmethod envs/consistent-condition? ::SimpleConstraintCondition [condition] 
-  (throw (UnsupportedOperationException.)))
+;; TODO: is it okay to err this way?  
+(defmethod envs/consistent-condition? ::SimpleConstraintCondition [condition]
+  (empty? (util/intersection-coll (util/to-set (:pos condition)) (:neg condition)))
+;  (throw (UnsupportedOperationException.))
+  )
 
 
 (defmethod restrict-valuation [::HybridDNFLPValuation ::SimpleConstraintCondition] [val condition]
@@ -88,8 +99,8 @@
      (for [[clause cls] (util/safe-get val :clause-lp-set)
            :let [new-clause 
                  (reduce-while restrict-clause-pos 
-                   (reduce-while restrict-clause-neg 
-                     clause pos) neg)]
+                   (reduce-while restrict-clause-neg clause neg) 
+                   pos)]
            :when new-clause
            :let [new-cls 
                  (reduce-while #(%2 %1)
@@ -97,6 +108,8 @@
                    num-fns)]
            :when new-cls]
        [new-clause new-cls]))))
+
+
 
 
 

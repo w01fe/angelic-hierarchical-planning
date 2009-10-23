@@ -1,11 +1,12 @@
 (ns edu.berkeley.ai.angelic.hybrid.ncstrips-descriptions
   (:use edu.berkeley.ai.angelic edu.berkeley.ai.angelic.hybrid)
   (:require [edu.berkeley.ai.util :as util] 
-            [edu.berkeley.ai.util [propositions :as props] [hybrid :as hybrid]
+            [edu.berkeley.ai.util [propositions :as props] [hybrid :as hybrid-util]
              [linear-expressions :as le]]
 	    [edu.berkeley.ai.envs.strips.smart-csps :as smart-csps]
             [edu.berkeley.ai.envs.hybrid-strips :as hs]
             [edu.berkeley.ai.envs.hybrid-strips [constraints :as hc] [effects :as he]]
+            [edu.berkeley.ai.angelic.hybrid :as hybrid]
             [edu.berkeley.ai.angelic.hybrid [dnf-lp-valuations :as hdlv] [continuous-lp-states :as cls]]
             ))
 
@@ -48,7 +49,7 @@
 (defmethod parse-description :hybrid-ncstrips [desc domain vars]  
   (util/assert-is (isa? (:class domain) ::hs/HybridStripsPlanningDomain))
   (let [{:keys [discrete-types numeric-types predicates numeric-functions constant-numeric-functions]} domain
-	[discrete-vars numeric-vars] (hybrid/split-var-maps vars discrete-types numeric-types)]
+	[discrete-vars numeric-vars] (hybrid-util/split-var-maps vars discrete-types numeric-types)]
     (make-hybrid-ncstrips-description-schema discrete-vars numeric-vars
       (doall (map #(parse-hybrid-ncstrips-effect-schema % discrete-vars predicates numeric-vars numeric-functions constant-numeric-functions) (next desc))))))
 
@@ -71,8 +72,9 @@
     :class ::UngroundedHybridNCStripsDescription 
     :objects  (util/safe-get instance :objects)
     :const-fns (util/safe-get instance :constant-numeric-vals)
-    :effects (for [e (util/safe-get desc :effects)] 
-               (instantiate-hybrid-effect-schema e (util/safe-get instance :objects)))))
+    :effects (doall  
+              (for [e (util/safe-get desc :effects)] 
+                (instantiate-hybrid-effect-schema e (util/safe-get instance :objects))))))
 
 
 ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
@@ -118,6 +120,7 @@
     (when (and (every? clause ground-pos-pres)
                (every? #(not (= :true (clause %))) ground-neg-pres)
                (empty? (util/intersection (set ground-pos-pres) (set ground-neg-pres))))
+;      (println num-pres)
       (for [[clause clp] 
             (hc/apply-constraint 
              [(reduce #(assoc %1 %2 :true) (apply dissoc clause ground-neg-pres) ground-pos-pres)
@@ -144,13 +147,13 @@
               (progress-clause-lp-pair clause-lp-pair effect discrete-var-map numeric-var-map objects constant-fns))))))
 
 
-(defmethod progress-valuation    [::HybridDNFLPValuation ::hybrid/HybridFinishDescription] [val desc]
+(defmethod progress-valuation    [::hdlv/HybridDNFLPValuation ::hybrid/HybridFinishDescription] [val desc]
   (let [[pos neg num] (hc/split-constraint (util/safe-get (:goal desc) :constraint)
                                            {} (util/safe-get desc :objects))
         result (progress-valuation val
                  (assoc desc 
                    :class ::HybridNCStripsDescription 
-                   :effects {:pos-pres pos :neg-pres neg :num-pres num}))]
+                   :effects [{:pos-pres pos :neg-pres neg :num-pres num}]))]
     (if (empty-valuation? result) *pessimal-valuation*
       (make-hybrid-finish-valuation (valuation-max-reward val) result))))
 

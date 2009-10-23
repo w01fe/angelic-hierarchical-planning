@@ -404,6 +404,7 @@
   (if (empty? actions) 
     (make-alt-plan-node (:class node) alt name previous (inc parent-depth) )
     (let [nxt (get-alt-node alt (first actions) previous was-tight?)]
+;      (println (optimistic-valuation nxt))
       (if (and (or (not (empty-valuation? (optimistic-valuation nxt)))
 		   (and (util/sref-set! (:fate ^nxt) :dead) false))
 	       (or (next actions) 
@@ -414,7 +415,7 @@
 					 name)))
 	  (recur node nxt (next actions) alt parent-depth name was-tight?)
 	(util/print-debug 3 "Late prune at" (search/node-str {:class ::ALTPlanNode :plan nxt})
-			  (map hla-name (next actions))
+			  (map hla-name (next actions)) ;(def *prune-node* nxt)
 			  ;(map println (map optimistic-valuation (util/iterate-while :previous nxt)))
 ;			  (optimistic-valuation (:previous (:previous nxt)))
 			  )))))

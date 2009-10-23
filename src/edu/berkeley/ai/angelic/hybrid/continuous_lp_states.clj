@@ -130,6 +130,7 @@
   (let [old-state-var-map (get-state-var-map state)
 	lp                (get-incremental-lp state)
 	reward            (map-linear-expr-vars old-state-var-map reward)]
+    (println old-state-var-map reward)
     (make-lp-state* 
      (persistent!
       (reduce (fn [new-state-var-map [effect-var effect-lm]]
