@@ -24,6 +24,7 @@
        :refinement   (:expansion    ())
        :refinement   (:parameters (:?b - block :?from - block :?to - block :?dx - x) 
 		      :precondition (and (on :?b :?from)
+                                         (not (block= :?b :?to))
 					 ;; TODO: better bounds with a forall?
 					 (>= :?dx (+ (- (blockcx :?to) (blocklw :?to)) (blocklw :?b)))
 					 (<= :?dx (- (+ (blockcx :?to) (blockrw :?to)) (blockrw :?b)))) 
