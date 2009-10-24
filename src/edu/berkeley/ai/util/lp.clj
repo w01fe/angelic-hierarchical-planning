@@ -422,15 +422,30 @@
 	(neg? dir) (= val (first (safe-get (:bounds lp) var)))))
 
 (defn increment-lp-objective [lp v-map]
-  "Increment the objective of the LP; v-map maps from variables to multipliers."
-  (let [sol (current-feasible-solution lp)
-	cost (current-optimal-cost lp)]
-    (make-incremental-lp* 
-     (:bounds lp) (merge-with + (:objective lp) v-map) (:constraints lp)
-     sol			
-     (when (and cost (every? (fn [[var val]] (pegged? lp var (safe-get sol var) val)) v-map))
-       (print-debug 2 "Got pegged solution when incrementing objective!")
-       (apply + cost (map (fn [[var val]] (* val (safe-get sol var))) v-map))))))
+  "Increment the objective of the LP; v-map is a linear expression, which may include abs. 
+   value terms (which must appear positively)."
+  (if (some map? (keys v-map))  ; Get rid of absolute value terms.
+      (apply increment-lp-objective 
+        (reduce (fn [[lp v-map] k]
+                  (let [dummy-var (gensym "abs-var")
+                        val       (get v-map k)]
+                    (assert (< val 0))
+                    [(add-lp-constraint
+                      (add-lp-constraint 
+                       (add-lp-var lp dummy-var [0 nil] +1)
+                       [(assoc k dummy-var -1) [nil 0]] false)
+                      [(assoc k dummy-var 1) [0 nil]] false)
+                     (assoc (dissoc v-map k) dummy-var val)]))
+                [lp v-map]
+                (filter map? (keys v-map))))
+    (let [sol (current-feasible-solution lp)
+          cost (current-optimal-cost lp)]
+      (make-incremental-lp* 
+       (:bounds lp) (merge-with + (:objective lp) v-map) (:constraints lp)
+       sol			
+       (when (and cost (every? (fn [[var val]] (pegged? lp var (safe-get sol var) val)) v-map))
+         (print-debug 2 "Got pegged solution when incrementing objective!")
+         (apply + cost (map (fn [[var val]] (* val (safe-get sol var))) v-map)))))))
 
 
 (deftest test-incremental-lp ;TODO: improve
@@ -439,19 +454,36 @@
     (is (= (current-feasible-solution lp1)  {:boo -1, :bam 0}))
     (is (= (current-optimal-cost lp1) 0)))
   (is (= (:constraints (-> (make-incremental-lp {} {} {}) (add-lp-var :bam nil nil) (add-lp-constraint [{:bam 1} [-1 nil]] false) (add-lp-constraint [{:bam -1} [-1 nil]] false) (add-lp-var :boo [-1 1] nil) (add-lp-constraint [{:bam 1 :boo 1} [-3 4]] false) (add-lp-constraint (linear-expr-lez->normalized-inequality {:bam -1 :boo -1 nil 1} false) false)))
-	 {{:bam 1, :boo 1} [1 2]})))
+	 {{:bam 1, :boo 1} [1 2]}))
   
+  ;; Test absolute value.
+  (is (= (second (solve-incremental-lp 
+                  (increment-lp-objective 
+                   (make-incremental-lp {:x [-3 2]} {:x 0.5 } {}) 
+                    {{:x 1} -1})))
+         0))
 
-; What happens when we assign a variable?  (to a constant/var), or add to another const/var? 
-; All conditions, costs, etc refer to the variable *at that particular time*
-; Thus, note that effect cannot fail; in principle, it creates a new variable.
-; Way 1: rename old var everywhere, assign to new var.
-; Way 2: keep mapping from variables to current const vals / LP vars. 
- ; Can even allow linear functions of LP vars.
- ; Then, we just update this mapping.
- ; Nice part: this scales from pure primitive setting (no LP) to hierarchical setting smoothely
- ; (no cost for constants...)
-  ; Each HLA token maintains gensyms for its non-conrete vars ?
+  (is (= (second (solve-incremental-lp 
+                  (increment-lp-objective 
+                   (make-incremental-lp {:x [-3 2]} {:x -2} {}) 
+                    {{:x 1} -1})))
+         3))
+
+  (is (= (second (solve-incremental-lp 
+                  (increment-lp-objective 
+                   (make-incremental-lp {:x [-3 2]} {:x 2} {}) 
+                    {{:x 1} -1})))
+         2))
+  )
+
+
+
+; max -|y|:
+; max -x s.t.
+; x >= y, x >= -y 
+; max -x s.t. 
+; |y| > x
+; y > x
 
 
      

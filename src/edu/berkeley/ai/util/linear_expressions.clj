@@ -103,6 +103,28 @@
 
 
 
+
+(defn simplify-linear-expr
+  "le is a linear expression, possibly including abs value maps, and f is a map from 
+   variables to linear expression subsitions."
+  [f le]
+  (persistent!
+   (reduce (fn [result [var mult]]
+             (if (map? var)
+                 (let [simplified-var (simplify-linear-expr f var)]
+                   (if (and (= (count simplified-var) 1) (get simplified-var nil))
+                       (assoc! result nil (+ (abs (get simplified-var nil)) (get result nil)))
+                     (assoc! result simplified-var mult)))
+               (let [new-var (f var)]
+                 (cond (map? new-var)
+                         (reduce (fn [result [var inner-mult]]
+                                   (assoc! result var (+ (* mult inner-mult) (get result var 0))))
+                                 result new-var)
+                       (nil? new-var)
+                         (assoc! result var (+ mult (get result var 0)))
+                       :else (throw (RuntimeException. "Bad value in simplify-linear-expr"))))))
+	   (transient {nil (get le nil 0)}) (dissoc le nil))))
+
 ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
 ;          Extracting normalized (in)equalities from affine expresisons.
 ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
