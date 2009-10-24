@@ -337,12 +337,14 @@
   (let [old-bounds   (safe-get (:bounds lp) var)
 	final-bounds (intersect-lp-intervals old-bounds new-bounds)]
     (if (or (not final-bounds)
-	    (and strict? (let [[l u] final-bounds] (and l u (= l u))))) 
-        (print-debug 2 "New bounds for" var "are inconsistent.") 
+	    (and strict? (let [[l u] final-bounds [nl nu] new-bounds] 
+                           (and l u (or nl nu) (= l u (or nl nu)))))) 
+        (print-debug 2 "New bounds for" var "are inconsistent."
+                     ;lp ^lp var new-bounds old-bounds final-bounds strict?
+                     ) 
       (let [sol          (current-feasible-solution lp)
 	    cur-val      (safe-get sol var)
-	    [l-v u-v]    (lp-interval-violation final-bounds cur-val)
-	    new-bounds   (assoc (:bounds lp) var final-bounds)]
+	    [l-v u-v]    (lp-interval-violation final-bounds cur-val)	    new-bounds   (assoc (:bounds lp) var final-bounds)]
 	(if (not (or l-v u-v)) 
 	    (do (print-debug 2 "Solution within new bounds!") 
 		(make-incremental-lp* new-bounds (:objective lp) (:constraints lp) sol (current-optimal-cost lp)))
@@ -405,8 +407,9 @@
 (defn add-lp-var [lp var [l u] dir]
   (when (and l u) (assert (<= l u)))
   (if (contains? (:bounds lp) var) 
-      (do (println "Warning: Duplicate LP var" var "; ignoring new bounds" [l u])
-          lp)
+      (if (or l u) 
+          (throw (RuntimeException. (str "Duplicate LP var, new bounds; not implemented yet.")))
+        lp)
     (make-incremental-lp* (assoc (:bounds lp) var [l u]) (:objective lp) (:constraints lp)
                           (assoc (current-feasible-solution lp) var ;(or l u 0)
                                  (cond (or (not dir) (zero? dir)) (or l u 0)

@@ -43,7 +43,8 @@
 				(get ?b ?from)))
        :optimistic  (:hybrid-ncstrips 
 		     (:effect    (and (= (gripperx) (blockcx ?b)) (= (grippery) (blockty ?b))
-				      (not (gripperempty)) (not (on ?b ?from)) (holding ?b))
+				      (not (gripperempty)) (not (on ?b ?from)) (holding ?b)
+                                      (= (nblockson ?from) (- (nblockson ?from) 1)))
 		      :cost-expr (+ 10 
 				    (* 1
 				       (+ (abs (- (blockcx ?b) (gripperx)))
@@ -66,7 +67,8 @@
 				(put ?b ?to)))
        :optimistic  (:hybrid-ncstrips 
 		     (:effect    (and (= (gripperx) ?dx) (= (grippery) (+ (blockty ?to) (blockh ?b)))
-				      (gripperempty) (on ?b ?to) (not (holding ?b)))
+				      (gripperempty) (on ?b ?to) (not (holding ?b))
+                                      (= (nblockson ?to) (+ (nblockson ?to) 1)))
 		      :cost-expr (+ 10 
 				    (* 2
 				       (+ (abs (- ?dx (gripperx)))

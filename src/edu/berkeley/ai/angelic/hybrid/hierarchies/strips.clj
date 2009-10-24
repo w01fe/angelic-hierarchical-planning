@@ -253,7 +253,7 @@
         new-hla-map    (util/map-vals #(instantiate-hybrid-strips-hla-schema2 % tmp-hla-map instance) tmp-hla-map)
         hierarchy      (struct hybrid-strips-hierarchy ::StripsHierarchy new-hla-map instance)]
     [(make-hybrid-strips-hla hierarchy (util/safe-get new-hla-map root-hla-name) {} {} hdlv/*true-scc* false)
-     (make-hybrid-strips-hla hierarchy (util/safe-get new-hla-map *finish-hs-hla-name*) {} {} hdlv/*true-scc* false)]))
+     (make-hybrid-strips-hla hierarchy (util/safe-get new-hla-map *finish-hs-hla-name*) {} {} hdlv/*true-scc* :noop)]))
 
 
 (comment
