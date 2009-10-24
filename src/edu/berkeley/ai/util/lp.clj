@@ -304,6 +304,7 @@
   "Return [c-map violated-i] or nil for no violation."
   [[c-map i] sol]
 ;  (println c-map i sol)
+;  (println c-map i sol)
   (when-let [i (lp-interval-violation i (apply + (for [[v m] c-map] (* m (sol v)))))]
     [c-map i]))
 
@@ -423,18 +424,21 @@
 
 (defn increment-lp-objective [lp v-map]
   "Increment the objective of the LP; v-map is a linear expression, which may include abs. 
-   value terms (which must appear positively)."
+   value terms (which must appear negatively)."
+;  (println lp v-map "\n\n\n")
   (if (some map? (keys v-map))  ; Get rid of absolute value terms.
       (apply increment-lp-objective 
         (reduce (fn [[lp v-map] k]
                   (let [dummy-var (gensym "abs-var")
-                        val       (get v-map k)]
+                        val       (get v-map k)
+                        const     (- (get k nil 0))
+                        k2         (dissoc k nil)]
                     (assert (< val 0))
                     [(add-lp-constraint
                       (add-lp-constraint 
                        (add-lp-var lp dummy-var [0 nil] +1)
-                       [(assoc k dummy-var -1) [nil 0]] false)
-                      [(assoc k dummy-var 1) [0 nil]] false)
+                       [(assoc k2 dummy-var -1) [nil const]] false)
+                      [(assoc k2 dummy-var 1) [const nil]] false)
                      (assoc (dissoc v-map k) dummy-var val)]))
                 [lp v-map]
                 (filter map? (keys v-map))))
@@ -474,6 +478,12 @@
                    (make-incremental-lp {:x [-3 2]} {:x 2} {}) 
                     {{:x 1} -1})))
          2))
+
+  (is (= (second (solve-incremental-lp 
+                  (increment-lp-objective 
+                   (make-incremental-lp {:x [-3 2]} {:x 1} {}) 
+                    {{:x 1 nil 2} -2})))
+         -2))
   )
 
 

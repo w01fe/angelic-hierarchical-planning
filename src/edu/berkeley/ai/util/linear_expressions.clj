@@ -106,7 +106,7 @@
 
 (defn simplify-linear-expr
   "le is a linear expression, possibly including abs value maps, and f is a map from 
-   variables to linear expression subsitions."
+   variables to linear expression subsitions or new variable names."
   [f le]
   (persistent!
    (reduce (fn [result [var mult]]
@@ -122,7 +122,10 @@
                                  result new-var)
                        (nil? new-var)
                          (assoc! result var (+ mult (get result var 0)))
-                       :else (throw (RuntimeException. "Bad value in simplify-linear-expr"))))))
+                       :else 
+                         (assoc! result new-var (+ mult (get result new-var 0)))
+                       ;:else (throw (RuntimeException. "Bad value in simplify-linear-expr"))
+                       ))))
 	   (transient {nil (get le nil 0)}) (dissoc le nil))))
 
 ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
@@ -286,7 +289,9 @@
       (apply op (for [v vs] (if (number? v) v (v dvm cf)))))))
  
 (defn hybrid-linear-expr->grounded-lm [expr disc-var-map cont-var-map const-fns]
-  (map-linear-expr-vars cont-var-map (ground-hybrid-linear-expr expr disc-var-map const-fns)))
+  (assert const-fns)
+;  (println expr cont-var-map)
+  (simplify-linear-expr cont-var-map (ground-hybrid-linear-expr expr disc-var-map const-fns)))
 
 (defn parse-and-check-hybrid-linear-expression
   ([expr discrete-vars numeric-vars numeric-functions constant-numeric-functions]
@@ -299,7 +304,7 @@
 	  {expr 1}
 	(contains? constant-numeric-functions (first expr))
 	  (let [checked (hybrid/check-hybrid-atom expr numeric-functions discrete-vars)]	   
-	    {nil (fn [disc-var-map const-fns] 
+	    {nil (fn const-evaluator [disc-var-map const-fns] 
 		   (safe-get const-fns (props/simplify-atom disc-var-map checked)))})
         (contains? numeric-functions (first expr))
 	  {(hybrid/check-hybrid-atom expr numeric-functions discrete-vars) 1}

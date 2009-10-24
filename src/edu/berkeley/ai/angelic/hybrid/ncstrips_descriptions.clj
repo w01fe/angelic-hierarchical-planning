@@ -71,7 +71,7 @@
   (assoc desc
     :class ::UngroundedHybridNCStripsDescription 
     :objects  (util/safe-get instance :objects)
-    :const-fns (util/safe-get instance :constant-numeric-vals)
+    :constant-fns (util/safe-get instance :constant-numeric-vals)
     :effects (doall  
               (for [e (util/safe-get desc :effects)] 
                 (instantiate-hybrid-effect-schema e (util/safe-get instance :objects))))))
@@ -106,6 +106,7 @@
 
 
 (defn progress-clause-lp-pair [[clause clp] effect discrete-var-map numeric-var-map objects constant-fns]
+  (assert constant-fns)
   (let [{:keys [pos-pres neg-pres num-pres effect possible-effect cost-expr]} effect
        [adds dels assignments]      (he/get-hybrid-effect-info effect discrete-var-map numeric-var-map constant-fns)
        [poss-adds poss-dels x]      (he/get-hybrid-effect-info possible-effect discrete-var-map numeric-var-map constant-fns)        
@@ -115,6 +116,7 @@
         ground-neg-pres (map grounder neg-pres)
         reward-lm (util/map-vals - (le/hybrid-linear-expr->grounded-lm cost-expr discrete-var-map
                                                                        numeric-var-map constant-fns))]
+;    (println reward-lm)
 ;    (println pos-pres neg-pres ground-pos-pres ground-neg-pres clause)
     (assert (empty? x))
     (when (and (every? clause ground-pos-pres)
