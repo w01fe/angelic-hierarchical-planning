@@ -147,7 +147,7 @@
 	  (.append out "  ")
 	  (when u (.append out (encode-mps-num u)))
 	  (.append out "\n")))
-       (do (println "Warning: skipping variable" v [l u] "which does not appear in obj or constraints.")
+       (do (print-debug 1 "Warning: skipping variable" v [l u] "which does not appear in obj or constraints.")
 	   (.put dummies v (or l u 0)))
 	   ))        
 
