@@ -5,7 +5,7 @@
            [edu.berkeley.ai.envs.hybrid-strips :as hs])
  )
 
-;; Idea for heuristic: have "goal-cx", "goal-ty" variables for each block.  
+;; Idea for heuristic: have "goal-cx", "goal-ty" variables for each block appearing in goal
 ;; Constrain these to match goal configuration as much as possible.
 ;; Penalize absolute-value distances from current positions (requires second set of vars).  
 
@@ -265,6 +265,14 @@
 (def *sol* (map :name (first (a-star-graph-search (ss-node *env*))))) 
 
 
+;; Simple, solvable problem
+(time  (let [e (make-hybrid-blocks-strips-env 6 2 [1 1] '[[a 0 2 3 1] [b 4 1 2 1]] '[[a [[b]]]])]
+               (map :name (extract-hybrid-primitive-solution e (first (a-star-search (alt-node (get-hierarchy *hybrid-blocks-hierarchy* e) {:cache? false :graph? false :ref-choice-fn first-choice-fn})))))))
+
+
+;; Takes way too long in current setup.
+(time  (let [e (make-hybrid-blocks-strips-env 15 6 [1 1] '[[a 1 2 5 1] [b 7 1 2 1] [c 10 1 2 2]] '[[a [[b] [c]]]])]
+               (map :name (extract-hybrid-primitive-solution e (first (a-star-search (alt-node (get-hierarchy *hybrid-blocks-hierarchy* e) {:cache? false :graph? false :ref-choice-fn first-choice-fn})))))))
 )
 
 

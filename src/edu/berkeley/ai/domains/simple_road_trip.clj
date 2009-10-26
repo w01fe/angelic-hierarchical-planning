@@ -47,6 +47,7 @@
      discrete-grid-size
      )))
 
+(def *simple-road-trip-hierarchy* (util/path-local "simple_road_trip.hierarchy"))
 
 (require '[edu.berkeley.ai.search.algorithms.textbook :as algs] 
 	 '[edu.berkeley.ai.search.state-space :as ss])

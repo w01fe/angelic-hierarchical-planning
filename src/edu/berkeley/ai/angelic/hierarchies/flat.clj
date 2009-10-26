@@ -5,6 +5,7 @@
 
 ;; Flat hierarchies, which adapt either ordinary domains or STRIPS domains (mostly for efficiency comparison) for hierarchical search.  
 ; In particular, Act --> [Prim Act] or [] (reg. of if at goal)
+; Actions are generated using the standard domain action generator, i.e., a successor generator for STRIPS domains.
 
 ;;; Flat hierarchy
 

@@ -257,7 +257,6 @@
 ;; The only valid way to modify an incremental LP is to call make-incremental-lp*.  
 ;; Associng-on to it may render the metadata inconsistent.  
 
-; TODO: normalize constraints somehow (i.e., lexicographically first var always = 1)
 
 (derive ::IncrementalLP ::LP)
 
@@ -403,7 +402,6 @@
     (adjust-lp-constraint-bounds lp constraint-lm new-bounds)))
 
 
-;; TODO: idea here with dir is to supply an optimal initial value for the variable.
 (defn add-lp-var [lp var [l u] dir]
   (when (and l u) (assert (<= l u)))
   (if (contains? (:bounds lp) var) 

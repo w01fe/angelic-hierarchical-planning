@@ -18,6 +18,9 @@
 
 ; TODO: change over to use conditions everywhere? (and add propositional-condition)
 
+;; Also defines a flat-strips hierarchy, which has the same function as a flat-hierarchy but uses
+;; the machinery here (i.e., smart CSPs) rather than the instance's machinery (i.e., successor generator).
+
 ;; HLA schemata
 
 (defstruct strips-hla-schema :class :name :vars :pos-pre :neg-pre :refinement-schemata :optimistic-schema :pessimistic-schema :primitive)
