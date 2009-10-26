@@ -133,7 +133,8 @@
              (fn [[d c] a] (when (not (= (d a) :true)) [(dissoc d a) c]))
              (fn [[d c] clm strict?] (when-let [nc (cls/constrain-lp-state-lez c clm strict?)] [d nc]))
              (fn [[d c] clm]         (when-let [nc (cls/constrain-lp-state-eqz c clm)] [d nc]))
-             (fn [[d c] clm strict?] (when-let [nc (cls/constrain-lp-state-gez c clm strict?)] [d nc])))]
+             (fn [[d c] clm strict?] (when-let [nc (cls/constrain-lp-state-gez c clm strict?)] [d nc]))
+             (fn [[d c]] (cls/lp-state-feasible? c)))]
         [(reduce #(assoc %1 %2 :unknown)
                  (reduce #(assoc %1 %2 :true) (apply dissoc clause dels) adds)
                  (concat (filter #(nil? (clause %)) poss-adds)

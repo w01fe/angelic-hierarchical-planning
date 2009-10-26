@@ -39,7 +39,7 @@
       (make-hybrid-fixed-lp-valuation 
        (first disc-states)
        (for [[[disc cont] rew] m]
-	 (make-lp-state cont rew))))))
+	 (make-lp-state cont false rew))))))
 
 (defmethod explicit-valuation-map ::HybridFixedLPValuation [val]
   (throw (UnsupportedOperationException.)))
@@ -81,7 +81,8 @@
 				  num var-map num-var-map objects constant-fns 
 				  (fn [s a] (when (contains? discrete-state a) s))
 				  (fn [s a] (when-not (contains? discrete-state a) s))
-				  cls/constrain-lp-state-lez cls/constrain-lp-state-eqz cls/constrain-lp-state-gez)]
+				  cls/constrain-lp-state-lez cls/constrain-lp-state-eqz cls/constrain-lp-state-gez
+                                  cls/lp-state-feasible?)]
        (cls/update-lp-state cont assignment-lm reward-lm)))))
 
 

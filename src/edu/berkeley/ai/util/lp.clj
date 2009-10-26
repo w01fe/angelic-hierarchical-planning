@@ -260,10 +260,14 @@
 
 (derive ::IncrementalLP ::LP)
 
-(defn make-incremental-lp* [bounds objective constraints solution cost]
-  (doto (add-caches (assoc (make-lp bounds objective constraints) :class ::IncrementalLP) :solution :cost)
+(defn make-incremental-lp* [bounds objective constraints lazy? solution cost]
+  (when-not lazy? (assert solution))
+  (doto (add-caches (assoc (make-lp bounds objective constraints) :class ::IncrementalLP :lazy? lazy?) 
+                    :solution :cost)
     (set-cache :solution solution)
     (set-cache :cost cost)))
+
+(defn incremental-lp-lazy? [lp] (util/safe-get lp :lazy?))
 
 (defn solve-incremental-lp [lp]
   (or (when (get-cache lp :cost) [(get-cache lp :solution) (get-cache lp :cost)])
@@ -273,9 +277,21 @@
 	(set-cache lp :cost cost)
 	[sol cost])))
 
-(defn make-incremental-lp [bounds objective constraints]
-  (let [lp (make-incremental-lp* bounds objective constraints nil nil)]
-    (when (solve-incremental-lp lp)
+
+(defn incremental-lp-feasible? [lp]
+  (when (or (not (util/safe-get lp :lazy?))
+            (get-cache lp :solution)
+            (solve-incremental-lp lp))
+    true))
+
+(defn make-incremental-lp 
+  "Make an LP, which can be incrementally modified by adding variables, constraints, etc.  
+   If lazy? is false, the LP will always maintain a feasible solution and possibly optimal cost.
+   If lazy? is true, the LP will try to maintain a feasible solution but will not re-solve an
+   LP unless explicitly asked using incremental-lp-feasible?."
+  [bounds objective constraints lazy?]
+  (let [lp (make-incremental-lp* bounds objective constraints lazy? (when-not lazy? :dummy) nil)]
+    (when (or lazy? (solve-incremental-lp lp))
       lp)))
 
 (defn- current-feasible-solution [lp]
@@ -341,19 +357,24 @@
         (print-debug 2 "New bounds for" var "are inconsistent."
                      ;lp ^lp var new-bounds old-bounds final-bounds strict?
                      ) 
-      (let [sol          (current-feasible-solution lp)
-	    cur-val      (safe-get sol var)
-	    [l-v u-v]    (lp-interval-violation final-bounds cur-val)	    new-bounds   (assoc (:bounds lp) var final-bounds)]
-	(if (not (or l-v u-v)) 
-	    (do (print-debug 2 "Solution within new bounds!") 
-		(make-incremental-lp* new-bounds (:objective lp) (:constraints lp) sol (current-optimal-cost lp)))
-	  (let [new-sol (assoc sol var (or l-v u-v))]
-	    (if (not (lp-constraints-violation (:constraints lp) new-sol))
-	        (do (print-debug 2 "Solution fixed by projecting to new bounds.")
-		    (make-incremental-lp* new-bounds (:objective lp) (:constraints lp) new-sol 
-					  (if (= 0 (get (:objective lp) var 0)) (current-optimal-cost lp) nil)))
-	      (do (print-debug 2 "All else failed with new bounds; solving again from scratch.")
-		  (make-incremental-lp new-bounds (:objective lp) (:constraints lp)) ))))))))
+      (let [new-bounds   (assoc (:bounds lp) var final-bounds)
+            sol          (current-feasible-solution lp)
+            lazy?        (safe-get lp :lazy?)]
+        (if (not sol) 
+            (make-incremental-lp* new-bounds (:objective lp) (:constraints lp) lazy? nil nil)
+          (let [cur-val      (safe-get sol var)
+                [l-v u-v]    (lp-interval-violation final-bounds cur-val)]	            
+            (if (not (or l-v u-v)) 
+              (do (print-debug 2 "Solution within new bounds!") 
+                  (make-incremental-lp* new-bounds (:objective lp) (:constraints lp) lazy?
+                                        sol (current-optimal-cost lp)))
+              (let [new-sol (assoc sol var (or l-v u-v))]
+                (if (not (lp-constraints-violation (:constraints lp) new-sol))
+                  (do (print-debug 2 "Solution fixed by projecting to new bounds.")
+                      (make-incremental-lp* new-bounds (:objective lp) (:constraints lp) lazy? new-sol 
+                                            (if (= 0 (get (:objective lp) var 0)) (current-optimal-cost lp) nil)))
+                  (do (print-debug 2 "All else failed with new bounds; solving again from scratch.")
+                      (make-incremental-lp new-bounds (:objective lp) (:constraints lp) lazy?) ))))))))))
 			      
 
 (defn adjust-lp-constraint-bounds [lp constraint new-bounds]
@@ -363,13 +384,16 @@
 					     (le/evaluate-linear-expr-ga 
 					      #(iv/parse-interval (safe-get (:bounds lp) %))
 					      constraint)))
-	final-bounds (when merged-bounds (intersect-lp-intervals (intersect-lp-intervals old-bounds new-bounds) computed-bounds))]
+	final-bounds (when merged-bounds (intersect-lp-intervals (intersect-lp-intervals old-bounds new-bounds) computed-bounds))
+        lazy? (safe-get lp :lazy?)]
     (print-debug 3  "For" constraint "have old bounds" old-bounds "new" new-bounds
 	     "computed" computed-bounds)
     (if (not final-bounds) (print-debug 2 "New bounds for constraint are inconsistent.")
       (let [new-constraints (assoc (:constraints lp) constraint final-bounds)
 	    sol (current-feasible-solution lp)]
-	(if-let [[vc [vl vh]] (lp-constraint-violation [constraint final-bounds] sol)]
+        (if (not sol)
+            (make-incremental-lp* (:bounds lp) (:objective lp) new-constraints lazy? nil nil)          
+          (if-let [[vc [vl vh]] (lp-constraint-violation [constraint final-bounds] sol)]
 	    (or (print-debug 2 "current lp infeasible with new constraint.")
 		(and (not (apply = final-bounds))
 		     (let [epsilon 0.00000000001
@@ -378,12 +402,15 @@
 		       (and (not (lp-constraints-violation (:constraints lp) proj))
 			    (not (lp-bounds-violation (:bounds lp) proj))
 			    (do (print-debug 2 "Projecting fixed it.")
-				(make-incremental-lp* (:bounds lp) (:objective lp) new-constraints
-						     proj nil)))))
+				(make-incremental-lp* (:bounds lp) (:objective lp) new-constraints lazy?
+                                                      proj nil)))))
 		(do (print-debug 2 "Projecting failed, or not attempted for eq; trying from scratch")
-		    (make-incremental-lp (:bounds lp) (:objective lp) new-constraints)))
-	  (do (print-debug 2 "lucky; still feasible with new constraint")
-	      (make-incremental-lp* (:bounds lp) (:objective lp) new-constraints sol (current-optimal-cost lp))))))))  
+		    (make-incremental-lp (:bounds lp) (:objective lp) new-constraints lazy?)))
+            (do (print-debug 2 "lucky; still feasible with new constraint")
+                (make-incremental-lp* (:bounds lp) (:objective lp) new-constraints lazy?
+                                      sol (current-optimal-cost lp)))))))))  
+
+
 
 
 ;; TODO: smarter handling of some things with constraints, i.e., free variables.?
@@ -408,11 +435,12 @@
       (if (or l u) 
           (throw (RuntimeException. (str "Duplicate LP var, new bounds; not implemented yet.")))
         lp)
-    (make-incremental-lp* (assoc (:bounds lp) var [l u]) (:objective lp) (:constraints lp)
-                          (assoc (current-feasible-solution lp) var ;(or l u 0)
-                                 (cond (or (not dir) (zero? dir)) (or l u 0)
-                                       (pos? dir) (or u 100000000)
-                                       (neg? dir) (or l -100000000)))
+    (make-incremental-lp* (assoc (:bounds lp) var [l u]) (:objective lp) (:constraints lp) (:lazy? lp)
+                          (when-let [sol (current-feasible-solution lp)]
+                            (assoc sol var ;(or l u 0)
+                                   (cond (or (not dir) (zero? dir)) (or l u 0)
+                                         (pos? dir) (or u 100000000)
+                                         (neg? dir) (or l -100000000))))
                           (current-optimal-cost lp))))
 
 (defn- pegged? 
@@ -427,6 +455,7 @@
   "Increment the objective of the LP; v-map is a linear expression, which may include abs. 
    value terms (which must appear negatively)."
 ;  (println lp v-map "\n\n\n")
+;  (println lp v-map)
   (if (some map? (keys v-map))  ; Get rid of absolute value terms.
       (apply increment-lp-objective 
         (reduce (fn [[lp v-map] k]
@@ -446,43 +475,46 @@
     (let [sol (current-feasible-solution lp)
           cost (current-optimal-cost lp)]
       (make-incremental-lp* 
-       (:bounds lp) (merge-with + (:objective lp) v-map) (:constraints lp)
+       (:bounds lp) (merge-with + (:objective lp) v-map) (:constraints lp) (:lazy? lp)
        sol			
        (when (and cost (every? (fn [[var val]] (pegged? lp var (safe-get sol var) val)) v-map))
          (print-debug 2 "Got pegged solution when incrementing objective!")
          (apply + cost (map (fn [[var val]] (* val (safe-get sol var))) v-map)))))))
 
 
+
+
+
 (deftest test-incremental-lp ;TODO: improve
-  (let [lp1 (-> (make-incremental-lp {} {} {}) (add-lp-var :bam nil nil) (add-lp-constraint [{:bam 1} [-1 nil]] false) (add-lp-constraint [{:bam -1} [-1 nil]] false) (add-lp-var :boo [-1 1] nil))]
-    (is (= lp1 {:class ::IncrementalLP, :constraints {}, :objective {}, :bounds {:boo [-1 1], :bam [-1 1]}}))
+  (let [lp1 (-> (make-incremental-lp {} {} {} false) (add-lp-var :bam nil nil) (add-lp-constraint [{:bam 1} [-1 nil]] false) (add-lp-constraint [{:bam -1} [-1 nil]] false) (add-lp-var :boo [-1 1] nil))]
+    (is (= lp1 {:class ::IncrementalLP, :constraints {}, :objective {}, :lazy? false :bounds {:boo [-1 1], :bam [-1 1]}}))
     (is (= (current-feasible-solution lp1)  {:boo -1, :bam 0}))
     (is (= (current-optimal-cost lp1) 0)))
-  (is (= (:constraints (-> (make-incremental-lp {} {} {}) (add-lp-var :bam nil nil) (add-lp-constraint [{:bam 1} [-1 nil]] false) (add-lp-constraint [{:bam -1} [-1 nil]] false) (add-lp-var :boo [-1 1] nil) (add-lp-constraint [{:bam 1 :boo 1} [-3 4]] false) (add-lp-constraint (linear-expr-lez->normalized-inequality {:bam -1 :boo -1 nil 1} false) false)))
+  (is (= (:constraints (-> (make-incremental-lp {} {} {} false) (add-lp-var :bam nil nil) (add-lp-constraint [{:bam 1} [-1 nil]] false) (add-lp-constraint [{:bam -1} [-1 nil]] false) (add-lp-var :boo [-1 1] nil) (add-lp-constraint [{:bam 1 :boo 1} [-3 4]] false) (add-lp-constraint (linear-expr-lez->normalized-inequality {:bam -1 :boo -1 nil 1} false) false)))
 	 {{:bam 1, :boo 1} [1 2]}))
   
   ;; Test absolute value.
   (is (= (second (solve-incremental-lp 
                   (increment-lp-objective 
-                   (make-incremental-lp {:x [-3 2]} {:x 0.5 } {}) 
+                   (make-incremental-lp {:x [-3 2]} {:x 0.5 } {} false) 
                     {{:x 1} -1})))
          0))
 
   (is (= (second (solve-incremental-lp 
                   (increment-lp-objective 
-                   (make-incremental-lp {:x [-3 2]} {:x -2} {}) 
+                   (make-incremental-lp {:x [-3 2]} {:x -2} {} false) 
                     {{:x 1} -1})))
          3))
 
   (is (= (second (solve-incremental-lp 
                   (increment-lp-objective 
-                   (make-incremental-lp {:x [-3 2]} {:x 2} {}) 
+                   (make-incremental-lp {:x [-3 2]} {:x 2} {} false) 
                     {{:x 1} -1})))
          2))
 
   (is (= (second (solve-incremental-lp 
                   (increment-lp-objective 
-                   (make-incremental-lp {:x [-3 2]} {:x 1} {}) 
+                   (make-incremental-lp {:x [-3 2]} {:x 1} {} false) 
                     {{:x 1 nil 2} -2})))
          -2))
   )

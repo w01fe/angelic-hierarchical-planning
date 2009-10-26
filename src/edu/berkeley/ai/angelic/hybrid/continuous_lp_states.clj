@@ -25,7 +25,7 @@
 
 
 ;(derive ::ContinuousLPState ::le/ContinuousState)
-(defstruct lp-state-struct :state-var-map :incremental-lp :reward-const)
+(defstruct lp-state-struct :state-var-map :incremental-lp :reward-const :lazy?)
 (util/deftype ::ContinuousLPState make-lp-state*
   (fn [state-var-map incremental-lp reward-const] 
     (assert (isa? (:class incremental-lp) ::lp/IncrementalLP))
@@ -63,12 +63,12 @@
 (defn make-lp-state 
   "Take a concrete assignment from all state variables to numeric values, and make a fresh
    (immutable) lp-state.  nil acts like a special lp parameter, set to unity."
-  ([initial-state-map] (make-lp-state initial-state-map 0))
-  ([initial-state-map initial-reward]
+  ([initial-state-map lazy?] (make-lp-state initial-state-map lazy? 0))
+  ([initial-state-map lazy? initial-reward]
 ;  (assert (every? vector? (keys initial-state-map)))
    (make-lp-state* 
     (map-vals #(hash-map nil %) initial-state-map)
-    (lp/make-incremental-lp {} {} {})
+    (lp/make-incremental-lp {} {} {} lazy?)
     initial-reward)))
 
 
@@ -148,6 +148,9 @@
 ;                                   Solving
 ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
 
+(defn lp-state-feasible? [lps]
+  (incremental-lp-feasible? (get-incremental-lp lps)))
+
 (defn solve-lp-state
   "Return [cont-state var-map rew], where cont-state maps state variables to values (a ContinuousMapState),
    var-map is a mapping from continuous parameters to to optimal values, and rew is the corresponding 
@@ -172,7 +175,7 @@
 
 (deftest continuous-lp-states 
   ;Simple example, test bounds etc.
-  (is (= (-> (make-lp-state {[:a] 1}) 
+  (is (= (-> (make-lp-state {[:a] 1} false) 
 	     (add-lp-state-param :c [0 2] nil) 
 	     (update-lp-state nil {:c 5 nil 2 [:a] 1}) 
 	     (solve-lp-state))
@@ -181,7 +184,7 @@
   ; Slightly more complex example; simulate a single "right" action
   ; that can increment position between 0 and 5, followed by a constraint
   ; that we get to state 3.
-  (is (= (-> (make-lp-state {[:pos] 1}) 
+  (is (= (-> (make-lp-state {[:pos] 1} false) 
 	     (add-lp-state-param :right)
 	     (constrain-lp-state-gez {:right 1} false)
 	     (constrain-lp-state-lez {:right 1 nil -5} false)
@@ -195,7 +198,7 @@
   ; that uses less of a resource but costs more, followed by 
   ; a "right2" action that uses more resource but is cheaper.
   ; Thus, we have to optimize resource use vs. cost.
-  (is (= (-> (make-lp-state {[:pos] 0 [:resource] 15}) 
+  (is (= (-> (make-lp-state {[:pos] 0 [:resource] 15} false) 
 
 	     (add-lp-state-param :right1)
 	     (constrain-lp-state-gez {:right1 1} false)

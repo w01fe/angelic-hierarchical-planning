@@ -31,7 +31,7 @@
     (make-hybrid-dnf-lp-valuation 
      (for [[[disc cont] rew] m]
        [(state->clause disc)
-	(make-lp-state cont rew)]))))
+	(make-lp-state cont false rew)]))))
 
 (defmethod explicit-valuation-map ::HybridDNFLPValuation [val]
   (throw (UnsupportedOperationException.)))
@@ -118,17 +118,3 @@
   (set! *warn-on-reflection* false)
 
 
-
-(comment 
-
-;; Assume this is only called for hierarchical preconditions.  
-;; Assume everything is grounded, with no foralls, so we don't need any fancy business.
-  (defn restrict-hdlv-pair [clause-lp-pair constraint var-map num-var-map objects constant-fns]
-    (hc/apply-constraint 
-     clause-lp-pair
-     constraint var-map num-var-map objects constant-fns
-     (fn [[d c] a] (when-let [nd (restrict-clause-pos d a)] [nd c]))
-     (fn [[d c] a] (when-let [nd (restrict-clause-neg d a)] [nd c]))
-     (fn [[d c] clm strict?] (when-let [nc (constrain-lp-state-lez c clm strict?)] [d nc]))
-     (fn [[d c] clm]         (when-let [nc (constrain-lp-state-eqz c clm)] [d nc]))
-     (fn [[d c] clm strict?] (when-let [nc (constrain-lp-state-gez c clm strict?)] [d nc])))))

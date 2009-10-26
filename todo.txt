@@ -1,11 +1,13 @@
 ;;; Today
 
-Test out simple-road-trip
+Make incremental-lp only resolve when explicitly asked. (optionally.)
+
 Optimize
 Heuristics
 More domains? 
 Look into clojureatica/incanter (?)
 
+Have another look at LP proliferation
 
 ;; Soon
 

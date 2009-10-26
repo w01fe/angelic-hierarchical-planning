@@ -35,7 +35,7 @@
   "Apply the constraint, and return a seq of resulting states.
    pos/neg-fun applies a single discrete effect to the state, returning a new state or nil.
    lez-fn, eqz-fn, and gez-fn do the same thing for a numeric constraint."
-  (fn [state constraint disc-var-map cont-var-map objects const-fns pos-fn neg-fn lez-fn eqz-fn gez-fn] (:class constraint)))
+  (fn [state constraint disc-var-map cont-var-map objects const-fns pos-fn neg-fn lez-fn eqz-fn gez-fn feasible?-fn] (:class constraint)))
 
 (defmulti apply-constraint-and-negation
   "Do our best to apply the constraint and its negation, and return a pair of seqs of resulting states [pos neg].
@@ -84,7 +84,7 @@
         >  #(gez-fn % lm true))]))
 
 ;; TODO: figure out strict constraints.
-(defmethod apply-constraint ::NumConstraint [state constraint disc-var-map cont-var-map objects const-fns pos-fn neg-fn lez-fn eqz-fn gez-fn]
+(defmethod apply-constraint ::NumConstraint [state constraint disc-var-map cont-var-map objects const-fns pos-fn neg-fn lez-fn eqz-fn gez-fn feasible?-fn]
   (when-let [new-state 
              ((util/safe-singleton (get-fn-yield constraint disc-var-map cont-var-map 
                                                  const-fns lez-fn eqz-fn gez-fn))
@@ -94,14 +94,14 @@
 
 (defmethod apply-constraint-and-negation ::NumConstraint 
   [state constraint disc-var-map cont-var-map objects const-fns pos-fn neg-fn lez-fn eqz-fn gez-fn]
-  (let [pos (apply-constraint state constraint disc-var-map cont-var-map objects const-fns pos-fn neg-fn lez-fn eqz-fn gez-fn)]
+  (let [pos (apply-constraint state constraint disc-var-map cont-var-map objects const-fns pos-fn neg-fn lez-fn eqz-fn gez-fn nil)]
     (if (empty? pos) 
         [[] [state]]
       [pos 
        (if (= = (:pred constraint)) [state]
 	 (apply-constraint state 
 	   (update-in constraint [:pred] #(condp = % <= > >= < > <= < >=))
-	   disc-var-map cont-var-map objects const-fns pos-fn neg-fn lez-fn eqz-fn gez-fn))])))
+	   disc-var-map cont-var-map objects const-fns pos-fn neg-fn lez-fn eqz-fn gez-fn nil))])))
 
 
 
@@ -123,17 +123,17 @@
   [[(props/simplify-atom var-map (:atom constraint))] nil (make-conjunctive-constraint nil)])
 
 (defmethod apply-constraint ::DiscPosConstraint
-  [state constraint disc-var-map cont-var-map objects const-fns pos-fn neg-fn lez-fn eqz-fn gez-fn]
+  [state constraint disc-var-map cont-var-map objects const-fns pos-fn neg-fn lez-fn eqz-fn gez-fn feasible?-fn]
   (when-let [new-state (pos-fn state (props/simplify-atom  disc-var-map (:atom constraint)))]
     [new-state]))
 
 (defmethod apply-constraint-and-negation ::DiscPosConstraint 
   [state constraint disc-var-map cont-var-map objects const-fns pos-fn neg-fn lez-fn eqz-fn gez-fn]
- (let [pos (apply-constraint state constraint disc-var-map cont-var-map objects const-fns pos-fn neg-fn lez-fn eqz-fn gez-fn)]
+ (let [pos (apply-constraint state constraint disc-var-map cont-var-map objects const-fns pos-fn neg-fn lez-fn eqz-fn gez-fn nil)]
     (if (empty? pos) [[] [state]]
       [pos
        (apply-constraint state (assoc constraint :class ::DiscNegConstraint)
-			 disc-var-map cont-var-map objects const-fns pos-fn neg-fn lez-fn eqz-fn gez-fn)])))
+			 disc-var-map cont-var-map objects const-fns pos-fn neg-fn lez-fn eqz-fn gez-fn nil)])))
 
 
 
@@ -152,17 +152,17 @@
   [nil [(props/simplify-atom var-map (:atom constraint))] (make-conjunctive-constraint nil)])
 
 (defmethod apply-constraint ::DiscNegConstraint
-  [state constraint disc-var-map cont-var-map objects const-fns pos-fn neg-fn lez-fn eqz-fn gez-fn]
+  [state constraint disc-var-map cont-var-map objects const-fns pos-fn neg-fn lez-fn eqz-fn gez-fn feasible?-fn]
   (when-let [new-state (neg-fn state (props/simplify-atom disc-var-map (:atom constraint)))]
     [new-state]))
 
 (defmethod apply-constraint-and-negation ::DiscNegConstraint 
   [state constraint disc-var-map cont-var-map objects const-fns pos-fn neg-fn lez-fn eqz-fn gez-fn]
- (let [pos (apply-constraint state constraint disc-var-map cont-var-map objects const-fns pos-fn neg-fn lez-fn eqz-fn gez-fn)]
+ (let [pos (apply-constraint state constraint disc-var-map cont-var-map objects const-fns pos-fn neg-fn lez-fn eqz-fn gez-fn nil)]
     (if (empty? pos) [[] [state]]
       [pos
        (apply-constraint state (assoc constraint :class ::DiscPosConstraint)
-			 disc-var-map cont-var-map objects const-fns pos-fn neg-fn lez-fn eqz-fn gez-fn)])))
+			 disc-var-map cont-var-map objects const-fns pos-fn neg-fn lez-fn eqz-fn gez-fn nil)])))
 
 
 
@@ -202,13 +202,13 @@
           (util/safe-get constraint :constraints)))
 
 (defmethod apply-constraint ::ConjunctiveConstraint
-  [state constraint disc-var-map cont-var-map objects const-fns pos-fn neg-fn lez-fn eqz-fn gez-fn]
+  [state constraint disc-var-map cont-var-map objects const-fns pos-fn neg-fn lez-fn eqz-fn gez-fn feasible?-fn]
 ;  (println "Constraint"  constraint "\n\n")
   (let [constraints (util/group-by :class (util/safe-get constraint :constraints))]
     (util/reduce-while 
      (fn [states constraint] 
        (mapcat #(apply-constraint % constraint disc-var-map cont-var-map objects 
-				  const-fns pos-fn neg-fn lez-fn eqz-fn gez-fn)
+				  const-fns pos-fn neg-fn lez-fn eqz-fn gez-fn feasible?-fn)
 	       states))
      [state]
      (apply concat (map constraints [::DiscNegConstraint ::DiscPosConstraint 
@@ -284,7 +284,7 @@
 	yield))))
 
 (defmethod apply-constraint ::ForallConstraint
-  [state constraint disc-var-map cont-var-map objects const-fns pos-fn neg-fn lez-fn eqz-fn gez-fn]
+  [state constraint disc-var-map cont-var-map objects const-fns pos-fn neg-fn lez-fn eqz-fn gez-fn feasible?-fn]
   (let [vars (seq (:vars constraint))]
     (loop [var-maps (for [combo (apply util/cartesian-product (map #(get objects (first %)) vars))]
 		      (into disc-var-map (map (fn [val tv] [(second tv) val]) combo vars)))
@@ -295,11 +295,12 @@
 	 (recur 
 	  (rest var-maps)
 	  (apply concat      
-  	    (for [state states]
+  	    (for [state states
+                  :when (feasible?-fn state)]
 	      (let [[pos neg] (apply-constraint-and-negation state (:condition constraint) (first var-maps) cont-var-map 
 							     objects const-fns pos-fn neg-fn lez-fn eqz-fn gez-fn)]
 		(concat (mapcat #(apply-constraint % (:yield constraint) (first var-maps) cont-var-map 
-						   objects const-fns pos-fn neg-fn lez-fn eqz-fn gez-fn) 
+						   objects const-fns pos-fn neg-fn lez-fn eqz-fn gez-fn feasible?-fn) 
 				pos)
 			neg)))))))))
 
