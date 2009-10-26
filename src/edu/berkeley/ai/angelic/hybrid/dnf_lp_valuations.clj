@@ -31,7 +31,7 @@
     (make-hybrid-dnf-lp-valuation 
      (for [[[disc cont] rew] m]
        [(state->clause disc)
-	(make-lp-state cont false rew)]))))
+	(make-lp-state cont true rew)]))))
 
 (defmethod explicit-valuation-map ::HybridDNFLPValuation [val]
   (throw (UnsupportedOperationException.)))

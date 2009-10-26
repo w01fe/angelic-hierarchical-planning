@@ -39,7 +39,7 @@
       (make-hybrid-fixed-lp-valuation 
        (first disc-states)
        (for [[[disc cont] rew] m]
-	 (make-lp-state cont false rew))))))
+	 (make-lp-state cont true rew))))))
 
 (defmethod explicit-valuation-map ::HybridFixedLPValuation [val]
   (throw (UnsupportedOperationException.)))
