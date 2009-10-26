@@ -1,4 +1,4 @@
-(ns edu.berkeley.ai.domains.tests.test-nav-switch
+(ns edu.berkeley.ai.domains.tests.nav-switch
  (:use clojure.test edu.berkeley.ai.domains.nav-switch 
        edu.berkeley.ai.search.algorithms.textbook 
        edu.berkeley.ai.search.state-space)

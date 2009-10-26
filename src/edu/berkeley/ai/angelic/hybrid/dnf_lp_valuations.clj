@@ -118,3 +118,7 @@
   (set! *warn-on-reflection* false)
 
 
+(comment 
+
+(count (:clause-lp-set (optimistic-valuation (:previous (:previous (:plan *n))))))
+)

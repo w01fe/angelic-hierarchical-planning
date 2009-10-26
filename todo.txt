@@ -1,13 +1,12 @@
 ;;; Today
 
-Make incremental-lp only resolve when explicitly asked. (optionally.)
+Heuristics
 
 Optimize
-Heuristics
 More domains? 
+
 Look into clojureatica/incanter (?)
 
-Have another look at LP proliferation
 
 ;; Soon
 
@@ -17,10 +16,6 @@ nonzero switching cost, current hierarchy is suboptimal.
 
 TODO: don't add vars to LP if consted, at least. (also in fixed-lp-vals)
   
-
-;; Can delay all LP solving to end, except for foralls.  before
-   splitting a *second* time we want to know feasibility.  Or use MIP.
-
 Remove redundancies in solution extraction (currently 20% of time)
 
 ;;;;;;;;;;;;;;;; Implement

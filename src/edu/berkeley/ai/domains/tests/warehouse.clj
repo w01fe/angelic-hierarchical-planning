@@ -1,4 +1,4 @@
-(ns edu.berkeley.ai.domains.warehouse
+(ns edu.berkeley.ai.domains.tests.warehouse
  (:use clojure.test 
        edu.berkeley.ai.domains.warehouse
        edu.berkeley.ai.search.algorithms.textbook

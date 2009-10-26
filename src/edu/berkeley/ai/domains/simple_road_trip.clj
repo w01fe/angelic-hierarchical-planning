@@ -49,18 +49,14 @@
 
 (def *simple-road-trip-hierarchy* (util/path-local "simple_road_trip.hierarchy"))
 
-(require '[edu.berkeley.ai.search.algorithms.textbook :as algs] 
-	 '[edu.berkeley.ai.search.state-space :as ss])
-
-(deftest simple-road-trip-test
-  (let [args  '[ {a 3 b 3} [[a b 2]] a b 1]]
-    (doseq [[e s] (map vector (map #(apply make-simple-road-trip-strips-env %) [args (conj args 1)]) [-299 -5])]
-      (is (= s (second (algs/a-star-graph-search (ss/ss-node e)))))))
-  (let [args  [ '{a 3 b 0 c 4} '[[a b 2] [a c 1] [c b 1]] 'a 'b 0 ]]
-    (doseq [[e s] (map vector (map #(apply make-simple-road-trip-strips-env %) [args (conj args 1)]) [-302 -8])]
-      (is (= s (second (algs/a-star-graph-search (ss/ss-node e))))))))
 
 
 
 
 
+
+(comment 
+
+(time  (let [e (make-simple-road-trip-strips-env '{a 5 b 0 c 20 z 10} '[[a z 100] [z b 30] [a c 90] [c b 20]] 'a 'b 0) [s r] (time  (a-star-search (alt-node (get-hierarchy *simple-road-trip-hierarchy* e) {:cache? false :graph? false :ref-choice-fn first-choice-fn})))]
+               [ (map :name (extract-hybrid-primitive-solution e s)) r]))
+)

@@ -1,8 +1,6 @@
-(ns edu.berkeley.ai.domains.tests.load_all
+(ns edu.berkeley.ai.domains.tests.load-all
  (:require [edu.berkeley.ai.domains.tests
-	     ;hybrid-strips 
-	    test-nav-switch test-warehouse 
-	    ; hybrid-blocks road-trip simple-road-trip
+	    nav-switch warehouse hybrid-blocks simple-road-trip
 	    ])
  )
 
