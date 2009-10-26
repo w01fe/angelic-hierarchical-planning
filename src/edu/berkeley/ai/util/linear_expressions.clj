@@ -106,7 +106,7 @@
 
 (defn simplify-linear-expr
   "le is a linear expression, possibly including abs value maps, and f is a map from 
-   variables to linear expression subsitions or new variable names."
+   variables to linear expression subsitions or new variable names or numbers."
   [f le]
   (persistent!
    (reduce (fn [result [var mult]]
@@ -122,6 +122,8 @@
                                  result new-var)
                        (nil? new-var)
                          (assoc! result var (+ mult (get result var 0)))
+                       (number? new-var)
+                         (assoc! result nil (+ (* mult new-var) (get result nil 0)))
                        :else 
                          (assoc! result new-var (+ mult (get result new-var 0)))
                        ;:else (throw (RuntimeException. "Bad value in simplify-linear-expr"))
