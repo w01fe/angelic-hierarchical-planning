@@ -281,6 +281,46 @@
 		 (match-mapping (next var-tree) (next match-tree)))))
   )
  
+(defn differences 
+  "Take a seq of data structures, and return a seq where all of the matching parts
+   have been removed.  Returns nil if the data structures are equal.  Converts all 
+   non-set/maps to arbitary seq types."
+  [ds]
+  (when-first [f ds]
+    (cond (map? f)
+            (if (every? map? ds)
+                (let [ds (map #(into {} %) ds)  ; fix structmaps
+                      key-kernel (apply intersection (map keyset ds))
+                      reduced-ds (reduce 
+                                  (fn [ds k]
+                                    (if-let [diffs (differences (map #(% k) ds))]
+                                        (map #(assoc %1 k %2) ds diffs)
+                                      (map #(dissoc % k) ds)))
+                                  ds key-kernel)]
+                  (when-not (every? empty? reduced-ds)
+                    reduced-ds))
+              ds)
+          (set? f)
+            (if (every? set? ds)
+                (let [kernel (apply intersection ds)]
+                  (map #(difference % kernel) ds))
+              ds)        
+          (instance? clojure.lang.Seqable f)
+            (if (every? #(instance? clojure.lang.Seqable %) ds)
+                (loop [rest-ds ds out (map (constantly []) ds)]
+                  (cond (every? empty? rest-ds)
+                          (when-not (every? empty? out) out)
+                        (some empty? rest-ds)
+                          (map concat out rest-ds)
+                        :else 
+                          (if-let [d (differences (map first rest-ds))]
+                              (recur (map rest rest-ds) (map conj out d))
+                            (recur (map rest rest-ds) out))))
+              ds)
+          :else 
+            (when-not (apply = ds) ds))))
+
+
 
 
 

@@ -5,6 +5,8 @@
 
 ;(defn coll-seq [#^clojure.lang.IPersistentCollection coll] (.seq coll))
 
+(def third [s] (nth s 2))
+
 (defn vec-map [f v]
   (reduce (fn [v item] (conj v (f item))) [] v))
 
