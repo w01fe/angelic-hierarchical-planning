@@ -1,0 +1,134 @@
+;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
+;;;hybrid_blocks hierarchy -- assumes all goals are Ons.
+;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
+
+(define (hierarchy hybrid-blocks)
+  (:type :hybrid-strips-hierarchy)
+
+  (:hla act
+       :parameters   ()
+       :refinement   (:parameters (:?b - block :?to - block :?dx - x) 
+		      :precondition (and (holding :?b)
+					 ;; TODO: better bounds with a forall?
+					 (>= :?dx (+ (- (blockcx :?to) (blocklw :?to)) (blocklw :?b)))
+					 (<= :?dx (- (+ (blockcx :?to) (blockrw :?to)) (blockrw :?b)))) 
+		      :expansion ((go-put :?b :?to :?dx) (move-blocks)))
+       :refinement   (:precondition (gripperempty)
+		      :expansion    ((move-blocks)))
+       :optimistic   (:opt 0)
+       :pessimistic  (:pess))
+
+
+  (:hla move-blocks
+       :parameters   ()
+       :refinement   (:expansion    ())
+       :refinement   (:parameters (:?b - block :?from - block :?to - block :?dx - x) 
+		      :precondition (and (on :?b :?from)
+                                         (not (block= :?b :?to))
+					 ;; TODO: better bounds with a forall?
+					 (>= :?dx (+ (- (blockcx :?to) (blocklw :?to)) (blocklw :?b)))
+					 (<= :?dx (- (+ (blockcx :?to) (blockrw :?to)) (blockrw :?b)))) 
+		      :expansion ((go-get :?b :?from) (go-put :?b :?to :?dx) (move-blocks)))
+       :optimistic   (:opt 0)
+       :pessimistic  (:pess))
+
+
+  (:hla go-get
+       :parameters (?b - block ?from - block)
+       :precondition (and (gripperempty) (on ?b ?from) (=  0 (nblockson ?b)))
+                                        ;  (forall (?d - block) nil (not (on ?d ?b)))
+       :refinement (:parameters (:?dx - x :?dy - y)
+		    :precondition (and (= :?dx (blockcx ?b)) (= :?dy (blockty ?b)))
+		    :expansion ((nav-empty :?dx :?dy)
+				(get ?b ?from)))
+       :optimistic  (:hybrid-ncstrips 
+		     (:effect    (and (= (gripperx) (blockcx ?b)) (= (grippery) (blockty ?b))
+				      (not (gripperempty)) (not (on ?b ?from)) (holding ?b)
+                                      (= (nblockson ?from) (- (nblockson ?from) 1)))
+		      :cost-expr (+ 10 
+				    (* 1
+				       (+ (abs (- (blockcx ?b) (gripperx)))
+					  (abs (- (blockty ?b) (grippery))))))))
+       :pessimistic (:hybrid-ncstrips 
+		     (:effect    (and (= (gripperx) (blockcx ?b)) (= (grippery) (blockty ?b))
+				      (not (gripperempty)) (not (on ?b ?from)) (holding ?b))
+		      :cost-expr (+ 10 
+				    (* 1 
+				       (+ (abs (- (blockcx ?b) (gripperx)))
+					  (+ (- (height) (grippery))
+					     (- (height) (blockty ?b)))))))))       
+
+  (:hla go-put
+       :parameters (?b - block ?to - block ?dx - x)
+       :precondition (holding ?b) 
+       :refinement (:parameters (:?dy - y)
+		    :precondition (= :?dy (+ (blockty ?to) (blockh ?b)))
+		    :expansion ((nav-holding ?b ?dx :?dy)
+				(put ?b ?to)))
+       :optimistic  (:hybrid-ncstrips 
+		     (:effect    (and (= (gripperx) ?dx) (= (grippery) (+ (blockty ?to) (blockh ?b)))
+				      (gripperempty) (on ?b ?to) (not (holding ?b))
+                                      (= (nblockson ?to) (+ (nblockson ?to) 1)))
+		      :cost-expr (+ 10 
+				    (* 2
+				       (+ (abs (- ?dx (gripperx)))
+					  (abs (- (+ (blockty ?to) (blockh ?b)) (grippery))))))))
+       :pessimistic (:pess))
+
+
+       
+  (:hla nav-empty       
+       :parameters (?dx - x ?dy - y)
+       :refinement (:parameters (:?ty - y)
+		    :precondition (<= ?dx (gripperx))
+		    :expansion ((up-empty :?ty) 
+				(left-empty ?dx)
+				(down-empty ?dy)))
+       :refinement (:parameters (:?ty - y)
+		    :precondition (> ?dx (gripperx))
+		    :expansion ((up-empty :?ty) 
+				(right-empty ?dx)
+				(down-empty ?dy)))
+       :optimistic  (:hybrid-ncstrips 
+		     (:effect    (and (= (gripperx) ?dx) (= (grippery) ?dy))
+		      :cost-expr (* 1
+				    (+ (abs (- ?dx (gripperx)))
+				       (abs (- ?dy (grippery)))))))
+       :pessimistic (:hybrid-ncstrips 
+		     (:effect    (and (= (gripperx) ?dx) (= (grippery) ?dy))
+		      :cost-expr (* 1 
+				    (+ (abs (- ?dx (gripperx)))
+				       (+ (- (height) (grippery))
+					  (- (height) ?dy)))))))
+
+  (:hla nav-holding       
+       :parameters (?b - block ?dx - x ?dy - y)
+       :refinement (:parameters (:?ty - y)
+		    :precondition (<= ?dx (gripperx))
+		    :expansion ((up-holding ?b :?ty) 
+				(left-holding ?b ?dx)
+				(down-holding ?b ?dy)))
+       :refinement (:parameters (:?ty - y)
+		    :precondition (> ?dx (gripperx))
+		    :expansion ((up-holding ?b :?ty) 
+				(right-holding ?b ?dx)
+				(down-holding ?b ?dy)))
+       :optimistic  (:hybrid-ncstrips 
+		     (:effect    (and (= (gripperx) ?dx) (= (grippery) ?dy)
+				      (= (blockcx ?b) ?dx) (= (blockty ?b) ?dy))
+		      :cost-expr (* 2
+				    (+ (abs (- ?dx (gripperx)))
+				       (abs (- ?dy (grippery)))))))
+       :pessimistic (:hybrid-ncstrips 
+		     (:precondition (forall (?c - block)
+					    (not (block= ?b ?c))
+					    (<= (blockty ?c) (- (height) (blockh ?b))))
+		      :effect    (and (= (gripperx) ?dx) (= (grippery) ?dy)
+				      (= (blockcx ?b) ?dx) (= (blockty ?b) ?dy))
+		      :cost-expr (* 2 
+				    (+ (abs (- ?dx (gripperx)))
+				       (+ (- (height) (grippery))
+					  (- (height) ?dy)))))))
+  )
+
+

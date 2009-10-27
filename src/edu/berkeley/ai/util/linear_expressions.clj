@@ -113,7 +113,7 @@
              (if (map? var)
                  (let [simplified-var (simplify-linear-expr f var)]
                    (if (and (= (count simplified-var) 1) (get simplified-var nil))
-                       (assoc! result nil (+ (abs (get simplified-var nil)) (get result nil)))
+                       (assoc! result nil (+ (* mult (abs (get simplified-var nil))) (get result nil)))
                      (assoc! result simplified-var mult)))
                (let [new-var (f var)]
                  (cond (map? new-var)
