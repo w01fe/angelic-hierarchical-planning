@@ -120,5 +120,9 @@
 
 (comment 
 
+  ;; Commands for looking at proliferation of valuation sizes
+  
 (count (:clause-lp-set (optimistic-valuation (:previous (:previous (:plan *n))))))
+
+(doseq [a (rest (reverse (iterate-while :previous (:previous (:previous (:plan *n))))))] (println (hla-name (:hla a)) (count (:clause-lp-set (optimistic-valuation a)))))
 )

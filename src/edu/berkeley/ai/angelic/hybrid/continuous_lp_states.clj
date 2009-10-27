@@ -164,16 +164,17 @@
 (defn solve-lp-state
   "Return [cont-state var-map rew], where cont-state maps state variables to values (a ContinuousMapState),
    var-map is a mapping from continuous parameters to to optimal values, and rew is the corresponding 
-   maximal reward."
+   maximal reward.  Return nil for infeasible (only possible if lazy)."
   [state]
   (let [[var-map rew] (lp/solve-incremental-lp (get-incremental-lp state))]
-    (when (nil? var-map) 
-      (println "bad LP: " (get-incremental-lp state))
-      (throw (RuntimeException. "Bad lp in solve-lp-state")))
-    [(map-vals (fn [lm] (le/evaluate-linear-expr var-map lm))
-	       (get-state-var-map state))
-     var-map
-     (+ rew (get-reward-const state))]))
+    (if (nil? var-map) 
+        (when-not (util/safe-get (get-incremental-lp state) :lazy?)
+         (println "bad LP: " (get-incremental-lp state))
+         (throw (RuntimeException. "Bad lp in solve-lp-state")))
+      [(map-vals (fn [lm] (le/evaluate-linear-expr var-map lm))
+                 (get-state-var-map state))
+       var-map
+       (+ rew (get-reward-const state))])))
 
 
 
