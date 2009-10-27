@@ -3,6 +3,12 @@
 Heuristics
 
 ; consider changing carry cost to block weight
+; state abstraction hierarchy for suboptimal search (find feasible
+; solution, then look at numbers) ...
+
+; Look at existing PDDL domains
+
+; Look at refinement ordering -- should really refine move-blocks first.
 
 Optimize
 More domains? 

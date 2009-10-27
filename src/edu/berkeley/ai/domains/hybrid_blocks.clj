@@ -111,6 +111,7 @@
 
 
 (def *hybrid-blocks-hierarchy* (util/path-local "hybrid_blocks.hierarchy"))
+(def *hybrid-blocks-hierarchy-unguided* (util/path-local "hybrid_blocks_unguided.hierarchy"))
 
 
 
@@ -242,7 +243,8 @@
         goal-blocks (util/safe-get desc :goal-blocks)
         goal-ons (util/safe-get desc :goal-ons)]
     (angelic/make-conditional-valuation 
-     (:goal desc)
+    ; (:goal desc)
+     envs/*true-condition*
      (apply max
        Double/NEGATIVE_INFINITY
        (for [c (util/safe-get val :continuous-lp-states)
@@ -254,7 +256,8 @@
   (let [goal-blocks (util/safe-get desc :goal-blocks)
         goal-ons (util/safe-get desc :goal-ons)]
     (angelic/make-conditional-valuation 
-     (:goal desc)
+     ;(:goal desc)
+          envs/*true-condition*
      (apply max
        Double/NEGATIVE_INFINITY
        (for [[d c] (util/safe-get val :clause-lp-set)
@@ -264,6 +267,10 @@
              :when rew]
          rew)))))
 
+(defn make-hybrid-blocks-heuristic [env]
+  (let [d (angelic/ground-description (angelic/instantiate-description-schema (angelic/parse-description [:hybrid-blocks-act] nil nil) env) {})]
+    #(angelic/valuation-max-reward (angelic/progress-valuation % d))
+    ))
 
 (defn make-flat-hybrid-blocks-heuristic [env]
   (let [d (angelic/ground-description (angelic/instantiate-description-schema (angelic/parse-description [:hybrid-blocks-act] nil nil) env) {})]

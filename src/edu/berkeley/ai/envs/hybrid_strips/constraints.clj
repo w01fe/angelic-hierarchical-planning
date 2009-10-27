@@ -334,7 +334,7 @@
 		(make-numeric-constraint 
 		 (util/safe-get {'= = '< < '> > '<= <= '>= >=} f)
 		 (le/parse-and-check-hybrid-linear-expression (nth constraint 1)
-		   discrete-vars numeric-vars numeric-functions const-numeric-functions true)
+		   discrete-vars numeric-vars numeric-functions const-numeric-functions #_true)
 		 (le/parse-and-check-hybrid-linear-expression (nth constraint 2)
 		   discrete-vars  (when-not only-atomic-var? numeric-vars)
 		   numeric-functions const-numeric-functions))))))

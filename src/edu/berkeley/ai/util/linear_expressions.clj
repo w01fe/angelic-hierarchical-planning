@@ -299,7 +299,7 @@
   ([expr discrete-vars numeric-vars numeric-functions constant-numeric-functions]
      (parse-and-check-hybrid-linear-expression expr discrete-vars numeric-vars numeric-functions constant-numeric-functions false))
   ([expr discrete-vars numeric-vars numeric-functions constant-numeric-functions only-atomic-var?]
-;     (println expr)
+    ; (println numeric-vars expr only-atomic-var?)
   (cond (number? expr) 
           {nil expr}
 	(contains? numeric-vars expr)

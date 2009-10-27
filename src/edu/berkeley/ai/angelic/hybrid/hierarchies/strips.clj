@@ -378,6 +378,12 @@
                                     (parse-hierarchy "/Users/jawolfe/Projects/angel/src/edu/berkeley/ai/domains/hybrid_blocks.hierarchy" (make-hybrid-blocks-strips-domain))
                                     (make-hybrid-blocks-strips-env 6 2 [1 1] '[[a 1 1 2 1] [b 4 1 2 1]] '[[a [[b]]]])
                                     ) {:cache? false :graph? false}))
+    
+    
+ (let [e (make-hybrid-blocks-strips-env 6 2 [1 1] '[[a 0 2 3 1] [b 4 1 2 1]] '[[a [[b]]]])]
+    (map :name (extract-hybrid-primitive-solution e 
+                 (first (interactive-search (alt-node (get-hierarchy *hybrid-blocks-hierarchy* e)
+                                                 {:cache? false :graph? false :ref-choice-fn first-choice-fn}))))))
 )
 
 

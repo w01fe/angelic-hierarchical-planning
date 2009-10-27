@@ -13,12 +13,12 @@
   (let [e (hb/make-hybrid-blocks-strips-env 6 2 [1 1] '[[a 0 2 3 1] [b 4 1 2 1]] '[[a [[b]]]])
         [sol rew] (textbook/a-star-search 
                    (alts/alt-node 
-                    (hierarchies/get-hierarchy hb/*hybrid-blocks-hierarchy* e) 
+                    (hierarchies/get-hierarchy hb/*hybrid-blocks-hierarchy-unguided* e) 
                     {:cache? false :graph? false :ref-choice-fn alts/first-choice-fn}))]
     (is (= (map :name (sol/extract-hybrid-primitive-solution e sol))
            '([up-empty 1] [right-empty 5] [down-empty 1] [get b table] 
                [up-holding b 2] [left-holding b 2] [down-holding b 2] [put b a])))
-    (is (= rew -20))))
+    (is (= rew -14))))
 
 (deftest simple-road-trip
   (let [e (srt/make-simple-road-trip-strips-env '{a 5 b 0 c 2} '[[a b 3] [a c 1] [c b 3]] 'a 'b 0) 

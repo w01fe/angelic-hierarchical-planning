@@ -135,9 +135,11 @@
     of old state variables and parameters.  
    Reward is another linear combination term that will be added to the reward."  
   [state effects reward]
+;  (println reward)
   (let [old-state-var-map (get-state-var-map state)
 	lp                (get-incremental-lp state)
 	reward            (simplify-linear-expr old-state-var-map reward)]
+ ;   (println reward)
 ;    (println old-state-var-map reward)
     (make-lp-state* 
      (persistent!

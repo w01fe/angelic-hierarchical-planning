@@ -19,15 +19,16 @@
 
 ;;; Flat hierarchy
 
-(defstruct hybrid-flat-hierarchy-schema :class #_ :upper-reward-fn)
-(defn make-hybrid-flat-hierarchy-schema [#_upper-reward-fn]
-  (struct hybrid-flat-hierarchy-schema ::HybridFlatHierarchySchema)); upper-reward-fn))
+(defstruct hybrid-flat-hierarchy-schema :class  :upper-reward-fn)
+(defn make-hybrid-flat-hierarchy-schema [upper-reward-fn]
+  (struct hybrid-flat-hierarchy-schema ::HybridFlatHierarchySchema upper-reward-fn))
 
 (defn get-hybrid-flat-hierarchy 
-  ([env] (instantiate-hierarchy (make-hybrid-flat-hierarchy-schema) env)))
-;  ([env] (get-hybrid-flat-hierarchy env (constantly 0))))
-;  ([env upper-reward-fn]
-;   (instantiate-hierarchy (make-hybrid-flat-hierarchy-schema upper-reward-fn) env)))
+  "Upper-reward-function should map a valuation to an upper bound on *total* reward to goal"
+;  ([env] (instantiate-hierarchy (make-hybrid-flat-hierarchy-schema) env)))
+  ([env] (get-hybrid-flat-hierarchy env valuation-max-reward))
+  ([env upper-reward-fn]
+   (instantiate-hierarchy (make-hybrid-flat-hierarchy-schema upper-reward-fn) env)))
 
 (defstruct hybrid-flat-act-hla :class :env :opt-desc :action-space)
 (defn- make-hybrid-flat-act-hla [env opt-desc action-space]
@@ -48,18 +49,13 @@
 
 ; Special descriptions for Act.
 
-(defn make-hybrid-flat-act-optimistic-description [goal #_upper-reward-fn]
-  {:class ::HybridFlatActOptimisticDescription :goal goal}) ; :upper-reward-fn upper-reward-fn})
+(defn make-hybrid-flat-act-optimistic-description [goal upper-reward-fn]
+  {:class ::HybridFlatActOptimisticDescription :goal goal  :upper-reward-fn upper-reward-fn})
 
 (defmethod progress-valuation [:edu.berkeley.ai.angelic/Valuation ::HybridFlatActOptimisticDescription] [val desc]
-;  (println val)
-;  (let [state-map (explicit-valuation-map val)]
-;    (util/assert-is (= (count state-map) 1))
-;    (let [[prev-state prev-reward] (first state-map)]
-      (make-conditional-valuation 
-       (:goal desc)
-       (valuation-max-reward val)))
-;       (+ prev-reward ((:upper-reward-fn desc) prev-state))))))
+  (make-conditional-valuation 
+   (:goal desc)
+   ((:upper-reward-fn desc) val)))
    
 
 
@@ -68,7 +64,7 @@
   [(make-hybrid-flat-act-hla 
     instance 
     (make-hybrid-flat-act-optimistic-description 
-     (envs/get-goal instance) #_(:upper-reward-fn hierarchy))
+     (envs/get-goal instance) (:upper-reward-fn hierarchy))
     (envs/get-action-space instance))
    (make-hybrid-flat-finish-hla instance)])
 
@@ -125,3 +121,10 @@
 (defmethod hla-environment ::HybridFlatActHLA [hla] (util/safe-get hla :env))
 (defmethod hla-environment ::HybridFlatPrimitiveHLA [hla] (util/safe-get hla :env))
 
+(comment
+  
+  (let [e (make-hybrid-blocks-strips-env 6 2 [1 1] '[[a 0 2 3 1] [b 4 1 2 1]] '[[a [[b]]]])]
+    (map :name (extract-hybrid-primitive-solution e 
+                 (first (interactive-search (alt-node (get-hybrid-flat-hierarchy e (make-hybrid-blocks-heuristic e))
+                                                 {:cache? false :graph? false :ref-choice-fn first-choice-fn}))))))
+  )

@@ -74,7 +74,7 @@
 			 (>= (gripperx) (blockcx ?b)))
 		    (>= ?ngx (+ (blockcx ?b) (blockrw ?b)))))
      :effect (= (gripperx) ?ngx)
-     :cost   (+ 1 (* 1 (- (gripperx) ?ngx))))
+     :cost   (+ 0 (* 1 (- (gripperx) ?ngx))))
 
   (:action right-empty
      :parameters   (?ngx - x)
@@ -92,7 +92,7 @@
 			 (<= (gripperx) (blockcx ?b)))
 		    (<= ?ngx (- (blockcx ?b) (blocklw ?b)))))
      :effect (= (gripperx) ?ngx)
-     :cost   (+ 1 (* 1 (- ?ngx (gripperx)))))
+     :cost   (+ 0 (* 1 (- ?ngx (gripperx)))))
 
   (:action up-empty
      :parameters   (?ngy - y)
@@ -105,7 +105,7 @@
 	    (>= ?ngy (grippery))
 	    (<= ?ngy (height)))
      :effect (= (grippery) ?ngy)
-     :cost   (+ 1 (* 1 (- ?ngy (grippery)))))
+     :cost   (+ 0 (* 1 (- ?ngy (grippery)))))
 
   (:action down-empty
      :parameters   (?ngy - y)
@@ -122,7 +122,7 @@
 			 (> (+ (blockcx ?b) (blockrw ?b)) (gripperx)))
 		    (>= ?ngy (blockty ?b))))
      :effect (= (grippery) ?ngy)
-     :cost   (+ 1  (* 1 (- (grippery) ?ngy))))
+     :cost   (+ 0  (* 1 (- (grippery) ?ngy))))
 
 
   (:action up-holding
@@ -138,7 +138,7 @@
      :effect       
        (and (= (grippery) ?ngy)
 	    (= (blockty ?b) ?ngy))
-       :cost (+ 1 (* 2 (- ?ngy (grippery)))))
+       :cost (+ 0 (* 2 (- ?ngy (grippery)))))
 
 
   (:action down-holding
@@ -159,7 +159,7 @@
      :effect       
        (and (= (grippery)   ?ngy)
 	    (= (blockty ?b) ?ngy))
-       :cost (+ 1 (* 2 (- (grippery) ?ngy))))
+       :cost (+ 0 (* 2 (- (grippery) ?ngy))))
 
 
   (:action left-holding
@@ -184,7 +184,7 @@
      :effect       
        (and (= (gripperx)   ?ngx)
 	    (= (blockcx ?b) ?ngx))
-       :cost (+ 1  (* 2 (- (gripperx) ?ngx))))
+       :cost (+ 0  (* 2 (- (gripperx) ?ngx))))
 
   (:action right-holding
      :parameters   (?b - block ?ngx - x)
@@ -208,6 +208,6 @@
      :effect       
        (and (= (gripperx)   ?ngx)
 	    (= (blockcx ?b) ?ngx))
-       :cost (+ 1  (* 2 (- ?ngx (gripperx)))))
+       :cost (+ 0  (* 2 (- ?ngx (gripperx)))))
 
   )
