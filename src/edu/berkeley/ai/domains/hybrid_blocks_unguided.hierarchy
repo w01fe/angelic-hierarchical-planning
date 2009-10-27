@@ -7,28 +7,38 @@
 
   (:hla act
        :parameters   ()
+       :refinement   (:expansion    ())       
        :refinement   (:parameters (:?b - block :?to - block :?dx - x) 
 		      :precondition (and (holding :?b)
-					 ;; TODO: better bounds with a forall?
+					 ;; these bounds are weak, compensated by 
+                                         ;; descriptions for go-get/put and below.        
 					 (>= :?dx (+ (- (blockcx :?to) (blocklw :?to)) (blocklw :?b)))
 					 (<= :?dx (- (+ (blockcx :?to) (blockrw :?to)) (blockrw :?b)))) 
-		      :expansion ((go-put :?b :?to :?dx) (move-blocks)))
-       :refinement   (:precondition (gripperempty)
-		      :expansion    ((move-blocks)))
-       :optimistic   (:opt 0)
-       :pessimistic  (:pess))
-
-
-  (:hla move-blocks
-       :parameters   ()
-       :refinement   (:expansion    ())
+		      :expansion ((go-put :?b :?to :?dx) (move-blocks :?b)))
        :refinement   (:parameters (:?b - block :?from - block :?to - block :?dx - x) 
 		      :precondition (and (on :?b :?from)
                                          (not (block= :?b :?to))
 					 ;; TODO: better bounds with a forall?
 					 (>= :?dx (+ (- (blockcx :?to) (blocklw :?to)) (blocklw :?b)))
 					 (<= :?dx (- (+ (blockcx :?to) (blockrw :?to)) (blockrw :?b)))) 
-		      :expansion ((go-get :?b :?from) (go-put :?b :?to :?dx) (move-blocks)))
+		      :expansion ((go-get :?b :?from) (go-put :?b :?to :?dx) (move-blocks :?b)))       
+;       :refinement   (:precondition (gripperempty)
+;		      :expansion    ((move-blocks)))
+       :optimistic   (:opt 0)
+       :pessimistic  (:pess))
+
+
+  (:hla move-blocks
+       :parameters   (?last - block)
+       :refinement   (:expansion    ())
+       :refinement   (:parameters (:?b - block :?from - block :?to - block :?dx - x) 
+		      :precondition (and (on :?b :?from)
+                                         (not (block= :?b :?to))
+                                         (not (block= :?b ?last))
+					 ;; TODO: better bounds with a forall?
+					 (>= :?dx (+ (- (blockcx :?to) (blocklw :?to)) (blocklw :?b)))
+					 (<= :?dx (- (+ (blockcx :?to) (blockrw :?to)) (blockrw :?b)))) 
+		      :expansion ((go-get :?b :?from) (go-put :?b :?to :?dx) (move-blocks :?b)))
        :optimistic   (:opt 0)
        :pessimistic  (:pess))
 
@@ -90,10 +100,10 @@
        :optimistic  (:hybrid-ncstrips 
 		     (:precondition (and 
                                      (forall (?c - block)
-                                             (and (on ?c ?to) (>= ?dx (blockcx ?c)))
+                                             (and (on ?c ?to) (>= ?dx (- (blockcx ?c) (blocklw ?c))))
                                              (>= (- ?dx (blocklw ?b)) (+ (blockcx ?c) (blockrw ?c))))
                                      (forall (?c - block)
-                                             (and (on ?c ?to) (<= ?dx (blockcx ?c)))
+                                             (and (on ?c ?to) (<= ?dx (+ (blockcx ?c) (blockrw ?c))))
                                              (<= (+ ?dx (blockrw ?b)) (- (blockcx ?c) (blocklw ?c)))))
                       :effect    (and (= (gripperx) ?dx) (= (grippery) (+ (blockty ?to) (blockh ?b)))
                                       (= (blockcx ?b) ?dx) (= (blockty ?b) (+ (blockty ?to) (blockh ?b)))
@@ -109,10 +119,10 @@
 					    (not (block= ?b ?c))
 					    (<= (blockty ?c) (- (height) (blockh ?b))))
                                      (forall (?c - block)
-                                             (and (on ?c ?to) (>= ?dx (blockcx ?c)))
+                                             (and (on ?c ?to) (>= ?dx (- (blockcx ?c) (blocklw ?c))))
                                              (>= (- ?dx (blocklw ?b)) (+ (blockcx ?c) (blockrw ?c))))
                                      (forall (?c - block)
-                                             (and (on ?c ?to) (<= ?dx (blockcx ?c)))
+                                             (and (on ?c ?to) (<= ?dx (+ (blockcx ?c) (blockrw ?c))))
                                              (<= (+ ?dx (blockrw ?b)) (- (blockcx ?c) (blocklw ?c)))))
                       :effect    (and (= (gripperx) ?dx) (= (grippery) (+ (blockty ?to) (blockh ?b)))
                                       (= (blockcx ?b) ?dx) (= (blockty ?b) (+ (blockty ?to) (blockh ?b)))

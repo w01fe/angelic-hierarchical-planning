@@ -2,14 +2,30 @@
 
 Heuristics
 
+Look at alternations of moving a and B
+
+  LPs multiply exponentially with number of times something put on
+  single surface (e.g., table?)
+
 ; consider changing carry cost to block weight
+
 ; state abstraction hierarchy for suboptimal search (find feasible
 ; solution, then look at numbers) ...
 
+figure out how to prevent abs-var gensyms from breaking symmetry.
+Variable vars can do this too (?).  If we can avoid identifiability
+issues, we can prevent things.  
+
 ; Look at existing PDDL domains
 
-; Look at refinement ordering -- should really refine move-blocks first.
+; Look at refinement ordering -- should really refine move-blocks
+  first. ?
 
+ 
+ 
+  consider allowing descriptions to introduce numeric variables? 
+
+  
 Optimize
 More domains? 
 
@@ -93,3 +109,6 @@ Check up on forall conditions in NCSTRIPS.
 Add handling of guaranteed objects to smart-csps, so we can use
 foralls in preconditions.
 
+
+
+TODO: start using journler to record activities and REPL commands.
