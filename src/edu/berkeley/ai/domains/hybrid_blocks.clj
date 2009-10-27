@@ -2,7 +2,13 @@
  (:import [java.util HashMap HashSet])
  (:use clojure.test )
  (:require [edu.berkeley.ai [util :as util] [envs :as envs]] 
-           [edu.berkeley.ai.envs.hybrid-strips :as hs])
+           [edu.berkeley.ai.envs.hybrid-strips :as hs]
+           [edu.berkeley.ai.angelic :as angelic]
+	   [edu.berkeley.ai.angelic.hybrid
+            [continuous-lp-states :as cls]
+            [fixed-lp-valuations :as hflv]
+            [dnf-lp-valuations :as hdlv]]
+    )
  )
 
 ;; Idea for heuristic: have "goal-cx", "goal-ty" variables for each block appearing in goal
@@ -14,6 +20,9 @@
 ;; Would be easier if we had state abstraction hierarchy, since we wouldn't have to explicitly
 ;; constrain goal positions (would be handled by "finish").
 
+;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
+;                           Domain helpers
+;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
 
 (let [f (util/path-local "hybrid_blocks.pddl")]
   (defn make-hybrid-blocks-strips-domain []
@@ -61,7 +70,11 @@
   (apply concat 
 	 (for [[b ons] f, on ons] 
 	   (process-goal-stack b on))))
-				  
+		
+
+;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
+;                              Public Interface
+;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;		  
 
 (defn make-hybrid-blocks-strips-env 
   "Stacks is a forest of block info items (Table goes from -1 to 0 h, implicit).
@@ -103,6 +116,7 @@
 
 
 
+
 (comment 
   (make-hybrid-blocks-strips-env 2 2 [1 1] '[[a 0 0.1 0.2 0.1] [b 0.3 0.2 0.3 0.2]] '[[a [[b]]]])
 
@@ -125,6 +139,136 @@
 
 
 
+;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
+;                               Heuristic
+;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
+
+;; Defines a simple heuristic that only takes the total distance blocks
+; need to move into account, as well as an approximation of get and put costs.
+
+(def *hb-holding-movement-reward* -2)
+(def *hb-get-reward*              -1)
+(def *hb-put-reward*              -1)
+
+(derive ::HybridBlocksActDescriptionSchema ::angelic/Description)
+
+(defmethod angelic/parse-description :hybrid-blocks-act [desc domain params]
+  {:class ::HybridBlocksActDescriptionSchema})
+
+
+(derive ::HybridBlocksActDescription ::angelic/Description)
+
+(defmethod angelic/instantiate-description-schema ::HybridBlocksActDescriptionSchema [desc instance]
+  (let [goal-atoms (util/safe-get instance :goal-atoms)]
+    (assoc desc 
+      :class 
+        ::HybridBlocksActDescription
+      :goal 
+        (envs/get-goal instance)
+      :goal-ons 
+        (set (for [a goal-atoms] 
+               (do (assert (= (first a) 'on))
+                   a)))
+      :goal-blocks 
+         (into {} 
+           (for [b (set (apply concat (map rest goal-atoms)))]
+             [b [(util/symbol-cat b "fx") (util/symbol-cat b "fy")]])))))
+	  
+
+(defmethod angelic/ground-description ::HybridBlocksActDescription [desc var-map] desc)
+  
+
+(defn hb-discrete-reward
+  "Take a set of goal 'on' atoms, a set of state 'on' atoms, and possibly
+   a true 'holding' atom, and return a reward for get and put actions."
+  [goal-ons state-ons state-holding]
+  (when state-holding (assert (= (first state-holding) 'holding)))
+  (+ 
+    (* (count (util/difference-coll goal-ons state-ons))
+       (+ *hb-get-reward* *hb-put-reward*))
+    (cond (not state-holding)
+             0 
+          (some #(= (second state-holding) (second %)) goal-ons) 
+             (- *hb-get-reward*)
+          :else 
+             *hb-put-reward*)))
+
+(defn hb-clause-discrete-reward
+  [desc clause]
+  (hb-discrete-reward
+   (util/safe-get desc :goal-ons)
+   (filter #(= (first %) 'on) (keys clause))
+   (first (filter #(= (first %) 'holding) (keys clause)))))
+
+(defn transform-hb-clp 
+  "Add heuristic terms to the CLP, corresponding to all of the necessary
+   on relations holding.  Basic idea: add new variables for x and y positions
+   of all blocks mentioned, constrain them to match the on relation, and then
+   charge for sum of absolute values of distances from current locations.
+   goal-blocks maps block names to usable [final-x final-y] variable names."
+  [clp goal-blocks goal-ons extra-reward]
+  (cls/update-lp-state 
+   (reduce 
+    (fn [[clp [_ b c]]]
+      (let [[bx by] (util/safe-get goal-blocks b)
+            [cx cy] (util/safe-get goal-blocks c)]
+        (cls/constrain-lp-state-lez
+         (cls/constrain-lp-state-gez 
+          (cls/constrain-lp-state-eqz clp 
+           {by 1, ['blockh b] -1, cy -1})
+          {bx 1, ['blocklw b] -1, cx -1, ['blocklw c] 1})
+         {bx 1, ['blockrw b] +1, cx -1, ['blockrw c] -1})))
+    (reduce cls/add-lp-state-param clp (apply concat (vals goal-blocks)))
+    goal-ons)
+    (into {} 
+      (cons [nil extra-reward]
+        (apply concat
+         (for [[b [bx by]] goal-blocks]
+           [[{bx 1 ['blockcx b] -1}           
+             *hb-holding-movement-reward*]
+            [{by 1 ['blockty b] -1}           
+             *hb-holding-movement-reward*]]))))))
+
+(defmethod angelic/progress-valuation [::angelic/PessimalValuation ::HybridBlocksActDescription] 
+  [val desc]  val)
+
+(defmethod angelic/progress-valuation [::hflv/HybridFixedLPValuation ::HybridBlocksActDescription] [val desc]
+  (let [discrete-reward (hb-clause-discrete-reward desc (util/safe-get val :discrete-state))
+        goal-blocks (util/safe-get desc :goal-blocks)
+        goal-ons (util/safe-get desc :goal-ons)]
+    (angelic/make-conditional-valuation 
+     (:goal desc)
+     (apply max
+       Double/NEGATIVE_INFINITY
+       (for [c (util/safe-get val :continuous-lp-state)
+             :let [rew (last (cls/solve-lp-state (transform-hb-clp c goal-blocks goal-ons discrete-reward)))]
+             :when rew]
+         rew)))))
+
+(defmethod angelic/progress-valuation [::hdlv/HybridDNFLPValuation ::HybridBlocksActDescription] [val desc]
+  (let [goal-blocks (util/safe-get desc :goal-blocks)
+        goal-ons (util/safe-get desc :goal-ons)]
+    (angelic/make-conditional-valuation 
+     (:goal desc)
+     (apply max
+       Double/NEGATIVE_INFINITY
+       (for [[d c] (util/safe-get val :clause-lp-set)
+             :let [rew (last (cls/solve-lp-state 
+                              (transform-hb-clp c goal-blocks goal-ons 
+                                                (hb-clause-discrete-reward desc d))))]
+             :when rew]
+         rew)))))
+
+
+(defn make-flat-hybrid-blocks-heuristic [env]
+  (let [d (angelic/ground-description (angelic/instantiate-description-schema (angelic/parse-description [:hybrid-blocks-act] nil nil) env) {})]
+    (fn [s] (angelic/valuation-max-reward (angelic/progress-valuation (angelic/state->valuation   ::hflv/HybridFixedLPValuation s) d)))))
+
+
+
+;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
+;                              Visualization
+;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
 
 
 
@@ -211,6 +355,7 @@
 ;			  (hs/applicable-quasi-actions s as))
 ;			 as)))
 	       (dec n-steps))))))
+
 
       
 
