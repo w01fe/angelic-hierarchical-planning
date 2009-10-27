@@ -411,7 +411,7 @@
 	   all-atoms (set (get-instantiations predicates objects))]
        (doseq [nf-inst (get-instantiations numeric-functions objects)]
 	 (when-not (number? (get init-fns nf-inst))
-	   (println "Warning: No initial number for " nf-inst)))
+	   (util/print-debug 1 "Warning: No initial number for " nf-inst)))
 ;	 (util/assert-is (number? (get init-fns nf-inst))))
        (struct hybrid-strips-planning-instance ::HybridStripsPlanningInstance
 	 name

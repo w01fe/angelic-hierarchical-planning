@@ -2,6 +2,8 @@
 
 Heuristics
 
+; consider changing carry cost to block weight
+
 Optimize
 More domains? 
 

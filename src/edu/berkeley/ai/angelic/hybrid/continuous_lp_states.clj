@@ -77,6 +77,11 @@
 ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
 
 
+(defn- evaluate-bound [state b]
+  (cond (nil? b)    b
+        (number? b) b
+        :else       (le/evaluate-linear-expr (get-state-var-map state) b)))
+
 (defn add-lp-state-param 
   "Add a new parameter to the LP, with optional bounds and direction it will appear in
    the reward expression (pos, neg, or 0/nil).   If no bounds give, param will 
@@ -84,7 +89,10 @@
   ([state param] (add-lp-state-param state param [nil nil] nil))
   ([state param bounds dir]
      (assert (not (get (get-state-var-map state) param)))
-     (assoc state :incremental-lp (add-lp-var (get-incremental-lp state) param bounds dir))))
+     (assoc state :incremental-lp 
+            (add-lp-var (get-incremental-lp state) param 
+                        (map #(evaluate-bound state %) bounds)
+                        dir))))
 
 
 

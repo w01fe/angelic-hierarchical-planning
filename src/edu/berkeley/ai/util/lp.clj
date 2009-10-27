@@ -430,7 +430,7 @@
 
 
 (defn add-lp-var [lp var [l u] dir]
-  (when (and l u) (assert (<= l u)))
+  (when (and l u) (assert-is (<= l u)))
   (if (contains? (:bounds lp) var) 
       (if (or l u) 
           (throw (RuntimeException. (str "Duplicate LP var, new bounds; not implemented yet.")))

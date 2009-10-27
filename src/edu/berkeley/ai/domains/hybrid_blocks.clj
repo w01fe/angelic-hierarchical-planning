@@ -194,11 +194,11 @@
              *hb-put-reward*)))
 
 (defn hb-clause-discrete-reward
-  [desc clause]
+  [desc possible-atoms]
   (hb-discrete-reward
    (util/safe-get desc :goal-ons)
-   (filter #(= (first %) 'on) (keys clause))
-   (first (filter #(= (first %) 'holding) (keys clause)))))
+   (filter #(= (first %) 'on)  possible-atoms)
+   (first (filter #(= (first %) 'holding) possible-atoms))))
 
 (defn transform-hb-clp 
   "Add heuristic terms to the CLP, corresponding to all of the necessary
@@ -209,18 +209,23 @@
   [clp goal-blocks goal-ons extra-reward]
   (cls/update-lp-state 
    (reduce 
-    (fn [[clp [_ b c]]]
+    (fn [clp [_ b c]]
       (let [[bx by] (util/safe-get goal-blocks b)
             [cx cy] (util/safe-get goal-blocks c)]
         (cls/constrain-lp-state-lez
          (cls/constrain-lp-state-gez 
           (cls/constrain-lp-state-eqz clp 
            {by 1, ['blockh b] -1, cy -1})
-          {bx 1, ['blocklw b] -1, cx -1, ['blocklw c] 1})
-         {bx 1, ['blockrw b] +1, cx -1, ['blockrw c] -1})))
-    (reduce cls/add-lp-state-param clp (apply concat (vals goal-blocks)))
+          {bx 1, ['blocklw b] -1, cx -1, ['blocklw c] 1} false)
+         {bx 1, ['blockrw b] +1, cx -1, ['blockrw c] -1} false)))
+    (reduce (fn [clp [b [bx by]]]
+              (cls/add-lp-state-param 
+               (cls/add-lp-state-param clp bx)
+               by [{['blockh b] 1} {['height] 1}] nil)) 
+            clp goal-blocks)
     goal-ons)
-    (into {} 
+   nil
+   (into {} 
       (cons [nil extra-reward]
         (apply concat
          (for [[b [bx by]] goal-blocks]
@@ -240,7 +245,7 @@
      (:goal desc)
      (apply max
        Double/NEGATIVE_INFINITY
-       (for [c (util/safe-get val :continuous-lp-state)
+       (for [c (util/safe-get val :continuous-lp-states)
              :let [rew (last (cls/solve-lp-state (transform-hb-clp c goal-blocks goal-ons discrete-reward)))]
              :when rew]
          rew)))))
@@ -255,7 +260,7 @@
        (for [[d c] (util/safe-get val :clause-lp-set)
              :let [rew (last (cls/solve-lp-state 
                               (transform-hb-clp c goal-blocks goal-ons 
-                                                (hb-clause-discrete-reward desc d))))]
+                                                (hb-clause-discrete-reward desc (keys d)))))]
              :when rew]
          rew)))))
 
@@ -265,6 +270,10 @@
     (fn [s] (angelic/valuation-max-reward (angelic/progress-valuation (angelic/state->valuation   ::hflv/HybridFixedLPValuation s) d)))))
 
 
+(deftest hybrid-blocks-heuristic ;; TODO: extend.
+  (is (= -10
+         (let [e (make-hybrid-blocks-strips-env 6 2 [1 1] '[[a 0 2 3 1] [b 4 1 2 1]] '[[a [[b]]]])]
+           ((make-flat-hybrid-blocks-heuristic e) (envs/get-initial-state e))))))
 
 ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
 ;                              Visualization
