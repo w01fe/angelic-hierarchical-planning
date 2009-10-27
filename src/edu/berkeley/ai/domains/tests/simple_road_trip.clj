@@ -2,12 +2,9 @@
  (:use clojure.test 
        edu.berkeley.ai.domains.simple-road-trip
        )
- (:require [edu.berkeley.ai [util :as util] [envs :as envs]] 
+ (:require [edu.berkeley.ai [util :as util]] 
            [edu.berkeley.ai.search.algorithms.textbook :as algs]
-           [edu.berkeley.ai.search.state-space :as ss]
-           [edu.berkeley.ai.envs.strips :as strips]
-	   [edu.berkeley.ai.angelic :as angelic]
-	   [edu.berkeley.ai.angelic.dnf-valuations :as dv])
+           [edu.berkeley.ai.search.state-space :as ss])
  )
 
 
