@@ -33,7 +33,7 @@
 			     (map->valuation ::hflv/HybridFixedLPValuation {(envs/get-initial-state env) 0})
 			     act-seq)
 	[cont-result num-var-map rew] (util/first-maximal-element #(nth % 2)
-				        (map #(cls/solve-lp-state %) 
+				        (util/map-when #(cls/solve-lp-state %) 
                                              (util/safe-get final-val :continuous-lp-states)))]
     (map #(hs/hybrid-strips-action->action (:schema  %)
 	    (into (util/safe-get % :var-map) 
