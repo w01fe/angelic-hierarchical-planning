@@ -4,6 +4,7 @@
 ;; A corresponding kind of description, corresponding to a primitive, discrete-grounded
 ;; but continuous-ungrounded hybrid strips action, is also defined.
 
+
 (ns edu.berkeley.ai.angelic.hybrid.dnf-lp-valuations
   (:use clojure.test edu.berkeley.ai.angelic
 	[edu.berkeley.ai [ util :as util] [envs :as envs]]
@@ -37,7 +38,9 @@
   (throw (UnsupportedOperationException.)))
 
 (defmethod valuation-max-reward ::HybridDNFLPValuation [val]
-  (apply max (map #(last (cls/solve-lp-state (second %))) (:clause-lp-set val))))
+  (apply max 
+   Double/NEGATIVE_INFINITY
+   (util/map-when #(last (cls/solve-lp-state (second %))) (:clause-lp-set val))))
 
 (defmethod empty-valuation? ::HybridDNFLPValuation [val] false)
 
