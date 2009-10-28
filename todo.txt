@@ -1,8 +1,11 @@
 ;;; Today
 
+Think hard about what makes a "useful" action.  
+
 Heuristic for simple-road-trip?
 
-Look at alternations of moving a and B
+Look at alternations of moving a and B, or just look at the 30 LPs for
+the 3-move plan.
 
   LPs multiply exponentially with number of times something put on
   single surface (e.g., table?)
@@ -37,6 +40,8 @@ How can we properly use pessimistic descriptions?
   
 Optimize
 More domains? 
+ - Assembly
+ - .....
 
 Look into clojureatica/incanter (?)
 

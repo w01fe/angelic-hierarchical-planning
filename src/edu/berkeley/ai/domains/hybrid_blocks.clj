@@ -431,4 +431,10 @@
 (comment 
 (time  (let [e (make-hybrid-blocks-strips-env 6 2 [1 1] '[[a 0 2 3 1] [b 4 1 2 1]] '[[a [[b]]]])]
                (map :name (extract-hybrid-primitive-solution e (time  (first (a-star-search (alt-node (get-hierarchy *hybrid-blocks-hierarchy* e) {:cache? false :graph? false :ref-choice-fn first-choice-fn}))))))))
+
+ (let [e (make-hybrid-blocks-strips-env 15 6 [1 1] '[[a 1 2 5 1] [b 7 1 2 1] [c 10 1 2 2]] '[[a [[b] [c]]]])] 
+    (map :name (extract-hybrid-primitive-solution e 
+                 (first (interactive-search (alt-node (get-hierarchy *hybrid-blocks-hierarchy* e)
+                                                 {:cache? false :graph? false :ref-choice-fn last-choice-fn}))))))
+
 )
