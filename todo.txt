@@ -2,17 +2,19 @@
 
 Think hard about what makes a "useful" action.  
 
-Heuristic for simple-road-trip?
-
 Look at alternations of moving a and B, or just look at the 30 LPs for
 the 3-move plan.
 
   LPs multiply exponentially with number of times something put on
   single surface (e.g., table?)
 
-  figure out how to prevent abs-var gensyms from breaking symmetry.
-Variable vars can do this too (?).  If we can avoid identifiability
-issues, we can prevent things.  
+- Further investigate proliferation
+- Implement subsumption for CLP states, for debugging if nothing
+- else. 
+- Look at using MIPs
+  
+Heuristic for simple-road-trip?
+
 
 Make sure we're not assuming valuations are non-empty somewhere? 
 

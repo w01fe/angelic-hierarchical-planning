@@ -521,14 +521,107 @@
 
 
 
-; max -|y|:
-; max -x s.t.
-; x >= y, x >= -y 
-; max -x s.t. 
-; |y| > x
-; y > x
 
+;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
+;                              LP Subsumption
+;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
 
+;; Some simple subsumption algorithms for LPs that have the same set of vars.
+
+;(defn interval-subsumes? [[al au] [bl bu]]
+;  (and (or bl (not al))
+;       (or (not al) (<= al bl))
+;       (or bu (not au))
+;       (or (not au) (>= au bu))))
+
+; a+b <= 10 --> orthogonal direction is a+b, negative 
+;; Cannot just look at bounds interval subsumption since this may falsely 
+;; claim non-subsumption (when bounds are not actually in effect due to constraints.
+(defn lp-subsumes? 
+  "Does LP a subsume LP b, supposing that a has a constant reward offset from b as given."
+  ([a b] (lp-subsumes? a b 0))
+  ([a b reward-offset]
+     (let [{ab :bounds ac :constraints ao :objective} a
+           {bb :bounds bc :constraints bo :objective} b]
+       (assert (= (keys ab) (keys bb)))
+       (assert (every? #(> (count %) 1) (keys bc)))
+       (or (not (solve-lp-clp b))
+           (and             ;(every? #(apply interval-subsumes? %)
+                                        ;        (vals (merge-with vector ab bb)))
+                                        ;(prln "bounds pass")
+            (every? (fn [[lm [l u]]]
+                      (and (or (not l)
+                               (let [[sol _] (solve-lp-clp (make-lp bb (map-vals - lm) bc))]
+;                                 (println "LB sol: " sol lm l)
+                                 (not (lp-constraint-violation [lm [l nil]] sol))))
+                           (or (not u) 
+                               (let [[sol _] (solve-lp-clp (make-lp bb lm bc))]
+;                                 (println "UB sol: " sol lm u)
+                                 (not (lp-constraint-violation [lm [nil u]] sol))))))
+                    (merge ac (map-keys #(hash-map % 1) ab)))
+        ;    (prln "constraints pass")
+            (let [[_ rew] (solve-lp-clp
+                           (make-lp
+                            bb  
+                            (merge-with + bo (util/map-vals - ao))
+                            bc))]
+              (<= rew reward-offset))
+        ;    (prln "objective passes")            
+            )))))
+
+(deftest lp-subsumption
+  ; Equal
+  (is (lp-subsumes? (make-lp {:a [0 10] :b [0 10]}  {:a 2 :b 1} {{:a 1 :b 2} [2 7]})
+                    (make-lp {:a [0 10] :b [0 10]}  {:a 2 :b 1} {{:a 1 :b 2} [2 7]})))
+  ; Interior
+  (is (lp-subsumes? (make-lp {:a [0 10] :b [0 10]}  {:a 2 :b 1} {{:a 1 :b 2} [2 7]}) 
+                    (make-lp {:a [1 9] :b [1 9]}  {:a 2 :b 1} {{:a 1 :b 2} [3 6]})))
+  
+  ; Skew constraints
+  (is (lp-subsumes? (make-lp {:a [0 10] :b [0 10]}  {:a 2 :b 1} {{:a 1 :b 2} [2 7]})
+                    (make-lp {:a [0 10] :b [0 10]}  {:a 2 :b 1} {{:a 1 :b 1} [2 3]})))
+  
+  
+  ; Looks false, but are actually equal
+  (is (lp-subsumes? (make-lp {:a [0 10] :b [0 10]}  {:a 2 :b 1} {{:a 1 :b 2} [11 15]}) 
+                    (make-lp {:a [1 10] :b [1 10]}  {:a 2 :b 1} {{:a 1 :b 2} [11 15]})))
+  
+  
+  ; bounds violation 
+  (is (not (lp-subsumes? (make-lp {:a [1 10] :b [0 10]}  {:a 2 :b 1} {{:a 1 :b 2} [2 7]})
+                     (make-lp {:a [0 10] :b [0 10]}  {:a 2 :b 1} {{:a 1 :b 2} [2 7]}))))
+  
+  (is (not (lp-subsumes? (make-lp {:a [0 10] :b [0 3]}  {:a 2 :b 1} {{:a 1 :b 2} [2 7]})
+                         (make-lp {:a [0 10] :b [0 10]}  {:a 2 :b 1} {{:a 1 :b 2} [2 7]}))))
+  
+  ; constraint violation
+  (is (not (lp-subsumes? (make-lp {:a [0 10] :b [0 10]}  {:a 2 :b 1} {{:a 1 :b 2} [3 7]})
+                         (make-lp {:a [0 10] :b [0 10]}  {:a 2 :b 1} {{:a 1 :b 2} [2 7]}))))
+  
+  (is (not (lp-subsumes? (make-lp {:a [0 10] :b [0 10]}  {:a 2 :b 1} {{:a 1 :b 2} [2 6]})
+                         (make-lp {:a [0 10] :b [0 10]}  {:a 2 :b 1} {{:a 1 :b 2} [2 7]}))))
+
+  (is (not (lp-subsumes? (make-lp {:a [0 10] :b [0 10]}  {:a 2 :b 1} {{:a 1 :b 2} [2 7]})
+                         (make-lp {:a [0 10] :b [0 10]}  {:a 2 :b 1} {{:a 1 :b 1} [2 4]}))))
+  
+  ; objective violation - constant  
+  (is (not (lp-subsumes? (make-lp {:a [0 10] :b [0 10]}  {:a 2 :b 1} {{:a 1 :b 2} [2 7]})
+                         (make-lp {:a [0 10] :b [0 10]}  {:a 2 :b 1} {{:a 1 :b 2} [2 7]})
+                         -1
+                         )))
+  
+  ; objective violation - complex
+  (is (not (lp-subsumes? (make-lp {:a [0 10] :b [0 10]}  {:a 2 :b 1} {{:a 1 :b 2} [2 7]})
+                         (make-lp {:a [0 10] :b [0 10]}  {:a 3 :b 2} {{:a 1 :b 2} [2 7]})
+                         6
+                         )))
+  
+  ; Fixed by adjusting feasible region
+  (is (lp-subsumes? (make-lp {:a [0 10] :b [0 10]}  {:a 2 :b 1} {{:a 1 :b 2} [2 7]})
+                    (make-lp {:a [0 10] :b [0 10]}  {:a 3 :b 2} {{:a 1 :b 2} [2 6]})
+                    6
+                    ))
+  )
      
 
 (set! *warn-on-reflection* false)
