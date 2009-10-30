@@ -459,7 +459,7 @@
   (if (some map? (keys v-map))  ; Get rid of absolute value terms.
       (apply increment-lp-objective 
         (reduce (fn [[lp v-map] k]
-                  (let [dummy-var (gensym "abs-var")
+                  (let [dummy-var (util/symbol-cat 'abs- (count (:bounds lp)))
                         val       (get v-map k)
                         const     (- (get k nil 0))
                         k2         (dissoc k nil)]
