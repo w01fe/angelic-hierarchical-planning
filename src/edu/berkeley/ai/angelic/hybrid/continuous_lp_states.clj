@@ -178,6 +178,13 @@
 
 
 
+(defn lp-state-subsumes? 
+  "Return true if a known to subsume b, false otherwise.  May return false even if
+   a does subsume b, since testing is currently of a very limited form."
+  [a b]
+  (and (= (get-state-var-map a) (get-state-var-map b))
+       (lp/lp-subsumes? (get-incremental-lp a) (get-incremental-lp b) 
+                        (- (get-reward-const a)  (get-reward-const b)))))
 
 
 ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
