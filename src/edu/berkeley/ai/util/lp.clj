@@ -16,6 +16,9 @@
 ;; Currently, we try to handle strict inequalities on a best-effort basis.
 ;; TODO: extend from bounds to constraints?
 
+;; TODO: Look into clojureatica/incanter as alternatives.
+
+
 (ns edu.berkeley.ai.util.lp
   (:use clojure.test [edu.berkeley.ai.util :as util]
 	[edu.berkeley.ai.util [linear-expressions :as le] [intervals :as iv] [caches :as caches]])

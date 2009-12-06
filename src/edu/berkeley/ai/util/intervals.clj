@@ -3,13 +3,14 @@
 ;	[clojure.contrib.types :only (deftype)]
         [clojure.contrib.generic :only (root-type)])
   (:require [clojure.contrib.generic.arithmetic :as ga]
+		[clojure.contrib.types]
  ;           [clojure.contrib.generic.comparison :as gc]
             [clojure.contrib.generic.math-functions :as gm]))
 
 
 (defstruct interval :left :left-open :right :right-open)
 
-(deftype ::interval make-interval
+(clojure.contrib.types/deftype ::interval make-interval
   (fn [l lo r ro] (struct interval l lo r ro))
   (fn [i] (vals i)))
 

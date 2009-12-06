@@ -14,7 +14,8 @@
 (ns edu.berkeley.ai.angelic.hybrid.continuous-lp-states
   (:use clojure.test 
 	[edu.berkeley.ai.util :as util]
-	[edu.berkeley.ai.util [hybrid :as hybrid] [lp :as lp] [linear-expressions :as le]]))
+	[edu.berkeley.ai.util [hybrid :as hybrid] [lp :as lp] [linear-expressions :as le]])
+  (:require [clojure.contrib.types]))
 
 (set! *warn-on-reflection* true)
 
@@ -26,7 +27,7 @@
 
 ;(derive ::ContinuousLPState ::le/ContinuousState)
 (defstruct lp-state-struct :state-var-map :incremental-lp :reward-const :lazy?)
-(util/deftype ::ContinuousLPState make-lp-state*
+(clojure.contrib.types/deftype ::ContinuousLPState make-lp-state*
   (fn [state-var-map incremental-lp reward-const] 
     (assert (isa? (:class incremental-lp) ::lp/IncrementalLP))
     (struct lp-state-struct state-var-map incremental-lp reward-const))
