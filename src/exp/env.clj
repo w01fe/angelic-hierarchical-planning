@@ -37,14 +37,16 @@
   (precondition-context [a]))
 
 (deftype FactoredPrimitive [name precond-map effect-map reward] 
-  [Action PrimitiveAction ContextualAction]
-  (action-name [a] name)
-  (applicable? [a s]
-    (every? (fn [[var val]] (= (get-var s var) val)) precond-map))
-  (next-state-and-reward  [a s]
-    [(apply-effects s effect-map) reward])
-  (precondition-context [a]
-    (keys precond-map)))
+  Action 
+    (action-name [] name)
+  PrimitiveAction 
+    (applicable? [s]
+      (every? (fn [[var val]] (= (get-var s var) val)) precond-map))
+    (next-state-and-reward [s]
+      [(apply-effects s effect-map) reward])
+  ContextualAction
+    (precondition-context []
+      (keys precond-map)))
 
 (defmethod print-method ::FactoredPrimitive [a o] (print-method (action-name a) o))
 
@@ -108,20 +110,23 @@
 ;;; Useful logging state
 
 
-(deftype LoggingFactoredState [init] [FactoredState]
-  (get-var [state var]
+
+
+(deftype LoggingFactoredState [init] :as state
+ FactoredState
+ (get-var [var]
    (swap! (:gets (meta state)) conj var)
    (if-let [[_ val] (find (:puts (meta state)) var)]
-       val
-     (get-var init var)))
-  (set-var [state var val]
-;   (util/assert-is (get-var init var)) ; can't do this since val might be nil ...
-    (LoggingFactoredState. init 
-      {:gets (atom @(:gets (meta state))) 
-       :puts (assoc (:puts (meta state)) var val)}
-      {}))
-  (list-vars [state] (list-vars init))
-  (as-map [state] (merge (as-map init) (:puts (meta state)))))
+     val
+     (get-var (:init state) var)))
+ (set-var [var val]
+ ;   (util/assert-is (get-var (:init state) var)) ; can't do this since val might be nil ...
+   (LoggingFactoredState. (:init state) 
+                         {:gets (atom @(:gets (meta state))) 
+                          :puts (assoc (:puts (meta state)) var val)}
+                         {}))
+ (list-vars [] (list-vars (:init state)))
+ (as-map [] (merge (as-map (:init state)) (:puts (meta state)))))
 
 (defn wrap-logging-state [init-state] (LoggingFactoredState init-state {:gets (atom #{}) :puts {}} {}))
 (defn get-logging-state-gets [s] @(:gets (meta s)))

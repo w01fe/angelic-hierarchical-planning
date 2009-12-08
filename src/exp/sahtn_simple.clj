@@ -64,7 +64,7 @@
                       (with-meta (env/get-logging-state-puts outcome-state) (meta outcome-state))) 
                     direct-result)
                    dirty-set (disj (or (:dirty-set (meta direct-result)) #{}) cache-key)]
-               (when (empty? dirty-set) (println cache-key (count dirty-set) result (map meta (keys result))))
+;               (when (empty? dirty-set) (println cache-key (count dirty-set) result (map meta (keys result))))
                (if (empty? dirty-set) 
                    (.put cache cache-key result)
                  (.remove cache cache-key))

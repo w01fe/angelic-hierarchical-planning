@@ -7,17 +7,18 @@
 (defprotocol HighLevelAction
   (immediate-refinements [a s]))
 
-(deftype SimpleFactoredHLA [name relevant-vars ref-fn] [env/Action env/ContextualAction HighLevelAction]
-  (action-name [a] name)
-  (precondition-context [a] relevant-vars)
-  (immediate-refinements [a s] (ref-fn s)))
+(deftype SimpleFactoredHLA [name relevant-vars ref-fn] 
+  env/Action           (action-name [] name)
+  env/ContextualAction (precondition-context [] relevant-vars)
+  HighLevelAction      (immediate-refinements [s] (ref-fn s)))
 
 
 (defprotocol HierarchicalEnv (env [h]) (initial-plan [h]))
 
-(deftype SimpleHierarchicalEnv [env initial-plan] [HierarchicalEnv]
-  (env          [h] env)
-  (initial-plan [h] initial-plan))
+(deftype SimpleHierarchicalEnv [env initial-plan] 
+ HierarchicalEnv
+  (env          [] env)
+  (initial-plan [] initial-plan))
 
 (deftype ShopHTNPlan [rest-plan state])
 
@@ -47,9 +48,9 @@
   (util/sref-set! *plan-counter* 0)  
   )
 
-(deftype ShopHTNEnv [he] [env/Env]
-  (initial-state [this] (util/make-safe (normalized-plan (initial-plan he) (env/initial-state (env he)))))
-  (actions-fn [this]
+(deftype ShopHTNEnv [he] env/Env
+  (initial-state [] (util/make-safe (normalized-plan (initial-plan he) (env/initial-state (env he)))))
+  (actions-fn []
     (fn [shp]
 ;      (println shp)
       (let [[first-action & rest-plan] (:rest-plan shp)
@@ -58,19 +59,21 @@
         (for [[i ref] (util/indexed (immediate-refinements first-action state))
               :let [result (normalized-plan (concat ref rest-plan) state)]
               :when result]
-          (reify [env/Action env/PrimitiveAction]
-            (action-name [a] 
+          (reify 
+           env/Action
+            (action-name [] 
               [ref (env/action-name first-action) i])
-            (applicable? [a s] 
+           env/PrimitiveAction
+            (applicable? [s] 
               (assert (identical? s shp)) 
               true)
-            (next-state-and-reward [a s] 
+            (next-state-and-reward [s] 
               ;(println result)
               (assert (identical? s shp))
               (util/sref-set! env/*next-counter* (dec (util/sref-get env/*next-counter*))) ;; uncount this.
               (util/sref-set! *plan-counter* (inc (util/sref-get *plan-counter*))) ;; uncount this.
               [result (- (env/reward (:state result)) (env/reward state))]))))))
-  (goal-fn [this] (fn [s] 
+  (goal-fn [] (fn [s] 
                     (when (empty? (:rest-plan s))
                       (env/solution-and-reward (:state s))))))
 
