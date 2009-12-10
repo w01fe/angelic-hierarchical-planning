@@ -85,7 +85,8 @@
                                (for [af [make-left make-right make-up make-down]
                                      :let [a (af s)]
                                      :when a]
-                                 [a this]))))
+                                 [a this])))
+                            (cycle-level- [s] 1))
 
 (deftype ServeHLA [env pass] 
   env/Action                (action-name [] ['serve pass])
@@ -97,7 +98,8 @@
                                    pu (make-pickup  s pass)
                                    pd (make-dropoff s pass)]
                                (util/assert-is (and pu pd))
-                               [[(NavHLA env sx sy) pu (NavHLA env dx dy) pd]])))
+                               [[(NavHLA env sx sy) pu (NavHLA env dx dy) pd]]))
+                            (cycle-level- [s] nil))
 
 (deftype TaxiTLA [env]      :as this
   env/Action                (action-name [] ['top])
@@ -110,7 +112,8 @@
                                 (if (empty? remaining-passengers)
                                     [[]]
                                   (for [pass remaining-passengers]
-                                    [(ServeHLA env pass) this])))))
+                                    [(ServeHLA env pass) this]))))
+                            (cycle-level- [s] nil))
 
 
 

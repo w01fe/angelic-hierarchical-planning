@@ -75,6 +75,21 @@
 	        (if (pred v ov) (assoc (dissoc m ok) k v) m)
 	      (assoc m k v)))
 	  m (apply concat entry-seqs)))
+
+(defn merge-with-pred 
+  "Like merge-with, but takes a predicate on values and keeps the best one.
+   Also preserves the metadata on the key associated with the best value."
+  ([pred] {})
+  ([pred m] m)
+  ([pred m & maps]
+     (persistent!
+      (reduce 
+       (fn [tm1 [k v]]
+         (if-let [[_ ov] (let [v (get tm1 k :G___123123)] (when-not (= v :G___123123) [nil v]))]
+                          ;; Horrible hack since find doens't work on transients.
+             (if (pred v ov) (assoc! (dissoc! tm1 k) k v) tm1)
+           (assoc! tm1 k v)))
+       (transient m) (apply concat maps)))))
 	      
 (import '[java.util HashMap])
 (defn merge-all-with [f & ms]

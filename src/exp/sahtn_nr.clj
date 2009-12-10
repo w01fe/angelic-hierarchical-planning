@@ -12,21 +12,7 @@
 ;; This version will loop forever on recursive hierarchies
 
 
-(defn- merge-valuations [& vs]
-  "Like merge-with max, but preserves metadata of the best key."
-  (reduce 
-     (fn [v1 v2] 
-       (reduce 
-        (fn [v1 [k v]]
-          (if (<= v (get v1 k Double/NEGATIVE_INFINITY))
-	    v1
-            (assoc (dissoc v1 k) k v)))
-        v1 v2))
-     (or (first vs) {}) (rest vs)))
-
-
-
-(declare sahtn-plan)
+(declare sahtn-action)
 
 (defn- sahtn-do-action [cache s a]
   "Return a map from (possibly abstracted) outcome states 
@@ -35,10 +21,14 @@
   (if (satisfies? env/PrimitiveAction a)
     (if-let [[ss r] (env/successor a s)] {(vary-meta ss assoc :opt [a]) r} {})
     (do (util/sref-set! hierarchy/*ref-counter* (inc (util/sref-get hierarchy/*ref-counter*)))
-        (apply merge-valuations
+        (apply util/merge-with-pred > 
                (for [ref (hierarchy/immediate-refinements a s)]
-                 (do (util/sref-set! hierarchy/*plan-counter* (inc (util/sref-get hierarchy/*plan-counter*)))
-                     (sahtn-plan cache {s 0} ref)))))))
+                 (do (util/sref-set! hierarchy/*plan-counter* 
+                                     (inc (util/sref-get hierarchy/*plan-counter*)))
+                     (reduce (fn [cv a] 
+                               (apply util/merge-with-pred >  
+                                      (for [[s r] cv] (sahtn-action cache s a r))))
+                             {s 0} ref)))))))
 
 (defn- sahtn-action [cache s a r]
   "Handling boring things - caching and stitching states, etc."
@@ -61,19 +51,11 @@
              (.put cache cache-key result)
              result)))))
 
-(defn- sahtn-plan [cache v as]
-  "Return a map from (possibly abstracted) output states 
-   (with opt. sols. as metadata) to rewards."
-  (reduce (fn [cv a] 
-            (apply merge-valuations 
-                   (for [[s r] cv] (sahtn-action cache s a r))))
-          v as))
-
 
 (defn sahtn-nr [henv]
   (let [e       (hierarchy/env henv)
         cache   (HashMap.)
-        results (sahtn-plan cache {(env/initial-state e) 0} (hierarchy/initial-plan henv))]
+        results (sahtn-action cache (env/initial-state e) (hierarchy/TopLevelAction e [(hierarchy/initial-plan henv)]) 0)]
     (when-not (empty? results)
       (assert (= (count results) 1))
       (let [[k v] (first results)]
@@ -100,3 +82,31 @@
 ;  to all goal states at current level. 
 
 ; In sparse graphs, note n*Dijkstra is best alg. for APSP. 
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+; Old
+(comment ;Old
+ (defn- merge-valuations [& vs]
+   "Like merge-with max, but preserves metadata of the best key."
+   (reduce 
+    (fn [v1 v2] 
+      (reduce 
+       (fn [v1 [k v]]
+         (if (<= v (get v1 k Double/NEGATIVE_INFINITY))
+           v1
+           (assoc (dissoc v1 k) k v)))
+       v1 v2))
+    (or (first vs) {}) (rest vs))))

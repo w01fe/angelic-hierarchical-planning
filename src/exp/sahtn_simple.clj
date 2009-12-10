@@ -18,21 +18,13 @@
 
 (defn- merge-valuations [& vs]
   "Like merge-with max, but preserves metadata of the best key."
-  (with-meta 
-    (reduce 
-     (fn [v1 v2] 
-       (reduce 
-        (fn [v1 [k v]]
-          (if (<= v (get v1 k Double/NEGATIVE_INFINITY))
-	    v1
-            (assoc (dissoc v1 k) k v)))
-        v1 v2))
-     (or (first vs) {}) (rest vs))
+  (with-meta (apply util/merge-with-pred > vs)
     {:dirty-set (set (apply concat (map #(:dirty-set (meta %)) vs)))}))
 
 
 
-(declare sahtn-plan)
+
+(declare sahtn-action)
 
 (defn- sahtn-do-action [cache s a]
   "Return a map from (possibly abstracted) outcome states 
@@ -43,8 +35,12 @@
     (do (util/sref-set! hierarchy/*ref-counter* (inc (util/sref-get hierarchy/*ref-counter*)))
         (apply merge-valuations
                (for [ref (hierarchy/immediate-refinements a s)]
-                 (do (util/sref-set! hierarchy/*plan-counter* (inc (util/sref-get hierarchy/*plan-counter*)))
-                     (sahtn-plan cache {s 0} ref)))))))
+                 (do (util/sref-set! hierarchy/*plan-counter* 
+                                     (inc (util/sref-get hierarchy/*plan-counter*)))
+                     (reduce (fn [cv a] 
+                               (apply merge-valuations
+                                      (for [[s r] cv] (sahtn-action cache s a r))))
+                             {s 0} ref)))))))
 
 (defn- sahtn-action [cache s a r]
   "Handling boring things - caching and stitching states, etc."
@@ -78,20 +74,14 @@
        result)
       (meta result))))
 
-(defn- sahtn-plan [cache v as]
-  "Return a map from (possibly abstracted) output states 
-   (with opt. sols. as metadata) to rewards."
-  (reduce (fn [cv a] 
-            (apply merge-valuations 
-                   (for [[s r] cv] (sahtn-action cache s a r))))
-          v as))
+
 
 
 (defn sahtn-simple [henv]
   (let [e       (hierarchy/env henv)
         cache   (HashMap.)
-        results (sahtn-plan cache {(env/initial-state e) 0} (hierarchy/initial-plan henv))]
-;    (println (into {} cache))
+        results (sahtn-action cache (env/initial-state e) 
+                              (hierarchy/TopLevelAction e [(hierarchy/initial-plan henv)]) 0)]
     (when-not (empty? results)
       (assert (= (count results) 1))
       (let [[k v] (first results)]

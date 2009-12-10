@@ -5,12 +5,23 @@
 
 
 (defprotocol HighLevelAction
-  (immediate-refinements [a s]))
+  (immediate-refinements [a s])
+  (cycle-level- [a s]))
 
-(deftype SimpleFactoredHLA [name relevant-vars ref-fn] 
-  env/Action           (action-name [] name)
-  env/ContextualAction (precondition-context [] relevant-vars)
-  HighLevelAction      (immediate-refinements [s] (ref-fn s)))
+(deftype TopLevelAction [env initial-plans]
+  env/Action           (action-name [] ['act])
+  env/ContextualAction (precondition-context [] (keys (env/initial-state env)))
+  HighLevelAction      (immediate-refinements [s] initial-plans)
+                       (cycle-level- [s] nil))
+
+(defn cycle-level [a s]
+  (and (satisfies? HighLevelAction a)
+       (cycle-level- a s)))
+
+;(deftype SimpleFactoredHLA [name relevant-vars ref-fn] 
+;  env/Action           (action-name [] name)
+;  env/ContextualAction (precondition-context [] relevant-vars)
+;  HighLevelAction      (immediate-refinements [s] (ref-fn s)))
 
 
 (defprotocol HierarchicalEnv (env [h]) (initial-plan [h]))
