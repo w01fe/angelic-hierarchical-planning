@@ -116,17 +116,24 @@
  FactoredState
  (get-var [var]
    (swap! (:gets (meta state)) conj var)
-   (if-let [[_ val] (find (:puts (meta state)) var)]
-     val
-     (get-var (:init state) var)))
+  (get-var init var)
+  ;(if-let [[_ val] (find (:puts (meta state)) var)]
+  ;   val
+;     (get-var (:init state) var)
+     
+;    )
+ 
+  )
  (set-var [var val]
  ;   (util/assert-is (get-var (:init state) var)) ; can't do this since val might be nil ...
-   (LoggingFactoredState. (:init state) 
+   (LoggingFactoredState. (assoc  init var val)  ; init
                          {:gets (atom @(:gets (meta state))) 
                           :puts (assoc (:puts (meta state)) var val)}
                          {}))
- (list-vars [] (list-vars (:init state)))
- (as-map [] (merge (as-map (:init state)) (:puts (meta state)))))
+ (list-vars [] (list-vars init))
+ (as-map [] init ;(merge (as-map (:init state)) (:puts (meta state)))
+         
+         ))
 
 (defn wrap-logging-state [init-state] (LoggingFactoredState init-state {:gets (atom #{}) :puts {}} {}))
 (defn get-logging-state-gets [s] @(:gets (meta s)))

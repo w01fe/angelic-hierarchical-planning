@@ -78,7 +78,7 @@
 (deftype NavHLA [env dx dy] :as this
   env/Action                (action-name [] ['nav dx dy])
   env/ContextualAction      (precondition-context [] [['atx] ['aty]])
-  hierarchy/HighLevelAction (immediate-refinements [ s]
+  hierarchy/HighLevelAction (immediate-refinements- [s]
                              (if (and (= dx (env/get-var s ['atx])) 
                                       (= dy (env/get-var s ['aty])))
                                [[]]
@@ -92,7 +92,7 @@
   env/Action                (action-name [] ['serve pass])
   env/ContextualAction      (precondition-context [] [['atx] ['aty] ['in-taxi] 
                                                       ['pass-served? pass]])
-  hierarchy/HighLevelAction (immediate-refinements [s]
+  hierarchy/HighLevelAction (immediate-refinements- [s]
                              (let [[sx sy dx dy] 
                                    (map #(env/get-var s [% pass]) '[srcx srcy dstx dsty])
                                    pu (make-pickup  s pass)
@@ -104,7 +104,7 @@
 (deftype TaxiTLA [env]      :as this
   env/Action                (action-name [] ['top])
   env/ContextualAction      (precondition-context [] (keys (env/initial-state env)))
-  hierarchy/HighLevelAction (immediate-refinements [s]
+  hierarchy/HighLevelAction (immediate-refinements- [s]
                               (let [remaining-passengers
                                     (for [[pass] (:passengers env)
                                           :when (not (env/get-var s ['pass-served? pass]))]

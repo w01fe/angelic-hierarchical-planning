@@ -30,6 +30,10 @@
 
 (declare sahtn-action)
 
+;; TODO: logging on state should still support correct equality (i.e., on merged state). 
+ ;; Should do effects on state, plus keep separate map.
+;; TOOD: look if unwrapping & rewrapping is right.
+
 
 (defn- sahtn-do-action [cache s a]
   "Return a map from (possibly abstracted) outcome states 
@@ -41,9 +45,12 @@
           (let [level  (hierarchy/cycle-level a s)
                 q      (queues/make-graph-search-pq)
                 result (HashMap.)]
+;            (println "\n\nstarting!")
             (queues/pq-add! q [s [a]] 0)
             (while (not (queues/pq-empty? q))
+;               (println "\n"(queues/pq-size q))
               (let [[[s a] c] (queues/pq-remove-min-with-cost! q)]
+;                (println (env/as-map s) (map env/action-name a) c)
                 (if (empty? a) 
                     (.put result s (- c))
                   (let [[f & r] a
@@ -51,20 +58,19 @@
                     (assert (or (not f-level) (<= f-level level)))
                     (if (or (nil? f-level) (< f-level level))
                         (doseq [[ss sr] (sahtn-action cache s f (- c))]
-                          (queues/pq-add! q [ss r] (- sr)))
+                          (println "adding" (env/as-map ss) (map env/action-name r))
+                           (queues/pq-add! q [ss r] (- sr)))
                       (doseq [ref (hierarchy/immediate-refinements f s)]
-                        (queues/pq-add! q [s (concat ref r)] c)))))))
+;                        (println "adding2" (map env/action-name (concat ref r)))
+                         (queues/pq-add! q [s (concat ref r)] c)))))))
             (into {} result))
-        :else          
-          (do (util/sref-set! hierarchy/*ref-counter* (inc (util/sref-get hierarchy/*ref-counter*)))
-              (apply util/merge-with-pred > 
+        :else
+           (apply util/merge-with-pred > 
                 (for [ref (hierarchy/immediate-refinements a s)]
-                  (do (util/sref-set! hierarchy/*plan-counter* 
-                                      (inc (util/sref-get hierarchy/*plan-counter*)))
-                      (reduce (fn [cv a] 
-                                (apply util/merge-with-pred >  
-                                       (for [[s r] cv] (sahtn-action cache s a r))))
-                              {s 0} ref)))))))
+                  (reduce (fn [cv a] 
+                            (apply util/merge-with-pred >  
+                                   (for [[s r] cv] (sahtn-action cache s a r))))
+                          {s 0} ref)))))
 
 
 (defn- sahtn-action [cache s a r]
@@ -74,19 +80,20 @@
         context         (select-keys s-map context-vars)
 	cache-key       [(env/action-name a) context]
 	cache-val       (.get cache cache-key)]
+  ;  (println "\nresult for" (env/action-name a))
     (util/map-map 
-     (fn [[effect-map local-reward]]
-       [(vary-meta (env/apply-effects s effect-map)
-                   assoc :opt (into (or (:opt (meta s)) []) (:opt (meta effect-map))))
-        (+ r local-reward)])
-     (or cache-val
-         (let [result
-               (util/map-keys
-                (fn [outcome-state]
-                  (with-meta (env/get-logging-state-puts outcome-state) (meta outcome-state))) 
-                (sahtn-do-action cache (env/wrap-logging-state s-map) a))]
-             (.put cache cache-key result)
-             result)))))
+        (fn [[effect-map local-reward]]
+          [(vary-meta (env/apply-effects s effect-map)
+                      assoc :opt (into (or (:opt (meta s)) []) (:opt (meta effect-map))))
+           (+ r local-reward)])
+        (or cache-val
+            (let [result
+                  (util/map-keys
+                   (fn [outcome-state]
+                     (with-meta (env/get-logging-state-puts outcome-state) (meta outcome-state))) 
+                   (sahtn-do-action cache (env/wrap-logging-state s-map) a))]
+              (.put cache cache-key result)
+              result)))))
 
 
 

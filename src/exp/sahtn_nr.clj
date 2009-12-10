@@ -19,16 +19,14 @@
    (with local solutions as metadata) to rewards.
    Takes (possibly abstracted) states as input."
   (if (satisfies? env/PrimitiveAction a)
-    (if-let [[ss r] (env/successor a s)] {(vary-meta ss assoc :opt [a]) r} {})
-    (do (util/sref-set! hierarchy/*ref-counter* (inc (util/sref-get hierarchy/*ref-counter*)))
-        (apply util/merge-with-pred > 
-               (for [ref (hierarchy/immediate-refinements a s)]
-                 (do (util/sref-set! hierarchy/*plan-counter* 
-                                     (inc (util/sref-get hierarchy/*plan-counter*)))
-                     (reduce (fn [cv a] 
-                               (apply util/merge-with-pred >  
-                                      (for [[s r] cv] (sahtn-action cache s a r))))
-                             {s 0} ref)))))))
+    (if-let [[ss r] (env/successor a s)] 
+        {(vary-meta ss assoc :opt [a]) r} {})
+      (apply util/merge-with-pred > 
+        (for [ref (hierarchy/immediate-refinements a s)]
+          (reduce (fn [cv a] 
+                    (apply util/merge-with-pred >  
+                           (for [[s r] cv] (sahtn-action cache s a r))))
+                  {s 0} ref)))))
 
 (defn- sahtn-action [cache s a r]
   "Handling boring things - caching and stitching states, etc."

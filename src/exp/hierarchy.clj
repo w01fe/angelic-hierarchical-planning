@@ -4,19 +4,37 @@
             ))
 
 
+
+(def *ref-counter* (util/sref 0))
+(def *plan-counter* (util/sref 0))
+
+(defn reset-ref-counter [] 
+  (util/sref-set! *ref-counter* 0)
+  (util/sref-set! *plan-counter* 0)  
+  )
+
 (defprotocol HighLevelAction
-  (immediate-refinements [a s])
+  (immediate-refinements- [a s])
   (cycle-level- [a s]))
 
-(deftype TopLevelAction [env initial-plans]
-  env/Action           (action-name [] ['act])
-  env/ContextualAction (precondition-context [] (keys (env/initial-state env)))
-  HighLevelAction      (immediate-refinements [s] initial-plans)
-                       (cycle-level- [s] nil))
+;; TODO: this forces eagerness, may not be desirable in some situations.
+(defn immediate-refinements [a s]  
+  (let [refs (immediate-refinements- a s)]
+    (util/sref-set! *ref-counter*  (+ 1            (util/sref-get *ref-counter*)))
+    (util/sref-set! *plan-counter* (+ (count refs) (util/sref-get *plan-counter*)))
+    refs))
 
 (defn cycle-level [a s]
   (and (satisfies? HighLevelAction a)
        (cycle-level- a s)))
+
+(deftype TopLevelAction [env initial-plans]
+  env/Action           (action-name [] ['act])
+  env/ContextualAction (precondition-context [] (keys (env/initial-state env)))
+  HighLevelAction      (immediate-refinements- [s] initial-plans)
+                       (cycle-level- [s] nil))
+
+
 
 ;(deftype SimpleFactoredHLA [name relevant-vars ref-fn] 
 ;  env/Action           (action-name [] name)
@@ -51,13 +69,6 @@
     (when prim-result   
       (ShopHTNPlan high-level-suffix prim-result))))
 
-(def *ref-counter* (util/sref 0))
-(def *plan-counter* (util/sref 0))
-
-(defn reset-ref-counter [] 
-  (util/sref-set! *ref-counter* 0)
-  (util/sref-set! *plan-counter* 0)  
-  )
 
 (deftype ShopHTNEnv [he] env/Env
   (initial-state [] (util/make-safe (normalized-plan (initial-plan he) (env/initial-state (env he)))))
