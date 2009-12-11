@@ -1,7 +1,7 @@
 (ns exp.taxi
   (:require [edu.berkeley.ai.util :as util]
-            [exp [env :as env] [hierarchy :as hierarchy]]
-            ))
+            [exp [env :as env] [hierarchy :as hierarchy]])
+  (:import [java.util Random]))
 
 (defn make-left   [s]
   (let [cx     (env/get-var s '[atx])]
@@ -47,6 +47,7 @@
           {'[in-taxi] nil ['pass-served? pass] true}
           -1)))))
 
+
 (deftype TaxiEnv [width height passengers] :as this
  env/Env
   (initial-state []
@@ -70,6 +71,18 @@
   (goal-map [] (into {} (for [[pass] passengers] [['pass-served? pass] true]))))
 
 
+;; TODO: think about a sort of concentration parameter for common positions.
+(defn make-random-taxi-env 
+  ([width height n-passengers] 
+     (make-random-taxi-env width height n-passengers (rand-int 10000000)))
+  ([width height n-passengers seed]
+     (let [r (Random. seed)]
+       (.nextDouble r) (.nextDouble r)
+       (TaxiEnv width height
+                (for [i (range n-passengers)]
+                  [(symbol (str "pass" i))
+                   [(inc (.nextInt r width)) (inc (.nextInt r height))]
+                   [(inc (.nextInt r width)) (inc (.nextInt r height))]])))))
 
 
 ; (use '[exp env taxi search hierarchy])
@@ -121,6 +134,34 @@
   (hierarchy/SimpleHierarchicalEnv
    env
    [(TaxiTLA env)
+    (env/make-finish-action env)]))
+
+
+(deftype NSAPrimitive [a full-context]
+  env/Action                (action-name [] (env/action-name a))
+  env/ContextualAction      (precondition-context [] full-context)
+  env/PrimitiveAction       (applicable? [s] (env/applicable? a s)) 
+                            (next-state-and-reward [s] (env/next-state-and-reward a s)))
+
+(defmethod print-method ::NSAPrimitive [a o] (print-method (env/action-name a) o))
+
+(deftype NSAHLA       [a full-context]
+  env/Action                (action-name [] (env/action-name a))
+  env/ContextualAction      (precondition-context [] full-context)
+  hierarchy/HighLevelAction (immediate-refinements- [s]
+                             (map (fn [ref] 
+                                    (map #(if (satisfies? env/PrimitiveAction %) 
+                                            (NSAPrimitive % full-context)
+                                            (NSAHLA. % full-context)) 
+                                         ref))
+                              (hierarchy/immediate-refinements- a s)))
+                            (cycle-level- [s] (hierarchy/cycle-level- a s)))
+
+
+(defn simple-taxi-hierarchy-nsa [#^TaxiEnv env]
+  (hierarchy/SimpleHierarchicalEnv
+   env
+   [(NSAHLA (TaxiTLA env) (keys (env/initial-state env)))
     (env/make-finish-action env)]))
 
 ; (uniform-cost-search (ShopHTNEnv (simple-taxi-hierarchy (TaxiEnv 5 5 [ ['bob [1 1] [3 3] ] ['mary [1 1] [3 3] ] ['lisa [1 1] [3 3] ]]))))

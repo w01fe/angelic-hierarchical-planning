@@ -58,7 +58,7 @@
                     (assert (or (not f-level) (<= f-level level)))
                     (if (or (nil? f-level) (< f-level level))
                         (doseq [[ss sr] (sahtn-action cache s f (- c))]
-                          (println "adding" (env/as-map ss) (map env/action-name r))
+;                          (println "adding" (env/as-map ss) (map env/action-name r))
                            (queues/pq-add! q [ss r] (- sr)))
                       (doseq [ref (hierarchy/immediate-refinements f s)]
 ;                        (println "adding2" (map env/action-name (concat ref r)))

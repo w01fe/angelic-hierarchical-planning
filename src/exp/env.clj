@@ -67,6 +67,7 @@
 
 (defn successor [action state]
 ;  (prn "next" (:name action))
+  (util/timeout)
   (assert (applicable? action state))
   (util/sref-set! *next-counter* (inc (util/sref-get *next-counter*)))
  ; (.put #^HashMap *next-ba* (action-name action) (inc (get *next-ba* (action-name action) 0)))

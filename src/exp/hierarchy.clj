@@ -19,6 +19,7 @@
 
 ;; TODO: this forces eagerness, may not be desirable in some situations.
 (defn immediate-refinements [a s]  
+  (util/timeout)
   (let [refs (immediate-refinements- a s)]
     (util/sref-set! *ref-counter*  (+ 1            (util/sref-get *ref-counter*)))
     (util/sref-set! *plan-counter* (+ (count refs) (util/sref-get *plan-counter*)))
