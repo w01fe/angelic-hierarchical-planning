@@ -35,12 +35,16 @@
         (condp = (:alg m)
           :ucs     e
           :htn-ucs `(hierarchy/ShopHTNEnv (taxi/simple-taxi-hierarchy ~e))
-          :sahtn   `(taxi/simple-taxi-hierarchy ~e))))
+          :sahtn   `(taxi/simple-taxi-hierarchy ~e)
+          :nsahtn   `(taxi/simple-taxi-hierarchy-nsa ~e)
+          )))
     (fn [m]
       (condp = (:alg m)
         :ucs      `(ucs/uniform-cost-search ~'init)
         :htn-ucs  `(ucs/uniform-cost-search ~'init)
-        :sahtn    `(sd/sahtn-dijkstra ~'init)))
+        :sahtn    `(sd/sahtn-dijkstra ~'init)
+        :nsahtn    `(sd/sahtn-dijkstra ~'init)
+        ))
     'exp.experiments nil 1 512 false  ::ExpResult))
 
 (defn pad-right [x n]  
