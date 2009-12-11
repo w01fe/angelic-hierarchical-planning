@@ -41,7 +41,7 @@
    Takes (possibly abstracted) states as input."
 ;  (println "DA" (env/action-name a))
   (cond (env/primitive? a)
-          (if-let [[ss r] (env/successor a s)] {(vary-meta ss assoc :opt [a]) r} {})
+          (if-let [[ss r]  (and (env/applicable? a s) (env/successor a s))] {(vary-meta ss assoc :opt [a]) r} {})
         (hierarchy/cycle-level a s)                       ; loopy!
           (let [level  (hierarchy/cycle-level a s)
                 q      (queues/make-graph-search-pq)
@@ -105,8 +105,8 @@
         cache   (HashMap.)
         results (sahtn-action cache (env/initial-state e) (hierarchy/TopLevelAction e [(hierarchy/initial-plan henv)]) 0)]
     (when-not (empty? results)
-      (assert (= (count results) 1))
-      (let [[k v] (first results)]
+;      (assert (= (count results) 1))
+      (let [[k v] (util/first-maximal-element val results)]
         [(:opt (meta k)) v]))))
 
 

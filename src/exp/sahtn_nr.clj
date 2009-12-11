@@ -19,7 +19,7 @@
    (with local solutions as metadata) to rewards.
    Takes (possibly abstracted) states as input."
   (if (env/primitive? a)
-    (if-let [[ss r] (env/successor a s)] 
+    (if-let [[ss r] (and (env/applicable? a s) (env/successor a s))] 
         {(vary-meta ss assoc :opt [a]) r} {})
       (apply util/merge-with-pred > 
         (for [ref (hierarchy/immediate-refinements a s)]
@@ -54,9 +54,9 @@
   (let [e       (hierarchy/env henv)
         cache   (HashMap.)
         results (sahtn-action cache (env/initial-state e) (hierarchy/TopLevelAction e [(hierarchy/initial-plan henv)]) 0)]
-    (when-not (empty? results)
-      (assert (= (count results) 1))
-      (let [[k v] (first results)]
+    (when-not (empty? results)    
+;      (assert (= (count results) 1))
+      (let [[k v] (util/first-maximal-element val results)]
         [(:opt (meta k)) v]))))
 
 

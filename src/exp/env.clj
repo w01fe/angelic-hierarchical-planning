@@ -50,17 +50,19 @@
   (LoggingFactoredState init-state {:gets (atom #{}) :puts {}} {}))
 
 
-(extend clojure.lang.IPersistentMap
-  FactoredState {:set-var assoc :get-var util/safe-get :list-vars keys :as-map identity}
-  ContextualState {:current-context keys :extract-context select-keys 
-                   :apply-effects merge :get-logger make-logging-factored-state}
-  )
+(def *m1* {:set-var assoc :get-var util/safe-get :list-vars keys :as-map identity})
+(def *m2* {:current-context keys :extract-context select-keys 
+                   :apply-effects merge :get-logger make-logging-factored-state})
+(def *m3* {:set-var assoc! :get-var util/safe-get :list-vars keys :as-map persistent!})
+
+
+(extend clojure.lang.PersistentHashMap FactoredState *m1*  ContextualState *m2*)
+(extend clojure.lang.PersistentArrayMap FactoredState *m1*  ContextualState *m2*)
  
 (extend clojure.lang.PersistentHashMap$TransientHashMap
-  FactoredState {:set-var assoc! :get-var util/safe-get :list-vars keys :as-map persistent!}
-  ContextualState {:current-context keys :extract-context select-keys 
-                   :apply-effects merge :get-logger make-logging-factored-state}  
-  )
+  FactoredState *m3* ContextualState *m2*)
+(extend clojure.lang.PersistentArrayMap$TransientArrayMap
+  FactoredState *m3* ContextualState *m2*)
 
 (defn state-matches-map? [fs m]
   (every? (fn [[k v]] (= (get-var fs k) v)) m))
