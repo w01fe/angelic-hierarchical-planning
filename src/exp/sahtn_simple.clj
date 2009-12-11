@@ -31,7 +31,7 @@
   "Return a map from (possibly abstracted) outcome states 
    (with local solutions as metadata) to rewards.
    Takes (possibly abstracted) states as input."
-  (if (satisfies? env/PrimitiveAction a)
+  (if (env/primitive? a)
     (if-let [[ss r] (env/successor a s)] 
         {(vary-meta ss assoc :opt [a]) r} {})
       (apply merge-valuations
@@ -41,7 +41,7 @@
                            (for [[s r] cv] (sahtn-action cache s a r))))
                   {s 0} ref)))))
 
-(defn- sahtn-action [cache s a r]
+(defn- sahtn-action [#^HashMap cache s a r]
   "Handling boring things - caching and stitching states, etc."
 ;  (println s)
   (let [context-vars    (set (env/precondition-context a))

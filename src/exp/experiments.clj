@@ -28,7 +28,7 @@
   (experiments/make-experiment-set 'simple-taxi
     [:product
      [:size [2 5 10] #_[2 5 10 20]]
-     [:npass [1 2 5 10] #_[1 2 5 10]]
+     [:npass [1 2 4 8 10] #_[1 2 5 10]]
      [:alg [:ucs :htn-ucs :sahtn :nsahtn]]]
     (fn [m]
       (let [e `(taxi/make-random-taxi-env ~(:size m) ~(:size m) ~(:npass m) 0)]
@@ -45,7 +45,7 @@
         :sahtn    `(sd/sahtn-dijkstra ~'init)
         :nsahtn    `(sd/sahtn-dijkstra ~'init)
         ))
-    'exp.experiments nil 1 512 false  ::ExpResult))
+    'exp.experiments nil 99 512 false  ::ExpResult))
 
 (defn pad-right [x n]  
   (let [xs (str x) 
@@ -55,17 +55,19 @@
 
 (def *w* 22)
 (defn make-table [results]
-  (doseq [[alg alg-results] (util/group-by #(get-in % [:experiment :parameters :alg]) results)]
-    (let [size-map (util/group-by #(get-in % [:experiment :parameters :size]) alg-results)
-          sizes    (sort (keys size-map))]
-      (println (apply str (pad-right alg 9) "|" (for [s sizes] (str (pad-right s *w*) "|"))))
-      (println (apply str (repeat (+ 10 (* (count sizes) (inc *w*))) "-")))
-      (doseq [[n-pass pass-maps] (util/group-by #(get-in % [:experiment :parameters :npass]) alg-results)]
-;        (println (util/group-by #(get-in % [:experiment :parameters :size]) pass-maps))
-        (println (apply str (pad-right n-pass 9) "|"
-                   (for [[exp] (map val (sort-by key (util/group-by #(get-in % [:experiment :parameters :size]) pass-maps)))]
-                     (if (:ms exp)
-                       (str (pad-right (int (:ms exp)) 6) ", " (pad-right (:next-count exp) 6) ", " (pad-right (:plan-count exp) 6) "|")
-                       (apply str (concat (repeat *w* " ") "|"))
-                       ))))))    
-    (println "\n\n")))
+  (let [results (util/group-by #(get-in % [:experiment :parameters :alg]) results)]
+    (doseq [alg [:ucs :htn-ucs :nsahtn :sahtn]]
+      (let [alg-results (results alg)
+            size-map (util/group-by #(get-in % [:experiment :parameters :size]) alg-results)
+            sizes    (sort (keys size-map))]
+        (println (apply str (pad-right alg 9) "|" (for [s sizes] (str (pad-right s *w*) "|"))))
+        (println (apply str (repeat (+ 10 (* (count sizes) (inc *w*))) "-")))
+        (doseq [[n-pass pass-maps] (util/group-by #(get-in % [:experiment :parameters :npass]) alg-results)]
+                                        ;        (println (util/group-by #(get-in % [:experiment :parameters :size]) pass-maps))
+          (println (apply str (pad-right n-pass 9) "|"
+                          (for [[exp] (map val (sort-by key (util/group-by #(get-in % [:experiment :parameters :size]) pass-maps)))]
+                            (if (:ms exp)
+                              (str (pad-right (int (:ms exp)) 6) ", " (pad-right (:next-count exp) 6) ", " (pad-right (:plan-count exp) 6) "|")
+                              (apply str (concat (repeat *w* " ") "|"))
+                              ))))))    
+      (println "\n\n"))))

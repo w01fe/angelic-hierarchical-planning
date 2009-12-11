@@ -90,6 +90,7 @@
 
 (deftype NavHLA [env dx dy] :as this
   env/Action                (action-name [] ['nav dx dy])
+                            (primitive? [] false)
   env/ContextualAction      (precondition-context [] [['atx] ['aty]])
   hierarchy/HighLevelAction (immediate-refinements- [s]
                              (if (and (= dx (env/get-var s ['atx])) 
@@ -103,6 +104,7 @@
 
 (deftype ServeHLA [env pass] 
   env/Action                (action-name [] ['serve pass])
+                            (primitive? [] false)
   env/ContextualAction      (precondition-context [] [['atx] ['aty] ['in-taxi] 
                                                       ['pass-served? pass]])
   hierarchy/HighLevelAction (immediate-refinements- [s]
@@ -116,6 +118,7 @@
 
 (deftype TaxiTLA [env]      :as this
   env/Action                (action-name [] ['top])
+                            (primitive? [] false)  
   env/ContextualAction      (precondition-context [] (keys (env/initial-state env)))
   hierarchy/HighLevelAction (immediate-refinements- [s]
                               (let [remaining-passengers
@@ -139,6 +142,7 @@
 
 (deftype NSAPrimitive [a full-context]
   env/Action                (action-name [] (env/action-name a))
+                            (primitive? [] true)  
   env/ContextualAction      (precondition-context [] full-context)
   env/PrimitiveAction       (applicable? [s] (env/applicable? a s)) 
                             (next-state-and-reward [s] (env/next-state-and-reward a s)))
@@ -147,10 +151,11 @@
 
 (deftype NSAHLA       [a full-context]
   env/Action                (action-name [] (env/action-name a))
+                            (primitive? [] false)  
   env/ContextualAction      (precondition-context [] full-context)
   hierarchy/HighLevelAction (immediate-refinements- [s]
                              (map (fn [ref] 
-                                    (map #(if (satisfies? env/PrimitiveAction %) 
+                                    (map #(if (env/primitive? %) 
                                             (NSAPrimitive % full-context)
                                             (NSAHLA. % full-context)) 
                                          ref))

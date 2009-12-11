@@ -26,11 +26,12 @@
     refs))
 
 (defn cycle-level [a s]
-  (and (satisfies? HighLevelAction a)
-       (cycle-level- a s)))
+  (when-not (env/primitive? a)
+    (cycle-level- a s)))
 
 (deftype TopLevelAction [env initial-plans]
   env/Action           (action-name [] ['act])
+                       (primitive? [] false)  
   env/ContextualAction (precondition-context [] (keys (env/initial-state env)))
   HighLevelAction      (immediate-refinements- [s] initial-plans)
                        (cycle-level- [s] nil))
@@ -65,7 +66,7 @@
         (recur rest-actions (first (env/successor first-action state)))))))
 
 (defn normalized-plan [rest-plan state]
-  (let [[prim-prefix high-level-suffix] (split-with #(satisfies? env/PrimitiveAction %) rest-plan)
+  (let [[prim-prefix high-level-suffix] (split-with #(env/primitive? %) rest-plan)
         prim-result (successor-seq prim-prefix state)]
     (when prim-result   
       (ShopHTNPlan high-level-suffix prim-result))))

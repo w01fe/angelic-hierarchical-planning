@@ -26,6 +26,7 @@
 
 
 (defprotocol Action
+  (primitive? [a])
   (action-name [a]))
 
 (defprotocol PrimitiveAction
@@ -39,6 +40,7 @@
 (deftype FactoredPrimitive [name precond-map effect-map reward] 
   Action 
     (action-name [] name)
+    (primitive? [] true)
   PrimitiveAction 
     (applicable? [s]
       (every? (fn [[var val]] (= (get-var s var) val)) precond-map))

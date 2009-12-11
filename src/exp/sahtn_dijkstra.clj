@@ -39,7 +39,7 @@
   "Return a map from (possibly abstracted) outcome states 
    (with local solutions as metadata) to rewards.
    Takes (possibly abstracted) states as input."
-  (cond (satisfies? env/PrimitiveAction a)
+  (cond (env/primitive? a)
           (if-let [[ss r] (env/successor a s)] {(vary-meta ss assoc :opt [a]) r} {})
         (hierarchy/cycle-level a s)                       ; loopy!
           (let [level  (hierarchy/cycle-level a s)
@@ -55,8 +55,9 @@
                     (.put result s (- c))
                   (let [[f & r] a
                         f-level (hierarchy/cycle-level f s)]
+;                    (println level f-level (env/action-name f))
                     (assert (or (not f-level) (<= f-level level)))
-                    (if (or (nil? f-level) (< f-level level))
+                    (if (or (not f-level) (< f-level level))
                         (doseq [[ss sr] (sahtn-action cache s f (- c))]
 ;                          (println "adding" (env/as-map ss) (map env/action-name r))
                            (queues/pq-add! q [ss r] (- sr)))
@@ -73,7 +74,7 @@
                           {s 0} ref)))))
 
 
-(defn- sahtn-action [cache s a r]
+(defn- sahtn-action [#^HashMap cache s a r]
   "Handling boring things - caching and stitching states, etc."
   (let [context-vars    (set (env/precondition-context a))
         s-map           (env/as-map s)       
