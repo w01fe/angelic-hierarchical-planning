@@ -1,4 +1,4 @@
-(ns edu.berkeley.ai.scripts.experiments
+(ns edu.berkeley.ai.util.experiments
   (:require [edu.berkeley.ai [util :as util] [search :as search]  [envs :as envs] [angelic :as angelic]]))
 
 

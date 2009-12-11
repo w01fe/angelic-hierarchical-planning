@@ -9,7 +9,7 @@
 							   [edu.berkeley.ai.angelic.algorithms
 [abstract-lookahead-trees :as alts]
 [offline :as offline] [online :as online]]
-	   [edu.berkeley.ai.scripts.experiments :as experiments]
+	   [edu.berkeley.ai.util.experiments :as experiments]
 	   )
  )
 
@@ -580,7 +580,7 @@
 
 (comment 
 
-(use 'edu.berkeley.ai.util.datasets 'edu.berkeley.ai.util.charts 'edu.berkeley.ai.scripts.experiments 'edu.berkeley.ai.scripts.z09-aij :reload-all)
+(use 'edu.berkeley.ai.util.datasets 'edu.berkeley.ai.util.charts 'edu.berkeley.ai.util.experiments 'edu.berkeley.ai.scripts.z09-aij :reload-all)
 
 (plot (ds->chart (experiment-set-results->dataset (run-experiment-set (make-09-aij-offline-experiment-set))) [:algorithm :domain] :max-mb :ms))
 

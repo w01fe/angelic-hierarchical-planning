@@ -10,8 +10,7 @@
 								   [edu.berkeley.ai.angelic.algorithms
 	[abstract-lookahead-trees :as alts]
 	[offline :as offline] [online :as online]]
-		   [edu.berkeley.ai.scripts.experiments :as experiments]
-	   [edu.berkeley.ai.scripts.experiments :as experiments]
+	   [edu.berkeley.ai.util.experiments :as experiments]
 	   )
  )
 

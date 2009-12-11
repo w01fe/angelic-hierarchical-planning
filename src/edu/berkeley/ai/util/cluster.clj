@@ -1,6 +1,6 @@
-(ns edu.berkeley.ai.scripts.cluster
+(ns edu.berkeley.ai.util.cluster
   (:require [edu.berkeley.ai [util :as util]]
-	    [edu.berkeley.ai.scripts.experiments :as experiments]))
+	    [edu.berkeley.ai.util.experiments :as experiments]))
 
 (def *default-clj* (util/base-local "scripts/clj"))
 
