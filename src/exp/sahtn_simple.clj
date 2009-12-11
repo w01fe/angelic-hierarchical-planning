@@ -41,22 +41,23 @@
                            (for [[s r] cv] (sahtn-action cache s a r))))
                   {s 0} ref)))))
 
+
+
 (defn- sahtn-action [#^HashMap cache s a r]
   "Handling boring things - caching and stitching states, etc."
 ;  (println s)
-  (let [context-vars    (set (env/precondition-context a))
-        s-map           (env/as-map s)       
-        context         (select-keys s-map context-vars)
+  (let [context-schema  (env/precondition-context a)
+        context         (env/extract-context s context-schema)
 	cache-key       [(env/action-name a) context]
 	cache-val       (.get cache cache-key)
         result          
         (or cache-val
          (do (.put cache cache-key (with-meta {} {:dirty-set [cache-key]}))           
-             (let [direct-result  (sahtn-do-action cache (env/wrap-logging-state s-map) a)
+             (let [direct-result  (sahtn-do-action cache (env/get-logger s) a)
                    result
                    (util/map-keys
                     (fn [outcome-state]
-                      (with-meta (env/get-logging-state-puts outcome-state) (meta outcome-state))) 
+                      (with-meta (env/extract-effects outcome-state context-schema) (meta outcome-state))) 
                     direct-result)
                    dirty-set (disj (or (:dirty-set (meta direct-result)) #{}) cache-key)]
 ;               (when (empty? dirty-set) (println cache-key (count dirty-set) result (map meta (keys result))))

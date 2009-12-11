@@ -39,6 +39,7 @@
   "Return a map from (possibly abstracted) outcome states 
    (with local solutions as metadata) to rewards.
    Takes (possibly abstracted) states as input."
+;  (println "DA" (env/action-name a))
   (cond (env/primitive? a)
           (if-let [[ss r] (env/successor a s)] {(vary-meta ss assoc :opt [a]) r} {})
         (hierarchy/cycle-level a s)                       ; loopy!
@@ -76,11 +77,11 @@
 
 (defn- sahtn-action [#^HashMap cache s a r]
   "Handling boring things - caching and stitching states, etc."
-  (let [context-vars    (set (env/precondition-context a))
-        s-map           (env/as-map s)       
-        context         (select-keys s-map context-vars)
+  (let [context-schema  (env/precondition-context a)
+        context         (env/extract-context s context-schema)
 	cache-key       [(env/action-name a) context]
 	cache-val       (.get cache cache-key)]
+;    (println (env/action-name a) "\n" context-schema "\n" context "\n\n" cache-val)
   ;  (println "\nresult for" (env/action-name a))
     (util/map-map 
         (fn [[effect-map local-reward]]
@@ -91,8 +92,8 @@
             (let [result
                   (util/map-keys
                    (fn [outcome-state]
-                     (with-meta (env/get-logging-state-puts outcome-state) (meta outcome-state))) 
-                   (sahtn-do-action cache (env/wrap-logging-state s-map) a))]
+                     (with-meta (env/extract-effects outcome-state context-schema) (meta outcome-state))) 
+                   (sahtn-do-action cache (env/get-logger s) a))]
               (.put cache cache-key result)
               result)))))
 

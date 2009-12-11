@@ -28,26 +28,26 @@
                            (for [[s r] cv] (sahtn-action cache s a r))))
                   {s 0} ref)))))
 
+
 (defn- sahtn-action [#^HashMap cache s a r]
   "Handling boring things - caching and stitching states, etc."
-  (let [context-vars    (set (env/precondition-context a))
-        s-map           (env/as-map s)       
-        context         (select-keys s-map context-vars)
+  (let [context-schema  (env/precondition-context a)
+        context         (env/extract-context s context-schema)
 	cache-key       [(env/action-name a) context]
 	cache-val       (.get cache cache-key)]
     (util/map-map 
-     (fn [[effect-map local-reward]]
-       [(vary-meta (env/apply-effects s effect-map)
-                   assoc :opt (into (or (:opt (meta s)) []) (:opt (meta effect-map))))
-        (+ r local-reward)])
-     (or cache-val
-         (let [result
-               (util/map-keys
-                (fn [outcome-state]
-                  (with-meta (env/get-logging-state-puts outcome-state) (meta outcome-state))) 
-                (sahtn-do-action cache (env/wrap-logging-state s-map) a))]
-             (.put cache cache-key result)
-             result)))))
+        (fn [[effect-map local-reward]]
+          [(vary-meta (env/apply-effects s effect-map)
+                      assoc :opt (into (or (:opt (meta s)) []) (:opt (meta effect-map))))
+           (+ r local-reward)])
+        (or cache-val
+            (let [result
+                  (util/map-keys
+                   (fn [outcome-state]
+                     (with-meta (env/extract-effects outcome-state context-schema) (meta outcome-state))) 
+                   (sahtn-do-action cache (env/get-logger s) a))]
+              (.put cache cache-key result)
+              result)))))
 
 
 (defn sahtn-nr [henv]

@@ -32,7 +32,7 @@
 (deftype TopLevelAction [env initial-plans]
   env/Action           (action-name [] ['act])
                        (primitive? [] false)  
-  env/ContextualAction (precondition-context [] (keys (env/initial-state env)))
+  env/ContextualAction (precondition-context [] (env/current-context (env/initial-state env)))
   HighLevelAction      (immediate-refinements- [s] initial-plans)
                        (cycle-level- [s] nil))
 

@@ -3,6 +3,16 @@
   )
 
 
+(defprotocol ContextualState
+  (current-context [s])
+  (extract-context [s c])
+  (apply-effects [s e])
+  (get-logger [s])  
+  )
+
+;; For now, we pass in precondition context to help with integration -- should be ignored eventually!
+(defprotocol LoggingState
+  (extract-effects [s c]))
 
 (defprotocol FactoredState
   (set-var [state var val])
@@ -10,19 +20,61 @@
   (list-vars [state])
   (as-map [state]))
 
+(defn apply-factored-effects [fs m]
+  (reduce (fn [s [k v]] (set-var s k v)) fs m))
+
+(declare make-logging-factored-state)
+
+(deftype LoggingFactoredState [init] :as state
+  FactoredState
+   (get-var [var]
+     (swap! (:gets (meta state)) conj var)
+     (get-var init var))
+   (set-var [var val]
+;     (println "setting" var "to " val)
+     (LoggingFactoredState. (set-var init var val)  ; init
+                            {:gets (atom @(:gets (meta state))) 
+                             :puts (assoc (:puts (meta state)) var val)}
+                            {}))
+   (list-vars [] (list-vars init))
+   (as-map [] init)
+  LoggingState
+   (extract-effects [c] (util/safe-get (meta state) :puts))
+  ContextualState 
+   (current-context [] (keys init))
+   (extract-context [c] (select-keys init c))
+   (apply-effects   [e] (apply-factored-effects state e))
+   (get-logger      [] (make-logging-factored-state init)))
+
+(defn make-logging-factored-state [init-state] 
+  (LoggingFactoredState init-state {:gets (atom #{}) :puts {}} {}))
+
 
 (extend clojure.lang.IPersistentMap
-  FactoredState {:set-var assoc :get-var util/safe-get :list-vars keys :as-map identity})
-
+  FactoredState {:set-var assoc :get-var util/safe-get :list-vars keys :as-map identity}
+  ContextualState {:current-context keys :extract-context select-keys 
+                   :apply-effects merge :get-logger make-logging-factored-state}
+  )
+ 
 (extend clojure.lang.PersistentHashMap$TransientHashMap
-  FactoredState {:set-var assoc! :get-var util/safe-get :list-vars keys :as-map persistent!})
+  FactoredState {:set-var assoc! :get-var util/safe-get :list-vars keys :as-map persistent!}
+  ContextualState {:current-context keys :extract-context select-keys 
+                   :apply-effects merge :get-logger make-logging-factored-state}  
+  )
 
 (defn state-matches-map? [fs m]
   (every? (fn [[k v]] (= (get-var fs k) v)) m))
 
 ;; TODO: make method so we can use transients?
-(defn apply-effects [fs m]
-  (reduce (fn [s [k v]] (set-var s k v)) fs m))
+
+
+
+
+
+(defn get-logging-state-gets [s] @(:gets (meta s)))
+(defn get-logging-state-puts [s] (util/safe-get (meta s) :puts))
+
+
 
 
 (defprotocol Action
@@ -103,41 +155,12 @@
   (FactoredPrimitive 
     '[finish]
     (goal-map env)
-    (zipmap (keys (initial-state env)) (repeat :goal))
+    (zipmap (list-vars (initial-state env)) (repeat :goal))
     0))
 
 (defn make-finish-goal-state [env]
-  (zipmap (keys (initial-state env) (repeat :goal))))
-
-
-;;; Useful logging state
+  (zipmap (list-vars (initial-state env)) (repeat :goal)))
 
 
 
 
-(deftype LoggingFactoredState [init] :as state
- FactoredState
- (get-var [var]
-   (swap! (:gets (meta state)) conj var)
-  (get-var init var)
-  ;(if-let [[_ val] (find (:puts (meta state)) var)]
-  ;   val
-;     (get-var (:init state) var)
-     
-;    )
- 
-  )
- (set-var [var val]
- ;   (util/assert-is (get-var (:init state) var)) ; can't do this since val might be nil ...
-   (LoggingFactoredState. (assoc  init var val)  ; init
-                         {:gets (atom @(:gets (meta state))) 
-                          :puts (assoc (:puts (meta state)) var val)}
-                         {}))
- (list-vars [] (list-vars init))
- (as-map [] init ;(merge (as-map (:init state)) (:puts (meta state)))
-         
-         ))
-
-(defn wrap-logging-state [init-state] (LoggingFactoredState init-state {:gets (atom #{}) :puts {}} {}))
-(defn get-logging-state-gets [s] @(:gets (meta s)))
-(defn get-logging-state-puts [s] (util/safe-get (meta s) :puts))
