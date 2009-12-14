@@ -104,7 +104,7 @@
 (defn sahtn-dijkstra [henv]
   (let [e       (hierarchy/env henv)
         cache   (HashMap.)
-        _       (def *cache* cache)
+;        _       (def *cache* cache)
         results (sahtn-action cache (env/initial-state e) (hierarchy/TopLevelAction e [(hierarchy/initial-plan henv)]) 0)]
     (when-not (empty? results)
 ;      (assert (= (count results) 1))

@@ -145,33 +145,9 @@
    [(TaxiTLA env)]))
 
 
-(deftype NSAPrimitive [a full-context]
-  env/Action                (action-name [] (env/action-name a))
-                            (primitive? [] true)  
-  env/ContextualAction      (precondition-context [s] full-context)
-  env/PrimitiveAction       (applicable? [s] (env/applicable? a s)) 
-                            (next-state-and-reward [s] (env/next-state-and-reward a s)))
-
-(defmethod print-method ::NSAPrimitive [a o] (print-method (env/action-name a) o))
-
-(deftype NSAHLA       [a full-context]
-  env/Action                (action-name [] (env/action-name a))
-                            (primitive? [] false)  
-  env/ContextualAction      (precondition-context [s] full-context)
-  hierarchy/HighLevelAction (immediate-refinements- [s]
-                             (map (fn [ref] 
-                                    (map #(if (env/primitive? %) 
-                                            (NSAPrimitive % full-context)
-                                            (NSAHLA. % full-context)) 
-                                         ref))
-                              (hierarchy/immediate-refinements- a s)))
-                            (cycle-level- [s] (hierarchy/cycle-level- a s)))
-
-
 (defn simple-taxi-hierarchy-nsa [#^TaxiEnv env]
   (hierarchy/SimpleHierarchicalEnv
    env
-   [(NSAHLA (TaxiTLA env) (keys (dissoc (env/initial-state env) :const)))
-    (env/make-finish-action env)]))
+   [(hierarchy/NSAHLA (TaxiTLA env) (keys (dissoc (env/initial-state env) :const)))]))
 
 ; (uniform-cost-search (ShopHTNEnv (simple-taxi-hierarchy (TaxiEnv 5 5 [ ['bob [1 1] [3 3] ] ['mary [1 1] [3 3] ] ['lisa [1 1] [3 3] ]]))))

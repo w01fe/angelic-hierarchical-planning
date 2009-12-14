@@ -107,4 +107,32 @@
   [(f) (util/sref-get env/*next-counter*) (util/sref-get *ref-counter*) (util/sref-get *plan-counter*)])
 
 
+
+
+ ;;; These types remove state abstraction from a hierarchy.
+
+(deftype NSAPrimitive [a full-context]
+  env/Action                (action-name [] (env/action-name a))
+                            (primitive? [] true)  
+  env/ContextualAction      (precondition-context [s] full-context)
+  env/PrimitiveAction       (applicable? [s] (env/applicable? a s)) 
+                            (next-state-and-reward [s] (env/next-state-and-reward a s)))
+
+(defmethod print-method ::NSAPrimitive [a o] (print-method (env/action-name a) o))
+
+(deftype NSAHLA       [a full-context]
+  env/Action                (action-name [] (env/action-name a))
+                            (primitive? [] false)  
+  env/ContextualAction      (precondition-context [s] full-context)
+  HighLevelAction (immediate-refinements- [s]
+                             (map (fn [ref] 
+                                    (map #(if (env/primitive? %) 
+                                            (NSAPrimitive % full-context)
+                                            (NSAHLA. % full-context)) 
+                                         ref))
+                              (immediate-refinements- a s)))
+                            (cycle-level- [s] (cycle-level- a s)))
+
+
+
 ;; Can take more progressions than flat because 
