@@ -57,7 +57,8 @@
                    result
                    (util/map-keys
                     (fn [outcome-state]
-                      (with-meta (env/extract-effects outcome-state context-schema) (meta outcome-state))) 
+                      (with-meta (env/extract-effects outcome-state context-schema) 
+                        (select-keys  (meta outcome-state) [:opt]))) 
                     direct-result)
                    dirty-set (disj (or (:dirty-set (meta direct-result)) #{}) cache-key)]
 ;               (when (empty? dirty-set) (println cache-key (count dirty-set) result (map meta (keys result))))
@@ -69,7 +70,7 @@
       (util/map-map 
        (fn [[effect-map local-reward]]
          [(vary-meta (env/apply-effects s effect-map)
-                     assoc :opt (into (or (:opt (meta s)) []) (:opt (meta effect-map))))
+                     assoc :opt (concat (:opt (meta s)) (:opt (meta effect-map))))
           (+ r local-reward)])
        result)
       (meta result))))
