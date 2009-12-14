@@ -28,12 +28,12 @@
 (deftype LoggingFactoredState [init] :as state
   FactoredState
    (get-var [var]
-     (swap! (:gets (meta state)) conj var)
+;     (swap! (:gets (meta state)) conj var)
      (get-var init var))
    (set-var [var val]
 ;     (println "setting" var "to " val)
      (LoggingFactoredState. (set-var init var val)  ; init
-                            {:gets (atom @(:gets (meta state))) 
+                            {;:gets (atom @(:gets (meta state))) 
                              :puts (assoc (:puts (meta state)) var val)}
                             {}))
    (list-vars [] (list-vars init))
@@ -47,7 +47,8 @@
    (get-logger      [] (make-logging-factored-state init)))
 
 (defn make-logging-factored-state [init-state] 
-  (LoggingFactoredState init-state {:gets (atom #{}) :puts {}} {}))
+  (LoggingFactoredState init-state {;:gets (atom #{}) 
+                                    :puts {}} {}))
 
 
 (def *m1* {:set-var assoc :get-var util/safe-get :list-vars keys :as-map identity})
@@ -129,7 +130,8 @@
  ; (.put #^HashMap *next-ba* (action-name action) (inc (get *next-ba* (action-name action) 0)))
   (let [[next reward] (next-state-and-reward action state)]
     [(vary-meta next assoc
-       :act-seq (conj (or (:act-seq ^state) []) action)
+       :act-seq (cons (action-name action) (:act-seq (meta state)))
+                                        ;(conj (or (:act-seq ^state) []) action)
        :reward (+ reward (or (:reward ^state) 0)))
      reward]))
 
@@ -137,7 +139,7 @@
 
 (defn solution-and-reward [state]
   (let [{:keys [act-seq reward]} ^state]
-    [(or act-seq []) (or reward 0)]))
+    [(reverse act-seq) (or reward 0)]))
 
 (defn reward [state]
   (or (:reward ^state) 0))

@@ -9,7 +9,8 @@
       (env/FactoredPrimitive ['left cx]  {['atx] cx} {['atx] (dec cx)} -1))))
 
 (defn make-right  [s]
-  (let [width  (env/get-var s '[width])
+  (let [const (env/get-var s :const)
+        width  (get const '[width])
         cx     (env/get-var s '[atx])]
     (when (< cx width)  
       (env/FactoredPrimitive ['right cx] {['atx] cx} {['atx] (inc cx)} -1))))
@@ -20,27 +21,30 @@
       (env/FactoredPrimitive ['down cy]  {['aty] cy} {['aty] (dec cy)} -1))))
 
 (defn make-up    [s]
-  (let [height (env/get-var s '[height])
+  (let [const (env/get-var s :const)
+        height (get const '[height])
         cy     (env/get-var s '[aty])]
     (when (< cy height)
       (env/FactoredPrimitive ['up cy] {['aty] cy} {['aty] (inc cy)} -1))))
 
 (defn make-pickup  [s pass]
-  (env/FactoredPrimitive 
-       ['pickup pass] 
-       {['atx] (env/get-var s ['srcx pass]) 
-        ['aty] (env/get-var s ['srcy pass]) 
-        ['pass-served? pass] false 
-        ['in-taxi] nil}
-       {['in-taxi] pass}
-       -1))
+  (let [const (env/get-var s :const)]
+    (env/FactoredPrimitive 
+     ['pickup pass] 
+     {['atx] (get const ['srcx pass]) 
+      ['aty] (get const ['srcy pass]) 
+      ['pass-served? pass] false 
+      ['in-taxi] nil}
+     {['in-taxi] pass}
+     -1)))
 
 (defn make-dropoff 
   ([s] (make-dropoff s (env/get-var s '[in-taxi])))
   ([s pass]
      (when pass 
-       (let [dx (env/get-var s ['dstx pass])
-             dy (env/get-var s ['dsty pass])]
+       (let [const (env/get-var s :const)
+             dx (get const ['dstx pass])
+             dy (get const ['dsty pass])]
          (env/FactoredPrimitive 
           ['dropoff pass] 
           {['atx] dx '[aty] dy '[in-taxi] pass}
@@ -51,13 +55,14 @@
 (deftype TaxiEnv [width height passengers] :as this
  env/Env
   (initial-state []
-    (into {['atx] 1 ['aty] 1 ['in-taxi] nil 
-           ['width] width ['height] height}
-        (apply concat
+    (into {:const (into {['width] width ['height] height}
+                      (apply concat
+                       (for [[name [sx sy] [dx dy]] passengers]
+                         [[['srcx name] sx] [['srcy name] sy]
+                          [['dstx name] dx] [['dsty name] dy]])))
+           ['atx] 1 ['aty] 1 ['in-taxi] nil}
           (for [[name [sx sy] [dx dy]] passengers]
-            [[['srcx name] sx] [['srcy name] sy]
-             [['dstx name] dx] [['dsty name] dy]
-             [['pass-served? name] false]]))))
+            [['pass-served? name] false])))
   (actions-fn []
    (fn taxi-actions [s]
      (filter identity
@@ -108,8 +113,9 @@
   env/ContextualAction      (precondition-context [s] [['atx] ['aty] ['in-taxi] 
                                                       ['pass-served? pass]])
   hierarchy/HighLevelAction (immediate-refinements- [s]
-                             (let [[sx sy dx dy] 
-                                   (map #(env/get-var s [% pass]) '[srcx srcy dstx dsty])
+                             (let [const (env/get-var s :const)
+                                   [sx sy dx dy] 
+                                     (map #(get const [% pass]) '[srcx srcy dstx dsty])
                                    pu (make-pickup  s pass)
                                    pd (make-dropoff s pass)]
                                (util/assert-is (and pu pd))
@@ -119,14 +125,14 @@
 (deftype TaxiTLA [env]      :as this
   env/Action                (action-name [] ['top])
                             (primitive? [] false)  
-  env/ContextualAction      (precondition-context [s] (keys (env/initial-state env)))
+  env/ContextualAction      (precondition-context [s] (keys (dissoc (env/initial-state env) :const)))
   hierarchy/HighLevelAction (immediate-refinements- [s]
                               (let [remaining-passengers
                                     (for [[pass] (:passengers env)
                                           :when (not (env/get-var s ['pass-served? pass]))]
                                       pass)]
                                 (if (empty? remaining-passengers)
-                                    [[]]
+                                    [[(env/make-finish-action env)]]
                                   (for [pass remaining-passengers]
                                     [(ServeHLA env pass) this]))))
                             (cycle-level- [s] nil))
@@ -136,8 +142,7 @@
 (defn simple-taxi-hierarchy [#^TaxiEnv env]
   (hierarchy/SimpleHierarchicalEnv
    env
-   [(TaxiTLA env)
-    (env/make-finish-action env)]))
+   [(TaxiTLA env)]))
 
 
 (deftype NSAPrimitive [a full-context]
@@ -166,7 +171,7 @@
 (defn simple-taxi-hierarchy-nsa [#^TaxiEnv env]
   (hierarchy/SimpleHierarchicalEnv
    env
-   [(NSAHLA (TaxiTLA env) (keys (env/initial-state env)))
+   [(NSAHLA (TaxiTLA env) (keys (dissoc (env/initial-state env) :const)))
     (env/make-finish-action env)]))
 
 ; (uniform-cost-search (ShopHTNEnv (simple-taxi-hierarchy (TaxiEnv 5 5 [ ['bob [1 1] [3 3] ] ['mary [1 1] [3 3] ] ['lisa [1 1] [3 3] ]]))))
