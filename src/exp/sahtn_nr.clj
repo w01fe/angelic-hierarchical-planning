@@ -31,7 +31,7 @@
 
 (defn- sahtn-action [#^HashMap cache s a r]
   "Handling boring things - caching and stitching states, etc."
-  (let [context-schema  (env/precondition-context a)
+  (let [context-schema  (env/precondition-context a s)
         context         (env/extract-context s context-schema)
 	cache-key       [(env/action-name a) context]
 	cache-val       (.get cache cache-key)]

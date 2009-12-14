@@ -89,7 +89,7 @@
   )
 
 (defprotocol ContextualAction
-  (precondition-context [a]))
+  (precondition-context [a s]))
 
 (deftype FactoredPrimitive [name precond-map effect-map reward] 
   Action 
@@ -101,7 +101,7 @@
     (next-state-and-reward [s]
       [(apply-effects s effect-map) reward])
   ContextualAction
-    (precondition-context []
+    (precondition-context [s]
       (keys precond-map)))
 
 (defmethod print-method ::FactoredPrimitive [a o] (print-method (action-name a) o))

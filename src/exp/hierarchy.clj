@@ -32,7 +32,7 @@
 (deftype TopLevelAction [env initial-plans]
   env/Action           (action-name [] ['act])
                        (primitive? [] false)  
-  env/ContextualAction (precondition-context [] (env/current-context (env/initial-state env)))
+  env/ContextualAction (precondition-context [s] (env/current-context (env/initial-state env)))
   HighLevelAction      (immediate-refinements- [s] initial-plans)
                        (cycle-level- [s] nil))
 
@@ -40,7 +40,7 @@
 
 ;(deftype SimpleFactoredHLA [name relevant-vars ref-fn] 
 ;  env/Action           (action-name [] name)
-;  env/ContextualAction (precondition-context [] relevant-vars)
+;  env/ContextualAction (precondition-context [s] relevant-vars)
 ;  HighLevelAction      (immediate-refinements [s] (ref-fn s)))
 
 

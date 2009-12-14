@@ -87,7 +87,7 @@
 (defn write-experiment [experiment clj-file out-file]
   (util/spit clj-file
     (util/str-join "\n"
-      `[(~'use  'edu.berkeley.ai.scripts.experiments 'edu.berkeley.ai.util)
+      `[(~'use  'edu.berkeley.ai.util.experiments 'edu.berkeley.ai.util)
 	(util/spit ~out-file (run-experiment '~experiment))
 	(System/exit 0)])))
 

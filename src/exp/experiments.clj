@@ -25,7 +25,7 @@
 	  (util/sref-get hierarchy/*plan-counter*)))
 
 (defn make-first-exp-set []
-  (experiments/make-experiment-set 'simple-taxi
+  (experiments/make-experiment-set "simple-taxi"
     [:product
      [:size [5 50]#_[2 5 10] #_[2 5 10 20]]
      [:npass [1 2 4 6 8 10 12 14] #_[1 2 5 10]]
@@ -49,11 +49,13 @@
 
 (defn pad-right [x n]  
   (let [xs (str x) 
-        s #^String (str "                         " xs)]
+        s #^String (str "                               " xs)]
     (assert (<= (.length xs) n))
     (.substring s (- (.length s) n)))) 
 
-(def *w* 22)
+
+(def *cw* 8)
+(def *w* (+ 4 (* 3 *cw*)))
 (defn make-table [results]
   (let [results (util/group-by #(get-in % [:experiment :parameters :alg]) results)]
     (doseq [alg [:ucs :htn-ucs :nsahtn :sahtn]]
@@ -67,7 +69,7 @@
           (println (apply str (pad-right n-pass 9) "|"
                           (for [[exp] (map val (sort-by key (util/group-by #(get-in % [:experiment :parameters :size]) pass-maps)))]
                             (if (:ms exp)
-                              (str (pad-right (int (:ms exp)) 6) ", " (pad-right (:next-count exp) 6) ", " (pad-right (:plan-count exp) 6) "|")
+                              (str (pad-right (int (:ms exp)) *cw*) ", " (pad-right (:next-count exp) *cw*) ", " (pad-right (:plan-count exp) *cw*) "|")
                               (apply str (concat (repeat *w* " ") "|"))
                               ))))))    
       (println "\n\n"))))
