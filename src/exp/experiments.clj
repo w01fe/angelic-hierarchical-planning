@@ -27,9 +27,9 @@
 (defn make-first-exp-set []
   (experiments/make-experiment-set 'simple-taxi
     [:product
-     [:size [2 5 10] #_[2 5 10 20]]
-     [:npass [1 2 4 8 10] #_[1 2 5 10]]
-     [:alg [:ucs :htn-ucs :sahtn :nsahtn]]]
+     [:size [5 50]#_[2 5 10] #_[2 5 10 20]]
+     [:npass [1 2 4 6 8 10 12 14] #_[1 2 5 10]]
+     [:alg [:ucs :htn-ucs :nsahtn :sahtn]]]; 
     (fn [m]
       (let [e `(taxi/make-random-taxi-env ~(:size m) ~(:size m) ~(:npass m) 0)]
         (condp = (:alg m)
@@ -45,7 +45,7 @@
         :sahtn    `(sd/sahtn-dijkstra ~'init)
         :nsahtn    `(sd/sahtn-dijkstra ~'init)
         ))
-    'exp.experiments nil 99 512 false  ::ExpResult))
+    'exp.experiments 20 10000 512 false  ::ExpResult))
 
 (defn pad-right [x n]  
   (let [xs (str x) 
