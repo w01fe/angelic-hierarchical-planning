@@ -46,7 +46,7 @@
         :sahtn    `(sd/sahtn-dijkstra ~'init)
         :nsahtn    `(sd/sahtn-dijkstra ~'init)
         ))
-    'exp.experiments nil 10000 512 false  ::ExpResult))
+    'exp.experiments 20 10000 512 false  ::ExpResult))
 
 (defn pad-right [x n]  
   (let [xs (str x) 
