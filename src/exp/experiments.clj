@@ -10,19 +10,20 @@
 
 (defstruct exp-result 
   :class :experiment :commit-id :timeout? :memout? :output :printed :init-ms :ms :mb
-  :next-count :ref-count :plan-count
+  :next-count :ref-count :plan-count)
 
 (defmethod experiments/setup-experiment-result ::ExpResult [experiment]
-    (env/reset-next-counter)
-    (hierarchy/reset-ref-counter)))
+  (env/reset-next-counter)
+  (hierarchy/reset-ref-counter))
 
 (defmethod experiments/make-experiment-result ::ExpResult 
   [experiment setup-info timeout? memout? output printed init-ms ms mb]
-  (struct exp-result ::ExpResult
-	  experiment (util/git-commit-id) timeout? memout? output printed init-ms ms mb
-	  (util/sref-get env/*next-counter*)
-	  (util/sref-get hierarchy/*ref-counter*)
-	  (util/sref-get hierarchy/*plan-counter*)))
+  (util/prln 
+   (struct exp-result ::ExpResult
+           experiment (util/git-commit-id) timeout? memout? output printed init-ms ms mb
+           (util/sref-get env/*next-counter*)
+           (util/sref-get hierarchy/*ref-counter*)
+           (util/sref-get hierarchy/*plan-counter*))))
 
 (defn make-first-exp-set []
   (experiments/make-experiment-set "simple-taxi"
@@ -45,7 +46,7 @@
         :sahtn    `(sd/sahtn-dijkstra ~'init)
         :nsahtn    `(sd/sahtn-dijkstra ~'init)
         ))
-    'exp.experiments 20 10000 512 false  ::ExpResult))
+    'exp.experiments nil 10000 512 false  ::ExpResult))
 
 (defn pad-right [x n]  
   (let [xs (str x) 
