@@ -84,72 +84,40 @@
                               ))))))    
       (println "\n\n"))))
 
-(comment
 
-  (charts/plot 
-   (datasets/ds->chart
-    (datasets/ds-derive #(util/prln (second (:output %))) (filter (datasets/ds-fn [ms size] (and ms (= size 50))) *taxi-results*) :cost)
-    [:alg] :npass :cost {:ylog "t" :xrange "[1:14]"} (constantly {}))
-   )
 
-  (charts/plot 
-   (datasets/ds->chart
-    (datasets/ds-derive #(/ (:ms %) 1000) (filter (datasets/ds-fn [ms size] (and ms (= size 50))) *taxi-results*) :secs)
-    [:alg] :npass :secs {:ylog "t" :xrange "[1:14]"} (constantly {}))
-   )
 
-  (defn make-taxi-charts 
-    ([] (make-taxi-charts "/Users/jawolfe/Projects/reports/10-icaps/figs/"))
-    ([dir] 
 
-       (charts/plot 
-        (datasets/ds->chart
-         (filter (datasets/ds-fn [ms size] (and ms (= size 50))) *taxi-results*)
-         [:alg] :npass :next-count {} (constantly {}))
-        )
-       (doseq [[y-axis y-label file-suffix]
-               [[:ms "Solution Time (ms)" "time"]
-                [:ref-count "# of Refinements" "refs"]
-                [:plan-count "# of Plans Evalauted" "plans"]]]
-         (charts/plot (datasets/ds->chart 
-                       (filter (datasets/ds-fn [domain hierarchy algorithm ms] 
-                                               (and ms (= domain :warehouse) (not (= algorithm :a-star-graph)))) 
-                               *offline*) 
-                       [:type :graph? :ref-choice :algorithm ] 
-                       :instance-num y-axis
-                       {:term "solid dashed size 3,2"
-                        :ylog "t" :key "12,100000" :yrange "[10:200000]" :xlabel "Problem Number" :ylabel y-label
-                        :title "Offline Warehouse World" 
-                        } 
-                       (let [c (util/counter-from 0)]
-                         (fn [& args] (let [v ([1 2 3] (c))]  {:lw 3 :pt v :lt v})))
-                                        ;      (constantly {:lw 4 :pt [2 3 4]})
-                       (fn [[type graph ref-choice alg]]
-                         (cond (= alg :ahss) "AHSS" (= type :hierarchy) "AHA*" :else "Graph A*"))
-                       identity)
-                      (str dir "offline-ww-" file-suffix ".pdf"))
-         (charts/plot (datasets/ds->chart 
-                       (filter #(< (:ref-count %) 5.0e9) 
-                               (datasets/ds-summarize 
-                                (filter (datasets/ds-fn [type algorithm domain] 
-                                                        (and (= domain :nav-switch) (not (= algorithm :a-star-graph)))) 
-                                        (map #(if (:ms %) % (assoc % :plan-count 1.0e10 :ref-count 1.0e10 :ms 1.0e10)) 
-                                             *offline*)) 
-                                [:type :graph? :ref-choice :algorithm :switches :size] 
-                                [[:ref-count  (fn [& args] (when (every? first args) (util/median (map second args)))) 
-                                  (fn [m] [(:run m) (y-axis m)])]]))  
-                       [:type :graph? :ref-choice :algorithm :switches]
-                       :size :ref-count 
-                       {:term "solid dashed size 3,2"
-                        :ylog "t" :xlog "t" :key "45,100000"
-                        :title "Offline Nav Switch"
-                        :xlabel "Board size (per side)" :ylabel y-label 
-                        :xrange "[5:1000]" :yrange "[50:200000]"} 
-                       (let [c (util/counter-from 0)]
-                         (fn [& args] (let [v ([1 2 3] (c))]  {:lw 3 :pt v :lt v})))
-                                        ;      (constantly {:lw 4})
-                       (fn [[type graph ref-choice alg]]
-                         (cond (= alg :ahss) "AHSS" (= type :hierarchy) "AHA*" :else "Graph A*"))
-                       identity)
-                      (str dir "offline-nav-" file-suffix ".pdf")))      
-       )))
+
+
+
+(defn make-taxi-charts 
+  ([] (make-taxi-charts "/Users/jawolfe/Projects/reports/10-icaps/figs/"))
+  ([dir] 
+     (charts/plot 
+      (datasets/ds->chart
+       (datasets/ds-derive #(/ (:ms %) 1000) (filter (datasets/ds-fn [ms size] (and ms (= size 50))) *taxi-results*) :secs)
+       [:alg] :npass :secs 
+       {:term "solid dashed size 3,1.7"  :ylog "t" :xrange "[1:14]" :yrange "[0.3:1000]"
+        :title "50x50 taxi problems" :key "bottom right"
+       ; :xlabel "# of passengers"         :ylabel "runtime (s)"
+        :extra-commands ["set ylabel \"runtime(s)\" -2,0"]
+        } 
+       (let [c (util/counter-from 0)] (fn [& args] (let [v ([1 2 3 6] (c))]  {:lw 3 :pt v :lt v})))
+       {[:ucs] "UCS" [:htn-ucs]  "H-UCS" [:sahtn] "SAHTN" [:nsahtn] "N-SAHTN"}
+       (fn [l] (sort-by #(if (=  "UCS" (:title %)) "Q" (:title  %)) l)))
+      (str dir "taxi-50-time.pdf"))
+     (charts/plot 
+      (datasets/ds->chart
+       (datasets/ds-derive #(/ (:ms %) 1000) (filter (datasets/ds-fn [ms size] (and ms (= size 50))) *taxi-results*) :secs)
+       [:alg] :npass :next-count 
+       {:term "solid dashed size 3,1.2"  :ylog "t" :xrange "[1:14]" ;:yrange "[0.3:1000]"
+      ;  :title "Primitive action applications for 50x50 taxi problems" 
+        :key "top right"
+        :xlabel "# of passengers" :ylabel "# of primitive applications"
+        } 
+       (let [c (util/counter-from 0)] (fn [& args] (let [v ([1 2 3 6] (c))]  {:lw 3 :pt v :lt v})))
+       {[:ucs] "UCS" [:htn-ucs]  "H-UCS" [:sahtn] "SAHTN" [:nsahtn] "N-SAHTN"}
+       (fn [l] (sort-by #(if (=  "UCS" (:title %)) "Q" (:title  %)) l)))
+      (str dir "taxi-50-prims.pdf"))               
+     ))
