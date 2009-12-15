@@ -135,6 +135,6 @@
 (defn wrap-action-nsa [a full-context]
   (if (env/primitive? a) 
     (NSAPrimitive a full-context)
-    (NSAHLA. a full-context)))
+    (NSAHLA a full-context)))
 
 ;; Can take more progressions than flat because 
