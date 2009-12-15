@@ -111,6 +111,8 @@
 
  ;;; These types remove state abstraction from a hierarchy.
 
+(declare wrap-action-nsa)
+
 (deftype NSAPrimitive [a full-context]
   env/Action                (action-name [] (env/action-name a))
                             (primitive? [] true)  
@@ -118,21 +120,21 @@
   env/PrimitiveAction       (applicable? [s] (env/applicable? a s)) 
                             (next-state-and-reward [s] (env/next-state-and-reward a s)))
 
-(defmethod print-method ::NSAPrimitive [a o] (print-method (env/action-name a) o))
-
 (deftype NSAHLA       [a full-context]
   env/Action                (action-name [] (env/action-name a))
                             (primitive? [] false)  
   env/ContextualAction      (precondition-context [s] full-context)
   HighLevelAction (immediate-refinements- [s]
-                             (map (fn [ref] 
-                                    (map #(if (env/primitive? %) 
-                                            (NSAPrimitive % full-context)
-                                            (NSAHLA. % full-context)) 
-                                         ref))
+                             (map (fn [ref] (map #(wrap-action-nsa % full-context) ref))
                               (immediate-refinements- a s)))
                             (cycle-level- [s] (cycle-level- a s)))
 
+(defmethod print-method ::NSAPrimitive [a o] (print-method (env/action-name a) o))
+(defmethod print-method ::NSAHLA [a o] (print-method (env/action-name a) o))
 
+(defn wrap-action-nsa [a full-context]
+  (if (env/primitive? a) 
+    (NSAPrimitive a full-context)
+    (NSAHLA. a full-context)))
 
 ;; Can take more progressions than flat because 
