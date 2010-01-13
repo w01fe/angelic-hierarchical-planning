@@ -174,7 +174,7 @@
   (let [new-dir (str run-dir (:name (:experiment (first results))))
 	out-dir (str new-dir "/out")]
     (doseq [[i e] (util/indexed results)]
-      (util/spit        e (str out-dir "/" i ".txt")))
+      (util/spit       (str out-dir "/" i ".txt") e))
     results)))
 
 (defn read-experiment-set-results 

@@ -9,7 +9,7 @@
 ;                                    SAHTN
 ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
 
-;; This version will loop forever on recursive hierarchies
+;; This version will work in recursive hierarchies but may be inefficient.
 
 
 (declare sahtn-action)

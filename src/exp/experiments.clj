@@ -18,12 +18,11 @@
 
 (defmethod experiments/make-experiment-result ::ExpResult 
   [experiment setup-info timeout? memout? output printed init-ms ms mb]
-  (util/prln 
-   (struct exp-result ::ExpResult
-           experiment (util/git-commit-id) timeout? memout? output printed init-ms ms mb
-           (util/sref-get env/*next-counter*)
-           (util/sref-get hierarchy/*ref-counter*)
-           (util/sref-get hierarchy/*plan-counter*))))
+  (struct exp-result ::ExpResult
+          experiment (util/git-commit-id) timeout? memout? output printed init-ms ms mb
+          (util/sref-get env/*next-counter*)
+          (util/sref-get hierarchy/*ref-counter*)
+          (util/sref-get hierarchy/*plan-counter*)))
 
 
 ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;; Taxi ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
@@ -87,10 +86,6 @@
 
 
 
-
-
-
-
 (defn make-taxi-charts 
   ([] (make-taxi-charts "/Users/jawolfe/Projects/reports/10-icaps/figs/"))
   ([dir] 
@@ -120,4 +115,131 @@
        {[:ucs] "UCS" [:htn-ucs]  "H-UCS" [:sahtn] "SAHTN" [:nsahtn] "N-SAHTN"}
        (fn [l] (sort-by #(if (=  "UCS" (:title %)) "Q" (:title  %)) l)))
       (str dir "taxi-50-prims.pdf"))               
+     ))
+
+
+(defn make-taxi-chart 
+  ([] (make-taxi-chart "/Users/jawolfe/Projects/reports/10-icaps/figs/"))
+  ([dir] 
+     (charts/plot 
+      (datasets/ds->chart
+       (datasets/ds-derive #(/ (:ms %) 1000) (filter (datasets/ds-fn [ms size] (and ms (= size 50))) *taxi-results*) :secs)
+       [:alg] :npass :secs 
+       {:term "solid dashed size 3,1.6"  :ylog "t" :xrange "[1:12]" :yrange "[0.3:1000]"
+        :extra-commands ["set title \"50x50 taxi problems\" 0,-0.5"
+                         "set xlabel \"# of passengers\" 0,0.3"] 
+         ;:xlabel "# of passengers"     ;:title "50x50 taxi problems"    
+        :ylabel "runtime (s)"  :key "bottom right"
+        } 
+       (let [c (util/counter-from 0)] (fn [& args] (let [v ([1 2 3 6] (c))]  {:lw 3 :pt v :lt v})))
+       {[:ucs] "UCS" [:htn-ucs]  "H-UCS" [:sahtn] "SAHTN" [:nsahtn] "N-SAHTN"}
+       (fn [l] (sort-by #(if (=  "UCS" (:title %)) "Q" (:title  %)) l)))
+      (str dir "taxi-50-time-solo.pdf"))               
+     ))
+
+
+;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;; Pick & place ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
+
+#_
+(defn make-fake-pp-exp-set []
+  (experiments/make-experiment-set "pp"
+    [:product
+     [:size [1  2 3 4 5 6]]
+     [:run [1  2 3]]
+     [:alg [:htn-ucs :nsahtn :sahtn]]]
+    (constantly `(println)) (constantly `(println))
+    'exp.experiments 0 600 512 false ::ExpResult))
+
+(defn make-fake-pp-exp-set []
+  (experiments/make-experiment-set "pp2"
+    [:union                                   
+     [:product
+      [:size [1 2 3 4]]
+      [:run [1 2 3]]
+      [:alg [:htn-ucs :nsahtn :sahtn]]]
+     [:product
+      [:size [5 6]]
+      [:run [1 2 3]]
+      [:alg [:sahtn]]]
+     ]
+    (constantly `(println)) (constantly `(println))
+    'exp.experiments 0 600 512 false ::ExpResult))
+
+
+(defn read-pp-results []
+  (def *pp-results* 
+       (experiments/experiment-set-results->dataset 
+        (experiments/read-experiment-set-results (make-fake-pp-exp-set)))))
+
+
+;(def *cw* 8)
+;(def *w* (+ 4 (* 3 *cw*)))
+(defn make-pp-table []
+  (let [results (util/group-by #(get-in % [:alg]) *pp-results*)]
+    (doseq [alg [:htn-ucs :nsahtn :sahtn]]
+      (let [alg-results (results alg)
+            size-map (util/group-by #(get-in % [ :run]) alg-results)
+            sizes    (sort (keys size-map))]
+        (println (apply str (pad-right alg 9) "|" (for [s sizes] (str (pad-right s *w*) "|"))))
+        (println (apply str (repeat (+ 10 (* (count sizes) (inc *w*))) "-")))
+        (doseq [[n-pass pass-maps] (util/group-by #(get-in % [ :size]) alg-results)]
+          (println (apply str (pad-right n-pass 9) "|"
+                          (for [[exp] (map val (sort-by key (util/group-by #(get-in % [ :run]) pass-maps)))]
+                            (if (and (:ms exp) )
+                              (str (pad-right (int (:ms exp)) *cw*) ", " (pad-right (:next-count exp) *cw*) ", " (pad-right (int (second (:output exp))) #_(:plan-count exp) *cw*) "|")
+                              (apply str (concat (repeat *w* " ") "|"))
+                              ))))))    
+      (println "\n\n"))))
+
+
+
+
+(defn make-pp-charts 
+  ([] (make-pp-charts "/Users/jawolfe/Projects/reports/10-icaps/figs/"))
+  ([dir] 
+     (charts/plot 
+      (datasets/ds->chart
+       (datasets/ds-summarize (datasets/ds-derive #(/ (:ms %) 1000) (filter (datasets/ds-fn [ms output] (and ms)) *pp-results*) :secs) [:alg :size]  [[:secs util/mean :secs]])
+       [:alg] :size :secs 
+       {:term "solid dashed size 3,1.7"   :ylog  "t" :xrange "[1:6]" :yrange "[4:600]"
+        :title "robot pick-and-place problems" :key "at 2.6, 445"
+        :extra-commands ["set ylabel \"runtime(s)\" -2,0" "set xtics 1"]
+        } 
+       (let [c (util/counter-from 0)] (fn [& args] (let [v ([1 2 3 6] (c))]  {:lw 3 :pt v :lt v})))
+       {[:ucs] "UCS" [:htn-ucs]  "H-UCS" [:sahtn] "SAHTN" [:nsahtn] "N-SAHTN"}
+       (fn [l] (sort-by #(if (=  "UCS" (:title %)) "Q" (:title  %)) l)))
+      (str dir "pp-time.pdf"))
+     (charts/plot 
+      (datasets/ds->chart
+       (datasets/ds-summarize (datasets/ds-derive #(/ (:ms %) 1000) (filter (datasets/ds-fn [ms output] (and ms)) *pp-results*) :secs) [:alg :size]  [[:next-count util/mean :next-count]])
+       [:alg] :size :next-count 
+       {:term "solid dashed size 3,1.2"  :ylog "t" :xrange "[1:6]" :yrange "[50:10000]"
+        :key "at 2.6, 7000" :extra-commands ["set xtics 1"]
+        :xlabel "# of objects to move" :ylabel "# of primitive applications"
+        } 
+       (let [c (util/counter-from 0)] (fn [& args] (let [v ([1 2 3 6] (c))]  {:lw 3 :pt v :lt v})))
+       {[:ucs] "UCS" [:htn-ucs]  "H-UCS" [:sahtn] "SAHTN" [:nsahtn] "N-SAHTN"}
+       (fn [l] (sort-by #(if (=  "UCS" (:title %)) "Q" (:title  %)) l)))
+      (str dir "pp-prims.pdf"))               
+     ))
+
+
+(defn make-pp-chart
+  ([] (make-pp-chart "/Users/jawolfe/Projects/reports/10-icaps/figs/"))
+  ([dir] 
+     (charts/plot 
+      (datasets/ds->chart
+       (datasets/ds-summarize (datasets/ds-derive #(/ (:ms %) 1000) (filter (datasets/ds-fn [ms output] (and ms)) *pp-results*) :secs) [:alg :size]  [[:secs util/mean :secs]])
+       [:alg] :size :secs 
+       {:term "solid dashed size 3,1.6"   :ylog  "t" :xrange "[1:6]" :yrange "[4:600]"
+        :extra-commands ["set xtics 1"
+                         "set title \"robotic pick-and-place problems\" 0,-0.5"
+                         "set xlabel \"# of objects to move\" 0,0.3"] 
+        ; :xlabel "# of objects to move"         :title "robot pick-and-place problems" 
+        :ylabel "runtime (s)" :key "at 2.6, 445"
+        } 
+       (let [c (util/counter-from 0)] (fn [& args] (let [v ([1 2 3 6] (c))]  {:lw 3 :pt v :lt v})))
+       {[:ucs] "UCS" [:htn-ucs]  "H-UCS" [:sahtn] "SAHTN" [:nsahtn] "N-SAHTN"}
+       (fn [l] (sort-by #(if (=  "UCS" (:title %)) "Q" (:title  %)) l)))
+      (str dir "pp-time-solo.pdf"))               
      ))

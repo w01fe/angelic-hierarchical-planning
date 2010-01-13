@@ -25,11 +25,21 @@
 ;; A PartialResult stores a map from states to rewards, where a state is present
 ;; iff it has reward > cutoff. 
 
+;; Know how to do cycclingSAnode.  How can we save results?
+;; Every node keeps track of what it "loses", these become its queue ?
+
 
 (deftype SANode [context action result-map-atom queue]
   HasCutoff (cutoff [] (- (second (queues/pq-peek-min queue)))))
 
-(deftype SANode [context action result-map-atom queue]
+
+(deftype CSANodeEntry [state sanode reward-to-state remaining-actions]
+  Object
+   (equals [y] (and (= state (:state y)) (= remaining-actions (:remaining-actions y))))
+   (hashCode [] (unchecked-add (hash state) 
+                               (unchecked-multiply 13 (hash remaining-actions)))))
+
+(deftype CyclingSANode [context action result-map-atom queue cycle-level]
   HasCutoff (cutoff [] (- (second (queues/pq-peek-min queue)))))
 
 (deftype SeqNodeEntry [state sanode reward-to-state remaining-actions]
@@ -63,7 +73,8 @@
            (for [ref (when-not prim? (hierarchy/immediate-refinements s a))]
              [(SeqNode s (make-queue [[(SeqNodeEntry (get-sa-node cache s (first ref)) 0 (next ref)) 0]])) 0])))))))
 
-
+;; TODO: figure out how to avoid returning everything when only a few states are needed. (if needed)
+ ; (< next-best (val %))
 (defn expand-helper [node cache next-best last-cutoff result-fn]
   (loop [init-results (if (= last-cutoff (cutoff node)) {}
                           (util/filter-map #(<= (val %) last-cutoff) (:result-map @(:result-atom node))))]
