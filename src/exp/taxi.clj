@@ -122,10 +122,10 @@
                                [[(NavHLA env sx sy) pu (NavHLA env dx dy) pd]]))
                             (cycle-level- [s] nil))
 
-(deftype TaxiTLA [env]      :as this
+(deftype TaxiTLA [env context]      :as this
   env/Action                (action-name [] ['top])
                             (primitive? [] false)  
-  env/ContextualAction      (precondition-context [s] (keys (dissoc (env/initial-state env) :const)))
+  env/ContextualAction      (precondition-context [s] context)
   hierarchy/HighLevelAction (immediate-refinements- [s]
                               (let [remaining-passengers
                                     (for [[pass] (:passengers env)
@@ -137,17 +137,18 @@
                                     [(ServeHLA env pass) this]))))
                             (cycle-level- [s] nil))
 
-
+(defn make-taxi-tla [env]
+  (TaxiTLA env (keys (dissoc (env/initial-state env) :const))))
 
 (defn simple-taxi-hierarchy [#^TaxiEnv env]
   (hierarchy/SimpleHierarchicalEnv
    env
-   [(TaxiTLA env)]))
+   [(make-taxi-tla env)]))
 
 
 (defn simple-taxi-hierarchy-nsa [#^TaxiEnv env]
   (hierarchy/SimpleHierarchicalEnv
    env
-   [(hierarchy/NSAHLA (TaxiTLA env) (keys (dissoc (env/initial-state env) :const)))]))
+   [(hierarchy/NSAHLA (make-taxi-tla env) (keys (dissoc (env/initial-state env) :const)))]))
 
 ; (uniform-cost-search (ShopHTNEnv (simple-taxi-hierarchy (TaxiEnv 5 5 [ ['bob [1 1] [3 3] ] ['mary [1 1] [3 3] ] ['lisa [1 1] [3 3] ]]))))
