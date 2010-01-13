@@ -16,7 +16,7 @@
 ;; Difficulty: nodes with multiple ancestors.
 
 (defprotocol HasCutoff (cutoff [x]))
-(defprotocol HasQueue (queue [x]))
+(defprotocol HasQueue  (queue [x]))
 
 (deftype PartialResult [result-map cutoff]
   HasCutoff (cutoff [] cutoff))
@@ -30,15 +30,13 @@
   HasCutoff (cutoff [] (- (second (queues/pq-peek-min queue))))
   HasQueue  (queue [] queue))
 
-(deftype SeqNodeEntry [state sanode reward-to-state remaining-actions]
+;; Represents an action sequence from a state, with sanode representing the first action in remaining-actions.
+ ; (or nil, if remaining-actions is empty.)
+(deftype SANodeEntry [state sanode reward-to-state remaining-actions]
   Object
    (equals [y] (and (= state (:state y)) (= remaining-actions (:remaining-actions y))))
    (hashCode [] (unchecked-add (int (hash state)) 
                                (unchecked-multiply (int 13) (int (hash remaining-actions))))))
-
-(deftype SeqNode [queue]
-  HasCutoff (cutoff [] (- (second (queues/pq-peek-min queue))))
-  HasQueue  (queue [] queue))
 
 
 (defn make-queue [initial-elements]
@@ -47,11 +45,10 @@
     (queues/pq-add-all! q initial-elements)
     q))
 
-(defn merge-safe 
-  "Merge maps m1 and m2.  If a key is in m1 and m2, the value for m1 will be retained.
-   Moreover, we will assert that (pred m1-val m2-val)."
-  [pred m1 m2]
-  (merge-with (fn [x y] (assert (pred x y)) x) m1 m2))
+(defn assoc-safe [m pred k v]
+  (if (contains? m k) 
+    (do (assert (pred (get m k) v)) m)
+    (assoc m k v)))
 
 ; empty refinement !
 
@@ -65,22 +62,9 @@
             [ss r] (when-let [x (and prim? (env/applicable? a s) (env/successor a s))] x)] ;pun        
         (SANode context a 
           (atom (if ss {(vary-meta (env/extract-effects ss context) assoc :opt [a]) r} {})) 
-          (make-queue
-           (for [ref (when-not prim? (hierarchy/immediate-refinements a s))]
-             [(SeqNode (make-queue [[(SeqNodeEntry s (when (seq ref) (get-sa-node cache s (first ref))) 0.0 ref) 0.0]])) 0.0])))))))
+          (make-queue (for [ref (when-not prim? (hierarchy/immediate-refinements a s))]
+                        [(SANodeEntry s (when (seq ref) (get-sa-node cache s (first ref))) 0.0 ref) 0.0])))))))
 
-
-;; Result-fn returns 
-(defn expand-helper [node cache next-best init-results result-fn]
-  (if (< (cutoff node) next-best)
-    (do ;#_ (println "done " (type node)  (cutoff node) init-results) 
-        (PartialResult init-results (cutoff node)))
-    (let [[best-child neg-reward] (queues/pq-remove-min-with-cost! (queue node))
-          next-best (max next-best (cutoff node))
-          [new-states adj-reward new-pairs] (result-fn best-child (- neg-reward) next-best)]
-      (when (> adj-reward Double/NEGATIVE_INFINITY) (queues/pq-replace! (queue node) best-child (- adj-reward)))
-      (doseq [[n r] new-pairs] (queues/pq-add! (queue node) n (- r)))
-      (recur node cache next-best (merge init-results new-states) result-fn))))
 
 
 (defn stitch-results [effect-map state reward-to-state]
@@ -90,43 +74,28 @@
       (+ reward-to-state local-reward)]) 
    effect-map))
 
-;; May return states better than next-best, but these will be held at the seq node.
-(declare  expand-seq-node)
+;; May return states better than next-best, but these will be held at the parent.
 (defn expand-sa-node [#^::SANode node #^HashMap cache next-best state reward-to-state last-cutoff]
-;  (util/timeout)
-;  (println "SA" (env/action-name (:action node)) last-cutoff (cutoff node) next-best reward-to-state)
-  (util/assert-is (= (type node) ::SANode))
-  (expand-helper node cache next-best
-    (if (= last-cutoff (cutoff node)) {}
-        (stitch-results 
-         (util/filter-map #(<= (val %) last-cutoff)  @(:result-map-atom node))
-         state reward-to-state))
-    (fn [best-child reward next-best]
-      (let [result (expand-seq-node best-child cache next-best)
-            effect-map (util/map-keys #(vary-meta (env/extract-effects % (:context node)) assoc :opt (:opt (meta %)))
-                                      (:result-map result))]
-;        (println "Got seq results " result reward-to-state)
-        (swap! (:result-map-atom node) (partial merge-safe >=) effect-map)
-        [(stitch-results effect-map state reward-to-state) (:cutoff result) nil]))))
+  (loop [new-results (if (= last-cutoff (cutoff node)) {}
+                         (util/filter-map #(<= (val %) last-cutoff)  @(:result-map-atom node)))]
+     (if (< (cutoff node) next-best)
+         (PartialResult (stitch-results new-results state reward-to-state) (cutoff node))   
+       (let [[entry neg-reward] (queues/pq-remove-min-with-cost! (queue node))
+             b-s (:state entry), b-rts (:reward-to-state entry), b-ra (:remaining-actions entry), b-sa (:sanode entry)
+             rec-next-best (max next-best (cutoff node))]
+           (if (empty? b-ra)
+               (let [eff (vary-meta (env/extract-effects b-s (:context node)) assoc :opt (:opt (meta b-s)))]
+                 (swap! (:result-map-atom node) assoc-safe >= eff b-rts)
+                 (recur (assoc-safe new-results >= eff b-rts)))
+             (let [rec (expand-sa-node b-sa cache (- rec-next-best b-rts) b-s b-rts (- 0 neg-reward b-rts))]
+               (when (> (:cutoff rec) Double/NEGATIVE_INFINITY) 
+                 (queues/pq-replace! (queue node) entry (- 0 b-rts (:cutoff rec))))
+               (doseq [[ss sr] (:result-map rec)]
+                 (queues/pq-add! (queue node)
+                   (SeqNodeEntry ss (when (next b-ra) (get-sa-node cache ss (second b-ra))) sr (next b-ra))
+                   (- sr)))
+               (recur new-results)))))))
 
-;; Will never return anything worse than next-best.  
-(defn expand-seq-node [#^::SeqNode node #^HashMap cache next-best]
-;  (println "Seq")
-  (util/assert-is (= (type node) ::SeqNode))
-  (expand-helper node cache next-best {}
-    (fn [entry reward next-best]
-      (let [{:keys [state reward-to-state remaining-actions sanode]} entry]
-;        (println "ACTIONS " (map env/action-name remaining-actions))
-        (if (empty? remaining-actions)
-            [{state reward-to-state} Double/NEGATIVE_INFINITY nil]
-          (let [result (expand-sa-node sanode cache (- next-best reward-to-state) state 
-                                       reward-to-state (- reward reward-to-state))]
-;            (println "SEQ" (:result-map result))
-            [{} (+ reward-to-state (:cutoff result))             
-              (for [[s r] (:result-map result)]
-                [(SeqNodeEntry s (when (next remaining-actions) (get-sa-node cache s (second remaining-actions))) 
-                               r (next remaining-actions)) 
-                 r])]))))))
 
 
 (defn sahucs [henv]
