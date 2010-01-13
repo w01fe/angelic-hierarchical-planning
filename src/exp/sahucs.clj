@@ -15,20 +15,15 @@
 ;; TODO: pass incremental updates upwards. 
 ;; Difficulty: nodes with multiple ancestors.
 
-(defprotocol HasCutoff (cutoff [x]))
-(defprotocol HasQueue  (queue [x]))
 
-(deftype PartialResult [result-map cutoff]
-  HasCutoff (cutoff [] cutoff))
+
+(deftype PartialResult [result-map cutoff])
 
 
 ;; A PartialResult stores a map from states to rewards, where a state is present
 ;; iff it has reward > cutoff. 
 
-
-(deftype SANode [context action result-map-atom queue]
-  HasCutoff (cutoff [] (- (second (queues/pq-peek-min queue))))
-  HasQueue  (queue [] queue))
+(deftype SANode [context action result-map-atom queue])
 
 ;; Represents an action sequence from a state, with sanode representing the first action in remaining-actions.
  ; (or nil, if remaining-actions is empty.)
@@ -66,6 +61,8 @@
                         [(SANodeEntry s (when (seq ref) (get-sa-node cache s (first ref))) 0.0 ref) 0.0])))))))
 
 
+(defn cutoff [#^::SANode node]
+  (- (second (queues/pq-peek-min (:queue node)))))
 
 (defn stitch-results [effect-map state reward-to-state]
   (util/map-map 
@@ -80,7 +77,7 @@
                          (util/filter-map #(<= (val %) last-cutoff)  @(:result-map-atom node)))]
      (if (< (cutoff node) next-best)
          (PartialResult (stitch-results new-results state reward-to-state) (cutoff node))   
-       (let [[entry neg-reward] (queues/pq-remove-min-with-cost! (queue node))
+       (let [[entry neg-reward] (queues/pq-remove-min-with-cost! (:queue node))
              b-s (:state entry), b-rts (:reward-to-state entry), b-ra (:remaining-actions entry), b-sa (:sanode entry)
              rec-next-best (max next-best (cutoff node))]
            (if (empty? b-ra)
@@ -89,9 +86,9 @@
                  (recur (assoc-safe new-results >= eff b-rts)))
              (let [rec (expand-sa-node b-sa cache (- rec-next-best b-rts) b-s b-rts (- 0 neg-reward b-rts))]
                (when (> (:cutoff rec) Double/NEGATIVE_INFINITY) 
-                 (queues/pq-replace! (queue node) entry (- 0 b-rts (:cutoff rec))))
+                 (queues/pq-replace! (:queue node) entry (- 0 b-rts (:cutoff rec))))
                (doseq [[ss sr] (:result-map rec)]
-                 (queues/pq-add! (queue node)
+                 (queues/pq-add! (:queue node)
                    (SeqNodeEntry ss (when (next b-ra) (get-sa-node cache ss (second b-ra))) sr (next b-ra))
                    (- sr)))
                (recur new-results)))))))
