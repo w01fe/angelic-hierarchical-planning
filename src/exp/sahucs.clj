@@ -5,13 +5,42 @@
   )
 
 
-;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
-;                                    SAHD
-;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
 
 ;; This version may be inefficient in graphy domains, but should still be complete+optimal
 ;; (as long as rewards for primitives are strictly negative)
 
+;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
+;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;   Helpers       ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
+;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
+
+(defn make-queue [initial-elements]
+  (let [q (queues/make-graph-search-pq)]
+    (queues/g-pq-add! q :dummy Double/POSITIVE_INFINITY)
+    (queues/pq-add-all! q initial-elements)
+    q))
+
+(defn assoc-safe [m pred k v]
+  (if (contains? m k) 
+    (do (assert (pred (get m k) v)) m)
+    (assoc m k v)))
+
+
+(defn extract-effect [state context opt]
+  (vary-meta (env/extract-effects state context) assoc :opt opt))
+
+(defn stitch-effect-map [effect-map state reward-to-state]
+  (util/map-map1 
+   (fn [[effects local-reward]]
+     [(vary-meta (env/apply-effects state effects) assoc 
+                 :opt (concat (:opt (meta state)) (:opt (meta effects))))
+      (+ reward-to-state local-reward)]) 
+   effect-map))
+
+
+
+;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
+;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;; Data Structures ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
+;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
 
 ;; A PartialResult stores a map from states to rewards, where a state is present
 ;; iff it has reward > cutoff. 
@@ -39,30 +68,9 @@
                               (unchecked-multiply (int 13) (int (hash remaining-actions))))))
 
 
-
-(defn make-queue [initial-elements]
-  (let [q (queues/make-graph-search-pq)]
-    (queues/g-pq-add! q :dummy Double/POSITIVE_INFINITY)
-    (queues/pq-add-all! q initial-elements)
-    q))
-
-(defn assoc-safe [m pred k v]
-  (if (contains? m k) 
-    (do (assert (pred (get m k) v)) m)
-    (assoc m k v)))
-
-
-(defn extract-effect [state context opt]
-  (vary-meta (env/extract-effects state context) assoc :opt opt))
-
-(defn stitch-effect-map [effect-map state reward-to-state]
-  (util/map-map1 
-   (fn [[effects local-reward]]
-     [(vary-meta (env/apply-effects state effects) assoc 
-                 :opt (concat (:opt (meta state)) (:opt (meta effects))))
-      (+ reward-to-state local-reward)]) 
-   effect-map))
-
+;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
+;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;; Core Algorithm  ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
+;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
 
 
 (declare get-sa-node)
@@ -89,7 +97,7 @@
   (loop [new-results (if (= last-cutoff (cutoff node)) {}
                          (util/filter-map #(<= (val %) last-cutoff)  @(:result-map-atom node)))]
      (if (< (cutoff node) next-best)
-         (PartialResult (stitch-results new-results state reward-to-state) (cutoff node))   
+         (PartialResult (stitch-effect-map new-results state reward-to-state) (cutoff node))   
        (let [[entry neg-reward] (queues/g-pq-remove-min-with-cost! (:queue node))
              b-s (:state entry), b-rts (:reward-to-state entry), 
              b-ra (:remaining-actions entry), b-sa (:sanode entry)
@@ -99,11 +107,17 @@
                  (swap! (:result-map-atom node) assoc-safe >= eff b-rts)
                  (recur (assoc-safe new-results >= eff b-rts)))
              (let [rec (expand-sa-node b-sa cache rec-next-best b-s b-rts (- 0 neg-reward b-rts))]
-               (when (> (:cutoff rec) Double/NEGATIVE_INFINITY) 
-                 (queues/g-pq-replace! (:queue node) entry (- 0 b-rts (:cutoff rec))))
                (doseq [[ss sr] (:result-map rec)]
                  (queues/g-pq-add! (:queue node) (get-sanode-entry cache ss sr (next b-ra)) (- sr)))
+               (when (> (:cutoff rec) Double/NEGATIVE_INFINITY) 
+                 (queues/g-pq-replace! (:queue node) entry (- 0 b-rts (:cutoff rec))))
                (recur new-results)))))))
+
+
+;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
+;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;    Top-level    ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
+;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
+
 
 
 
