@@ -98,19 +98,21 @@
                          (util/filter-map #(<= (val %) last-cutoff)  @(:result-map-atom node)))]
      (if (< (cutoff node) next-best)
          (PartialResult (stitch-effect-map new-results state reward-to-state) (cutoff node))   
-       (let [[entry neg-reward] (queues/g-pq-remove-min-with-cost! (:queue node))
+       (let [[entry neg-reward] (queues/g-pq-peek-min (:queue node))
              b-s (:state entry), b-rts (:reward-to-state entry), 
              b-ra (:remaining-actions entry), b-sa (:sanode entry)
              rec-next-best (- (max next-best (cutoff node)) b-rts)]
            (if (empty? b-ra)
                (let [eff (extract-effect b-s (:context node) (:opt (meta b-s)))]
                  (swap! (:result-map-atom node) assoc-safe >= eff b-rts)
+                 (queues/g-pq-remove!  (:queue node) entry)
                  (recur (assoc-safe new-results >= eff b-rts)))
              (let [rec (expand-sa-node b-sa cache rec-next-best b-s b-rts (- 0 neg-reward b-rts))]
                (doseq [[ss sr] (:result-map rec)]
                  (queues/g-pq-add! (:queue node) (get-sanode-entry cache ss sr (next b-ra)) (- sr)))
-               (when (> (:cutoff rec) Double/NEGATIVE_INFINITY) 
-                 (queues/g-pq-replace! (:queue node) entry (- 0 b-rts (:cutoff rec))))
+               (if (> (:cutoff rec) Double/NEGATIVE_INFINITY) 
+                   (queues/g-pq-replace! (:queue node) entry (- 0 b-rts (:cutoff rec)))
+                 (queues/g-pq-remove!  (:queue node) entry))
                (recur new-results)))))))
 
 
