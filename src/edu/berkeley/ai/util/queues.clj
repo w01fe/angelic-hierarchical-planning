@@ -591,6 +591,45 @@
 
 
 
+(derive ::UnionPriorityQueue ::PriorityQueue)
+
+(defn make-union-pq 
+  "Union view of two priority queues -- only supports peek, size, and min removal." 
+  [& queues] 
+  {:class ::UnionPriorityQueue :queues queues})
+
+(defmethod pq-add! ::UnionPriorityQueue [pq item cost]
+  (throw (UnsupportedOperationException.)))
+
+(defmethod pq-peek-min ::UnionPriorityQueue [pq]
+  (first-maximal-element (comp - second) (map pq-peek-min (remove pq-empty? (:queues pq)))))
+
+(defmethod pq-remove! ::UnionPriorityQueue [pq item]
+  (throw (UnsupportedOperationException.)))
+
+(defmethod pq-remove-min-with-cost! ::UnionPriorityQueue [pq]
+  (pq-remove-min-with-cost!
+    (first-maximal-element #(- (second (pq-peek-min %))) (remove pq-empty? (:queues pq)))))
+
+(defmethod pq-size  ::UnionPriorityQueue [pq]
+  (apply + (map pq-size (:queues pq))))
+
+
+(deftest union-pq 
+  (let [q1 (make-fancy-tree-search-pq)
+        q2 (make-fancy-tree-search-pq)
+        pq (make-union-pq q1 q2)]
+    (pq-add! q1 :a 1)
+    (pq-add! q2 :b 2)
+    (pq-add! q1 :c 3)
+    (pq-add! q2 :d 4)
+    (pq-add! q1 :e 5)
+    (is (= (pq-peek-min pq) [:a 1]))
+    (is (= (pq-size pq) 5))
+    (is (= (pq-remove-all! pq) [[:a 1] [:b 2] [:c 3] [:d 4] [:e 5]]))))
+
+
+
 
 (comment 
   (let [queues [(make-queue-pq) (make-graph-queue-pq)
