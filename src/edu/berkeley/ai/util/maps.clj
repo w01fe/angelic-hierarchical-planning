@@ -7,8 +7,15 @@
   {:test (fn [] (is (= #{ 3 4 6} (set (true-keys {1 nil 2 false 3 true 4 'asfd 5 nil 6 1})))))})
 
 (defn map-map "Like map, but expects f to return pairs/map entries that are combined to make a map return value."
-  [f & maps] (into {} (apply map f maps)))
+  [f & maps] 
+  (into {} (apply map f maps)))
      ;(reduce #(conj %1 %2) {} (apply map f maps)))
+
+(defn map-map1 "map-map, but specialized for 1 map argument."
+  [f m]
+  (persistent!
+   (reduce (fn [m kv] (let [[k v] (f kv)] (assoc! m k v)))
+           (transient {}) m)))
 
 
 (defn map-keys [f m]
@@ -18,8 +25,9 @@
   (into {} (map (fn [[k v]] [k (f v)]) m)))
 
 (defn filter-map [f m]
-  (reduce (fn [m e] (if (f e) m (dissoc m (key e))))
-	  m m))
+  (persistent! 
+   (reduce (fn [m e] (if (f e) m (dissoc! m (key e))))
+           (transient m) m)))
 
 (defn assoc-f [m k f]
   (assoc m k

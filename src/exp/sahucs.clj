@@ -25,18 +25,23 @@
 
 (deftype SANode [context action result-map-atom queue])
 
+;(defstruct sanode-struct :context :action :result-map-atom :queue)
+;(defn SANode [c a r q] (struct sanode-struct c a r q))
+
 ;; Represents an action sequence from a state, with sanode representing the first action in remaining-actions.
  ; (or nil, if remaining-actions is empty.)
-(deftype SANodeEntry [state sanode reward-to-state remaining-actions]
+(deftype SANodeEntry [state sanode reward-to-state remaining-actions hash-code] :as this
   Object
-   (equals [y] (and (= state (:state y)) (= remaining-actions (:remaining-actions y))))
-   (hashCode [] (unchecked-add (int (hash state)) 
-                               (unchecked-multiply (int 13) (int (hash remaining-actions))))))
+  (equals [y] (or (identical? this y) (and (= state (:state y)) (= remaining-actions (:remaining-actions y)))))
+  (hashCode [] hash-code))
 
+(defn make-sanode-entry [state sanode reward-to-state remaining-actions]
+  (SANodeEntry state sanode reward-to-state remaining-actions
+               (unchecked-add (int (hash state)) (unchecked-multiply (int 13) (int (hash remaining-actions))))))
 
 (defn make-queue [initial-elements]
   (let [q (queues/make-graph-search-pq)]
-    (queues/pq-add! q :dummy Double/POSITIVE_INFINITY)
+    (queues/g-pq-add! q :dummy Double/POSITIVE_INFINITY)
     (queues/pq-add-all! q initial-elements)
     q))
 
@@ -58,26 +63,26 @@
         (SANode context a 
           (atom (if ss {(vary-meta (env/extract-effects ss context) assoc :opt [a]) r} {})) 
           (make-queue (for [ref (when-not prim? (hierarchy/immediate-refinements a s))]
-                        [(SANodeEntry s (when (seq ref) (get-sa-node cache s (first ref))) 0.0 ref) 0.0])))))))
+                        [(make-sanode-entry s (when (seq ref) (get-sa-node cache s (first ref))) 0.0 ref) 0.0])))))))
 
 
-(defn cutoff [#^::SANode node]
-  (- (second (queues/pq-peek-min (:queue node)))))
+(defn cutoff [node]
+  (- (nth (queues/g-pq-peek-min (:queue node)) 1)))
 
 (defn stitch-results [effect-map state reward-to-state]
-  (util/map-map 
+  (util/map-map1 
    (fn [[effects local-reward]]
      [(vary-meta (env/apply-effects state effects) assoc :opt (concat (:opt (meta state)) (:opt (meta effects))))
       (+ reward-to-state local-reward)]) 
    effect-map))
 
 ;; May return states better than next-best, but these will be held at the parent.
-(defn expand-sa-node [#^::SANode node #^HashMap cache next-best state reward-to-state last-cutoff]
+(defn expand-sa-node [node #^HashMap cache next-best state reward-to-state last-cutoff]
   (loop [new-results (if (= last-cutoff (cutoff node)) {}
                          (util/filter-map #(<= (val %) last-cutoff)  @(:result-map-atom node)))]
      (if (< (cutoff node) next-best)
          (PartialResult (stitch-results new-results state reward-to-state) (cutoff node))   
-       (let [[entry neg-reward] (queues/pq-remove-min-with-cost! (:queue node))
+       (let [[entry neg-reward] (queues/g-pq-remove-min-with-cost! (:queue node))
              b-s (:state entry), b-rts (:reward-to-state entry), b-ra (:remaining-actions entry), b-sa (:sanode entry)
              rec-next-best (max next-best (cutoff node))]
            (if (empty? b-ra)
@@ -86,10 +91,10 @@
                  (recur (assoc-safe new-results >= eff b-rts)))
              (let [rec (expand-sa-node b-sa cache (- rec-next-best b-rts) b-s b-rts (- 0 neg-reward b-rts))]
                (when (> (:cutoff rec) Double/NEGATIVE_INFINITY) 
-                 (queues/pq-replace! (:queue node) entry (- 0 b-rts (:cutoff rec))))
+                 (queues/g-pq-replace! (:queue node) entry (- 0 b-rts (:cutoff rec))))
                (doseq [[ss sr] (:result-map rec)]
-                 (queues/pq-add! (:queue node)
-                   (SeqNodeEntry ss (when (next b-ra) (get-sa-node cache ss (second b-ra))) sr (next b-ra))
+                 (queues/g-pq-add! (:queue node)
+                   (make-sanode-entry ss (when (next b-ra) (get-sa-node cache ss (second b-ra))) sr (next b-ra))
                    (- sr)))
                (recur new-results)))))))
 
