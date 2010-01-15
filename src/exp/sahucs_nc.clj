@@ -52,7 +52,7 @@
 
 
 (defn cutoff [queue]
-  (- (nth (queues/g-pq-peek-min queue) 1)))
+  (- (nth (queues/pq-peek-min queue) 1)))
 
 ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
 ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;; Data Structures ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
@@ -149,6 +149,8 @@
 
 ;; TODO: watch out for zero reward ?
 
+;; TODO::: FIX queue bs.
+
 ; three classes of states - clean, just dirty, already dirty
 (defn classify-result-type [reward cycle-depth cutoff-depth-map]
   (let [[_ reward-cycle-depth] (first (subseq cutoff-depth-map > reward))
@@ -208,18 +210,27 @@
                            (PartialResult {} Double/NEGATIVE_INFINITY stack-depth)
                          (expand-sa-node b-sa cache rec-next-best b-s b-rts (- 0 neg-reward b-rts)
                                          stack-node-depths (inc depth)))
-                  cd  (min b-cd (:min-cycle-depth rec))]              
-              (doseq [[ss sr] (:result-map rec)]
-                (let [s-cd (min (:cycle-depth (meta ss)) b-cd)]
-                  (queues/g-pq-add! (if (< s-cd depth) bad-queue good-queue) 
-                    (get-sanode-entry cache ss sr (next b-ra) (if (< s-cd depth) s-cd *infinite-depth*)) (- sr))))
+                  cd  (min b-cd (:min-cycle-depth rec))
+                  result-nodes (for [[ss sr] (:result-map rec)
+                                     :let [s-cd (min (:cycle-depth (meta ss)) b-cd)]]                                 
+                                 (get-sanode-entry cache ss sr (next b-ra) (if (< s-cd depth) s-cd *infinite-depth*)))
+                  [good-nodes bad-nodes] (split-with #(>= (:min-cycle-depth %) depth) result-nodes)
+                  {:keys [nbn dbn sbn]}  (util/group-by
+                                          (fn [node]
+                                            (let [good-pri (queues/g-pq-priority good-queue node)]
+                                              (cond (nil? good-pri)                          :nbn
+                                                    (< (- good-pri) (:reward-to-state node)) :sbn
+                                                    :else                                    :dbn)))
+                                          bad-nodes)]
+              (doseq [n good-nodes]       (queues/g-pq-add! good-queue n (- (:reward-to-state n))))
+              (doseq [n (concat nbn sbn)] (queues/g-pq-add! bad-queue  n (- (:reward-to-state n))))
               (when (> (:cutoff rec) Double/NEGATIVE_INFINITY)
                 (queues/g-pq-replace! (if (< cd depth) bad-queue good-queue) entry (- 0 b-rts (:cutoff rec))))
               (recur new-results
                      (extend-cutoff-depth-map cutoff-depth-map (:cutoff rec) cd)
-                     (if (and (>= b-cd depth) (< cd depth))
-                         (cons entry good-roots) 
-                         good-roots)))))))))
+                     (concat (when (and (>= b-cd depth) (< cd depth)) [entry])
+                             (doall (for [n sbn] (queues/g-pq-remove! good-queue n)))
+                             good-roots)))))))))
 
 ;; ALMOST: except suboptimal states may get cached at higher levels too.
 ;; Such bad states cannot be cached.  

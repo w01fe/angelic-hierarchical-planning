@@ -507,7 +507,7 @@
 	#^FibonacciHeapComp$Node n (.get m item)]
     (.delete heap n)
     (.put m item (get-cost (.getKey n)))
-    :removed))
+    (.getData n)))
 
 (defmethod pq-remove-min! ::GraphPriorityQueue [pq]
   (let [#^HashMap m (:map pq) 
@@ -544,6 +544,16 @@
   (let [#^FibonacciHeapComp heap (:heap pq)]
     (.size heap)))
 
+(defn g-pq-priority 
+  "Return nil if the queue never had item, otherwise its priority (currently, or when removed)"
+  [pq item]
+  (let [#^HashMap m (:map pq) 
+	#^FibonacciHeapComp heap (:heap pq)
+	n (.get m item)]
+    (cond (nil? n)                             nil
+	  (instance? FibonacciHeapComp$Node n) (.getKey #^FibonacciHeapComp$Node n)
+	  (number? n)                          n
+	  :else                                (throw (RuntimeException.) "Shouldn't happen."))))
 
 
 
