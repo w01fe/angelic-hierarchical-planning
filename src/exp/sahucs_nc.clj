@@ -35,7 +35,7 @@
     (assoc m k v)))
 
 (defn merge-safe [pred & maps]
-  (merge-with (fn [x y] (assert (pred x y)) x)))
+  (apply merge-with (fn [x y] (assert (pred x y)) x) maps))
 
 
 (defn extract-effect [state context opt]
@@ -154,6 +154,7 @@
 ; three classes of states - clean, just dirty, already dirty
 (defn classify-result-type [reward cycle-depth cutoff-depth-map]
   (let [[_ reward-cycle-depth] (first (subseq cutoff-depth-map > reward))
+;        _ (println reward-cycle-depth cycle-depth)
         final-cycle-depth (min cycle-depth reward-cycle-depth)]
     (cond (= final-cycle-depth *infinite-depth*) :clean
           (= cycle-depth       *infinite-depth*) :dirtied
@@ -164,26 +165,28 @@
     (min cycle-depth reward-cycle-depth)))
 
 (defn extend-cutoff-depth-map [cdm cutoff depth]
-  (let [[g-cutoff g-depth] (first (subseq (cdm >= cutoff)))]
+;  (println cdm cutoff depth)
+  (let [[g-cutoff g-depth] (first (subseq cdm >= cutoff))]
     (if (< depth g-depth) (assoc cdm cutoff depth) cdm)))
 
 ;; May return states better than next-best, but these will be held at the parent.
 (defn expand-sa-node [node #^HashMap cache next-best state reward-to-state last-cutoff
                       #^IdentityHashMap stack-node-depths depth]
   (assert (not (.containsKey stack-node-depths node)))
+;  (println "Entering " (env/action-name (:action node)))
   (.put stack-node-depths node depth)
   (let [good-queue (:queue node)
         bad-queue  (queues/make-graph-stack-pq)
         both-queue (queues/make-union-pq good-queue bad-queue)
         catchup    (if (= last-cutoff (cutoff good-queue)) {}
-                     (util/filter-map #(<= (val %) last-cutoff)  @(:result-map-atom node)))]
+                     (util/filter-map #(<= (val %) last-cutoff) @(:result-map-atom node)))]
     (loop [new-results      {}
            cutoff-depth-map (sorted-map Double/POSITIVE_INFINITY *infinite-depth*) 
            good-roots       nil]   ; jumping off points for unsavable computations.
       (if (< (cutoff both-queue) next-best)  ; Done
         (let [cut (cutoff both-queue) ; Cutoff before fixing cycling children.
               {:keys [clean dirtied still-dirty]} 
-                (util/group-by (fn [[s r]] (classify-result-type r (:cycle-depth (:entry (meta s))) cutoff-depth-map))
+                (util/group-by (fn [[s r]] (classify-result-type r (:min-cycle-depth (:entry (meta s))) cutoff-depth-map))
                           new-results)]
           (swap! (:result-map-atom node) (partial merge-safe >=) (into {} clean))
           (doseq [entry (concat good-roots (map #(:entry (meta (key %))) dirtied))] 
