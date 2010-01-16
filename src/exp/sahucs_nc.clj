@@ -164,16 +164,16 @@
   (let [[_ reward-cycle-depth] (first (subseq cutoff-depth-map > reward))]
     (min cycle-depth reward-cycle-depth)))
 
-(defn extend-cutoff-depth-map [cdm cutoff depth]
+(defn extend-cutoff-depth-map [cdm cutoff depth node-depth]
 ;  (println cdm cutoff depth)
   (let [[g-cutoff g-depth] (first (subseq cdm >= cutoff))]
-    (if (< depth g-depth) (assoc cdm cutoff depth) cdm)))
+    (if (< depth (min node-depth  g-depth)) (assoc cdm cutoff depth) cdm)))
 
 ;; May return states better than next-best, but these will be held at the parent.
 (defn expand-sa-node [node #^HashMap cache next-best state reward-to-state last-cutoff
                       #^IdentityHashMap stack-node-depths depth]
   (assert (not (.containsKey stack-node-depths node)))
-;  (println "Entering " (env/action-name (:action node)))
+  (println "Entering " (env/action-name (:action node)) "at depth" depth)
   (.put stack-node-depths node depth)
   (let [good-queue (:queue node)
         bad-queue  (queues/make-graph-stack-pq)
@@ -193,6 +193,7 @@
             (queues/g-pq-replace! good-queue entry 
               (- 0 (:reward-to-state entry) (if-let [n  (:sanode entry)] (cutoff (:queue n)) 0))))
           (.remove stack-node-depths node) ;; TODO: catchup!! 
+          (println "Returning from" (env/action-name (:action node)) "With cutoff" cut (cutoff good-queue) "and cdm" cutoff-depth-map "and states" (count new-results) (count catchup) "-" (count clean) (count dirtied) (count still-dirty) "and good roots" (count good-roots) (map :reward-to-state good-roots))
           (PartialResult (stitch-effect-map 
                            (into {} (map (fn [[s r]] [(vary-meta s assoc :cycle-depth 
                                                         (final-cycle-depth r (or (:cycle-depth (:entry (meta s))) 
@@ -201,14 +202,15 @@
                                          (concat new-results catchup)))
                            state reward-to-state) 
                          cut (val (first cutoff-depth-map))))   
-        (let [[entry neg-reward] (queues/g-pq-remove-min-with-cost! (:queue node))
+        (let [[entry neg-reward] (queues/pq-peek-min both-queue)
               b-s (:state entry), b-rts (:reward-to-state entry), 
               b-ra (:remaining-actions entry), b-sa (:sanode entry), b-cd (:min-cycle-depth entry)
               rec-next-best (- (max next-best (cutoff both-queue)) b-rts)]
           (if (empty? b-ra)
-              (recur (assoc-safe new-results >=
-                       (vary-meta (extract-effect b-s (:context node) (:opt (meta b-s))) assoc :entry entry) b-rts)
-                     cutoff-depth-map good-roots)
+              (do (queues/pq-remove-min-with-cost! both-queue) 
+               (recur (assoc-safe new-results >=
+                                  (vary-meta (extract-effect b-s (:context node) (:opt (meta b-s))) assoc :entry entry) b-rts)
+                      cutoff-depth-map good-roots))
             (let [rec (if-let [stack-depth (.get stack-node-depths b-sa)]
                            (PartialResult {} Double/NEGATIVE_INFINITY stack-depth)
                          (expand-sa-node b-sa cache rec-next-best b-s b-rts (- 0 neg-reward b-rts)
@@ -227,13 +229,16 @@
                                           bad-nodes)]
               (doseq [n good-nodes]       (queues/g-pq-add! good-queue n (- (:reward-to-state n))))
               (doseq [n (concat nbn sbn)] (queues/g-pq-add! bad-queue  n (- (:reward-to-state n))))
+              (queues/pq-remove-min-with-cost! both-queue)
               (when (> (:cutoff rec) Double/NEGATIVE_INFINITY)
                 (queues/g-pq-replace! (if (< cd depth) bad-queue good-queue) entry (- 0 b-rts (:cutoff rec))))
               (recur new-results
-                     (extend-cutoff-depth-map cutoff-depth-map (:cutoff rec) cd)
+                     (extend-cutoff-depth-map cutoff-depth-map (:cutoff rec) cd depth)
                      (concat (when (and (>= b-cd depth) (< cd depth)) [entry])
                              (doall (for [n sbn] (queues/g-pq-remove! good-queue n)))
                              good-roots)))))))))
+
+;; Need same fix as regular since in cycles we may still check cutoff. 
 
 ;; ALMOST: except suboptimal states may get cached at higher levels too.
 ;; Such bad states cannot be cached.  
@@ -268,3 +273,14 @@
 
 
 
+; (first (filter #(let [h (simple-taxi-hierarchy (make-random-taxi-env 2 3 2 %)) ] (println %) (not (= (prln  (second (sahtn-dijkstra h))) (second (exp.sahucs-nc/sahucs-nc h))))) (map (fn [x y] x) (range 100) (iterate inc 0))))
+; 74 causes infinite loop. ?
+
+; (first (filter #(let [h (simple-taxi-hierarchy (make-random-taxi-env 3 2 2 %)) ] (println %) (not (= (prln  (second (sahtn-dijkstra h))) (second (exp.sahucs-nc/sahucs-nc h))))) (map (fn [x y] x) (range 100) (iterate inc 0))))
+; 65 fails
+
+;(first (filter #(let [h (simple-taxi-hierarchy (make-random-taxi-env 1 3 2 %)) ] (not (= (prln  (second (sahtn-dijkstra h))) ;(second (exp.sahucs-nc/sahucs-nc h))))) (map (fn [x y] x) (range 100) (iterate inc 0))))
+; 81 fails
+
+; a culprit
+; (exp.sahucs-nc/sahucs-nc (simple-taxi-hierarchy (make-random-taxi-env 1 3 2 81)))
