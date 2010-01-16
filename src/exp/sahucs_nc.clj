@@ -173,10 +173,10 @@
 (defn expand-sa-node [node #^HashMap cache next-best state reward-to-state last-cutoff
                       #^IdentityHashMap stack-node-depths depth]
   (assert (not (.containsKey stack-node-depths node)))
-  (println "Entering " (env/action-name (:action node)) (map #(env/get-var state %) '[[atx] [aty]]) "at depth" depth ", " (count @(:result-map-atom node)) ", " last-cutoff reward-to-state)
+  ;(println "Entering " (env/action-name (:action node)) (map #(env/get-var state %) '[[atx] [aty]]) "at depth" depth ", " (count @(:result-map-atom node)) ", " last-cutoff reward-to-state)
   (.put stack-node-depths node depth)
   (let [good-queue (:queue node)
-        bad-queue  (queues/make-graph-stack-pq)
+        bad-queue  (queues/make-graph-search-pq)
         both-queue (queues/make-union-pq good-queue bad-queue)
         catchup    (if (= last-cutoff (cutoff good-queue)) {}
                      (util/filter-map #(<= (val %) last-cutoff) @(:result-map-atom node)))]
@@ -194,7 +194,7 @@
             (queues/g-pq-replace! good-queue entry 
               (or (:cutoff (meta entry)) (- (:reward-to-state entry))))) ;(if-let [n  (:sanode entry)] (cutoff (:queue n)) 0)
           (.remove stack-node-depths node) ;; TODO: catchup!! 
-          (println "Returning from" (env/action-name (:action node)) (map #(env/get-var state %) '[[atx] [aty]]) "With cutoff" cut (cutoff good-queue) "and cdm" cutoff-depth-map "and states" (count new-results) (count catchup) "-" (count clean) (count dirtied) (count still-dirty) "and good roots" (count good-roots) (map :reward-to-state good-roots))
+         ; (println "Returning from" (env/action-name (:action node)) (map #(env/get-var state %) '[[atx] [aty]]) "With cutoff" cut (cutoff good-queue) "and cdm" cutoff-depth-map "and states" (count new-results) (count catchup) "-" (count clean) (count dirtied) (count still-dirty) "and good roots" (count good-roots) (map :reward-to-state good-roots))
           (PartialResult (stitch-effect-map 
                            (into {} (map (fn [[s r]] [(vary-meta s assoc :cycle-depth 
                                                         (final-cycle-depth r (or (:cycle-depth (:entry (meta s))) 
@@ -208,12 +208,12 @@
               b-ra (:remaining-actions entry), b-sa (:sanode entry), b-cd (:min-cycle-depth entry)
               rec-next-best (- (max next-best (cutoff both-queue)) b-rts)]
           (if (empty? b-ra)
-              (do (println "found state" (map #(env/get-var b-s %) '[[atx] [aty]]) "with reward" b-rts)
+              (do; (println "found state" (map #(env/get-var b-s %) '[[atx] [aty]]) "with reward" b-rts)
                 (recur (assoc-safe new-results >=
                                   (vary-meta (extract-effect b-s (:context node) (:opt (meta b-s))) assoc :entry entry) b-rts)
                       cutoff-depth-map good-roots))
             (let [[rec rcut] (if-let [stack-depth (.get stack-node-depths b-sa)]
-                            (do (println "Stack hit on" (env/action-name (:action b-sa)) (map #(env/get-var b-s %) '[[atx] [aty]])) 
+                            (do ;(println "Stack hit on" (env/action-name (:action b-sa)) (map #(env/get-var b-s %) '[[atx] [aty]])) 
                                 [(PartialResult {} Double/NEGATIVE_INFINITY stack-depth) (- neg-reward)])
                             [(expand-sa-node b-sa cache rec-next-best b-s b-rts (- 0 neg-reward b-rts)
                                               stack-node-depths (inc depth)) (+ (cutoff (:queue b-sa)) b-rts)])
@@ -275,7 +275,7 @@
 
 
 ; (first (filter #(let [h (simple-taxi-hierarchy (make-random-taxi-env 2 3 2 %)) ] (println %) (not (= (prln  (second (sahtn-dijkstra h))) (second (exp.sahucs-nc/sahucs-nc h))))) (map (fn [x y] x) (range 100) (iterate inc 0))))
-; 74 causes infinite loop. ?
+; 54 fails 
 
 ; (first (filter #(let [h (simple-taxi-hierarchy (make-random-taxi-env 3 2 2 %)) ] (println %) (not (= (prln  (second (sahtn-dijkstra h))) (second (exp.sahucs-nc/sahucs-nc h))))) (map (fn [x y] x) (range 100) (iterate inc 0))))
 ; 65 fails
