@@ -48,7 +48,7 @@
 
 
 
-(deftype SANode [context action result-map-atom queue])
+(deftype SANode [state context action result-map-atom queue])
 
 (defn cutoff [node]
   (- (nth (queues/g-pq-peek-min (:queue node)) 1)))
@@ -74,65 +74,90 @@
 
 
 (declare get-sa-node)
-(defn get-sanode-entry [cache state reward-to-state actions]
+(defn get-sanode-entry [cache state reward-to-state actions dijkstra? parent-cycle-level]
   (make-sanode-entry state 
-   (when (seq actions) (get-sa-node cache state (first actions)))
+   (when (and (seq actions)
+              (not (and parent-cycle-level
+                        (when-let [b-level (hierarchy/cycle-level (first actions) state)] 
+                          (assert (<= b-level parent-cycle-level))
+                          (= b-level parent-cycle-level))))) 
+     (get-sa-node cache state (first actions) dijkstra?))
    reward-to-state actions))
 
-(defn get-sa-node [#^HashMap cache s a]
+(defn get-sa-node [#^HashMap cache s a dijkstra?]
   "Create a new sa-node, or returned the cached copy if it exists."
   (let [context (env/precondition-context a s)]
     (util/cache-with cache [(env/action-name a) (env/extract-context s context)]
-      (let [s     (env/get-logger s)
-            prim? (env/primitive? a)
-            [ss r] (when-let [x (and prim? (env/applicable? a s) (env/successor a s))] x)] ;pun        
-        (SANode context a 
-          (atom (if ss {(extract-effect ss context [a]) r} {})) 
-          (make-queue (for [ref (when-not prim? (hierarchy/immediate-refinements a s))]
-                        [(get-sanode-entry cache s 0.0 ref) 0.0])))))))
+      (let [s (env/get-logger s)]
+        (if (env/primitive? a)
+          (SANode s context a 
+            (atom (if (env/applicable? a s) (let [[ss r] (env/successor a s)] {(extract-effect ss context [a]) r}) {})) 
+            (make-queue []))
+          (SANode s context a (atom {}) (make-queue  [[(make-sanode-entry s nil 0.0 [a]) 0.0]])))))))
+;          (make-queue (for [ref (when-not prim? (hierarchy/immediate-refinements a s))]
+;                        [(get-sanode-entry cache s 0.0 ref dijkstra? (and dijkstra? (hierarchy/cycle-level a s))) 
+;                         0.0]))
 
+
+;; Q1: why do we use more states than sahtn-dijkstra? 
+;; Q2: why do we waste effort -- should only flatten as needed.
 
 ;; May return states better than next-best, but these will be held at the parent.
-(defn expand-sa-node [node #^HashMap cache next-best state reward-to-state last-cutoff]
-  (loop [new-results (if (= last-cutoff (cutoff node)) {}
-                         (util/filter-map #(<= (val %) last-cutoff)  @(:result-map-atom node)))]
-     (if (< (cutoff node) next-best)
-         (PartialResult (stitch-effect-map new-results state reward-to-state) (cutoff node))   
-       (let [[entry neg-reward] (queues/g-pq-peek-min (:queue node))
-             b-s (:state entry), b-rts (:reward-to-state entry), 
-             b-ra (:remaining-actions entry), b-sa (:sanode entry)
-             rec-next-best (- (max next-best (cutoff node)) b-rts)]
-           (if (empty? b-ra)
-               (let [eff (extract-effect b-s (:context node) (:opt (meta b-s)))]
-                 (swap! (:result-map-atom node) assoc-safe >= eff b-rts)
-                 (queues/g-pq-remove!  (:queue node) entry)
-                 (recur (assoc-safe new-results >= eff b-rts)))
-             (let [rec (expand-sa-node b-sa cache rec-next-best b-s b-rts (- 0 neg-reward b-rts))]
-               (doseq [[ss sr] (:result-map rec)]
-                 (queues/g-pq-add! (:queue node) (get-sanode-entry cache ss sr (next b-ra)) (- sr)))
-               (if (> (:cutoff rec) Double/NEGATIVE_INFINITY) 
-                   (queues/g-pq-replace! (:queue node) entry (- 0 b-rts (:cutoff rec)))
-                 (queues/g-pq-remove!  (:queue node) entry))
-               (recur new-results)))))))
+(defn expand-sa-node [node #^HashMap cache next-best state reward-to-state last-cutoff dijkstra?]
+  (let [cycle-level (and dijkstra? (hierarchy/cycle-level (:action node) (:state node)))]
+    (loop [new-results (if (= last-cutoff (cutoff node)) {}
+                           (util/filter-map #(<= (val %) last-cutoff)  @(:result-map-atom node)))]
+      (if (< (cutoff node) next-best)
+        (PartialResult (stitch-effect-map new-results state reward-to-state) (cutoff node))   
+        (let [[entry neg-reward] (queues/g-pq-peek-min (:queue node))
+              b-s (:state entry), b-rts (:reward-to-state entry), 
+              b-ra (:remaining-actions entry), b-sa (:sanode entry)
+              rec-next-best (- (max next-best (cutoff node)) b-rts)]
+          (cond (empty? b-ra)  ;; Optimal path to new state in output valuation found
+                  (let [eff (extract-effect b-s (:context node) (:opt (meta b-s)))]
+                    (swap! (:result-map-atom node) assoc-safe >= eff b-rts)
+                    (queues/g-pq-remove!  (:queue node) entry)
+                    (recur (assoc-safe new-results >= eff b-rts)))
+                (not b-sa)     ;; Dijkstra child.
+                  (do ;(println "Out" (map #(env/get-var (:state node) %) '[[atx] [aty]]) (map env/action-name b-ra))
+                      (doseq [ref (hierarchy/immediate-refinements (first b-ra) b-s)]
+;                        (println (map env/action-name ref) (map env/action-name b-ra))
+                        (queues/pq-add! (:queue node) 
+                                        (get-sanode-entry cache b-s b-rts (concat ref (next b-ra)) dijkstra? cycle-level)
+                                        (- b-rts)))
+                      (queues/g-pq-remove!  (:queue node) entry)
+                      (recur new-results))
+                :else          ;; Normal intermediate node.
+                  (let [rec (expand-sa-node b-sa cache rec-next-best b-s b-rts (- 0 neg-reward b-rts) dijkstra?)]
+                    (doseq [[ss sr] (:result-map rec)]
+                      (queues/g-pq-add! (:queue node) (get-sanode-entry cache ss sr (next b-ra) dijkstra? cycle-level) (- sr)))
+                    (if (> (:cutoff rec) Double/NEGATIVE_INFINITY) 
+                      (queues/g-pq-replace! (:queue node) entry (- 0 b-rts (:cutoff rec)))
+                      (queues/g-pq-remove!  (:queue node) entry))
+                    (recur new-results))))))))
 
 
 ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
 ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;    Top-level    ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
 ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
 
-
-
-
-(defn sahucs [henv]
+(defn sahucs-top [henv dijkstra?]
+  [henv dijkstra?]
   (let [e     (hierarchy/env henv)
         cache (HashMap.)
         init  (env/initial-state e)
-        root  (get-sa-node cache init (hierarchy/TopLevelAction e [(hierarchy/initial-plan henv)]))]
+        root  (get-sa-node cache init (hierarchy/TopLevelAction e [(hierarchy/initial-plan henv)]) dijkstra?)]
     (loop [cutoff 0 last-cutoff 0]
-      (let [result (expand-sa-node root cache cutoff init 0.0 last-cutoff)]
+      (let [result (expand-sa-node root cache cutoff init 0.0 last-cutoff dijkstra?)]
         (cond (not (empty? (:result-map result)))
                 (let [[k v] (util/first-maximal-element val (:result-map result))]
                   [(:opt (meta k)) v])
               (> (:cutoff result) Double/NEGATIVE_INFINITY)
                 (recur (:cutoff result) cutoff))))))
+
+
+(defn sahucs [henv] (sahucs-top henv false))
+(defn sahucs-dijkstra [henv] (sahucs-top henv true))
+
+
 

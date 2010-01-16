@@ -19,6 +19,7 @@
 
 ;; TODO: this forces eagerness, may not be desirable in some situations.
 (defn immediate-refinements [a s]  
+;  (println "Refs for " (env/action-name a) "from" (map #(env/get-var s %) '[[atx] [aty]]))
   (util/timeout)
   (let [refs (immediate-refinements- a s)]
     (util/sref-set! *ref-counter*  (+ 1            (util/sref-get *ref-counter*)))
