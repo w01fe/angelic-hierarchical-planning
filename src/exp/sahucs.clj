@@ -74,17 +74,17 @@
 
 
 (declare get-sa-node)
-(defn get-sanode-entry [cache state reward-to-state actions dijkstra? parent-cycle-level]
+(defn get-sanode-entry [cache state reward-to-state actions parent-cycle-level]
   (make-sanode-entry state 
    (when (and (seq actions)
               (not (and parent-cycle-level
                         (when-let [b-level (hierarchy/cycle-level (first actions) state)] 
                           (assert (<= b-level parent-cycle-level))
                           (= b-level parent-cycle-level))))) 
-     (get-sa-node cache state (first actions) dijkstra?))
+     (get-sa-node cache state (first actions)))
    reward-to-state actions))
 
-(defn get-sa-node [#^HashMap cache s a dijkstra?]
+(defn get-sa-node [#^HashMap cache s a]
   "Create a new sa-node, or returned the cached copy if it exists."
   (let [context (env/precondition-context a s)]
     (util/cache-with cache [(env/action-name a) (env/extract-context s context)]
@@ -123,14 +123,14 @@
                       (doseq [ref (hierarchy/immediate-refinements (first b-ra) b-s)]
 ;                        (println (map env/action-name ref) (map env/action-name b-ra))
                         (queues/pq-add! (:queue node) 
-                                        (get-sanode-entry cache b-s b-rts (concat ref (next b-ra)) dijkstra? cycle-level)
+                                        (get-sanode-entry cache b-s b-rts (concat ref (next b-ra)) cycle-level)
                                         (- b-rts)))
                       (queues/g-pq-remove!  (:queue node) entry)
                       (recur new-results))
                 :else          ;; Normal intermediate node.
                   (let [rec (expand-sa-node b-sa cache rec-next-best b-s b-rts (- 0 neg-reward b-rts) dijkstra?)]
                     (doseq [[ss sr] (:result-map rec)]
-                      (queues/g-pq-add! (:queue node) (get-sanode-entry cache ss sr (next b-ra) dijkstra? cycle-level) (- sr)))
+                      (queues/g-pq-add! (:queue node) (get-sanode-entry cache ss sr (next b-ra) cycle-level) (- sr)))
                     (if (> (:cutoff rec) Double/NEGATIVE_INFINITY) 
                       (queues/g-pq-replace! (:queue node) entry (- 0 b-rts (:cutoff rec)))
                       (queues/g-pq-remove!  (:queue node) entry))
@@ -146,7 +146,7 @@
   (let [e     (hierarchy/env henv)
         cache (HashMap.)
         init  (env/initial-state e)
-        root  (get-sa-node cache init (hierarchy/TopLevelAction e [(hierarchy/initial-plan henv)]) dijkstra?)]
+        root  (get-sa-node cache init (hierarchy/TopLevelAction e [(hierarchy/initial-plan henv)]))]
     (loop [cutoff 0 last-cutoff 0]
       (let [result (expand-sa-node root cache cutoff init 0.0 last-cutoff dijkstra?)]
         (cond (not (empty? (:result-map result)))
