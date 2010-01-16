@@ -555,6 +555,10 @@
 	  (number? n)                          n
 	  :else                                (throw (RuntimeException.) "Shouldn't happen."))))
 
+(defmethod pq-peek-pairs ::GraphPriorityQueue [pq]
+  (let [#^FibonacciHeapComp heap (:heap pq)]
+    (for [#^com.bluemarsh.graphmaker.core.util.FibonacciHeapComp$Node node (.nodeList heap)]
+      [(.getData node) (.getKey node)])))
 
 
 (deftest graph-search-pq 
