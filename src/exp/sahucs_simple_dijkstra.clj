@@ -1,4 +1,4 @@
-(ns exp.sahucs
+(ns exp.sahucs-simple-dijkstra
   (:require [edu.berkeley.ai.util :as util] [edu.berkeley.ai.util.queues :as queues]
             [exp [env :as env] [hierarchy :as hierarchy]])
   (:import [java.util HashMap])
@@ -159,7 +159,7 @@
 
 
 (defn sahucs [henv] (sahucs-top henv false))
-(defn sahucs-dijkstra [henv] (sahucs-top henv true))
+(defn sahucs-simple-dijkstra [henv] (sahucs-top henv true))
 
 
 
