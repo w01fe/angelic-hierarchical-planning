@@ -169,13 +169,13 @@
         cache (HashMap.)
         init  (env/initial-state e)
         root  (get-sa-node cache init (hierarchy/TopLevelAction e [(hierarchy/initial-plan henv)]))]
-    (loop [cutoff 0 last-cutoff 0]
-      (let [result (expand-sa-node root cache cutoff init 0.0 last-cutoff dijkstra? nil nil)]
+    (loop [cutoff 0]
+      (let [result (expand-sa-node root cache cutoff init 0.0 cutoff dijkstra? nil nil)]
         (cond (not (empty? (:queue-entries result)))
               (let [[entry] (util/first-maximal-element (comp :reward-to-state first) (:queue-entries result))]
                   [(:opt (meta (:state entry))) (:reward-to-state entry)])
               (> (:cutoff result) Double/NEGATIVE_INFINITY)
-                (recur (:cutoff result) cutoff))))))
+                (recur (:cutoff result) ))))))
 
 
 (defn sahucs [henv] (sahucs-top henv false))

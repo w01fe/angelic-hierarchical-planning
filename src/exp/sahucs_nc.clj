@@ -1,5 +1,5 @@
 (ns exp.sahucs-nc
-  (:require [edu.berkeley.ai.util :as util] [edu.berkeley.ai.util.queues :as queues]
+  (:require [edu.berkeley.ai.util :as util] [edu.berkeley.ai.util [queues :as queues] [debug-repl :as dr]]
             [exp [env :as env] [hierarchy :as hierarchy]])
   (:import [java.util HashMap IdentityHashMap])
   )
@@ -173,7 +173,7 @@
 (defn expand-sa-node [node #^HashMap cache next-best state reward-to-state last-cutoff
                       #^IdentityHashMap stack-node-depths depth]
   (assert (not (.containsKey stack-node-depths node)))
-  ;(println "Entering " (env/action-name (:action node)) (map #(env/get-var state %) '[[atx] [aty]]) "at depth" depth ", " (count @(:result-map-atom node)) ", " last-cutoff reward-to-state)
+  (println "Entering " (env/action-name (:action node)) (map #(env/get-var state %) '[[atx] [aty]]) "at depth" depth ", " (count @(:result-map-atom node)) ", " next-best last-cutoff reward-to-state)
   (.put stack-node-depths node depth)
   (let [good-queue (:queue node)
         bad-queue  (queues/make-graph-search-pq)
@@ -189,12 +189,21 @@
                 (util/group-by (fn [[s r]] (classify-result-type r (:min-cycle-depth (:entry (meta s))) cutoff-depth-map))
                           new-results)]
           (swap! (:result-map-atom node) (partial merge-safe >=) (into {} clean))
+
+          (when (= (first (env/action-name (:action node))) 'nav)
+            (let [[_ dx dy] (env/action-name (:action node))]
+              (doseq [[ss sr] (stitch-effect-map clean state 0 #_ reward-to-state)]
+;                (println ss sr clean new-results (env/action-name (:action node)))
+                (let [[sx sy] (map #(env/get-var state %) '[[atx] [aty]])]
+                  (when-not (= (- sr) (+ (util/abs (- sx dx)) (util/abs (- sy dy))))
+                     (println [sx sy] [dx dy] sr (:min-cycle-depth (:entry (meta ss))) reward-to-state) #_ (dr/debug-repl))))))
+          
           (doseq [entry (concat good-roots (map #(:entry (meta (key %))) dirtied))] 
             (assert (util/xor (not (:sanode entry)) (:cutoff (meta entry))))
             (queues/g-pq-replace! good-queue entry 
-              (or (:cutoff (meta entry)) (- (:reward-to-state entry))))) ;(if-let [n  (:sanode entry)] (cutoff (:queue n)) 0)
+              (- (or (:cutoff (meta entry)) (:reward-to-state entry))))) ;(if-let [n  (:sanode entry)] (cutoff (:queue n)) 0)
           (.remove stack-node-depths node) ;; TODO: catchup!! 
-         ; (println "Returning from" (env/action-name (:action node)) (map #(env/get-var state %) '[[atx] [aty]]) "With cutoff" cut (cutoff good-queue) "and cdm" cutoff-depth-map "and states" (count new-results) (count catchup) "-" (count clean) (count dirtied) (count still-dirty) "and good roots" (count good-roots) (map :reward-to-state good-roots))
+;          (println "Returning from" (env/action-name (:action node)) (map #(env/get-var state %) '[[atx] [aty]]) "With cutoff" cut (cutoff good-queue) "and cdm" cutoff-depth-map "and states" (count new-results) (count catchup) "-" (count clean) (count dirtied) (count still-dirty) "and good roots" (count good-roots) (map :reward-to-state good-roots))
           (PartialResult (stitch-effect-map 
                            (into {} (map (fn [[s r]] [(vary-meta s assoc :cycle-depth 
                                                         (final-cycle-depth r (or (:cycle-depth (:entry (meta s))) 
@@ -208,7 +217,7 @@
               b-ra (:remaining-actions entry), b-sa (:sanode entry), b-cd (:min-cycle-depth entry)
               rec-next-best (- (max next-best (cutoff both-queue)) b-rts)]
           (if (empty? b-ra)
-              (do; (println "found state" (map #(env/get-var b-s %) '[[atx] [aty]]) "with reward" b-rts)
+              (do  (println "found state" (map #(env/get-var b-s %) '[[atx] [aty]]) "for" (env/action-name (:action node)) "form" (map #(env/get-var state %) '[[atx] [aty]]) "with reward" b-rts "mcd" (:min-cycle-depth entry))
                 (recur (assoc-safe new-results >=
                                   (vary-meta (extract-effect b-s (:context node) (:opt (meta b-s))) assoc :entry entry) b-rts)
                       cutoff-depth-map good-roots))
@@ -240,6 +249,7 @@
                              good-roots)))))))))
 
 ;; TODO: Now, problem is that when we look at cutoff of good-root directly we miss cached states we haven't seen.!
+ ; Done ? 
 
 ;; ALMOST: except suboptimal states may get cached at higher levels too.
 ;; Such bad states cannot be cached.  
@@ -262,7 +272,7 @@
         init  (env/initial-state e)
         root  (get-sa-node cache init (hierarchy/TopLevelAction e [(hierarchy/initial-plan henv)]))]
     (loop [cutoff 0 last-cutoff 0]
-      (let [result (expand-sa-node root cache cutoff init 0.0 last-cutoff (IdentityHashMap.) 0)]
+      (let [result (expand-sa-node root cache cutoff init 0.0 cutoff (IdentityHashMap.) 0)]
         (cond (not (empty? (:result-map result)))
                 (let [[k v] (util/first-maximal-element val (:result-map result))]
                   [(:opt (meta k)) v])
@@ -285,3 +295,8 @@
 
 ; a culprit
 ; (exp.sahucs-nc/sahucs-nc (simple-taxi-hierarchy (make-random-taxi-env 1 3 2 81)))
+
+; new culprit
+; (exp.sahucs-nc/sahucs-nc (simple-taxi-hierarchy (make-random-taxi-env 2 3 2 5)))
+
+;; TODO: add assertions specific to this domain.

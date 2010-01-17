@@ -131,11 +131,11 @@
         cache (HashMap.)
         init  (env/initial-state e)
         root  (get-sa-node cache init (hierarchy/TopLevelAction e [(hierarchy/initial-plan henv)]))]
-    (loop [cutoff 0 last-cutoff 0]
-      (let [result (expand-sa-node root cache cutoff init 0.0 last-cutoff)]
+    (loop [cutoff 0]
+      (let [result (expand-sa-node root cache cutoff init 0.0 cutoff)]
         (cond (not (empty? (:result-map result)))
                 (let [[k v] (util/first-maximal-element val (:result-map result))]
                   [(:opt (meta k)) v])
               (> (:cutoff result) Double/NEGATIVE_INFINITY)
-                (recur (:cutoff result) cutoff))))))
+                (recur (:cutoff result)))))))
 
