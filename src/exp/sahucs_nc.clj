@@ -34,8 +34,6 @@
     (do (assert (pred (get m k) v)) m)
     (assoc m k v)))
 
-(defn merge-safe [pred & maps]
-  (apply merge-with (fn [x y] (assert (pred x y)) x) maps))
 
 
 (defn extract-effect [state context opt]
@@ -64,16 +62,16 @@
 ;; Here, it also stores the min depth (0+) of any node participating in a cycle,
 ;; (or nil, if none), and in this case cutoff may be artificially low. 
 ;; Also returns a separate bad-result-map for results that cannot be cached.
+;; rec-context is just a context, to be passed back into the next recursive call so we can pick up where we left off.
+(deftype PartialResult [result-map cutoff min-cycle-depth rec-context])
 
-(deftype PartialResult [result-map cutoff min-cycle-depth])
-
-(deftype SANode [context action result-map-atom queue])
+(deftype SANode [context action result-vec-and-map-atom queue])
 
 
 
 ;; Represents an action sequence from a state, with sanode representing the first action
 ; in remaining-actions. (or nil, if remaining-actions is empty.)
-(deftype SANodeEntry [state sanode reward-to-state remaining-actions min-cycle-depth hash-code] :as this
+(deftype SANodeEntry [state sanode reward-to-state remaining-actions min-cycle-depth hash-code rec-context-atom] :as this
   Object
   (equals [y] (or (identical? this y) 
                   (and (= state (:state y)) (= remaining-actions (:remaining-actions y)))))
@@ -82,7 +80,8 @@
 (defn make-sanode-entry [state sanode reward-to-state remaining-actions min-cycle-depth]
   (SANodeEntry state sanode reward-to-state remaining-actions min-cycle-depth
                (unchecked-add (int (hash state)) 
-                              (unchecked-multiply (int 13) (int (hash remaining-actions))))))
+                              (unchecked-multiply (int 13) (int (hash remaining-actions))))
+               (atom 0)))
 
 ;(defn change-depth [entry new-cycle-depth]
 ;  (SANodeEntry (:state entry) (:sanode entry) (:reward-to-state entry) (:remaining-actions entry)
@@ -110,7 +109,7 @@
             prim? (env/primitive? a)
             [ss r] (when-let [x (and prim? (env/applicable? a s) (env/successor a s))] x)] ;pun        
         (SANode context a 
-          (atom (if ss {(extract-effect ss context [a]) r} {})) 
+                (atom (if ss (let [e (extract-effect ss context [a])] [[[e r]] {e r}]) [[] {}])) 
           (make-queue (for [ref (when-not prim? (hierarchy/immediate-refinements a s))]
                         [(get-sanode-entry cache s 0.0 ref *infinite-depth*) 0.0])))))))
 
@@ -169,17 +168,26 @@
   (let [[g-cutoff g-depth] (first (subseq cdm >= cutoff))]
     (if (< depth (min node-depth  g-depth)) (assoc cdm cutoff depth) cdm)))
 
+(defn spos [s]  (try  (map #(env/get-var s %) '[[atx] [aty]]) (catch Exception e)))
+
 ;; May return states better than next-best, but these will be held at the parent.
-(defn expand-sa-node [node #^HashMap cache next-best state reward-to-state last-cutoff
+
+;; Can't use last-cutoff as threshold for catchup because of cutoff duplicity.
+(defn expand-sa-node [node #^HashMap cache next-best state reward-to-state last-context
                       #^IdentityHashMap stack-node-depths depth]
   (assert (not (.containsKey stack-node-depths node)))
-  (println "Entering " (env/action-name (:action node)) (map #(env/get-var state %) '[[atx] [aty]]) "at depth" depth ", " (count @(:result-map-atom node)) ", " next-best last-cutoff reward-to-state)
+;  (println (apply str (repeat depth \ )) "Entering " (env/action-name (:action node)) (map #(env/get-var state %) '[[atx] [aty]]) "at depth" depth ", " (count (first @(:result-vec-and-map-atom node))) ", " next-best last-context reward-to-state)
+;  (println (apply str (repeat depth \ )) "States on queue are: " (util/map-map (fn [[k v]] [[(spos (:state k)) (map env/action-name (:remaining-actions k))] (- v)]) (into {} (filter #(< (second %) Double/POSITIVE_INFINITY) (queues/pq-peek-pairs (:queue node))))))  
   (.put stack-node-depths node depth)
   (let [good-queue (:queue node)
+        init-cutoff (cutoff good-queue)
         bad-queue  (queues/make-graph-search-pq)
         both-queue (queues/make-union-pq good-queue bad-queue)
-        catchup    (if (= last-cutoff (cutoff good-queue)) {}
-                     (util/filter-map #(<= (val %) last-cutoff) @(:result-map-atom node)))]
+        catchup    (into {} (drop last-context (first @(:result-vec-and-map-atom node))))
+                                        ; (util/filter-map #(<= (val %) last-cutoff) @(:result-map-atom node))
+                  ;  #_ (if (= last-cutoff (cutoff good-queue)) {}  ;; TODO: fix !?
+        ;(util/filter-map #(<= (val %) last-cutoff) @(:result-map-atom node)))
+        ]
     (loop [new-results      {}
            cutoff-depth-map (sorted-map Double/POSITIVE_INFINITY *infinite-depth*) 
            good-roots       nil]   ; jumping off points for unsavable computations.
@@ -188,15 +196,23 @@
               {:keys [clean dirtied still-dirty]} 
                 (util/group-by (fn [[s r]] (classify-result-type r (:min-cycle-depth (:entry (meta s))) cutoff-depth-map))
                           new-results)]
-          (swap! (:result-map-atom node) (partial merge-safe >=) (into {} clean))
+          
+          (swap! (:result-vec-and-map-atom node)
+                 (partial reduce (fn [[ve m :as p] [k v :as p2]]
+                                   (if-let [ov (get m k)]
+                                     (do (assert (>= ov v))
+                                         p)
+                                     [(conj ve p2) (assoc m k v)])))
+                 clean)
 
-          (when (= (first (env/action-name (:action node))) 'nav)
-            (let [[_ dx dy] (env/action-name (:action node))]
-              (doseq [[ss sr] (stitch-effect-map clean state 0 #_ reward-to-state)]
+;          (println (apply str (repeat depth \ )) (count clean) (count dirtied) (count still-dirty))
+;          (when (= (first (env/action-name (:action node))) 'nav)
+;            (let [[_ dx dy] (env/action-name (:action node))]
+;              (doseq [[ss sr] (stitch-effect-map clean state 0 #_ reward-to-state)]
 ;                (println ss sr clean new-results (env/action-name (:action node)))
-                (let [[sx sy] (map #(env/get-var state %) '[[atx] [aty]])]
-                  (when-not (= (- sr) (+ (util/abs (- sx dx)) (util/abs (- sy dy))))
-                     (println [sx sy] [dx dy] sr (:min-cycle-depth (:entry (meta ss))) reward-to-state) #_ (dr/debug-repl))))))
+;                (let [[sx sy] (map #(env/get-var state %) '[[atx] [aty]])]
+;                  (when-not (= (- sr) (+ (util/abs (- sx dx)) (util/abs (- sy dy))))
+;                     (println [sx sy] [dx dy] sr (:min-cycle-depth (:entry (meta ss))) reward-to-state) #_ (dr/debug-repl))))))
           
           (doseq [entry (concat good-roots (map #(:entry (meta (key %))) dirtied))] 
             (assert (util/xor (not (:sanode entry)) (:cutoff (meta entry))))
@@ -204,6 +220,9 @@
               (- (or (:cutoff (meta entry)) (:reward-to-state entry))))) ;(if-let [n  (:sanode entry)] (cutoff (:queue n)) 0)
           (.remove stack-node-depths node) ;; TODO: catchup!! 
 ;          (println "Returning from" (env/action-name (:action node)) (map #(env/get-var state %) '[[atx] [aty]]) "With cutoff" cut (cutoff good-queue) "and cdm" cutoff-depth-map "and states" (count new-results) (count catchup) "-" (count clean) (count dirtied) (count still-dirty) "and good roots" (count good-roots) (map :reward-to-state good-roots))
+;          (println (apply str (repeat depth \ )) "Returning from" (env/action-name (:action node)) (map #(env/get-var state %) '[[atx] [aty]]) "With cutoffs" cut (cutoff good-queue) ", ns"  (util/map-keys spos (stitch-effect-map catchup state reward-to-state) ) (count catchup) (count new-results))   
+          (assert (<= (cutoff good-queue) init-cutoff))
+          
           (PartialResult (stitch-effect-map 
                            (into {} (map (fn [[s r]] [(vary-meta s assoc :cycle-depth 
                                                         (final-cycle-depth r (or (:cycle-depth (:entry (meta s))) 
@@ -211,21 +230,22 @@
                                                       r])
                                          (concat new-results catchup)))
                            state reward-to-state) 
-                         cut (val (first cutoff-depth-map))))   
+                         cut (val (first cutoff-depth-map)) (count (first @(:result-vec-and-map-atom node)))))   
         (let [[entry neg-reward] (queues/pq-remove-min-with-cost! both-queue)
               b-s (:state entry), b-rts (:reward-to-state entry), 
               b-ra (:remaining-actions entry), b-sa (:sanode entry), b-cd (:min-cycle-depth entry)
               rec-next-best (- (max next-best (cutoff both-queue)) b-rts)]
           (if (empty? b-ra)
-              (do  (println "found state" (map #(env/get-var b-s %) '[[atx] [aty]]) "for" (env/action-name (:action node)) "form" (map #(env/get-var state %) '[[atx] [aty]]) "with reward" b-rts "mcd" (:min-cycle-depth entry))
+              (do  ;(println (apply str (repeat depth \ )) "! found state" (map #(env/get-var b-s %) '[[atx] [aty]]) "for" (env/action-name (:action node)) "form" (map #(env/get-var state %) '[[atx] [aty]]) "with reward" b-rts "mcd" (:min-cycle-depth entry))
                 (recur (assoc-safe new-results >=
                                   (vary-meta (extract-effect b-s (:context node) (:opt (meta b-s))) assoc :entry entry) b-rts)
                       cutoff-depth-map good-roots))
             (let [[rec rcut] (if-let [stack-depth (.get stack-node-depths b-sa)]
                             (do ;(println "Stack hit on" (env/action-name (:action b-sa)) (map #(env/get-var b-s %) '[[atx] [aty]])) 
-                                [(PartialResult {} Double/NEGATIVE_INFINITY stack-depth) (- neg-reward)])
-                            [(expand-sa-node b-sa cache rec-next-best b-s b-rts (- 0 neg-reward b-rts)
+                                [(PartialResult {} Double/NEGATIVE_INFINITY stack-depth @(:rec-context-atom entry)) (- neg-reward)])
+                            [(expand-sa-node b-sa cache rec-next-best b-s b-rts @(:rec-context-atom entry)
                                               stack-node-depths (inc depth)) (+ (cutoff (:queue b-sa)) b-rts)])
+;                  _                   (println (apply str (repeat depth \ )) "Got " b-cd (:min-cycle-depth rec) (util/map-keys (juxt spos (comp :cycle-depth meta)) (:result-map rec)))
                   cd  (min b-cd (:min-cycle-depth rec))
                   result-nodes (for [[ss sr] (:result-map rec)
                                      :let [s-cd (min (:cycle-depth (meta ss)) b-cd)]]                                 
@@ -238,6 +258,8 @@
                                                     (< (- good-pri) (:reward-to-state node)) :sbn
                                                     :else                                    :dbn)))
                                           bad-nodes)]
+;              (println (apply str (repeat depth \ )) (count good-nodes) (count nbn) (count dbn) (count sbn))
+              (reset! (:rec-context-atom entry) (:rec-context rec))
               (doseq [n good-nodes]       (queues/g-pq-add! good-queue n (- (:reward-to-state n))))
               (doseq [n (concat nbn sbn)] (queues/g-pq-add! bad-queue  n (- (:reward-to-state n))))
               (when (> (:cutoff rec) Double/NEGATIVE_INFINITY)
@@ -272,7 +294,8 @@
         init  (env/initial-state e)
         root  (get-sa-node cache init (hierarchy/TopLevelAction e [(hierarchy/initial-plan henv)]))]
     (loop [cutoff 0 last-cutoff 0]
-      (let [result (expand-sa-node root cache cutoff init 0.0 cutoff (IdentityHashMap.) 0)]
+;        (println "\ncutoff" cutoff "\n")
+      (let [result (expand-sa-node root cache cutoff init 0.0 0 (IdentityHashMap.) 0)]
         (cond (not (empty? (:result-map result)))
                 (let [[k v] (util/first-maximal-element val (:result-map result))]
                   [(:opt (meta k)) v])
