@@ -194,14 +194,17 @@
       (if (< (cutoff both-queue) next-best)  ; Done
         (let [cut (cutoff both-queue) ; Cutoff before fixing cycling children.
               {:keys [clean dirtied still-dirty]} 
-                (util/group-by (fn [[s r]] (classify-result-type r (:min-cycle-depth (:entry (meta s))) cutoff-depth-map))
+                (util/group-by (fn [[s r]] 
+                                 (let [mcd (:min-cycle-depth (:entry (meta s)))]
+                                   (assert (or (< mcd depth) (= mcd *infinite-depth*)))
+                                   (classify-result-type r mcd cutoff-depth-map)))
                           new-results)]
           
           (swap! (:result-vec-and-map-atom node)
                  (partial reduce (fn [[ve m :as p] [k v :as p2]]
                                    (if-let [ov (get m k)]
                                      (do (assert (>= ov v))
-                                         p)
+                                         p)                                    
                                      [(conj ve p2) (assoc m k v)])))
                  clean)
 
@@ -216,6 +219,7 @@
           
           (doseq [entry (concat good-roots (map #(:entry (meta (key %))) dirtied))] 
             (assert (util/xor (not (:sanode entry)) (:cutoff (meta entry))))
+            (assert (= (:min-cycle-depth entry) *infinite-depth*))
             (util/assert-is (<= (or (:cutoff (meta entry)) (:reward-to-state entry)) init-cutoff) "Bad cutoff %s %s" (:cutoff (meta entry)) (:reward-to-state entry))
             (queues/g-pq-replace! good-queue entry 
               (- (or (:cutoff (meta entry)) (:reward-to-state entry))))) ;(if-let [n  (:sanode entry)] (cutoff (:queue n)) 0)
@@ -247,7 +251,8 @@
                             [(expand-sa-node b-sa cache rec-next-best b-s b-rts @(:rec-context-atom entry)
                                               stack-node-depths (inc depth)) (+ (cutoff (:queue b-sa)) b-rts)])
 ;                  _                   (println (apply str (repeat depth \ )) "Got " b-cd (:min-cycle-depth rec) (util/map-keys (juxt spos (comp :cycle-depth meta)) (:result-map rec)))
-                  cd  (min b-cd (:min-cycle-depth rec))
+                  rec-mcd (if (< (:min-cycle-depth rec) depth) (:min-cycle-depth rec) *infinite-depth*)
+                  cd      (min b-cd)
                   result-nodes (for [[ss sr] (:result-map rec)
                                      :let [s-cd (min (:cycle-depth (meta ss)) b-cd)]]                                 
                                  (get-sanode-entry cache ss sr (next b-ra) (if (< s-cd depth) s-cd *infinite-depth*)))
@@ -259,6 +264,8 @@
                                                     (< (- good-pri) (:reward-to-state node)) :sbn
                                                     :else                                    :dbn)))
                                           bad-nodes)]
+              (assert (or (< b-cd depth) (= b-cd *infinite-depth*)))
+              (assert (or (< cd depth) (= cd *infinite-depth*)))
 ;              (println (apply str (repeat depth \ )) (count good-nodes) (count nbn) (count dbn) (count sbn))
               (util/assert-is (<=  (+ b-rts (:cutoff rec)) (- neg-reward)) "%s %s %s" neg-reward b-rts (cutoff (:queue b-sa)))
               (reset! (:rec-context-atom entry) (:rec-context rec))
@@ -280,7 +287,8 @@
                              (doall (for [n sbn] (queues/g-pq-remove! good-queue n)))
                              good-roots)))))))))
 
-;; // TODO: now problem is that depths are actually relative.  good nodes should ahve no cycle depth.
+;; // TODO: now problem is that depths are actually relative.  good nodes should ahve no cycle depth.a
+;; Think hard about how this works in, e.g., navigation.
 
 ;; ALMOST: except suboptimal states may get cached at higher levels too.
 ;; Such bad states cannot be cached.  
