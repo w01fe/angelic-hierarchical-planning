@@ -83,9 +83,9 @@
                               (unchecked-multiply (int 13) (int (hash remaining-actions))))
                (atom 0)))
 
-;(defn change-depth [entry new-cycle-depth]
-;  (SANodeEntry (:state entry) (:sanode entry) (:reward-to-state entry) (:remaining-actions entry)
-;               new-cycle-depth (:hash-code entry)))
+(defn change-depth [entry new-cycle-depth]
+  (SANodeEntry (:state entry) (:sanode entry) (:reward-to-state entry) (:remaining-actions entry)
+               new-cycle-depth (:hash-code entry) (:rec-context-atom entry)))
 
 ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
 ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;; Core Algorithm  ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
@@ -176,7 +176,7 @@
 (defn expand-sa-node [node #^HashMap cache next-best state reward-to-state last-context
                       #^IdentityHashMap stack-node-depths depth]
   (assert (not (.containsKey stack-node-depths node)))
-;  (println (apply str (repeat depth \ )) "Entering " (env/action-name (:action node)) (map #(env/get-var state %) '[[atx] [aty]]) "at depth" depth ", " (count (first @(:result-vec-and-map-atom node))) ", " next-best last-context reward-to-state)
+  (println (apply str (repeat depth \ )) "Entering " (env/action-name (:action node)) (map #(env/get-var state %) '[[atx] [aty]]) "at depth" depth ", " (count (first @(:result-vec-and-map-atom node))) ", " (cutoff (:queue node)) next-best last-context reward-to-state)
 ;  (println (apply str (repeat depth \ )) "States on queue are: " (util/map-map (fn [[k v]] [[(spos (:state k)) (map env/action-name (:remaining-actions k))] (- v)]) (into {} (filter #(< (second %) Double/POSITIVE_INFINITY) (queues/pq-peek-pairs (:queue node))))))  
   (.put stack-node-depths node depth)
   (let [good-queue (:queue node)
@@ -216,11 +216,12 @@
           
           (doseq [entry (concat good-roots (map #(:entry (meta (key %))) dirtied))] 
             (assert (util/xor (not (:sanode entry)) (:cutoff (meta entry))))
+            (util/assert-is (<= (or (:cutoff (meta entry)) (:reward-to-state entry)) init-cutoff) "Bad cutoff %s %s" (:cutoff (meta entry)) (:reward-to-state entry))
             (queues/g-pq-replace! good-queue entry 
               (- (or (:cutoff (meta entry)) (:reward-to-state entry))))) ;(if-let [n  (:sanode entry)] (cutoff (:queue n)) 0)
           (.remove stack-node-depths node) ;; TODO: catchup!! 
 ;          (println "Returning from" (env/action-name (:action node)) (map #(env/get-var state %) '[[atx] [aty]]) "With cutoff" cut (cutoff good-queue) "and cdm" cutoff-depth-map "and states" (count new-results) (count catchup) "-" (count clean) (count dirtied) (count still-dirty) "and good roots" (count good-roots) (map :reward-to-state good-roots))
-;          (println (apply str (repeat depth \ )) "Returning from" (env/action-name (:action node)) (map #(env/get-var state %) '[[atx] [aty]]) "With cutoffs" cut (cutoff good-queue) ", ns"  (util/map-keys spos (stitch-effect-map catchup state reward-to-state) ) (count catchup) (count new-results))   
+          (println (apply str (repeat depth \ )) "Returning from" (env/action-name (:action node)) (map #(env/get-var state %) '[[atx] [aty]]) "With cutoffs" cut (cutoff good-queue) ", ns"  (util/map-keys spos (stitch-effect-map catchup state reward-to-state) ) (count catchup) (count new-results))   
           (assert (<= (cutoff good-queue) init-cutoff))
           
           (PartialResult (stitch-effect-map 
@@ -259,19 +260,27 @@
                                                     :else                                    :dbn)))
                                           bad-nodes)]
 ;              (println (apply str (repeat depth \ )) (count good-nodes) (count nbn) (count dbn) (count sbn))
+              (util/assert-is (<=  (+ b-rts (:cutoff rec)) (- neg-reward)) "%s %s %s" neg-reward b-rts (cutoff (:queue b-sa)))
               (reset! (:rec-context-atom entry) (:rec-context rec))
-              (doseq [n good-nodes]       (queues/g-pq-add! good-queue n (- (:reward-to-state n))))
-              (doseq [n (concat nbn sbn)] (queues/g-pq-add! bad-queue  n (- (:reward-to-state n))))
+              (doseq [n good-nodes]      
+                (assert (<= (:reward-to-state n) (min init-cutoff (- neg-reward))))
+                (queues/g-pq-add! good-queue n (- (:reward-to-state n))))
+              (doseq [n (concat nbn sbn)] 
+                (queues/g-pq-add! bad-queue  n (- (:reward-to-state n))))
               (when (> (:cutoff rec) Double/NEGATIVE_INFINITY)
-                (queues/g-pq-replace! (if (< cd depth) bad-queue good-queue) entry (- 0 b-rts (:cutoff rec))))
+                (when (>= cd depth) (assert (<= (+ b-rts (:cutoff rec)) (min init-cutoff (- neg-reward)))))
+                (queues/g-pq-replace! (if (< cd depth) bad-queue good-queue) 
+                                      (change-depth entry cd) ; ???
+                                      (- 0 b-rts (:cutoff rec))))
               (recur new-results
                      (extend-cutoff-depth-map cutoff-depth-map (:cutoff rec) cd depth)
-                     (concat (when (and (>= b-cd depth) (< cd depth)) [(vary-meta entry assoc :cutoff rcut)])
+                     (concat (when (and (>= b-cd depth) (< cd depth)) 
+                               (util/assert-is (<=  (+ b-rts (:cutoff rec))  rcut (- neg-reward)))
+                               [(vary-meta entry assoc :cutoff rcut)])
                              (doall (for [n sbn] (queues/g-pq-remove! good-queue n)))
                              good-roots)))))))))
 
-;; TODO: Now, problem is that when we look at cutoff of good-root directly we miss cached states we haven't seen.!
- ; Done ? 
+;; // TODO: now problem is that depths are actually relative.  good nodes should ahve no cycle depth.
 
 ;; ALMOST: except suboptimal states may get cached at higher levels too.
 ;; Such bad states cannot be cached.  
