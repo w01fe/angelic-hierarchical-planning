@@ -81,16 +81,16 @@
         context (env/precondition-context a s)
         cache-key [(env/action-name a) (env/extract-context s context)]
         cache-val (.get cache cache-key)]
-    (println "get-sa" (env/action-name a) (when cache-val "t") (when (and cache-val (.contains (:parent-set cache-val) parent-entry)) "t") pre-reward (:reward-to-state parent-entry))
+;    (println "get-sa" (env/action-name a) (when cache-val "t") (when (and cache-val (.contains (:parent-set cache-val) parent-entry)) "t") pre-reward (:reward-to-state parent-entry))
     (when cache-val (assert (<= pre-reward (second (last @(:parent-vec-atom cache-val))))))
     (cond (and cache-val (.contains (:parent-set cache-val) parent-entry))
             []  
           cache-val
             (do (swap! (:parent-vec-atom cache-val) conj [parent-entry pre-reward])
                 (.add  (:parent-set cache-val) parent-entry)
-                (println "REHIT" (env/action-name (:action cache-val)) "in service of" (env/action-name (:action (:sanode parent-entry))) (count @(:result-map-atom cache-val)))              
+;                (println "REHIT" (env/action-name (:action cache-val)) "in service of" (env/action-name (:action (:sanode parent-entry))) (count @(:result-map-atom cache-val)))              
                 (for [[ss sr] @(:result-map-atom cache-val)]
-                  (do (println "re-adding for result" (spos ss) pre-reward sr)
+                  (do ;(println "re-adding for result" (spos ss) pre-reward sr)
                       [(GQEntry ss sr cache-val [[parent-entry pre-reward]])
                        (- 0 pre-reward sr)])))
           :else 
@@ -120,7 +120,7 @@
   (let [new-effects (env/extract-effects new-state (:context child-sanode))
         final-state  (env/apply-effects (:state parent-entry) new-effects)
         actions      (:remaining-actions parent-entry)]
-    (println "parent with" (map env/action-name actions) "for" (env/action-name (:action (:sanode parent-entry))) "from" (spos (:state (first (:parent-set (:sanode parent-entry))))))
+;    (println "parent with" (map env/action-name actions) "for" (env/action-name (:action (:sanode parent-entry))) "from" (spos (:state (first (:parent-set (:sanode parent-entry))))))
     (if (empty? actions)
        [[(GQEntry final-state
                   (+ (:reward-to-state parent-entry) new-reward) 
@@ -136,7 +136,7 @@
 ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;    Top-level    ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
 ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
 
-(defn pp [q xs]
+(defn pp [q xs] 
   ;(println "adding" (count xs)) 
   (queues/pq-add-all! q xs))
 
@@ -156,7 +156,7 @@
               
               ]          
 ;            (assert (<= neg-rew 10))
-            (println neg-rew (queues/pq-size queue) (env/action-name (:action (:sanode best))) (spos (:state best)) (spos (:state (first (:parent-set (:sanode best))))) #_ (:state best))
+ ;           (println neg-rew (queues/pq-size queue) (env/action-name (:action (:sanode best))) (spos (:state best)) (spos (:state (first (:parent-set (:sanode best))))) #_ (:state best))
             (if (nil? (:sanode (first (:parent-set (:sanode best)))))
                 (- neg-rew)
               (let [init-hash   (hash best)
