@@ -271,6 +271,7 @@
               (reset! (:rec-context-atom entry) (:rec-context rec))
               (doseq [n good-nodes]      
                 (when (> (:reward-to-state n) (min init-cutoff (- neg-reward)))
+                  (util/assert-is (queues/g-pq-priority good-queue n) "%s %s %s %s %s %s" (:reward-to-state n) init-cutoff (- neg-reward)  (seq (spos state)) (str (seq (spos (:state n)))) (env/action-name (:action node)))
                   (assert (>= (queues/g-pq-priority good-queue n) (:reward-to-state n))))
                 (queues/g-pq-add! good-queue n (- (:reward-to-state n))))
               (doseq [n (concat nbn sbn)] 
@@ -321,23 +322,9 @@
                 (recur (:cutoff result) cutoff))))))
 
 
-
+; still fails on 
+; (sahucs-nc (simple-taxi-hierarchy (make-random-taxi-env 7 7 2 8)))
 
 
 
 ; (first (filter #(let [h (simple-taxi-hierarchy (make-random-taxi-env 2 3 2 %)) ] (println %) (not (= (prln  (second (sahtn-dijkstra h))) (second (exp.sahucs-nc/sahucs-nc h))))) (map (fn [x y] x) (range 100) (iterate inc 0))))
-; 54 fails 
-
-; (first (filter #(let [h (simple-taxi-hierarchy (make-random-taxi-env 3 2 2 %)) ] (println %) (not (= (prln  (second (sahtn-dijkstra h))) (second (exp.sahucs-nc/sahucs-nc h))))) (map (fn [x y] x) (range 100) (iterate inc 0))))
-; 65 fails
-
-;(first (filter #(let [h (simple-taxi-hierarchy (make-random-taxi-env 1 3 2 %)) ] (not (= (prln  (second (sahtn-dijkstra h))) ;(second (exp.sahucs-nc/sahucs-nc h))))) (map (fn [x y] x) (range 100) (iterate inc 0))))
-; 81 fails
-
-; a culprit
-; (exp.sahucs-nc/sahucs-nc (simple-taxi-hierarchy (make-random-taxi-env 1 3 2 81)))
-
-; new culprit
-; (exp.sahucs-nc/sahucs-nc (simple-taxi-hierarchy (make-random-taxi-env 2 3 2 5)))
-
-;; TODO: add assertions specific to this domain.
