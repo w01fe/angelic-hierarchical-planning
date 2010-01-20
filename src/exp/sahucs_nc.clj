@@ -209,13 +209,13 @@
                  clean)
 
 ;          (println (apply str (repeat depth \ )) (count clean) (count dirtied) (count still-dirty))
-;          (when (= (first (env/action-name (:action node))) 'nav)
-;            (let [[_ dx dy] (env/action-name (:action node))]
-;              (doseq [[ss sr] (stitch-effect-map clean state 0 #_ reward-to-state)]
-;                (println ss sr clean new-results (env/action-name (:action node)))
-;                (let [[sx sy] (map #(env/get-var state %) '[[atx] [aty]])]
-;                  (when-not (= (- sr) (+ (util/abs (- sx dx)) (util/abs (- sy dy))))
-;                     (println [sx sy] [dx dy] sr (:min-cycle-depth (:entry (meta ss))) reward-to-state) #_ (dr/debug-repl))))))
+          (when (= (first (env/action-name (:action node))) 'nav)
+            (let [[_ dx dy] (env/action-name (:action node))]
+              (doseq [[ss sr] (stitch-effect-map clean state 0 #_ reward-to-state)]
+                (println ss sr clean new-results (env/action-name (:action node)))
+                (let [[sx sy] (map #(env/get-var state %) '[[atx] [aty]])]
+                  (when-not (= (- sr) (+ (util/abs (- sx dx)) (util/abs (- sy dy))))
+                     (println "ERROR" [sx sy] [dx dy] sr (:min-cycle-depth (:entry (meta ss))) reward-to-state) #_ (dr/debug-repl))))))
           
           (doseq [entry (concat good-roots (map #(:entry (meta (key %))) dirtied))] 
             (assert (util/xor (not (:sanode entry)) (:cutoff (meta entry))))
@@ -224,7 +224,7 @@
             (queues/g-pq-replace! good-queue entry 
               (- (or (:cutoff (meta entry)) (:reward-to-state entry))))) ;(if-let [n  (:sanode entry)] (cutoff (:queue n)) 0)
           (.remove stack-node-depths node) ;; TODO: catchup!! 
-;          (println "Returning from" (env/action-name (:action node)) (map #(env/get-var state %) '[[atx] [aty]]) "With cutoff" cut (cutoff good-queue) "and cdm" cutoff-depth-map "and states" (count new-results) (count catchup) "-" (count clean) (count dirtied) (count still-dirty) "and good roots" (count good-roots) (map :reward-to-state good-roots))
+
           (println (apply str (repeat depth \ )) "Returning from" (env/action-name (:action node)) (map #(env/get-var state %) '[[atx] [aty]]) "With cutoffs" cut (cutoff good-queue) ", ns"  (util/map-keys spos (stitch-effect-map catchup state reward-to-state) ) (count catchup) (count new-results))   
           (assert (<= (cutoff good-queue) init-cutoff))
           
@@ -252,7 +252,7 @@
                                               stack-node-depths (inc depth)) (+ (cutoff (:queue b-sa)) b-rts)])
 ;                  _                   (println (apply str (repeat depth \ )) "Got " b-cd (:min-cycle-depth rec) (util/map-keys (juxt spos (comp :cycle-depth meta)) (:result-map rec)))
                   rec-mcd (if (< (:min-cycle-depth rec) depth) (:min-cycle-depth rec) *infinite-depth*)
-                  cd      (min b-cd)
+                  cd      (min b-cd rec-mcd)
                   result-nodes (for [[ss sr] (:result-map rec)
                                      :let [s-cd (min (:cycle-depth (meta ss)) b-cd)]]                                 
                                  (get-sanode-entry cache ss sr (next b-ra) (if (< s-cd depth) s-cd *infinite-depth*)))
@@ -270,7 +270,8 @@
               (util/assert-is (<=  (+ b-rts (:cutoff rec)) (- neg-reward)) "%s %s %s" neg-reward b-rts (cutoff (:queue b-sa)))
               (reset! (:rec-context-atom entry) (:rec-context rec))
               (doseq [n good-nodes]      
-                (assert (<= (:reward-to-state n) (min init-cutoff (- neg-reward))))
+                (when (> (:reward-to-state n) (min init-cutoff (- neg-reward)))
+                  (assert (>= (queues/g-pq-priority good-queue n) (:reward-to-state n))))
                 (queues/g-pq-add! good-queue n (- (:reward-to-state n))))
               (doseq [n (concat nbn sbn)] 
                 (queues/g-pq-add! bad-queue  n (- (:reward-to-state n))))
@@ -282,7 +283,7 @@
               (recur new-results
                      (extend-cutoff-depth-map cutoff-depth-map (:cutoff rec) cd depth)
                      (concat (when (and (>= b-cd depth) (< cd depth)) 
-                               (util/assert-is (<=  (+ b-rts (:cutoff rec))  rcut (- neg-reward)))
+;                               (util/assert-is (<=  (+ b-rts (:cutoff rec))  rcut (- neg-reward)) "%s %s %s ; %s %s %s" (cutoff (:queue b-sa)) b-rts (:cutoff rec) b-cd depth cd)
                                [(vary-meta entry assoc :cutoff rcut)])
                              (doall (for [n sbn] (queues/g-pq-remove! good-queue n)))
                              good-roots)))))))))
@@ -311,7 +312,7 @@
         init  (env/initial-state e)
         root  (get-sa-node cache init (hierarchy/TopLevelAction e [(hierarchy/initial-plan henv)]))]
     (loop [cutoff 0 last-cutoff 0]
-;        (println "\ncutoff" cutoff "\n")
+        (println "\ncutoff" cutoff "\n")
       (let [result (expand-sa-node root cache cutoff init 0.0 0 (IdentityHashMap.) 0)]
         (cond (not (empty? (:result-map result)))
                 (let [[k v] (util/first-maximal-element val (:result-map result))]
