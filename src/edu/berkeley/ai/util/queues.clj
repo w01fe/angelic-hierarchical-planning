@@ -555,6 +555,14 @@
 	  (number? n)                          n
 	  :else                                (throw (RuntimeException.) "Shouldn't happen."))))
 
+(defn g-pq-key
+  "Return nil if the queue never had item, otherwise its priority (currently, or when removed)"
+  [pq item]
+  (let [#^HashMap m (:map pq) 
+	#^FibonacciHeapComp heap (:heap pq)
+	n (.get m item)]
+    (when (instance? FibonacciHeapComp$Node n) (.getData #^FibonacciHeapComp$Node n))))
+
 (defmethod pq-peek-pairs ::GraphPriorityQueue [pq]
   (let [#^FibonacciHeapComp heap (:heap pq)]
     (for [#^com.bluemarsh.graphmaker.core.util.FibonacciHeapComp$Node node (.nodeList heap)]
