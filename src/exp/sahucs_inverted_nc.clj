@@ -1,4 +1,4 @@
-(ns exp.sahucs-inverted
+(ns exp.sahucs-inverted-nc
   (:require [edu.berkeley.ai.util :as util] 
             [edu.berkeley.ai.util [queues :as queues] [debug-repl :as dr]]
             [exp [env :as env] [hierarchy :as hierarchy]])
@@ -6,15 +6,11 @@
   )
 
 
-;; The idea here is to implement the same algorithm as sahucs, but with a single global priority queue.
-;; This may have less overhead, and make graph optimizations more straightforward.
-
-;; Idea: queue items correspond to states at an sanode with no remaining actions.
-;; When we pop it, we push it to all the parents, regardless of cost, and add to 
-;; result-map-atom for future parents. 
-
-;; Or, at time of first pop, snatch current parent set, order it, pop only best at a time.
-;; Generate immediate refinements
+;; Idea here is cycle-avoiding version of sahucs.  
+;; Each sanode can keep a set of (identityHashCodes) of all ancestors.
+;; Problem: ancestor graph, ancestor adding, ...
+;; So, again simplify with bottom-up approach: annotate states with sets of 
+;; sanodes they've passed through, don't pass through cycles.  done.
 
 ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
 ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;   Helpers       ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
@@ -126,7 +122,7 @@
 
 
 
-(defn sahucs-inverted [henv]
+(defn sahucs-inverted-nc [henv]
   (let [e     (hierarchy/env henv)
         cache (HashMap.)
         queue (queues/make-graph-search-pq)

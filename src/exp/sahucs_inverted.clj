@@ -100,8 +100,8 @@
               (.put cache cache-key nd)
               (if (env/primitive? a)
                   (when (env/applicable? a s)
-                    (let [[ss sr] (env/successor a (env/get-logger s ))]
-                      [[(make-gqe ss sr nd :fresh) (- 0 pre-reward sr)]]))
+                    (let [[ss sr] (env/successor a s)]
+                      [[(make-gqe (vary-meta ss assoc :opt [a]) sr nd :fresh) (- 0 pre-reward sr)]]))
                 (apply concat
                   (for [ref (hierarchy/immediate-refinements a s)]
                     (if (empty? ref)
@@ -110,7 +110,9 @@
 
 (defn update-parent [cache parent-entry parent-pre-reward new-state new-reward child-sanode]
   (let [new-effects (env/extract-effects new-state (:context child-sanode))
-        final-state  (env/apply-effects (:state parent-entry) new-effects)
+        final-state  (vary-meta (env/apply-effects (:state parent-entry) new-effects)
+                                assoc :opt (concat (:opt (meta (:state parent-entry)))
+                                                   (:opt (meta new-state))))
         actions      (:remaining-actions parent-entry)
         rts          (:reward-to-state parent-entry)]
     (if (empty? actions)
@@ -134,9 +136,9 @@
     (queues/pq-add-all! queue (get-sa-node cache tla (make-pe (env/initial-state e) 0 nil nil) 0))
     (loop []
       (if (queues/g-pq-empty? queue) nil
-        (let [[best neg-rew] (queues/g-pq-remove-min-with-cost! queue)]                    
+        (let [[best neg-rew] (queues/g-pq-remove-min-with-cost! queue)] 
           (if (identical? (:action (:sanode best)) tla) ; solution state
-              (- neg-rew)
+              [(:opt (meta (:state best))) (- neg-rew)]
             (let [b-s  (:state best), b-rts (:reward-to-state best), b-sa (:sanode best)
                   [b-gp b-bp] (split-with #(= (second %) (- 0 neg-rew b-rts))
                                 (if (= :fresh (:remaining-parents best))
