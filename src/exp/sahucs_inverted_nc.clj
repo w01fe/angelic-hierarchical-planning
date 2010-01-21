@@ -12,6 +12,7 @@
 ;; So, again simplify with bottom-up approach: annotate states with sets of 
 ;; sanodes they've passed through, don't pass through cycles.  done.
 
+;; TODO: right now only recognizes right-cycles.
 ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
 ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;   Helpers       ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
 ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
@@ -91,30 +92,40 @@
                 (for [[ss sr] @(:result-map-atom cache-val)]
                   [(make-gqe ss sr cache-val [[parent-entry pre-reward]]) (- 0 pre-reward sr)]))
           :else 
-            (let [s      (env/get-logger s)
-                  nd     (make-sa-node context a parent-entry pre-reward)]
+            (let [s  (vary-meta (env/get-logger s) assoc :node-set  #{})
+                  nd (make-sa-node context a parent-entry pre-reward)]
               (.put cache cache-key nd)
               (if (env/primitive? a)
                   (when (env/applicable? a s)
-                    (let [[ss sr] (env/successor a (env/get-logger s ))]
-                      [[(make-gqe ss sr nd :fresh) (- 0 pre-reward sr)]]))
+                    (let [[ss sr] (env/successor a s)]
+                      [[(make-gqe (vary-meta ss assoc :opt [a] :node-set #{}) sr nd :fresh)
+                        (- 0 pre-reward sr)]]))
                 (apply concat
                   (for [ref (hierarchy/immediate-refinements a s)]
                     (if (empty? ref)
                         [[(make-gqe s 0 nd :fresh) (- pre-reward)]]
                       (get-sa-node cache (first ref) (make-pe s 0 (next ref) nd) pre-reward)))))))))
 
+;; TODO: actually runs faster without union of parent-entry node-set ...
 (defn update-parent [cache parent-entry parent-pre-reward new-state new-reward child-sanode]
   (let [new-effects (env/extract-effects new-state (:context child-sanode))
-        final-state  (env/apply-effects (:state parent-entry) new-effects)
-        actions      (:remaining-actions parent-entry)
-        rts          (:reward-to-state parent-entry)]
-    (if (empty? actions)
-       [[(make-gqe final-state (+ rts new-reward) (:sanode parent-entry) :fresh)
-         (- 0 parent-pre-reward new-reward)]]
-      (get-sa-node cache (first actions) 
-        (make-pe final-state (+ rts new-reward) (next actions) (:sanode parent-entry))
-        (+ parent-pre-reward new-reward)))))
+        parent-sa   (System/identityHashCode (:sanode parent-entry))
+        final-state (vary-meta (env/apply-effects (:state parent-entry) new-effects)
+                       assoc :opt (concat (:opt (meta (:state parent-entry))) 
+                                          (:opt (meta new-state)))
+                       :node-set (conj (clojure.set/union (:node-set (meta new-state))
+                                                          (:node-set (meta (:state parent-entry)))) parent-sa))
+        actions     (:remaining-actions parent-entry)
+        rts         (:reward-to-state parent-entry)]
+;    (print (type (:node-set (meta new-state))) " ")
+    (if (contains? (:node-set (meta new-state)) parent-sa)
+        nil ;(println "skip")
+      (if (empty? actions)
+        [[(make-gqe final-state (+ rts new-reward) (:sanode parent-entry) :fresh)
+          (- 0 parent-pre-reward new-reward)]]
+        (get-sa-node cache (first actions) 
+          (make-pe final-state (+ rts new-reward) (next actions) (:sanode parent-entry))
+          (+ parent-pre-reward new-reward))))))
 
 ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
 ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;    Top-level    ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
@@ -127,12 +138,12 @@
         cache (HashMap.)
         queue (queues/make-graph-search-pq)
         tla   (hierarchy/TopLevelAction e [(hierarchy/initial-plan henv)])]
-    (queues/pq-add-all! queue (get-sa-node cache tla (make-pe (env/initial-state e) 0 nil nil) 0))
+    (queues/pq-add-all! queue (get-sa-node cache tla (make-pe (vary-meta (env/initial-state e) assoc :node-set #{}) 0 nil nil) 0))
     (loop []
       (if (queues/g-pq-empty? queue) nil
-        (let [[best neg-rew] (queues/g-pq-remove-min-with-cost! queue)]                    
+        (let [[best neg-rew] (queues/g-pq-remove-min-with-cost! queue)] 
           (if (identical? (:action (:sanode best)) tla) ; solution state
-              (- neg-rew)
+              [(:opt (meta (:state best))) (- neg-rew)]
             (let [b-s  (:state best), b-rts (:reward-to-state best), b-sa (:sanode best)
                   [b-gp b-bp] (split-with #(= (second %) (- 0 neg-rew b-rts))
                                 (if (= :fresh (:remaining-parents best))

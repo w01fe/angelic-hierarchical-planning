@@ -95,8 +95,8 @@
                 (for [[ss sr] @(:result-map-atom cache-val)]
                   [(make-gqe ss sr cache-val [[parent-entry pre-reward]]) (- 0 pre-reward sr)]))
           :else 
-            (let [s      (env/get-logger s)
-                  nd     (make-sa-node context a parent-entry pre-reward)]
+            (let [s  (env/get-logger s) ;(vary-meta  assoc :opt (:opt (meta s)))
+                  nd (make-sa-node context a parent-entry pre-reward)]
               (.put cache cache-key nd)
               (if (env/primitive? a)
                   (when (env/applicable? a s)
