@@ -34,11 +34,15 @@
 ;; Stores a reference to a parent of an SANode.
 ;; state is the concrete state from the parent, reward is its reward within the parent,
 ;; sanode is the parent, and remaining-actions are the remaining actions.
-(deftype ParentEntry [state reward-to-state remaining-actions sanode]
+(deftype ParentEntry [state reward-to-state remaining-actions sanode hash-code]
     Object
     (equals [y] (and (= remaining-actions (:remaining-actions y)) (identical? sanode (:sanode y))))
-    (hashCode [] (unchecked-add (int (hash remaining-actions))
-                                (unchecked-multiply (int 13) (System/identityHashCode sanode)))))
+    (hashCode [] hash-code))
+
+(defn make-pe [state reward-to-state remaining-actions sanode]
+  (ParentEntry state reward-to-state remaining-actions sanode
+    (unchecked-add (int (hash remaining-actions))
+      (unchecked-multiply (int 13) (System/identityHashCode sanode)))))
 
 ;; Stores abstracted results of a state-action pair.  result-map-atom maps states
 ;; to rewards (within this anode).  parent-vec-atom is a map of parent-entries to
@@ -54,20 +58,22 @@
 (defn gq-parent-key [parent-info]
   (if (= parent-info :fresh) :fresh (first (first parent-info))))
 
-(deftype GQEntry [state reward-to-state sanode remaining-parents] :as this
+(deftype GQEntry [state reward-to-state sanode remaining-parents hash-code] :as this
     Object
     (equals [y] 
       (and (= state (:state y)) 
            (identical? sanode (:sanode y))
            (identical? (gq-parent-key remaining-parents) 
                        (gq-parent-key (:remaining-parents y)))))
-    (hashCode [] 
-      (unchecked-add (int (hash state))
+    (hashCode [] hash-code))
+
+(defn make-gqe [state reward-to-state sanode remaining-parents]
+  (GQEntry state reward-to-state sanode remaining-parents
+    (unchecked-add (int (hash state))
         (unchecked-multiply (int 13) 
           (unchecked-add (System/identityHashCode sanode)
             (unchecked-multiply (int 17) 
               (System/identityHashCode (gq-parent-key remaining-parents))))))))
-
 
 ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
 ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;; Core Algorithm  ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
@@ -80,14 +86,14 @@
         context (env/precondition-context a s)
         cache-key [(env/action-name a) (env/extract-context s context)]
         cache-val (.get cache cache-key)]
-    (when cache-val (assert (<= pre-reward (second (last @(:parent-vec-atom cache-val))))))
+    (when cache-val (assert (<= pre-reward (second (peek @(:parent-vec-atom cache-val))))))
     (cond (and cache-val (.contains #^HashSet (:parent-set cache-val) parent-entry))
             []  
           cache-val
             (do (swap! (:parent-vec-atom cache-val) conj [parent-entry pre-reward])
                 (.add  #^HashSet (:parent-set cache-val) parent-entry)
                 (for [[ss sr] @(:result-map-atom cache-val)]
-                  [(GQEntry ss sr cache-val [[parent-entry pre-reward]]) (- 0 pre-reward sr)]))
+                  [(make-gqe ss sr cache-val [[parent-entry pre-reward]]) (- 0 pre-reward sr)]))
           :else 
             (let [s      (env/get-logger s)
                   nd     (make-sa-node context a parent-entry pre-reward)]
@@ -95,24 +101,23 @@
               (if (env/primitive? a)
                   (when (env/applicable? a s)
                     (let [[ss sr] (env/successor a (env/get-logger s ))]
-                      [[(GQEntry ss sr nd :fresh) (- 0 pre-reward sr)]]))
+                      [[(make-gqe ss sr nd :fresh) (- 0 pre-reward sr)]]))
                 (apply concat
                   (for [ref (hierarchy/immediate-refinements a s)]
                     (if (empty? ref)
-                        [[(GQEntry s 0 nd :fresh) (- pre-reward)]]
-                      (get-sa-node cache (first ref) (ParentEntry s 0 (next ref) nd) pre-reward)))))))))
+                        [[(make-gqe s 0 nd :fresh) (- pre-reward)]]
+                      (get-sa-node cache (first ref) (make-pe s 0 (next ref) nd) pre-reward)))))))))
 
 (defn update-parent [cache parent-entry parent-pre-reward new-state new-reward child-sanode]
   (let [new-effects (env/extract-effects new-state (:context child-sanode))
         final-state  (env/apply-effects (:state parent-entry) new-effects)
         actions      (:remaining-actions parent-entry)
-        rts          (:reward-to-state parent-entry)
-        ]
+        rts          (:reward-to-state parent-entry)]
     (if (empty? actions)
-       [[(GQEntry final-state (+ rts new-reward) (:sanode parent-entry) :fresh)
+       [[(make-gqe final-state (+ rts new-reward) (:sanode parent-entry) :fresh)
          (- 0 parent-pre-reward new-reward)]]
       (get-sa-node cache (first actions) 
-        (ParentEntry final-state (+ rts new-reward) (next actions) (:sanode parent-entry))
+        (make-pe final-state (+ rts new-reward) (next actions) (:sanode parent-entry))
         (+ parent-pre-reward new-reward)))))
 
 ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
@@ -124,14 +129,13 @@
 (defn sahucs-inverted [henv]
   (let [e     (hierarchy/env henv)
         cache (HashMap.)
-        queue (queues/make-graph-search-pq)]
-    (queues/pq-add-all! queue
-      (get-sa-node cache (hierarchy/TopLevelAction e [(hierarchy/initial-plan henv)])
-                   (ParentEntry (env/initial-state e) 0 nil nil) 0))
+        queue (queues/make-graph-search-pq)
+        tla   (hierarchy/TopLevelAction e [(hierarchy/initial-plan henv)])]
+    (queues/pq-add-all! queue (get-sa-node cache tla (make-pe (env/initial-state e) 0 nil nil) 0))
     (loop []
-      (if (queues/pq-empty? queue) nil
-        (let [[best neg-rew] (queues/pq-remove-min-with-cost! queue)]                    
-          (if (nil? (:sanode (first (:parent-set (:sanode best))))) ; solution state
+      (if (queues/g-pq-empty? queue) nil
+        (let [[best neg-rew] (queues/g-pq-remove-min-with-cost! queue)]                    
+          (if (identical? (:action (:sanode best)) tla) ; solution state
               (- neg-rew)
             (let [b-s  (:state best), b-rts (:reward-to-state best), b-sa (:sanode best)
                   [b-gp b-bp] (split-with #(= (second %) (- 0 neg-rew b-rts))
@@ -141,10 +145,10 @@
                                   (:remaining-parents best)))] 
               (assert (seq b-gp))
               (when (seq b-bp)
-                (queues/pq-replace! queue (GQEntry b-s b-rts b-sa b-bp) 
+                (queues/g-pq-replace! queue (make-gqe b-s b-rts b-sa b-bp) 
                                     (- 0 b-rts (second (first b-bp)))))
               (doseq [[p p-r] b-gp]
-                (queues/pq-add-all! queue (update-parent cache p p-r b-s b-rts b-sa)))
+                (queues/g-pq-add-all! queue (update-parent cache p p-r b-s b-rts b-sa)))
               (recur))))))))
 
 

@@ -459,6 +459,8 @@
 				 :ignored)
 	  :else                (throw (RuntimeException.) "Shouldn't happen."))))
 
+(defn g-pq-add-all! [pq items]
+  (doseq [[i c] items] (g-pq-add! pq i c)))
 
 (defmethod pq-replace!  ::GraphPriorityQueue [pq item cost]
   "Like pq-add!, but always replace the current value."
@@ -539,6 +541,8 @@
 (defmethod pq-empty? ::GraphPriorityQueue [pq]
   (let [#^FibonacciHeapComp heap (:heap pq)]
     (.isEmpty heap)))
+
+(defn g-pq-empty? [pq] (.isEmpty #^FibonacciHeapComp (:heap pq)))
 
 (defmethod pq-size ::GraphPriorityQueue [pq]
   (let [#^FibonacciHeapComp heap (:heap pq)]
