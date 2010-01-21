@@ -1,4 +1,4 @@
-(ns exp.sahucs
+(ns exp.sahucs-fancy-dijkstra
   (:require [edu.berkeley.ai.util :as util] [edu.berkeley.ai.util.queues :as queues]
             [exp [env :as env] [hierarchy :as hierarchy]])
   (:import [java.util HashMap])
@@ -179,7 +179,7 @@
 
 
 (defn sahucs [henv] (sahucs-top henv false))
-(defn sahucs-dijkstra [henv] (sahucs-top henv true))
+(defn sahucs-fancy-dijkstra [henv] (sahucs-top henv true))
 
 ; (dotimes [i 1] (let [h (simple-taxi-hierarchy (make-random-taxi-env 2 2 1 i))] (def *h* h)   (time (println "sahtn-dijkstra" (run-counted #(sahtn-dijkstra h)))) (println)  (time (println "simple" (run-counted #(exp.sahucs-simple/sahucs-simple h)))) (println) (time (println "simple-dijkstra" (run-counted #(exp.sahucs-simple-dijkstra/sahucs-simple-dijkstra h))))  (println) (time (println "fancy-dijkstra "(run-counted #(sahucs-dijkstra h)))) (println "\n\n\n")))
 
