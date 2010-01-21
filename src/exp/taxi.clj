@@ -152,3 +152,77 @@
    [(hierarchy/NSAHLA (make-taxi-tla env) (keys (dissoc (env/initial-state env) :const)))]))
 
 ; (uniform-cost-search (ShopHTNEnv (simple-taxi-hierarchy (TaxiEnv 5 5 [ ['bob [1 1] [3 3] ] ['mary [1 1] [3 3] ] ['lisa [1 1] [3 3] ]]))))
+
+
+
+;; Slightly fancier hierarchy that splits navigation.
+(deftype NavHHLA [env dx] :as this
+  env/Action                (action-name [] ['navh dx])
+                            (primitive? [] false)
+  env/ContextualAction      (precondition-context [s] [['atx]])
+  hierarchy/HighLevelAction (immediate-refinements- [s]
+                              (if (= dx (env/get-var s ['atx]))                                                                    [[]]
+                                (for [af [make-left make-right]
+                                     :let [a (af s)]
+                                     :when a]
+                                 [a this])))
+                            (cycle-level- [s] 1))
+
+(deftype NavVHLA [env dy] :as this
+  env/Action                (action-name [] ['navv dy])
+                            (primitive? [] false)
+  env/ContextualAction      (precondition-context [s] [['aty]])
+  hierarchy/HighLevelAction (immediate-refinements- [s]
+                              (if (= dy (env/get-var s ['aty]))                                                                    [[]]
+                                (for [af [make-up make-down]
+                                     :let [a (af s)]
+                                     :when a]
+                                 [a this])))
+                            (cycle-level- [s] 1))
+
+(deftype Nav2HLA [env dx dy] :as this
+  env/Action                (action-name [] ['nav dx dy])
+                            (primitive? [] false)
+  env/ContextualAction      (precondition-context [s] [['atx] ['aty]])
+  hierarchy/HighLevelAction (immediate-refinements- [s]
+                             [[(NavHHLA env dx) (NavVHLA env dy)]])
+                            (cycle-level- [s] nil))
+
+(deftype Serve2HLA [env pass] 
+  env/Action                (action-name [] ['serve pass])
+                            (primitive? [] false)
+  env/ContextualAction      (precondition-context [s] [['atx] ['aty] ['in-taxi] 
+                                                      ['pass-served? pass]])
+  hierarchy/HighLevelAction (immediate-refinements- [s]
+                             (let [const (env/get-var s :const)
+                                   [sx sy dx dy] 
+                                     (map #(get const [% pass]) '[srcx srcy dstx dsty])
+                                   pu (make-pickup  s pass)
+                                   pd (make-dropoff s pass)]
+                               (util/assert-is (and pu pd))
+                               [[(Nav2HLA env sx sy) pu (Nav2HLA env dx dy) pd]]))
+                            (cycle-level- [s] nil))
+
+(deftype Taxi2TLA [env context]      :as this
+  env/Action                (action-name [] ['top])
+                            (primitive? [] false)  
+  env/ContextualAction      (precondition-context [s] context)
+  hierarchy/HighLevelAction (immediate-refinements- [s]
+                              (let [remaining-passengers
+                                    (for [[pass] (:passengers env)
+                                          :when (not (env/get-var s ['pass-served? pass]))]
+                                      pass)]
+                                (if (empty? remaining-passengers)
+                                    [[(env/make-finish-action env)]]
+                                  (for [pass remaining-passengers]
+                                    [(Serve2HLA env pass) this]))))
+                            (cycle-level- [s] nil))
+
+(defn make-taxi-tla2 [env]
+  (Taxi2TLA env (keys (dissoc (env/initial-state env) :const))))
+
+(defn simple-taxi-hierarchy2 [#^TaxiEnv env]
+  (hierarchy/SimpleHierarchicalEnv
+   env
+   [(make-taxi-tla2 env)]))
+
