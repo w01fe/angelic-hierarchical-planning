@@ -226,3 +226,52 @@
    env
    [(make-taxi-tla2 env)]))
 
+
+
+
+
+
+
+;;;;;;;;;;;;;;;;;;;;;;;;;;;;
+
+
+
+(deftype Serve3HLA [env pass] 
+  env/Action                (action-name [] ['serve pass])
+                            (primitive? [] false)
+  env/ContextualAction      (precondition-context [s] [['atx] ['aty] ['in-taxi] 
+                                                      ['pass-served? pass]])
+  hierarchy/HighLevelAction (immediate-refinements- [s]
+                             (let [const (env/get-var s :const)
+                                   [sx sy dx dy] 
+                                     (map #(get const [% pass]) '[srcx srcy dstx dsty])
+                                   pu (make-pickup  s pass)
+                                   pd (make-dropoff s pass)]
+                               (util/assert-is (and pu pd))
+                               [[(NavHHLA env sx) (NavVHLA env sy) pu 
+                                 (NavHHLA env dx) (NavVHLA env dy) pd]]))
+                            (cycle-level- [s] nil))
+
+(deftype Taxi3TLA [env context]      :as this
+  env/Action                (action-name [] ['top])
+                            (primitive? [] false)  
+  env/ContextualAction      (precondition-context [s] context)
+  hierarchy/HighLevelAction (immediate-refinements- [s]
+                              (let [remaining-passengers
+                                    (for [[pass] (:passengers env)
+                                          :when (not (env/get-var s ['pass-served? pass]))]
+                                      pass)]
+                                (if (empty? remaining-passengers)
+                                    [[(env/make-finish-action env)]]
+                                  (for [pass remaining-passengers]
+                                    [(Serve3HLA env pass) this]))))
+                            (cycle-level- [s] nil))
+
+(defn make-taxi-tla3 [env]
+  (Taxi3TLA env (keys (dissoc (env/initial-state env) :const))))
+
+(defn simple-taxi-hierarchy3 [#^TaxiEnv env]
+  (hierarchy/SimpleHierarchicalEnv
+   env
+   [(make-taxi-tla3 env)]))
+

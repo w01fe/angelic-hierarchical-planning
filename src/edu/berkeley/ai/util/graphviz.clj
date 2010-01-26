@@ -23,6 +23,7 @@
 (defn- walk-graph [root node-key-fn node-label-fn edge-child-pair-fn #^HashSet visited indexer]
   (let [node-key  (node-key-fn root)
 	node-map (node-label-fn root)]
+;    (println node-key)
 ;    (println node-name)
     (when-not (.contains visited node-key)
       (.add visited node-key)
@@ -54,6 +55,12 @@
 
 (defn graphviz [& args] (show-pdf-page (prln (apply write-graphviz args))))
 
+(defn graphviz-el
+  "Draw a graph given an edge list, and optional node label map."
+  ([el] (graphviz-el el {}))
+  ([el nl]
+     (let [em (map-vals #(map second %) (group-by first el))]
+       (graphviz (first (first el)) identity #(get nl % %) #(for [e (get em %)] [nil e])))))
 
 ; (graphviz 0 identity str (fn [i] (into {} (for [j (range (inc i) (min 10 (+ i 3)))] [j j]))))
 

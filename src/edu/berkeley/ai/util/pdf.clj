@@ -23,3 +23,12 @@
 ;       (future (.requestFocus frame) (.setVisible frame true) (.toFront frame))
        )))
 
+; Simple image drawing, should go somewhere else eventually.
+
+(import '[javax.swing JLabel ImageIcon] '[java.awt Image])
+
+(defn show-image [#^Image img]
+  (doto (JFrame. "Image")
+    (.add (JLabel. (ImageIcon. img)))
+    (.pack)
+    (.setVisible true)))
