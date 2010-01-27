@@ -51,7 +51,7 @@
 (derive ::ALTPlanNode ::search/Node)
 (defstruct alt-plan-node :class :alt :name :plan :depth)
 (defn make-alt-plan-node [class alt name plan depth]
-  (let [final-ref (:was-final? ^plan)]
+  (let [final-ref (:was-final? (meta plan))]
     (when (util/sref-get final-ref)
       (util/print-debug 2 "Warning: duplicate plan ... " (search/node-str {:class ::ALTPlanNode :plan plan}))
     #_  (throw (Exception.))) 
@@ -73,7 +73,7 @@
 ; Fate can be nil, :refined, :pruned; for visualizing only.
 
 (defn get-alt-node [alt hla previous-node was-tight?] "Returns a cached node if available."
-  (let [#^HashMap cache (when (util/safe-get alt :cache?) (util/safe-get ^previous-node :cache))]
+  (let [#^HashMap cache (when (util/safe-get alt :cache?) (util/safe-get (meta previous-node) :cache))]
     (or (and cache (.get cache hla))
 	(let [ret (make-alt-node hla previous-node was-tight? nil nil)]
 	  (when cache (.put cache hla ret))
@@ -88,7 +88,7 @@
 
 
 (defn pessimistic-valuation [node]
-  (let [s (:pessimistic-valuation ^node)]
+  (let [s (:pessimistic-valuation (meta node))]
     (or (util/sref-get s)
 	(util/sref-set! s 
 	  (do (util/sref-up! *pp-counter* inc)
@@ -99,7 +99,7 @@
 
 
 (defn optimistic-valuation [node]
-  (let [s (:optimistic-valuation ^node)]
+  (let [s (:optimistic-valuation (meta node))]
     (or (util/sref-get s)
 	(util/sref-set! s 
 	  (do (util/sref-up! *op-counter* inc)
@@ -251,11 +251,11 @@
 	root (make-alt-root-node alt 
 		     (state->valuation opt-valuation-class (envs/get-initial-state env))
 		     (state->valuation pess-valuation-class (envs/get-initial-state env)))
-	name ((:node-counter ^alt))]
+	name ((:node-counter (meta alt)))]
     (when graph? (assert (graph-add-and-check! alt root initial-plan name))) ;*always-live*)))
- ;   (println (:graph-map ^alt))
-;    (.add #^HashSet (:live-set ^alt) *always-live*)
-    (.add #^HashSet (:live-set ^alt) name)
+ ;   (println (:graph-map (meta alt)))
+;    (.add #^HashSet (:live-set (meta alt)) *always-live*)
+    (.add #^HashSet (:live-set (meta alt)) name)
     (loop [actions initial-plan
 	   previous root]
       (if (empty? actions)
@@ -272,7 +272,7 @@
 (def *dummy-pair-alt* [Double/NEGATIVE_INFINITY (gensym)])
 
 (defn test-and-add-edge! "Returns true iff edge added." [alt from to]
-  (let [ancestor-graph-ref (util/safe-get ^alt :ancestor-graph)]
+  (let [ancestor-graph-ref (util/safe-get (meta alt) :ancestor-graph)]
 ;    (println (util/sref-get ancestor-graph-ref) from to)
     (when-not (graphs/dag-descendant? (util/sref-get ancestor-graph-ref) to from)
       (util/sref-up! ancestor-graph-ref #(graphs/dag-add-edge % from to))
@@ -282,7 +282,7 @@
 
 (defn add-node-pruning-info! [alt node rest-plan name]
   (util/assert-is (:graph? alt))
-  (let [#^HashMap graph-map (util/safe-get ^alt :graph-map)
+  (let [#^HashMap graph-map (util/safe-get (meta alt) :graph-map)
 	subsumption-info    (util/safe-get alt :subsumption-info)
 	pess-val              (pessimistic-valuation node)]
     (when-not (empty-valuation? pess-val) 
@@ -302,8 +302,8 @@
  
 
 (defn node-prunable? [alt node rest-plan name]
-  (let [#^HashMap graph-map (util/safe-get ^alt :graph-map)
-	#^HashSet live-set  (util/safe-get ^alt :live-set)
+  (let [#^HashMap graph-map (util/safe-get (meta alt) :graph-map)
+	#^HashSet live-set  (util/safe-get (meta alt) :live-set)
 	subsumption-info    (util/safe-get alt :subsumption-info)
 	opt-val             (optimistic-valuation node)
 	[opt-states opt-si] (get-valuation-states opt-val subsumption-info)
@@ -320,13 +320,13 @@
 			(and (not (= subsumes? :strict))
 			     (or (= (:graph? alt) :bhaskara) 
 				 (and (= (:graph? alt) :simple) (not (.contains live-set graph-node)))
-				 (and (= (:graph? alt) true) (util/safe-get ^node :was-tight?) 
+				 (and (= (:graph? alt) true) (util/safe-get (meta node) :was-tight?) 
 				      (not (.contains live-set graph-node)))
 				 (and (= (:graph? alt) :full)
-				      (util/safe-get ^node :was-tight?) 
+				      (util/safe-get (meta node) :was-tight?) 
 				      (not (test-and-add-edge! alt graph-node name)))))))))
 	   graph-tuples)]
-        (util/sref-set! (:fate ^node) bad-node)
+        (util/sref-set! (:fate (meta node)) bad-node)
 	true)))
 
 
@@ -356,12 +356,12 @@
 (declare construct-immediate-refinement)
 (defmethod search/reroot-at-node ::ALTPlanNode [node & args]
   (let [alt (:alt node)
-	#^HashMap cache (:graph-map ^alt)
-	#^HashSet live-set (:live-set ^alt)
+	#^HashMap cache (:graph-map (meta alt))
+	#^HashSet live-set (:live-set (meta alt))
 	name   (util/safe-get node :name)]
     (.clear live-set)
     (.clear cache)
-    (util/sref-set! (:ancestor-graph ^alt) (graphs/make-empty-dag))
+    (util/sref-set! (:ancestor-graph (meta alt)) (graphs/make-empty-dag))
 ;    (when (:graph? alt)
 ;      (loop [node (:plan node), plan nil]
 ;	(when node
@@ -406,9 +406,9 @@
     (let [nxt (get-alt-node alt (first actions) previous was-tight?)]
 ;      (println (optimistic-valuation nxt))
       (if (and (or (not (empty-valuation? (optimistic-valuation nxt)))
-		   (and (util/sref-set! (:fate ^nxt) :dead) false))
+		   (and (util/sref-set! (:fate (meta nxt)) :dead) false))
 	       (or (next actions) 
-		   (not (util/sref-get (:was-final? ^nxt)))
+		   (not (util/sref-get (:was-final? (meta nxt))))
 		   (= :full (:graph? alt))) ; Eliminate duplicates.
 	       (or (not (:graph? alt)) 
 		   (graph-add-and-check! alt nxt (next actions) 
@@ -437,26 +437,26 @@
      ;; If ref-fn is correct, == when not fully primitive
       (util/sref-up! search/*ref-counter* inc)
       (let [was-tight?  (and (contains? #{true :full} graph?) 
-			 (or (util/safe-get ^ref-node :was-tight?)
+			 (or (util/safe-get (meta ref-node) :was-tight?)
 			     (not (empty-valuation? (pessimistic-valuation ref-node)))))
 			  ;   (= (valuation-max-reward (optimistic-valuation ref-node))
 			  ;	(valuation-max-reward (pessimistic-valuation ref-node)))))
 	    after-actions  (map :hla (reverse (take-while #(not (identical? % ref-node)) 
 							  (iterate :previous plan))))]
-	(when graph? (.remove #^HashSet (:live-set ^alt) (util/safe-get node :name)))
-	(util/sref-set! (:fate ^ref-node) :refined)
+	(when graph? (.remove #^HashSet (:live-set (meta alt)) (util/safe-get node :name)))
+	(util/sref-set! (:fate (meta ref-node)) :refined)
 ;	(println (count (hla-immediate-refinements (:hla ref-node) (optimistic-valuation (:previous ref-node)))))
 	(filter identity
 	 (for [ref (hla-immediate-refinements (:hla ref-node) (optimistic-valuation (:previous ref-node)))]
-	   (let [name         ((:node-counter ^alt))]
+	   (let [name         ((:node-counter (meta alt)))]
   	     (util/print-debug 3 "\nConsidering refinement " (map hla-name ref) " at " (hla-name (:hla ref-node)))
 	     (util/sref-up! search/*plan-counter* inc)
 	     (when (= graph? :full)
 	       (assert (test-and-add-edge! alt name (util/safe-get node :name))))
 	     (when-let [nxt (construct-immediate-refinement node (:previous ref-node) (concat ref after-actions) alt (util/safe-get node :depth) name was-tight?)]
-	       (when graph? (.add #^HashSet (:live-set ^alt) name))
+	       (when graph? (.add #^HashSet (:live-set (meta alt)) name))
 ;		 (when (> (search/upper-reward-bound nxt) urb) 
-;		   (util/sref-set! (:upper-reward-bound ^(:plan nxt)) urb)
+;		   (util/sref-set! (:upper-reward-bound (meta (:plan nxt))) urb)
 ;		   (println "Fixing Upper Inconcistency" urb (search/upper-reward-bound nxt)))
 	       nxt))))))))
 
@@ -550,7 +550,7 @@
    [(last (util/iterate-while :previous (:plan node))) false]
    (fn [[n r]] n) ;(:name n))
    (fn [[n r?]] 
-     (let [fate (util/sref-get (:fate ^n))]
+     (let [fate (util/sref-get (:fate (meta n)))]
        {:label (util/double-quote [(valuation-max-reward (pessimistic-valuation n))
 				   (valuation-max-reward (optimistic-valuation n))])
 	:color (cond 
@@ -558,12 +558,12 @@
 		 (and fate (not (= :refined fate))) "red" 
 		 :else "black")}))
    (fn [[n r?]] 
-     (let [parent-fate (util/sref-get (:fate ^n))]
+     (let [parent-fate (util/sref-get (:fate (meta n)))]
        (if (and parent-fate (not (= parent-fate :refined)) (not (= parent-fate :dead)))
-	   (do (assert (empty? (:cache ^n)))
+	   (do (assert (empty? (:cache (meta n))))
 	       [[{:color "red"} [parent-fate false]]])
-     (for [[e n] (:cache ^n)]
-       (let [fate (util/sref-get (:fate ^n))]
+     (for [[e n] (:cache (meta n))]
+       (let [fate (util/sref-get (:fate (meta n)))]
 	 [{:label (util/double-quote (hla-name e)) 
 	   :color (if (= :refined fate) "blue" "black")}  
 	  [n (or r? (= :refined fate))]]))))))
@@ -575,8 +575,8 @@
   ([nodes show-finish show-refined show-noop]
   (doseq [node nodes,
 	  n (util/iterate-while :previous (:plan node))]
-    (assert (contains? #{nil :live} (util/sref-get (:fate ^n))))
-    (util/sref-set! (:fate ^n) :live))
+    (assert (contains? #{nil :live} (util/sref-get (:fate (meta n)))))
+    (util/sref-set! (:fate (meta n)) :live))
   (graphviz/write-graphviz "/tmp/alt.pdf"
    (last (util/iterate-while :previous (:plan (first nodes))))
    identity
@@ -585,7 +585,7 @@
 ;         {:label (util/double-quote [(search/lower-reward-bound n)
 ;				     (search/upper-reward-bound n)])
 ;	  :color "green"}
-       (let [fate (util/sref-get (:fate ^n))]
+       (let [fate (util/sref-get (:fate (meta n)))]
 ;	 (println fate)
 	 {:label (util/double-quote [(valuation-max-reward (pessimistic-valuation n))
 				     (valuation-max-reward (optimistic-valuation n))])
@@ -595,24 +595,24 @@
 		   :else "black")}));)
    (fn [n] 
      (when-not (isa? (:class n) ::ALTPlanNode)
-     (let [parent-fate (util/sref-get (:fate ^n))]
+     (let [parent-fate (util/sref-get (:fate (meta n)))]
        (cond (and parent-fate (not (= parent-fate :refined)) (not (= parent-fate :dead)) (not (= parent-fate :live)))
-  	       (do (assert (empty? (:cache ^n)))
+  	       (do (assert (empty? (:cache (meta n))))
 		   [[{:color "red" :style "dotted"} parent-fate]])
-	     ;(and (= parent-fate :live) (empty? (:cache ^n)))
+	     ;(and (= parent-fate :live) (empty? (:cache (meta n))))
 	     ;  (let [final (util/make-safe (util/find-first #(identical? (:plan %) n) nodes))]
 	     ;   [[{:label (util/double-quote "[finish]") :color "green"} final]])
 	     :else
-	       (for [[e n] (:cache ^n) :when (and (or show-finish (not (.startsWith (str (hla-name e)) "[finish")))
-						  (or show-refined (not (= :refined (util/sref-get (:fate ^n)))))
+	       (for [[e n] (:cache (meta n)) :when (and (or show-finish (not (.startsWith (str (hla-name e)) "[finish")))
+						  (or show-refined (not (= :refined (util/sref-get (:fate (meta n))))))
 						  (or show-noop (not (.startsWith (str (hla-name e)) "[noop"))))]
-		 (let [fate (util/sref-get (:fate ^n))]
+		 (let [fate (util/sref-get (:fate (meta n)))]
 		   [{:label (util/double-quote (hla-name e)) 
 		     :color (condp = fate :refined "blue" :live "green" "black")}  
 		    n])))))))
   (doseq [node nodes,
 	  n (util/iterate-while :previous (:plan node))]
-    (util/sref-set! (:fate ^n) nil))
+    (util/sref-set! (:fate (meta n)) nil))
   (util/sh "open" "-a" "Skim" "/tmp/alt.pdf")
   ))
 
@@ -642,8 +642,8 @@
 ; Old version, no subsumption
 (defn graph-add-and-check! [alt node rest-plan name]
   (util/assert-is (:graph? alt))
-  (let [#^HashMap graph-map (util/safe-get ^alt :graph-map)
-	#^HashSet live-set  (util/safe-get ^alt :live-set)
+  (let [#^HashMap graph-map (util/safe-get (meta alt) :graph-map)
+	#^HashSet live-set  (util/safe-get (meta alt) :live-set)
 	subsumption-info    (util/safe-get alt :subsumption-info)
 	opt-val    (optimistic-valuation node)
 	[opt-states] (get-valuation-states opt-val subsumption-info)

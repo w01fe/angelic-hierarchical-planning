@@ -68,12 +68,12 @@
 (defmethod node-state         ::StateSpaceNode [node] (:state node))
 
 (defmethod lower-reward-bound ::StateSpaceNode [node] 
-  (+ (:reward ^(:state node)) ((:lower-reward-fn (:search-space node)) (:state node))))
+  (+ (:reward (meta (:state node))) ((:lower-reward-fn (:search-space node)) (:state node))))
 
 (defmethod upper-reward-bound ::StateSpaceNode [node] 
-  (+ (:reward ^(:state node)) ((:upper-reward-fn (:search-space node)) (:state node))))
-;  (let [rew (+ (:reward ^(:state node)) ((:upper-reward-fn (:search-space node)) (:state node)))
-;	path-min (util/safe-get ^node :path-min)
+  (+ (:reward (meta (:state node))) ((:upper-reward-fn (:search-space node)) (:state node))))
+;  (let [rew (+ (:reward (meta (:state node))) ((:upper-reward-fn (:search-space node)) (:state node)))
+;	path-min (util/safe-get (meta node) :path-min)
 ;	consistency (util/safe-get-in node [:search-space :enforce-consistency?])]
 ;    (if consistency 
 ;      (if (< path-min rew)
@@ -83,7 +83,7 @@
  ;     rew)))
 
 (defmethod reward-so-far ::StateSpaceNode [node] 
-  (:reward ^(:state node)))
+  (:reward (meta (:state node))))
 
 (defmethod immediate-refinements ::StateSpaceNode [node] 
   (util/timeout)
@@ -93,7 +93,7 @@
     (for [succ (envs/successor-states state (:action-space search-space))]
       (do (util/sref-up! *plan-counter* inc)
 	  (make-state-space-node search-space succ)))))
-;    (map #(make-state-space-node search-space % #_ (min (util/safe-get ^node :path-min) (upper-reward-bound node))) 
+;    (map #(make-state-space-node search-space % #_ (min (util/safe-get (meta node) :path-min) (upper-reward-bound node))) 
 ;	 )))
 
 (defmethod primitive-refinement ::StateSpaceNode [node] 
@@ -106,22 +106,22 @@
 
 (defmethod extract-a-solution ::StateSpaceNode [node]
   (when (envs/satisfies-condition? (:state node) (:goal (:search-space node)))
-    [(:act-seq ^(:state node)) (:reward ^(:state node))]))
+    [(:act-seq (meta (:state node))) (:reward (meta (:state node)))]))
 
 (defmethod node-str ::StateSpaceNode [node] 
 ;  (envs/state-str (:state-space (:search-space node)) (:state node)))
 ;  (envs/state-str (:state-space (:search-space node)) (:state node)))
-  (str (vec (map :name (:act-seq ^(:state node))))))
+  (str (vec (map :name (:act-seq (meta (:state node)))))))
 
 
 ;(defmethod node-parent ::StateSpaceNode [node] 
 ;  Not implemented
 
 (defmethod node-depth ::StateSpaceNode [node] 
-  (count (:act-seq ^(:state node))))
+  (count (:act-seq (meta (:state node)))))
 
 (defmethod node-first-action ::StateSpaceNode [node]
-  (nth (:act-seq ^(:state node)) 0))
+  (nth (:act-seq (meta (:state node))) 0))
 
 
 

@@ -358,7 +358,7 @@
 	    (and strict? (let [[l u] final-bounds [nl nu] new-bounds] 
                            (and l u (or nl nu) (= l u (or nl nu)))))) 
         (print-debug 2 "New bounds for" var "are inconsistent."
-                     ;lp ^lp var new-bounds old-bounds final-bounds strict?
+                     ;lp (meta lp) var new-bounds old-bounds final-bounds strict?
                      ) 
       (let [new-bounds   (assoc (:bounds lp) var final-bounds)
             sol          (current-feasible-solution lp)

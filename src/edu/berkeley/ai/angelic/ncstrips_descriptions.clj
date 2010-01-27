@@ -374,14 +374,14 @@
      
 (defmethod regress-clause-state ::NCStripsDescription regress-clause-state-ncstrips [state pre-clause desc post-clause-pair]
   (if-let [[post-clause step-rew] post-clause-pair]
-      [(matching-clause-state (util/safe-get ^post-clause :pre-clause) state) step-rew]
+      [(matching-clause-state (util/safe-get (meta post-clause) :pre-clause) state) step-rew]
     (let [candidate-pairs 
 	  (for [[post-clause step-rew] (progress-clause pre-clause desc)
 		:when (clause-includes-state? post-clause state)]
 	    [post-clause step-rew])]
       (when (seq candidate-pairs)
 	(let [[post-clause step-rew] (util/first-maximal-element second candidate-pairs)]
-	  [(matching-clause-state (util/safe-get ^post-clause :pre-clause) state) step-rew pre-clause]))))) 
+	  [(matching-clause-state (util/safe-get (meta post-clause) :pre-clause) state) step-rew pre-clause]))))) 
 
 ; You could try to extract the best state going backwards. 
  ; But, you may have a better (i.e., worse) bound than you thought (when there are cost-params).

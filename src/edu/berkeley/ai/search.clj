@@ -278,7 +278,7 @@
 
 
 (comment 
-  (map #(map :name (:act-seq ^(:state %)))
+  (map #(map :name (:act-seq (meta (:state %))))
        (primitive-refinements-depth 
 	(state-space-search-node  
 	 (read-strips-planning-instance

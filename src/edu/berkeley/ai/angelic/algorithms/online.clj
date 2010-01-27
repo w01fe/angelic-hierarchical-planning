@@ -50,9 +50,9 @@
 	(do (util/print-debug 2 "Found known state at " (search/node-str {:class ::alts/ALTPlanNode :plan nxt}))
 	    (search/adjust-reward (alts/make-alt-plan-node (:class node) alt name nxt (inc parent-depth)) (+ rew-so-far rew-to-go)))
       (if (and (or (> (valuation-max-reward (alts/optimistic-valuation nxt)) Double/NEGATIVE_INFINITY)
-		   (and (util/sref-set! (:fate ^nxt) :dead) false))
+		   (and (util/sref-set! (:fate (meta nxt)) :dead) false))
 	       (or (next actions) 
-		   (not (util/sref-get (:was-final? ^nxt)))
+		   (not (util/sref-get (:was-final? (meta nxt))))
 		   (= :full (:graph? alt))) ; Eliminate duplicates.
 	       (or (not (:graph? alt)) 
 		   (alts/graph-add-and-check! alt nxt (next actions) 

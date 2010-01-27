@@ -204,9 +204,9 @@
 (defn make-alg-root-node [initial-plan opt-val pess-val] 
   (let [n (add-valuation-metadata
 	   (struct alg-merge-node ::ALGRootNode initial-plan (util/sref #{}) (util/sref nil) (util/sref {})))]
-    (util/sref-set! (:optimistic-valuation ^n) opt-val)
-    (util/sref-set! (:weighted-valuation ^n) opt-val)
-    (util/sref-set! (:pessimistic-valuation ^n) pess-val) 
+    (util/sref-set! (:optimistic-valuation (meta n)) opt-val)
+    (util/sref-set! (:weighted-valuation (meta n)) opt-val)
+    (util/sref-set! (:pessimistic-valuation (meta n)) pess-val) 
     n))
 
 (derive ::ALGAutoMergeNode ::ALGMergeNode)
@@ -435,7 +435,7 @@
 				 (hla-hierarchical-preconditions (:hla node)))
 	     (hla-optimistic-description (:hla node)))]
 	(if (contains? #{:both :global} (util/safe-get alg :prune?))
-	    (let [#^HashMap prune-map (:prune-map ^alg)
+	    (let [#^HashMap prune-map (:prune-map (meta alg))
 		  rest-hlas (:rest-hlas node)]
 	      (alg-pessimistic-valuation alg node)
 	      (filter-valuation-clauses 
@@ -472,7 +472,7 @@
 	     (hla-pessimistic-description (:hla node)))]
 	(when (contains? #{:both :global} (util/safe-get alg :prune?))
 	  (doseq [[clause rew] (valuation-clause-map v)]
-	    (let [#^HashMap prune-map (:prune-map ^alg)
+	    (let [#^HashMap prune-map (:prune-map (meta alg))
 		  pair    [clause (:rest-hlas node)]
 		  old-rew (or (.get prune-map pair) Double/NEGATIVE_INFINITY)]
 	      (when (> rew old-rew)
@@ -493,7 +493,7 @@
 				 (let [pess-pair (find (valuation-clause-map pess-val) clause)]
 				    (or (empty? pess-pair)
 					(> rew (second pess-pair))
-					(identical? e (:source-node ^(first pess-pair))))))
+					(identical? e (:source-node (meta (first pess-pair)))))))
 			       val)]
 		    :when (if (empty-valuation? reduced-val)
 			      (do (disconnect! e node) nil)
@@ -537,8 +537,8 @@
 
 (declare invalidate-valuations)
 (defn handle-graph [alg node]
-  (let [#^HashMap graph-map (util/safe-get ^alg :merge-map)
-	opt-val             (util/sref-get (:optimistic-valuation ^node))
+  (let [#^HashMap graph-map (util/safe-get (meta alg) :merge-map)
+	opt-val             (util/sref-get (:optimistic-valuation (meta node)))
 	[opt-states _]      (get-valuation-states opt-val {})
 	rest-hlas           (util/safe-get node :rest-hlas)
 	key-pair            [opt-states rest-hlas]]
@@ -585,7 +585,7 @@
   ([alg node]
 ;     (if (contains? post-set node)
 ;         (do (println "Killing cycle!") *pessimal-valuation*)
-       (let [s (:optimistic-valuation ^node)]
+       (let [s (:optimistic-valuation (meta node))]
 	 (or (util/sref-get s)
 	     (do
 	       (util/sref-up! *op-counter* inc)
@@ -595,14 +595,14 @@
 	       (util/sref-get s))))))
 
 (defn alg-weighted-valuation [alg node]
-  (let [s (:weighted-valuation ^node)]
+  (let [s (:weighted-valuation (meta node))]
     (or (util/sref-get s)
 	(util/sref-set! s 
 	  (do (util/sref-up! *pp-counter* inc)
 	      (compute-alg-weighted-valuation alg node))))))
 
 (defn alg-pessimistic-valuation [alg node]
-  (let [s (:pessimistic-valuation ^node)]
+  (let [s (:pessimistic-valuation (meta node))]
     (or (util/sref-get s)
 	(util/sref-set! s 
 	  (do (util/sref-up! *pp-counter* inc)
@@ -617,9 +617,9 @@
 
 
 (defn invalidate-valuations [node]
-  (util/sref-set! (:optimistic-valuation ^node) nil)
-  (util/sref-set! (:weighted-valuation ^node) nil)
-  (util/sref-set! (:pessimistic-valuation ^node) nil)
+  (util/sref-set! (:optimistic-valuation (meta node)) nil)
+  (util/sref-set! (:weighted-valuation (meta node)) nil)
+  (util/sref-set! (:pessimistic-valuation (meta node)) nil)
   nil)
 
 
@@ -705,7 +705,7 @@
  ; (when next-clause (util/assert-is (clause-includes-state? next-clause next-state)))
   (if next-clause
       (or 
-        (when-let [prev-node (get ^next-clause :source-node)]
+        (when-let [prev-node (get (meta n)ext-clause :source-node)]
 	  (when (and (contains? (util/sref-get (:previous-set node)) prev-node)
 		     (or (not (= :strict (util/safe-get alg :consistent-search?)))
 			 (let [np (util/sref-get (:newest-previous node))]

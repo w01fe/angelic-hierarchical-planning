@@ -58,7 +58,7 @@
   (persistent!
    (reduce (fn [result [var mult]]
 	     (let [new-var (f var)]
-	       (cond (and (map? new-var) (not (:type ^new-var)))
+	       (cond (and (map? new-var) (not (:type (meta new-var))))
   		       (reduce (fn [result [var inner-mult]]
 				 (assoc! result var (ga/+ (ga/* mult inner-mult) (get result var 0))))
 			       result new-var)

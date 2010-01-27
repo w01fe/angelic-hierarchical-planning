@@ -208,9 +208,9 @@
 (defmethod regress-state-hinted [::DNFValuation :edu.berkeley.ai.angelic/PropositionalDescription :edu.berkeley.ai.angelic/Valuation] regress-state-hinted-dnf
   [state pre-val desc post-val clause]
   (or (when clause 
-	(when-let [prev-clause  (get ^clause :src-clause)]
-	  (when-let [pre-clause (get ^clause :pre-clause)]
-	    (when-let [step-rew  (get ^clause :step-rew)]
+	(when-let [prev-clause  (get (meta clause) :src-clause)]
+	  (when-let [pre-clause (get (meta clause) :pre-clause)]
+	    (when-let [step-rew  (get (meta clause) :step-rew)]
 	      (when-let [[prev-clause2 prev-rew] (valuation-clause-reward pre-val prev-clause)]
 		(when (identical? prev-clause prev-clause2)  
 ;		  (print ".")

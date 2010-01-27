@@ -257,7 +257,7 @@
 			       (:restricted-clause edge)
 			       (:opt-desc edge)
 			       [final-clause rew])
-;	(minimal-clause-state (util/safe-get ^final-clause :pre-clause))
+;	(minimal-clause-state (util/safe-get (meta final-clause) :pre-clause))
 	[pess-state pess-rew] (or 
 			       (regress-clause-state 
 			        state

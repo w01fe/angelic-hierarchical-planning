@@ -19,16 +19,16 @@
   (util/sref-set! *next-counter* (inc (util/sref-get *next-counter*)))
   (let [[next reward] ((:fn action) state)]
     (with-meta next
-      {:act-seq (conj (:act-seq ^state) action)
-       :reward (+ reward (:reward ^state))})))
+      {:act-seq (conj (:act-seq (meta state)) action)
+       :reward (+ reward (:reward (meta state)))})))
 
 (defn next-state-and-reward [state action]
 ;  (prn "next" (:name action))
   (util/sref-set! *next-counter* (inc (util/sref-get *next-counter*)))
   (let [[next reward] ((:fn action) state)]
     [(with-meta next
-       {:act-seq (conj (:act-seq ^state) action)
-        :reward (+ reward (:reward ^state))})
+       {:act-seq (conj (:act-seq (meta state)) action)
+        :reward (+ reward (:reward (meta state)))})
      reward]))
 
 

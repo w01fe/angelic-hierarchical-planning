@@ -322,7 +322,7 @@
   
 ;; Instantiated variables are limited to allowed tuples ... positions are 0-indexed.
 (defmethod envs/expected-domain-size ::StripsPlanningInstance [inst pred arg-pos inst-pos]
-  (let [mem (util/safe-get ^inst :domain-size-cache)
+  (let [mem (util/safe-get (meta inst) :domain-size-cache)
 	args [pred arg-pos (set inst-pos)]]
 ;    (println pred arg-pos inst-pos)
     (if-let [e (find (util/sref-get mem) args)]

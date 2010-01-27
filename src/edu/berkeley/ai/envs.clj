@@ -102,9 +102,9 @@
 	  (let [next1 (safe-next-state state (first rest-act-seq))
 		next2 (safe-next-state state (util/safe-get action-map (:name (first rest-act-seq))))]
 	    (util/assert-is (= next1 next2))
-	    (util/assert-is (= (:reward ^next1) (:reward ^next2)))
+	    (util/assert-is (= (:reward (meta next1)) (:reward (meta next2))))
 	    (recur next1 (next rest-act-seq) (conj state-seq next1)))
 	(do 
 	  (util/assert-is (satisfies-condition? state goal))
-	  (util/assert-is (= reward (:reward ^state)))
+	  (util/assert-is (= reward (:reward (meta state))))
 	  [act-seq reward state-seq])))))
