@@ -194,7 +194,8 @@
 	  (= (first var-tree) 'clojure.core/unquote)
 	    [{(second var-tree) match-tree}]
 	  (and (coll? (first var-tree)) (= (ffirst var-tree) 'clojure.core/unquote-splicing))
-	    [{(second (first var-tree)) match-tree}]
+            (do (assert (empty? (next var-tree)))
+                [{(second (first var-tree)) match-tree}])
   	  (and (coll? (first var-tree)) (= (ffirst var-tree) :optional))
 	    (do (assert-is (= (count (first var-tree)) 2))
 		(lazy-cat (merge-mappings (match-mappings (second (first var-tree)) (first match-tree))

@@ -109,12 +109,22 @@
            :in (slurp (str *working-dir* "output.sas"))
            :dir *working-dir*))
 
+(defn sources [[el nds]]
+  (clojure.set/difference (set (keys nds)) (set (map second (filter #(not (apply = %)) el)))))
+
+(defn sinkize [[el nds]]
+  [(concat (for [source (sources [el nds])] [-1 source]) el )
+   (assoc nds -1 [:source])])
+
 (defn causal-graph-info [stem]
-  (lama-translate stem)
+  (println (lama-translate stem))
   (lama-preprocess)
   (let [cg (read-causal-graph (str *working-dir* "output"))]
-    (gv/graphviz-el cg)
-    (scc-graph cg)))
+;    (gv/graphviz-el cg)
+    (let [cg (scc-graph cg)]
+      (println cg "\n\n" (sinkize cg))
+      (apply gv/graphviz-el (sinkize cg))
+      cg)))
 
 ; (show-directed-graph (read-causal-graph  "/Users/jawolfe/Projects/research/planners/seq-sat-lama/lama/output"))
 

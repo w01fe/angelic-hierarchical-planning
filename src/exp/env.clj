@@ -128,11 +128,12 @@
   (assert (applicable? action state))
   (util/sref-set! *next-counter* (inc (util/sref-get *next-counter*)))
  ; (.put #^HashMap *next-ba* (action-name action) (inc (get *next-ba* (action-name action) 0)))
-  (let [[next reward] (next-state-and-reward action state)]
+  (let [[next reward] (next-state-and-reward action state)
+        old-meta      (meta state)]
     [(vary-meta next assoc
-       :act-seq (cons (action-name action) (:act-seq (meta state)))
+       :act-seq (cons (action-name action) (:act-seq old-meta))
                                         ;(conj (or (:act-seq ^state) []) action)
-       :reward (+ reward (or (:reward ^state) 0)))
+       :reward (+ reward (or (:reward old-meta) 0)))
      reward]))
 
 
