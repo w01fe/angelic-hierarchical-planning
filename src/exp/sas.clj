@@ -147,27 +147,35 @@
   (vec (if (empty? index-set) v
            (map second (remove #(index-set (first %)) (util/indexed v))))))
 
+(defn merge-vals
+  ([x] x)
+  ([x y] (cons ::or (map #(if (= (first %) ::or) (next %) [%]) [x y])))
+  ([x y & more] (reduce merge-vals x (cons y more))))
+
 ;; Idea is: multiple untested vals per var can be merged, unset vals can be removed.
 ;;          Then, any var with 1 val can be removed entirely.
 (defn renumber-sas-problem [vars actions init untested-vals unset-vals dead-actions]
   (let [rest-actions     (remove (set dead-actions) actions)
         unset-vals-v     (util/map-vals #(set (map second %)) (util/group-by first unset-vals))
         untst-vals-v     (util/map-vals #(set (map second %)) (util/group-by first untested-vals))        
-        val-mappings     (vec (for [v vars] (remapping (:n-vals v) (unset-vals-v (:num v)) (untst-vals-v (:num v)))))
-        dead-vars-vals   (for [[vn vals] dead-vals-by-var  ;; fix to use val-mappings
-                               :let [r-vals (remove (set vals) (range (:n-vals (get vars vn))))]
-                               :when (< (count r-vals) 2)]
-                           (do (assert (seq r-vals))
-                               (assert (= (init vn) (first r-vals)))
-                               [vn (first r-vals)]))
-        dead-vars        (set (map first dead-vars-vals))
+        val-mappings     (vec (for [v vars] (remapping (:n-vals v) (unset-vals-v (:num v)) 
+                                                                   (untst-vals-v (:num v)))))
+        val-counts       (vec (map #(count (distinct (remove nil? (vals %)))) val-mappings))
+        dead-vars        (set (for [[i c] (util/indexed val-counts)
+                                    :when (< c 2)]
+                                (do (assert (= c 1))
+                                    (assert ((val-mappings i) (init i)))
+                                    i)))
         var-mapping      (remapping (count vars) dead-vars nil)
-        rem-dead-vals    (remove #(dead-vars (first %)) dead-vals)
         final-vars       (vec (for [var vars 
-                                    :when (not (dead-vars (:num var)))]
-                                (SAS-Var (var-mapping (:num var)) (:name var) 
-                                         (- (:n-vals var) (count (dead-vals-by-var (:num var)))) ;; fix to use val-mappings
-                                         (remove-indices (:val-names var) (dead-vals-by-var (:num var)))))) ;; Fix to use both, OR syntax. 
+                                    :when (not (dead-vars (:num var)))
+                                    :let  [val-mapping (val-mappings (:num var))]]
+                                (SAS-Var (var-mapping (:num var)) (:name var) (val-counts (:num var))
+                                         (vec (map #(apply merge-vals (second %))
+                                                (sort-by first 
+                                                  (util/group-by first
+                                                    (for [[i v] (util/indexed (:val-names var))]
+                                                      [(val-mapping i) v]))))))))
         final-actions    (vec (for [a rest-actions
                                     :let [fp (doall (for [[var-num val-num] (:preconditions a)
                                                            :let [new-var-num (var-mapping var-num)
@@ -186,7 +194,9 @@
     (println "Removing"   (- (count actions) (count final-actions)) "actions," 
                             (count dead-actions) "initial;" 
                           (count dead-vars) "vars;"
-                          (count rem-dead-vals) "additional vals.")
+                          (- (apply + (map :n-vals vars))
+                             (apply + (map :n-vals final-vars))
+                             (apply + (map #(:n-vals (vars %)) dead-vars))) "additional vals.")
     (make-sas-problem
      final-vars
      (remove-indices (map #(%1 %2) val-mappings init) dead-vars)
@@ -224,7 +234,7 @@
               (queues/pq-add! stack a 0)))))
 ;    (println (concat dead-vals (keys actions-by-precond)))
 ;    (println "DEAD ACTION PRECONDS: " (keys actions-by-precond))
-;    (println (util/map-vals count (util/group-by first  untested-vals)))
+    (println (util/map-vals count (util/group-by first  untested-vals)))
     (println (count unset-vals) (count untested-vals) (count actions-by-precond) (count action-precond-counts))
     (renumber-sas-problem vars actions init untested-vals (concat unset-vals (keys actions-by-precond)) 
                           (keys action-precond-counts))))

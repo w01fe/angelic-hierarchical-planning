@@ -117,7 +117,7 @@
    (assoc nds -1 [:source])])
 
 (defn causal-graph-info [cg]
-;  (apply gv/graphviz-el (sinkize cg))
+  (gv/graphviz-el cg)
   (let [cg (scc-graph cg)]
     (println cg "\n\n" (sinkize cg))
     (apply gv/graphviz-el (sinkize cg))

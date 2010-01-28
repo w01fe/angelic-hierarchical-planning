@@ -369,3 +369,5 @@
      (write-taxi-strips-domain (str prefix "-domain.pddl"))
      (write-taxi-strips-instance tenv (str prefix ".pddl"))
      prefix))
+
+; (make-sas-problem-from-pddl (prln (write-taxi-strips (make-random-taxi-env 1 2 1))) )
