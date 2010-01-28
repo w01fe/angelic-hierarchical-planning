@@ -132,18 +132,18 @@
         old-meta      (meta state)]
     [(vary-meta next assoc
        :act-seq (cons (action-name action) (:act-seq old-meta))
-                                        ;(conj (or (:act-seq ^state) []) action)
+                                        ;(conj (or (:act-seq (meta state)) []) action)
        :reward (+ reward (or (:reward old-meta) 0)))
      reward]))
 
 
 
 (defn solution-and-reward [state]
-  (let [{:keys [act-seq reward]} ^state]
+  (let [{:keys [act-seq reward]} (meta state)]
     [(reverse act-seq) (or reward 0)]))
 
 (defn reward [state]
-  (or (:reward ^state) 0))
+  (or (:reward (meta state)) 0))
 
 ;; Environments have a single goal state
 ;; Goal fn returns [sol reward] or nil.

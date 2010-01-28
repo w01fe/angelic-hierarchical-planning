@@ -62,7 +62,7 @@
                           [['dstx name] dx] [['dsty name] dy]])))
            ['atx] 1 ['aty] 1 ['in-taxi] nil}
           (for [[name [sx sy] [dx dy]] passengers]
-            [['pass-served? name] false])))
+            [['pass-served? name] (= [sx sy] [dx dy])])))
   (actions-fn []
    (fn taxi-actions [s]
      (filter identity
@@ -275,3 +275,97 @@
    env
    [(make-taxi-tla3 env)]))
 
+
+
+
+
+;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;; STRIPS version ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
+
+(defn write-taxi-strips-domain [file]
+  (util/spit file
+    ";; Taxi domain 
+     
+     (define (domain taxi)
+       (:requirements :typing)
+       (:types loc pass)
+       (:constants InTaxi - loc)
+       (:predicates 
+          (LEFTOF ?l1 ?l2 - loc)
+          (ABOVE  ?l1 ?l1 - loc)
+          (taxi-at ?l)
+          (pass-at ?p - pass ?l - loc)
+          (taxi-empty)
+          (taxi-holding ?p - pass))
+       
+       (:action pickup 
+         :parameters (?l - loc ?p - pass)
+         :precondition (and 
+                         (taxi-at ?l)
+                         (pass-at ?p ?l)
+                         (taxi-empty))
+         :effect       (and
+                         (not (taxi-empty)) (taxi-holding ?p)
+                         (not (pass-at ?p ?l)) (pass-at ?p InTaxi)))
+                          
+       (:action putdown 
+         :parameters (?l - loc ?p - pass)
+         :precondition (and 
+                         (taxi-at ?l)
+                         (pass-at ?p InTaxi)
+                         (taxi-holding ?p))
+         :effect       (and
+                         (not (taxi-holding ?p)) (taxi-empty)
+                         (not (pass-at ?p InTaxi)) (pass-at ?p ?l)))
+
+       (:action left 
+         :parameters (?l1 ?l2 - loc)
+         :precondition (and (taxi-at ?l1) (LEFTOF ?l2 ?l1))
+         :effect       (and (not (taxi-at ?l1)) (taxi-at ?l2)))
+
+       (:action right 
+         :parameters (?l1 ?l2 - loc)
+         :precondition (and (taxi-at ?l1) (LEFTOF ?l1 ?l2))
+         :effect       (and (not (taxi-at ?l1)) (taxi-at ?l2)))
+
+       (:action up 
+         :parameters (?l1 ?l2 - loc)
+         :precondition (and (taxi-at ?l1) (ABOVE ?l2 ?l1))
+         :effect       (and (not (taxi-at ?l1)) (taxi-at ?l2)))
+
+       (:action down 
+         :parameters (?l1 ?l2 - loc)
+         :precondition (and (taxi-at ?l1) (ABOVE ?l1 ?l2))
+         :effect       (and (not (taxi-at ?l1)) (taxi-at ?l2))))"
+         
+        ))
+
+(defn write-taxi-strips-instance [tenv file]
+  (let [{:keys [width height passengers]} tenv]
+    (util/spit file
+      (util/str-join "\n"
+        ["(define (problem taxi-)
+           (:domain taxi)
+           (:objects "
+              (util/str-join " " (map first passengers)) " - pass"
+              (util/str-join " " (for [w (range 1 (inc width)) h (range 1 (inc height))] (str w "-" h))) " - loc"
+         "    )
+           (:init "
+              (util/str-join " " (for [w (range 1 width) h (range 1 (inc height))] 
+                                   (str "(LEFTOF " w "-" h " " (inc w) "-" h ")")))
+              (util/str-join " " (for [w (range 1 (inc width)) h (range 1 height)] 
+                                   (str "(ABOVE " w "-" h " " w "-" (inc h) ")")))
+              "(taxi-at 1-1)"
+              (util/str-join " " (for [[n [sx sy]] passengers]
+                                   (str "(pass-at " n " " sx "-" sy ")")))
+              "(taxi-empty))"
+         " (:goal (and "
+              (util/str-join " " (for [[n _ [dx dy]] passengers]
+                                   (str "(pass-at " n " " dx "-" dy ")")))
+              ")))"]))))
+
+(defn write-taxi-strips 
+  ([tenv] (write-taxi-strips tenv (str "/tmp/taxi" (rand-int 10000))))
+  ([tenv prefix]
+     (write-taxi-strips-domain (str prefix "-domain.pddl"))
+     (write-taxi-strips-instance tenv (str prefix ".pddl"))
+     prefix))

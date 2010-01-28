@@ -116,15 +116,20 @@
   [(concat (for [source (sources [el nds])] [-1 source]) el )
    (assoc nds -1 [:source])])
 
-(defn causal-graph-info [stem]
+(defn causal-graph-info [cg]
+;  (apply gv/graphviz-el (sinkize cg))
+  (let [cg (scc-graph cg)]
+    (println cg "\n\n" (sinkize cg))
+    (apply gv/graphviz-el (sinkize cg))
+    cg))
+
+(defn pddl-causal-graph-info [stem]
   (println (lama-translate stem))
-  (lama-preprocess)
-  (let [cg (read-causal-graph (str *working-dir* "output"))]
-;    (gv/graphviz-el cg)
-    (let [cg (scc-graph cg)]
-      (println cg "\n\n" (sinkize cg))
-      (apply gv/graphviz-el (sinkize cg))
-      cg)))
+  (println (lama-preprocess))  
+  (causal-graph-info (read-causal-graph (str *working-dir* "output"))))
+
+
+
 
 ; (show-directed-graph (read-causal-graph  "/Users/jawolfe/Projects/research/planners/seq-sat-lama/lama/output"))
 
