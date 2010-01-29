@@ -16,12 +16,13 @@
 
 (defprotocol FactoredState
   (set-var [state var val])
+  (set-vars [state vv-pairs])
   (get-var [state var])
   (list-vars [state])
   (as-map [state]))
 
-(defn apply-factored-effects [fs m]
-  (reduce (fn [s [k v]] (set-var s k v)) fs m))
+;(defn default-set-vars [fs m]
+;  (reduce (fn [s [k v]] (set-var s k v)) fs m))
 
 (declare make-logging-factored-state)
 
@@ -36,6 +37,10 @@
                             {;:gets (atom @(:gets (meta state))) 
                              :puts (assoc (:puts (meta state)) var val)}
                             {}))
+   (set-vars [vv-pairs]
+     (LoggingFactoredState. (set-vars init vv-pairs)
+                            {:puts (merge (:puts (meta state)) vv-pairs)}
+                            {}))
    (list-vars [] (list-vars init))
    (as-map [] init)
   LoggingState
@@ -43,7 +48,7 @@
   ContextualState 
    (current-context [] (keys init))
    (extract-context [c] (select-keys init c))
-   (apply-effects   [e] (apply-factored-effects state e))
+   (apply-effects   [e] (set-vars state e))
    (get-logger      [] (make-logging-factored-state init)))
 
 (defn make-logging-factored-state [init-state] 
@@ -51,19 +56,18 @@
                                     :puts {}} {}))
 
 
-(def *m1* {:set-var assoc :get-var util/safe-get :list-vars keys :as-map identity})
+(def *m1* {:set-var assoc :set-vars merge :get-var util/safe-get :list-vars keys :as-map identity})
 (def *m2* {:current-context keys :extract-context select-keys 
                    :apply-effects merge :get-logger make-logging-factored-state})
-(def *m3* {:set-var assoc! :get-var util/safe-get :list-vars keys :as-map persistent!})
-
 
 (extend clojure.lang.PersistentHashMap FactoredState *m1*  ContextualState *m2*)
 (extend clojure.lang.PersistentArrayMap FactoredState *m1*  ContextualState *m2*)
- 
-(extend clojure.lang.PersistentHashMap$TransientHashMap
-  FactoredState *m3* ContextualState *m2*)
-(extend clojure.lang.PersistentArrayMap$TransientArrayMap
-  FactoredState *m3* ContextualState *m2*)
+
+;(def *m3* {:set-var assoc! :get-var util/safe-get :list-vars keys :as-map persistent!})
+;(extend clojure.lang.PersistentHashMap$TransientHashMap
+;  FactoredState *m3* ContextualState *m2*)
+;(extend clojure.lang.PersistentArrayMap$TransientArrayMap
+;  FactoredState *m3* ContextualState *m2*)
 
 (defn state-matches-map? [fs m]
   (every? (fn [[k v]] (= (get-var fs k) v)) m))

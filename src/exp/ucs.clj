@@ -15,13 +15,14 @@
        (loop []
          (when-not (queues/pq-empty? q)
            (let [[s c] (queues/pq-remove-min-with-cost! q)]
+;             (when (> c -10) (println s))
 ;             (print c " ")
 ;             (flush)
              (or (and (goal s) [(:act-seq (meta s)) (:reward (meta s))])
                  (do
                    (doseq [a (actions s) :when (env/applicable? a s)]
                      (let [[ss sc] (env/successor a s)]
-                       (queues/pq-add! q ss (- c sc))))
+                        (queues/pq-add! q ss (- c sc))))
                    (recur)))))))))
 
 ;; Two other algorithms: exhaustive HTN, and SA-HTN, possibly also SA-HTN-queue.
