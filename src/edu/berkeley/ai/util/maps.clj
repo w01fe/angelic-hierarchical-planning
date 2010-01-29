@@ -6,6 +6,8 @@
   ([pred map] (for [[k v] map :when (pred v)] k))
   {:test (fn [] (is (= #{ 3 4 6} (set (true-keys {1 nil 2 false 3 true 4 'asfd 5 nil 6 1})))))})
 
+(defn identity-map [keys] (into {} (map vector keys keys)))
+
 (defn map-map "Like map, but expects f to return pairs/map entries that are combined to make a map return value."
   [f & maps] 
   (into {} (apply map f maps)))

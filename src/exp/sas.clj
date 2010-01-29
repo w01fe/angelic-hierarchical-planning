@@ -125,75 +125,58 @@
 
 ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;; Simplification stuff ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
 
-(defn remapping [n-vals dead-vals merged-vals]
-  (let [l (ArrayList. (range n-vals))
-        merged-vals (sort merged-vals)]
-    (doseq [v (sort dead-vals)]   (.add l v nil))
-    (doseq [v (rest merged-vals)] (.add l v (first merged-vals)))
-    (into {} (map vector (range n-vals) (seq l)))))
-
-(defn remove-indices [v index-set]
-  (vec (if (empty? index-set) v
-           (map second (remove #(index-set (first %)) (util/indexed v))))))
 
 (defn merge-vals
+  ([] nil)
   ([x] x)
   ([x y] (cons ::or (map #(if (= (first %) ::or) (next %) [%]) [x y])))
   ([x y & more] (reduce merge-vals x (cons y more))))
 
 ;; Idea is: multiple untested vals per var can be merged, unset vals can be removed.
 ;;          Then, any var with 1 val can be removed entirely.
-(defn renumber-sas-problem [vars actions init untested-vals unset-vals dead-actions]
-  (let [rest-actions     (remove (set dead-actions) actions)
-        unset-vals-v     (util/map-vals #(set (map second %)) (util/group-by first unset-vals))
-        untst-vals-v     (util/map-vals #(set (map second %)) (util/group-by first untested-vals))        
-        val-mappings     (vec (for [v vars] (remapping (:n-vals v) (unset-vals-v (:num v)) 
-                                                                   (untst-vals-v (:num v)))))
-        val-counts       (vec (map #(count (distinct (remove nil? (vals %)))) val-mappings))
-        dead-vars        (set (for [[i c] (util/indexed val-counts)
-                                    :when (< c 2)]
-                                (do (assert (= c 1))
-                                    (assert ((val-mappings i) (init i)))
-                                    i)))
-        var-mapping      (remapping (count vars) dead-vars nil)
-        final-vars       (vec (for [var vars 
-                                    :when (not (dead-vars (:num var)))
-                                    :let  [val-mapping (val-mappings (:num var))]]
-                                (SAS-Var (var-mapping (:num var)) (:name var) (val-counts (:num var))
-                                         (vec (map #(apply merge-vals (second %))
-                                                (sort-by first 
-                                                  (util/group-by first
-                                                    (for [[i v] (util/indexed (:val-names var))]
-                                                      [(val-mapping i) v]))))))))
-        final-actions    (vec (for [a rest-actions
-                                    :let [fp (doall (for [[var-num val-num] (:preconditions a)
-                                                           :let [new-var-num (var-mapping var-num)
-                                                                 new-val-num (util/make-safe ((val-mappings var-num) 
-                                                                                              val-num))]
-                                                           :when new-var-num]
-                                                       [new-var-num new-val-num]))
-                                          fe (for [[var-num val-num] (:effects a)
-                                                   :let [new-var-num (var-mapping var-num)
-                                                         new-val-num ((val-mappings var-num) val-num)]
-                                                   :when (and new-var-num new-val-num)]
-                                               [new-var-num new-val-num])]
+(defn simplify-sas-problem [vars actions init untested-vals unset-vals dead-actions]
+  (let [unset-vals-v     (util/map-vals #(set (map second %)) (util/group-by first unset-vals))
+        untst-vals-v     (util/map-vals #(set (map second %)) (util/group-by first untested-vals))
+        val-mappings     (util/map-vals 
+                          #(let [unset-vals (or (unset-vals-v (:name %)) {})
+                                 untst-vals (clojure.set/difference (or (untst-vals-v (:name %)) {}))
+                                 merged-val (apply merge-vals untst-vals)]
+                             (merge (util/identity-map (:vals %))
+                                    (into {} (map vector unset-vals (repeat nil)))
+                                    (into {} (map vector untst-vals (repeat merged-val))))) 
+                          vars)
+        final-vars       (into {}
+                           (for [[vn var] vars
+                                 :let [val-map  (val-mappings vn)
+                                       new-vals (vec (distinct (vals val-map)))
+                                       _ (assert (and (> (count new-vals) 0)
+                                                      (val-map (init vn))))]
+                                 :when (> (count new-vals) 1)]
+                             [vn (SAS-Var vn new-vals)]))
+        final-actions    (vec (for [a (remove (set dead-actions) actions)
+                                    :let [fp (into {} (for [[var val] (:precond-map a)
+                                                            :when (contains? final-vars var)]
+                                                        [var (util/make-safe ((val-mappings var) val))]))
+                                          fe (into {} (for [[var val] (:effect-map a)
+                                                            :let [new-val ((val-mappings var) val)]
+                                                            :when (and (contains? final-vars var) new-val)]
+                                                        [var new-val]))]
                                     :when (seq fe)]
-                                (env/FactoredPrimitive (:name a) (vec fp) (vec fe) (:cost a))))]
-;    (println val-mappings "\n\n" var-mapping)
+                                (env/FactoredPrimitive (:name a) fp fe (:reward a))))]
     (println "Removing"   (- (count actions) (count final-actions)) "actions," 
                             (count dead-actions) "initial;" 
-                          (count dead-vars) "vars;"
-                          (- (apply + (map :n-vals vars))
-                             (apply + (map :n-vals final-vars))
-                             (apply + (map #(:n-vals (vars %)) dead-vars))) "additional vals.")
+                          (- (count vars) (count final-vars)) "vars;"
+                          (apply + (for [[vn nv] final-vars] 
+                                     (- (count (:vals (vars vn))) (count (:vals nv))))) "additional vals.")
     (make-sas-problem
      final-vars
-     (remove-indices (map #(%1 %2) val-mappings init) dead-vars)
+     (select-keys init (keys final-vars))
      final-actions)))
 
-;; Can remove anything not referenced in a precondition except goal, unreachable values, etc.
-;; NO. setting a variable can negate a precondition, making things worse. 
-;; Latter seems done already by lama preprocesor, perhaps former too.
+;; Forward simplification
+;; Can merge all values for a var that are never referenced in a precondition,
+;; Remove all values that are never set by an effect. 
+;; Then, remove actions with invalid preconditions or no effects.
 (defn forward-simplify [sas-problem]
   (let [{:keys [vars actions init]} sas-problem
         untested-vals               (HashSet.)
@@ -202,56 +185,34 @@
         action-precond-counts       (HashMap.)
         actions-by-precond          (HashMap.)
         stack                       (queues/make-stack-pq)]
-    (doseq [var (butlast vars), val (range (:n-vals var))] 
-      (.add untested-vals [(:num var) val])
-      (.add unset-vals [(:num var) val]))
-    (doseq [[var val] (util/indexed init)] (.remove unset-vals [var val]))
+    (doseq [var (vals (dissoc vars :goal)), val (:vals var)] 
+      (.add untested-vals [(:name var) val])
+      (.add unset-vals [(:name var) val]))
+    (doseq [[var val] init] (.remove unset-vals [var val]))
     (doseq [a actions]
-      (.put action-precond-counts a (count (:preconditions a)))
-      (when (empty? (:preconditions a)) (queues/pq-add! stack a 0))
-      (doseq [e (:effects a)] (.remove unset-vals e))
-      (doseq [p (:preconditions a)]
-        (.remove untested-vals p)
-        (.put actions-by-precond p (cons a (.get actions-by-precond p)))))
-    (queues/pq-add! stack (env/FactoredPrimitive [:init] []  (map vector (iterate inc 0) init) 0) 0)
+      (.put action-precond-counts a (count (:precond-map a)))
+      (when (empty? (:precond-map a)) (queues/pq-add! stack a 0))
+      (doseq [[var val] (:effect-map a)] (.remove unset-vals [var val]))
+      (doseq [[var val] (:precond-map a)]
+        (.remove untested-vals [var val])
+        (.put actions-by-precond [var val] (cons a (.get actions-by-precond [var val])))))
+    (queues/pq-add! stack (env/FactoredPrimitive [:init] {} init 0) 0)
     (while (not (queues/pq-empty? stack))
-        (doseq [e (:effects (queues/pq-remove-min! stack))
-                a (.remove actions-by-precond e)]
+        (doseq [[var val] (:effect-map (queues/pq-remove-min! stack))
+                a (.remove actions-by-precond [var val])]
           (let [c (dec (.remove action-precond-counts a))]
             (if (> c 0)
                 (.put action-precond-counts a c)
               (queues/pq-add! stack a 0)))))
-;    (println (concat dead-vals (keys actions-by-precond)))
-;    (println "DEAD ACTION PRECONDS: " (keys actions-by-precond))
-    (println (util/map-vals count (util/group-by first  untested-vals)))
+;    (println (util/map-vals count (util/group-by first  untested-vals)))
     (println (count unset-vals) (count untested-vals) (count actions-by-precond) (count action-precond-counts))
-    (renumber-sas-problem vars actions init untested-vals (concat unset-vals (keys actions-by-precond)) 
+    (simplify-sas-problem vars actions init untested-vals (concat unset-vals (keys actions-by-precond)) 
                           (keys action-precond-counts))))
 
+;; Backward simplification: 
 ;; Can remove anything provably not on a shortest path to goal.  
 ;; Basically, this comes down to finding irrelevant "spokes" in DTGs and removing them. 
-(defn backward-simplify [sas-problem]
-  (let [{:keys [vars actions init]} sas-problem
-        dead-vals                   (HashSet.)
-        action-precond-counts       (HashMap.)
-        actions-by-precond          (HashMap.)
-        stack                       (queues/make-stack-pq)]
-    (doseq [var (butlast vars), val (range (:n-vals var))] (.add dead-vals [(:num var) val]))
-    (doseq [a actions]
-      (.put action-precond-counts a (count (:preconditions a)))
-      (when (empty? (:preconditions a)) (queues/pq-add! stack a 0))
-      (doseq [p (:preconditions a)]
-        (.remove dead-vals p)
-        (.put actions-by-precond p (cons a (.get actions-by-precond p)))))
-    (queues/pq-add! stack (env/FactoredPrimitive [:init] []  (map vector (iterate inc 0) init) 0) 0)
-    (while (not (queues/pq-empty? stack))
-        (doseq [e (:effects (queues/pq-remove-min! stack))
-                a (.remove actions-by-precond e)]
-          (let [c (dec (.remove action-precond-counts a))]
-            (if (> c 0)
-                (.put action-precond-counts a c)
-              (queues/pq-add! stack a 0)))))
-    (println (count dead-vals) (count actions-by-precond) (count action-precond-counts))))
+
 
 ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;; Causal graph stuff ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
 
@@ -260,26 +221,25 @@
         actions (:actions sas-problem)]
     (distinct
      (for [action actions
-           precondition (concat (:preconditions action) (:effects action))
-           effect       (:effects action)]
+           precondition (concat (:precond-map action) (:effect-map action))
+           effect       (:effect-map action)]
        [(first precondition) (first effect)]))))
 
 (defn compute-relaxed-causal-graph [sas-problem]
   (let [vars    (:vars sas-problem)
         actions (:actions sas-problem)]
     (distinct
-     (concat (for [i (range (count vars))] [i i])
+     (concat (for [vn (keys vars)] [vn vn])
              (for [action actions
-                   precondition (:preconditions action)
-                   effect       (:effects action)]
+                   precondition (:precond-map action)
+                   effect       (:effect-map action)]
                [(first precondition) (first effect)])))))
 
 
-(defn cnum [[x y]] (+ (* x 10000) y))
 (defn compute-full-causal-graph [sas-problem]
   (let [vars    (:vars sas-problem)
         actions (:actions sas-problem)]
     (apply concat 
-           (for [[i action] (util/indexed actions)]
-             (concat (for [precondition (:preconditions action)] [(cnum precondition) (- -1 i)])
-                     (for [effect       (:effects action)      ] [(- -1 i) (cnum effect)]))))))
+           (for [a actions]
+             (concat (for [[var val] (:precond-map a)] [[var val] (:name a)])
+                     (for [[var val] (:effect-map  a)] [(:name a) [var val]]))))))
