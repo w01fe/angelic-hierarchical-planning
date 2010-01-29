@@ -109,18 +109,12 @@
            :in (slurp (str *working-dir* "output.sas"))
            :dir *working-dir*))
 
-(defn sources [[el nds]]
-  (clojure.set/difference (set (keys nds)) (set (map second (filter #(not (apply = %)) el)))))
-
-(defn sinkize [[el nds]]
-  [(concat (for [source (sources [el nds])] [-1 source]) el )
-   (assoc nds -1 [:source])])
 
 (defn causal-graph-info [cg]
   (gv/graphviz-el cg)
   (let [cg (scc-graph cg)]
-    (println cg "\n\n" (sinkize cg))
-    (apply gv/graphviz-el (sinkize cg))
+;    (println cg "\n\n" (sinkize cg))
+    (gv/graphviz-el cg)
     cg))
 
 (defn pddl-causal-graph-info [stem]

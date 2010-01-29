@@ -37,30 +37,40 @@
 		       (walk-graph child node-key-fn node-label-fn edge-child-pair-fn visited indexer))))))))
 
 (defn write-graphviz
-  ([root node-key-fn node-label-fn edge-child-pair-fn] 
+  ([roots node-key-fn node-label-fn edge-child-pair-fn] 
      (write-graphviz  
       (fresh-random-filename *default-graphviz-dir* ".dot") 
-      root node-key-fn node-label-fn edge-child-pair-fn))
-  ([filename root node-key-fn node-label-fn edge-child-pair-fn] 
-     (let [pdf-file (str (file-stem filename) ".pdf")]
+      roots node-key-fn node-label-fn edge-child-pair-fn))
+  ([filename roots node-key-fn node-label-fn edge-child-pair-fn] 
+     (let [pdf-file (str (file-stem filename) ".pdf")
+           vis      (HashSet.)]
        (spit filename
 	 (str "strict digraph {\n"
 	      " rankdir = LR;\n"
 ;	      " rotate=90;\n"
-	      (walk-graph root node-key-fn node-label-fn edge-child-pair-fn 
-			  (HashSet.) (memoize (fn [x] (double-quote (gensym)))))
+	      (apply str (for [root roots] (walk-graph root node-key-fn node-label-fn edge-child-pair-fn 
+                                                       vis (memoize (fn [x] (double-quote (gensym)))))))
 	      "}\n"))
        (sh "dot" "-Tpdf" "-o" pdf-file filename)
        pdf-file)))
 
-(defn graphviz [& args] (show-pdf-page (prln (apply write-graphviz args))))
+(defn graphviz 
+  ([root node-key-fn node-label-fn edge-child-pair-fn] 
+     (show-pdf-page (prln (write-graphviz [root] node-key-fn node-label-fn edge-child-pair-fn))))
+  ([filename root node-key-fn node-label-fn edge-child-pair-fn] 
+     (show-pdf-page (prln (write-graphviz filename [root] node-key-fn node-label-fn edge-child-pair-fn)))))
 
 (defn graphviz-el
   "Draw a graph given an edge list, and optional node label map."
   ([el] (graphviz-el el {}))
   ([el nl]
-     (let [em (map-vals #(map second %) (group-by first el))]
-       (graphviz (first (first el)) identity #(get nl % %) #(for [e (get em %)] [nil e])))))
+     (let [em (map-vals #(map second %) (unsorted-group-by first el))]
+       (show-pdf-page 
+        (prln 
+         (write-graphviz 
+          (or (seq (clojure.set/difference (set (concat (keys nl) (apply concat el))) (set (map second el))))
+              [(first (first el))])
+          identity #(get nl % %) #(for [e (get em %)] [nil e])))))))
 
 ; (graphviz 0 identity str (fn [i] (into {} (for [j (range (inc i) (min 10 (+ i 3)))] [j j]))))
 

@@ -1,6 +1,6 @@
 (ns exp.sas
   (:require [edu.berkeley.ai.util :as util]
-            [edu.berkeley.ai.util [queues :as queues]]
+            [edu.berkeley.ai.util [queues :as queues] [graphviz :as gv]]
             [exp [env :as env]])
   (:import [java.util LinkedList HashMap HashSet ArrayList])
   )
@@ -181,7 +181,6 @@
   (let [{:keys [vars actions init]} sas-problem
         untested-vals               (HashSet.)
         unset-vals                  (HashSet.)
-        live-actions                (ArrayList.)
         action-precond-counts       (HashMap.)
         actions-by-precond          (HashMap.)
         stack                       (queues/make-stack-pq)]
@@ -212,6 +211,23 @@
 ;; Backward simplification: 
 ;; Can remove anything provably not on a shortest path to goal.  
 ;; Basically, this comes down to finding irrelevant "spokes" in DTGs and removing them. 
+;; Should also provide things like: never pick up a passenger you've already put down ?
+;; Ideally, at the top-level would prune everything based on actual shortest paths...
+
+;; SO, do pruning as we walk up.  Do need to precompute causal graph?
+;; Idea: Collect all actions below.  Project onto ancestors of current node.
+;; Can sometimes use goal to know final value, project upwards.  May or may not help.
+;; Collect all actions on acyclic paths from (init+projected(w/o goal)) to (projected)
+
+;; How do we handle cycles?  Must go around until nothing changes?
+
+;; How do we compute actions on acyclic paths?  
+;; Exists an acyclic path 
+
+
+
+
+
 
 
 ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;; Causal graph stuff ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
@@ -236,10 +252,39 @@
                [(first precondition) (first effect)])))))
 
 
-(defn compute-full-causal-graph [sas-problem]
+;; This is analogous to delete-list relaxation...
+(defn compute-relaxed-full-causal-graph [sas-problem]
   (let [vars    (:vars sas-problem)
         actions (:actions sas-problem)]
     (apply concat 
            (for [a actions]
              (concat (for [[var val] (:precond-map a)] [[var val] (:name a)])
                      (for [[var val] (:effect-map  a)] [(:name a) [var val]]))))))
+
+(defn compute-dtgs [sas-problem]
+  (let [{:keys [vars actions]} sas-problem
+        outer                  (HashMap.)]
+    (doseq [var (keys vars)] (.put outer var (HashSet.)))
+    (doseq [a actions
+            [evar eval] (:effect-map a)
+            pval        (if-let [x ((:precond-map a) evar)] [x] (:vals (vars evar)))
+            :when       (not (= eval pval))]
+      (.add #^HashSet (.get outer evar) [pval eval]))
+    (util/map-vals set (into {} outer))))
+
+(defn show-dtgs [sas-problem]
+  (gv/graphviz-el
+   (for [[vn edges] (compute-dtgs sas-problem)
+         [s d] edges]
+     [(cons vn s) (cons vn d)])))
+
+(defn show-master-graph [sas-problem]
+  (let [cg   (compute-causal-graph sas-problem)
+        dtgs (compute-dtgs sas-problem)]
+    (gv/graphviz-el
+     (remove #(apply = %)
+             (apply concat cg 
+                    (for [[vn var] (:vars sas-problem)
+                          val      (:vals var)]
+                      [vn val])
+                    (vals dtgs))))))
