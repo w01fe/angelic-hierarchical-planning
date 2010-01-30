@@ -279,7 +279,9 @@
 
 
 
-;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;; STRIPS version ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
+;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;; STRIPS version 1 ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
+
+; Similar to above, except different encoding and re-picking pass is allowed.
 
 (defn write-taxi-strips-domain [file]
   (util/spit file
@@ -294,11 +296,12 @@
           (ABOVE  ?l1 ?l1 - loc)
           (taxi-at ?l)
           (pass-at ?p - pass ?l - loc)
+          (pass-goal ?p - pass ?l - loc)
           (taxi-empty)
           (taxi-holding ?p - pass))
        
        (:action pickup 
-         :parameters (?l - loc ?p - pass)
+         :parameters (?p - pass ?l - loc)
          :precondition (and 
                          (taxi-at ?l)
                          (pass-at ?p ?l)
@@ -308,11 +311,12 @@
                          (not (pass-at ?p ?l)) (pass-at ?p InTaxi)))
                           
        (:action putdown 
-         :parameters (?l - loc ?p - pass)
+         :parameters (?p - pass ?l - loc)
          :precondition (and 
                          (taxi-at ?l)
                          (pass-at ?p InTaxi)
-                         (taxi-holding ?p))
+                         (taxi-holding ?p)
+                         (pass-goal ?p ?l))
          :effect       (and
                          (not (taxi-holding ?p)) (taxi-empty)
                          (not (pass-at ?p InTaxi)) (pass-at ?p ?l)))
@@ -357,6 +361,8 @@
               "(taxi-at 1-1)"
               (util/str-join " " (for [[n [sx sy]] passengers]
                                    (str "(pass-at " n " " sx "-" sy ")")))
+              (util/str-join " " (for [[n _ [dx dy]] passengers]
+                                   (str "(pass-goal " n " " dx "-" dy ")")))
               "(taxi-empty))"
          " (:goal (and "
               (util/str-join " " (for [[n _ [dx dy]] passengers]

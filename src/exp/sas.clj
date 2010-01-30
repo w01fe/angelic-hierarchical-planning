@@ -208,6 +208,10 @@
     (simplify-sas-problem vars actions init untested-vals (concat unset-vals (keys actions-by-precond)) 
                           (keys action-precond-counts))))
 
+
+;;;;;;;;;;;;;;;;;;;;;;;;
+
+
 ;; Backward simplification: 
 ;; Can remove anything provably not on a shortest path to goal.  
 ;; Basically, this comes down to finding irrelevant "spokes" in DTGs and removing them. 
@@ -222,7 +226,94 @@
 ;; How do we handle cycles?  Must go around until nothing changes?
 
 ;; How do we compute actions on acyclic paths?  
-;; Exists an acyclic path 
+;; Exists an acyclic path ...
+
+;; Be careful; action with multiple effects must add other effects to sources lists.
+
+(defn make-map-of-sets [keys]
+  (let [h (HashMap.)]
+    (doseq [key keys] (.put h key (HashSet.)))
+    h))
+
+(defn add-mos [#^HashMap mos key val]
+  (.add #^HashSet (.get mos key) val))
+
+(defn add-mos-new [#^HashSet dirty #^HashMap oldmos #^HashMap newmos key val]
+  (when-not (.contains #^HashSet (.get oldmos key) val)
+    (.add dirty key)
+    (.add #^HashSet (.get newmos key) val)))
+
+(defn edge-list->map [el]
+  (persistent! (reduce (fn [m [k v]] (assoc m k (cons v (m k)))) (transient {}) el)))
+
+; map from vars to map from vals to [next-val [actions]]
+(defn make-extended-dtgs [vars actions]
+  (reduce (fn [m [ks a]] (update-in m ks (partial cons a))) {} 
+          (for [a actions
+                [evar eval] (:effect-map a)
+                pval        (if-let [x ((:precond-map a) evar)] [x] (:vals (vars evar)))
+                :when       (not (= eval pval))]
+            [[evar pval eval] a])))
+
+(defn exhaustive-dfs [src dst extended-dtg stack-set #^HashSet new-action-pool #^HashSet new-actions]
+  (cond (= src dst)               true
+        (contains? stack-set src) false
+        :else 
+          (let [new-stack-set (conj stack-set src)]            
+            (some (fn [[nval actions]]
+                    (when (exhaustive-dfs nval dst extended-dtg new-stack-set new-action-pool new-actions)
+                      (doseq [a actions :when (.contains new-action-pool a)] (.add new-actions a))
+                      true))
+                  (get extended-dtg src)))))
+
+;; For now, terribly inefficient. 
+;; Treating goals specially sould definitaly help.
+(defn backward-simplify [sas-problem]
+  (let [{:keys [vars actions init]} sas-problem
+        extended-dtgs               (make-extended-dtgs vars actions)     
+        dead-actions                (HashSet. actions)
+        now-live-actions            (HashSet.)
+        new-goals                   (make-map-of-sets (keys vars))
+        new-srcs                    (make-map-of-sets (keys vars))
+        old-goals                   (make-map-of-sets (keys vars))
+        old-srcs                    (make-map-of-sets (keys vars))
+        dirty-var-set               (HashSet.)]
+    (doseq [[var val] init] (add-mos old-srcs var val))
+    (add-mos new-goals :goal [:true])
+    (.add dirty-var-set :goal)
+    (println (count dead-actions))
+    
+    (while (not (.isEmpty dirty-var-set))
+      (let [var (first dirty-var-set)]
+        (println "doing" var)
+        (while (or (not (.isEmpty (get new-goals var))) (not (.isEmpty (get new-srcs var))))
+          (if (not (empty? (get new-goals var)))
+            (let [new-goal (first (get new-goals var))]
+              (println " doing goal" new-goal)
+              (doseq [old-src (get old-srcs var)]
+                (assert (exhaustive-dfs old-src new-goal (get extended-dtgs var) #{} dead-actions now-live-actions)))
+              (.remove (get new-goals var) new-goal)
+              (.add    (get old-goals var) new-goal))
+            (let [new-src (first (get new-srcs var))]
+              (println " doing src" new-src)              
+              (doseq [old-goal (get old-goals var)]
+                (assert (exhaustive-dfs new-src old-goal (get extended-dtgs var) #{} dead-actions now-live-actions)))
+              (.remove (get new-srcs var) new-src)
+              (.add    (get old-srcs var) new-src)))
+          (doseq [a (seq now-live-actions)]
+            (doseq [[pvar pval] (:precond-map a)]
+              (add-mos-new dirty-var-set old-goals new-goals pvar pval))
+            (doseq [[evar eval] (:effect-map a)]
+              (add-mos-new dirty-var-set old-srcs new-srcs evar eval)))
+          (.removeAll dead-actions now-live-actions)
+          (.clear now-live-actions))
+        (.remove dirty-var-set var)))
+    
+    (println dead-actions)))
+
+ 
+
+
 
 
 
@@ -288,3 +379,4 @@
                           val      (:vals var)]
                       [vn val])
                     (vals dtgs))))))
+

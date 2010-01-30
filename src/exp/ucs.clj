@@ -18,7 +18,7 @@
 ;             (when (> c -10) (println s))
 ;             (print c " ")
 ;             (flush)
-             (or (and (goal s) [(:act-seq (meta s)) (:reward (meta s))])
+             (or (and (goal s) [(reverse (:act-seq (meta s))) (:reward (meta s))])
                  (do
                    (doseq [a (actions s) :when (env/applicable? a s)]
                      (let [[ss sc] (env/successor a s)]
