@@ -34,10 +34,10 @@
 
 (import '[java.util HashSet Stack HashMap])
 (defn scc-graph 
-  "Take an edge list and return [edge-list node-set-map] for graph of sccs.
-   Every node must have at least one outgoing edge (incl. self loop) or will be skipped."
+  "Take an edge list and return [edge-list node-set-map] for graph of sccs."
   [edges]
-  (let [pe (util/map-vals #(map second %) (util/group-by first edges))
+  (let [pe (merge (into {} (map vector (map second edges) (repeat nil))) 
+                  (util/map-vals #(map second %) (util/group-by first edges)))
         e  (HashMap. pe)
         re (HashMap. (util/map-vals #(map first %) (util/group-by second edges)))
         s (Stack.)]
@@ -49,6 +49,7 @@
             (doseq [nn nns] (dfs1 nn)))
           (.push s n)))
       (first (keys e))))
+;    (println (count s) (count pe) (count re))
     (let [sccs (into {} 
                  (util/indexed
                   (remove empty?

@@ -1,7 +1,7 @@
 (ns exp.sas
   (:require [edu.berkeley.ai.util :as util]
             [edu.berkeley.ai.util [queues :as queues] [graphviz :as gv]]
-            [exp [env :as env]])
+            [exp [env :as env] causal-graphs])
   (:import [java.util LinkedList HashMap HashSet ArrayList])
   )
 
@@ -61,7 +61,12 @@
   "Read a groups file from LAMA and output a map from variable names to atoms."
   [file]
   (util/map-vals 
-   (fn [vl] (map #(vec (map keyword (drop 2 (remove empty? (.split #^String % "[,() ]"))))) vl))
+   (fn [vl] (map #(let [tokens (remove empty? (.split #^String % "[,() ]"))]
+                    (if (= (second tokens) "Atom")
+                        (do (assert (not (= (nth tokens 2) "other")))
+                            (vec (map keyword (drop 2 tokens))))
+                      [:other])) 
+                 vl))
    (map-ize #(when-not (.startsWith #^String % " ") 
                (keyword (.substring #^String % 0 (dec (count %)))))
             (.split #^String (slurp file) "\n"))))
@@ -71,8 +76,8 @@
     [(:name var) (nth (:vals var) valn)]))
 
 (defn make-sas-problem-from-pddl [stem]
-;  (lama-translate stem)
-  (println (lama-translate stem))
+  (lama-translate stem)
+;  (println (lama-translate stem))
   (let [var-map (assoc (read-groups-file (str *working-dir* "test.groups"))
                   :goal [[:false] [:true]])
         sas-q   (LinkedList. (seq (.split #^String (slurp (str *working-dir* "output.sas")) "\n")))
@@ -209,6 +214,162 @@
                           (keys action-precond-counts))))
 
 
+;; Do static look at actions and find equivalent vals
+ ; These are: ones that are always set at the same time, AND
+ ; all ways of unsetting them unset both.  Slow for now.
+(defn canonical-vv [pair] (sort-by first pair))
+
+; map from vars to map from vals to [next-val [actions]]
+(defn make-extended-dtgs [vars actions]
+  (reduce (fn [m [ks a]] (update-in m ks (partial cons a))) {} 
+          (for [a actions
+                [evar eval] (:effect-map a)
+                pval        (if-let [x ((:precond-map a) evar)] [x] (:vals (vars evar)))
+                :when       (not (= eval pval))]
+            [[evar pval eval] a])))
+
+; map from vars to map from vals to [prev-val [actions]]
+(defn make-extended-reverse-dtgs [vars actions]
+  (reduce (fn [m [ks a]] (update-in m ks (partial cons a))) {} 
+          (for [a actions
+                [evar eval] (:effect-map a)
+                pval        (if-let [x ((:precond-map a) evar)] [x] (:vals (vars evar)))
+                :when       (not (= eval pval))]
+            [[evar eval pval] a])))
+
+(defn find-static-equivalence-pairs [sas-problem]
+  (let [{:keys [vars actions init]} sas-problem
+        actions                     (cons (env/FactoredPrimitive [:init] {} init 0) actions)
+        extended-dtgs               (make-extended-dtgs vars actions)
+        extended-rdtgs              (make-extended-reverse-dtgs vars actions)]
+    (filter
+     (fn [[[var1 val1] [var2 val2]]]
+       (when (< (.compareTo var1 var2) 0)
+         (every? (fn [[var val other-var other-val]]
+                   (every? (fn [a] (not (= (get (:effect-map a) other-var other-val) other-val)))
+                           (apply concat (vals ((extended-dtgs var) val)))))
+                 [[var1 val1 var2 val2] [var2 val2 var1 val1]])))
+     (apply concat
+            (for [[vn extended-rdtg] extended-rdtgs
+                  [val incoming-map] extended-rdtg]
+              (disj (apply clojure.set/intersection (map #(set (map (juxt (constantly [vn val]) vec) (:effect-map %))) 
+                                                         (apply concat (vals incoming-map)))) 
+                    [vn val]))))))
+
+(defn find-static-equivalence-sets [sas-problem]
+  (let [pairs           (find-static-equivalence-pairs sas-problem)
+        symmetric-pairs (apply concat (for [[x y] pairs] [[x y] [y x]]))]
+    (loop [remaining-map (util/map-vals #(set (map second %)) (util/group-by first symmetric-pairs)), results nil]
+      (if (empty? remaining-map) results
+        (let [[fk fs] (first remaining-map)]
+          (let [all 
+                (loop [cur (conj fs fk)]
+                  (let [nxt (apply clojure.set/union (map (partial get remaining-map) cur))]
+                    (if (= cur nxt) cur (recur nxt))))]
+            (recur (apply dissoc remaining-map all) (cons all results))))))))
+
+;;Return a mapping from vars to val-remappings
+; In some weird cases, right set of vars to eliminate may be non-obvious.
+;;In more cases, right val to choose may be non-obvious.
+;; Algorithm: find redundant vars (easy), pick deletes 
+;; TODO: if two vars have same domain size, and n-1 proven equivs, are equiv.
+(defn find-redundant-vars 
+  ([sas-problem] (find-redundant-vars sas-problem (find-static-equivalence-sets sas-problem)))
+  ([sas-problem equiv-sets]
+     (let [vars           (:vars sas-problem)
+           redundant-vars (set (map first (filter (fn [[x xxx]] (let [vc (count (:vals (vars x))) rc (count xxx)]
+                                                                  (assert (<= rc vc)) 
+                                                                  (or (= vc rc) )))
+                                                  (util/group-by first (apply concat equiv-sets)))))
+           val-equivs     (reduce (fn [m [ks v]] (assoc-in m ks v))
+                                  {}
+                                  (for [equiv-set equiv-sets, [var val :as p] equiv-set
+                                        :when (contains? redundant-vars var)]
+                                    [[var val] (disj equiv-set p)]))
+           var-equivs     (util/map-vals 
+                           (fn [equiv-map] (apply clojure.set/intersection (map #(set (map first %)) (vals equiv-map))))
+                           val-equivs)
+           equiv-graph    (for [[k vs] var-equivs, v vs] [k v])
+           [scc-graph scc-nodes] (exp.causal-graphs/scc-graph equiv-graph)]
+       (assert (every? (partial apply =) scc-graph))
+       (println (count redundant-vars) "redundant vars in" (count scc-nodes) "equivalence classes;"
+                "can remove" (- (count redundant-vars) (count scc-nodes))) 
+       (map set (vals scc-nodes)))))
+
+(defn equivalence-info [sas-problem]
+  (let [equiv-sets     (find-static-equivalence-sets sas-problem)
+        var-equiv-sets (find-redundant-vars sas-problem equiv-sets)
+        all-equiv-vars (apply clojure.set/union var-equiv-sets)
+        rem-equiv-sets (remove empty?
+                        (for [es equiv-sets]
+                          (if (some all-equiv-vars (map first es))
+                            (let [rem (set (remove #(all-equiv-vars (first %)) es))]
+                              (when (seq rem) (conj rem [:es :???])))
+                            es)))]
+    (println "Remaining equivalences: " (count rem-equiv-sets))
+    rem-equiv-sets))
+
+(defn sas-sample-files [n]
+  (into {}
+    (concat  
+      [["2x2-taxi"  (exp.taxi/write-taxi-strips (exp.taxi/make-random-taxi-env 2 2 2 1))]]
+      (for [domain ["elevators" "openstacks" "parcprinter" "pegsol" "scanalyzer" #_ "sokoban" "transport" "woodworking"]]
+        [(str "IPC6-" domain)
+         (str "/Users/jawolfe/Projects/research/IPC/ipc2008-no-cybersec/seq-opt/" domain "-strips/p"
+              (if (< n 10) (str "0" n) (str n)))]))
+    
+        )
+  )
+
+; (doseq [ [n f] (sas-sample-files 1)] (println "\n\n"  n) (equivalence-info (make-sas-problem-from-pddl f)))
+
+ ; make implicit persist actions.  
+;; Run planning graph, with mutexes
+ ; state layer is pair [allowed-vv-set allowed-vv-pair-set]
+ ; action layer is [allowed-actions mutex-actions]
+;; Can do similar queue-based scheme:
+ ; New action available can add to vv-set, allowed-vv-pair-set in obvious way.
+  ; (note implicit mutex with implicit persist actions for vxv in preconds,
+  ;  all vars in effects)
+ ; New val available can add actions, 
+
+;; State to action layer:
+; actions are permanent mutex if 
+
+(comment 
+  (defn canonical-vv [pair] (sort-by first pair))
+  (defn canonical-aa [pair] (sort-by :name pair))
+
+  (defn next-action-layer [[new-vals new-val-pairs] ....]
+    ;; Find new actions - indexed by # of preconds + precond pairs left to go.
+  
+    ;; Find new action pairs - can be 
+                                        ; (1) 
+  
+    (.addAll live-vals new-vals)
+    (.addAll live-val-pairs new-val-pairs)
+    )
+
+;; Do simple forward analysis, and return [equiv-vals mutex-vals]
+  (defn find-mutexes [sas-problem]
+    (let [{:keys [vars actions init]} sas-problem
+          vars                        (apply sorted-map (apply concat vars))
+          persist-actions             (for [[vn var] vars, val (:vals var)] (SAS-Action [:persist vn val] {vn val} {vn val} 0))
+          live-vals                   (HashSet.)
+          live-val-pairs              (HashSet.)
+          live-actions                (HashSet.)
+          live-action-pairs           (HashSet.)]
+
+      ;; Fill in initial live-action-pairs ? 
+      (loop [[new-vals new-val-pairs] [(map vec init)  (distinct (map vec (for [v1 init, v2 init] (canonical-vv [v1 v2]))))]]
+        (if (empty? new-val-pairs) [(count live-vals) (count live-val-pairs) (count live-actions) (count live-action-pairs)]
+            (recur (next-state-layer
+                    (next-action-layer
+                     [new-vals new-val-pairs]
+                     ...
+                     )
+                    ...)))))))
+
 ;;;;;;;;;;;;;;;;;;;;;;;;
 
 
@@ -246,14 +407,7 @@
 (defn edge-list->map [el]
   (persistent! (reduce (fn [m [k v]] (assoc m k (cons v (m k)))) (transient {}) el)))
 
-; map from vars to map from vals to [next-val [actions]]
-(defn make-extended-dtgs [vars actions]
-  (reduce (fn [m [ks a]] (update-in m ks (partial cons a))) {} 
-          (for [a actions
-                [evar eval] (:effect-map a)
-                pval        (if-let [x ((:precond-map a) evar)] [x] (:vals (vars evar)))
-                :when       (not (= eval pval))]
-            [[evar pval eval] a])))
+
 
 (defn exhaustive-dfs [src dst extended-dtg stack-set #^HashSet new-action-pool #^HashSet new-actions]
   (cond (= src dst)               true
