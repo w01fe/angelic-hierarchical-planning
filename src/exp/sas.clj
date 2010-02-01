@@ -244,7 +244,7 @@
         extended-rdtgs              (make-extended-reverse-dtgs vars actions)]
     (filter
      (fn [[[var1 val1] [var2 val2]]]
-       (when (< (.compareTo var1 var2) 0)
+       (when (< (.compareTo #^Comparable var1 #^Comparable var2) 0)
          (every? (fn [[var val other-var other-val]]
                    (every? (fn [a] (not (= (get (:effect-map a) other-var other-val) other-val)))
                            (apply concat (vals ((extended-dtgs var) val)))))
@@ -426,7 +426,7 @@
 (defn backward-simplify [sas-problem]
   (let [{:keys [vars actions init]} sas-problem
         extended-dtgs               (make-extended-dtgs vars actions)     
-        dead-actions                (HashSet. actions)
+        dead-actions                (HashSet. #^java.util.Collection actions)
         now-live-actions            (HashSet.)
         new-goals                   (make-map-of-sets (keys vars))
         new-srcs                    (make-map-of-sets (keys vars))
@@ -441,20 +441,20 @@
     (while (not (.isEmpty dirty-var-set))
       (let [var (first dirty-var-set)]
         (println "doing" var)
-        (while (or (not (.isEmpty (get new-goals var))) (not (.isEmpty (get new-srcs var))))
+        (while (or (not (.isEmpty #^HashSet (get new-goals var))) (not (.isEmpty #^HashSet (get new-srcs var))))
           (if (not (empty? (get new-goals var)))
             (let [new-goal (first (get new-goals var))]
               (println " doing goal" new-goal)
               (doseq [old-src (get old-srcs var)]
                 (assert (exhaustive-dfs old-src new-goal (get extended-dtgs var) #{} dead-actions now-live-actions)))
-              (.remove (get new-goals var) new-goal)
-              (.add    (get old-goals var) new-goal))
+              (.remove #^HashSet (get new-goals var) new-goal)
+              (.add    #^HashSet (get old-goals var) new-goal))
             (let [new-src (first (get new-srcs var))]
               (println " doing src" new-src)              
               (doseq [old-goal (get old-goals var)]
                 (assert (exhaustive-dfs new-src old-goal (get extended-dtgs var) #{} dead-actions now-live-actions)))
-              (.remove (get new-srcs var) new-src)
-              (.add    (get old-srcs var) new-src)))
+              (.remove #^HashSet (get new-srcs var) new-src)
+              (.add    #^HashSet (get old-srcs var) new-src)))
           (doseq [a (seq now-live-actions)]
             (doseq [[pvar pval] (:precond-map a)]
               (add-mos-new dirty-var-set old-goals new-goals pvar pval))
@@ -473,24 +473,27 @@
 
 (def *vars* nil)
 (def *reverse-dtgs* nil)
-(def #^HashMap *hla-cache* nil) ; a map from [action-name] to map from init-sets to action.
+(def #^HashMap *hla-cache* (HashMap.)) ; a map from [action-name] to map from init-sets to action.
 
 (defprotocol SAS-Induced-Action
   (precond-var-set [a])
-;  (init-sets       [a])
+  (initial-sets    [a])
   (effect-sets     [a]))
 
 (extend ::env/FactoredPrimitive
   SAS-Induced-Action
     {:precond-var-set (fn [a] (util/keyset (:precond-map a)))
+     :initial-sets    (fn [a] (util/map-vals (fn [x] #{x}) (:precond-map a)))
      :effect-sets     (fn [a] (util/map-vals (fn [x] #{x}) (:effect-map a)))})
 
+(defn vv-hla-name [var val] [::VV var val])
 (deftype SAS-VV-HLA     [var val precond-vars init-sets effect-sets refinements]
   SAS-Induced-Action
     (precond-var-set [] precond-vars)
+    (initial-sets    [] init-sets)
     (effect-sets     [] effect-sets)
   env/Action
-    (action-name [] [::VV var val])
+    (action-name [] (vv-hla-name var val))
     (primitive?  [] false)
   env/ContextualAction 
     (precondition-context [s] (assert (util/subset? (util/keyset effect-sets) precond-vars)) precond-vars)
@@ -498,12 +501,14 @@
     (immediate-refinements- [s] refinements)
     (cycle-level-           [s] nil))
 
+(defn action-hla-name [action] [::A (env/action-name action)])
 (deftype SAS-Action-HLA [action  precond-vars init-sets effect-sets refinements]
   SAS-Induced-Action
     (precond-var-set [] precond-vars)
+    (initial-sets    [] init-sets)
     (effect-sets     [] effect-sets)
   env/Action
-    (action-name [] [::A (env/action-name action)])
+    (action-name [] (action-hla-name action))
     (primitive?  [] false)
   env/ContextualAction 
     (precondition-context [s] (assert (util/subset? (util/keyset effect-sets) precond-vars)) precond-vars)
@@ -546,7 +551,8 @@
 ;; Want to look at acyclic paths, which include at most one free-action. (with no precond on var.)
 ;; Two things we can do here; recursive style (works from any src, more caching) or direct style
  ;; (avoid cycles, more focused description/pruning, but less caching and less general). 
-(defn induce-vv-hla [var goal-val init-sets ]
+
+(defn induce-vv-hla- [var goal-val init-sets]
   (println "Inducing HLA to get" var "to val" goal-val "from" (init-sets var))
   (let [inits        (init-sets var)
         reverse-dtg  (*reverse-dtgs* var)
@@ -555,19 +561,22 @@
     (if (and (util/singleton? refs-results) (util/singleton? (ffirst refs-results)))
         (first (ffirst refs-results))
       (when (seq refs-results)
+        (assert (apply = (map util/keyset (map second refs-results)))) ;; Otherwise, no-effect not handled properly when not in PC.
         (SAS-VV-HLA var goal-val 
                     (set (for [[ref _] refs-results, a ref, v (precond-var-set a)] v))
                     init-sets 
                     (apply merge-with clojure.set/union (map second refs-results))
                     (map first refs-results))))))
 
-(defn induce-action-hla [a init-sets ]
+
+(defn induce-action-hla- [a init-sets ]
   (println "Inducing HLA for preconds + action" (:name a))
   (let [first-bits (for [[pvar pval] (:precond-map a)
                          :when (not (= (init-sets pvar) #{pval}))]
                      (induce-vv-hla pvar pval init-sets ))]
-;    (doall first-bits)
-;    (doseq [b first-bits] (println "\n" b "\n\n"))
+    (doall first-bits)
+;    (println (:name a) (count first-bits))
+;    (doseq [b first-bits] (println "\n" (env/action-name b) "\n\n"))
     (when (every? identity first-bits)
      (if (empty? first-bits)
          a
@@ -580,19 +589,47 @@
           (merge (effect-sets bit) (util/map-vals (fn [x] #{x}) (:effect-map a)))
           [[bit a]]))))))
 
+
+;; TODO: figure out how much to generalize here.
+(defn cached-induce [name init-sets result-fn]
+  (let [entries (.get *hla-cache* name)]
+    (assert (not (identical? entries :STACK)))
+    (if-let [v (first (filter #(let [ks (precond-var-set %)] 
+                                 (= (select-keys init-sets ks) (select-keys (initial-sets %) ks))) 
+                              entries))]
+        (do (println "Cache hit for" name) 
+            v)
+      (do (.put *hla-cache* name :STACK)
+          (let [ret (result-fn)]
+            (assert ret) ;; If we run into this, need to figure out how to properly cache failures.
+            (.put *hla-cache* name (cons ret entries))
+            ret)))))
+
+(defn induce-action-hla [a init-sets]
+  (cached-induce (action-hla-name a) init-sets #(induce-action-hla- a init-sets)))
+
+(defn induce-vv-hla [var goal-val init-sets ]
+  (cached-induce (vv-hla-name var goal-val) init-sets #(induce-vv-hla- var goal-val init-sets)))
+
 (defn induce-hierarchy [sas-problem]
   (let [{:keys [vars actions init]} sas-problem]
     (binding [*vars*         vars
-              *reverse-dtgs* (make-extended-reverse-dtgs vars actions)]
+              *reverse-dtgs* (make-extended-reverse-dtgs vars actions)
+              *hla-cache*    (HashMap.)              
+              ]
       (hierarchy/SimpleHierarchicalEnv sas-problem 
         [(util/make-safe 
           (induce-action-hla (util/safe-singleton (get-in *reverse-dtgs* [:goal [:true] [:false]]))
                              (util/map-vals (fn [x] #{x}) init)))]))))
 
+
+
+
+
 (defmulti pretty-print-action type)
 
 (defn pretty-print-hla [h]
-  (println (str "\nRefs for HLA" (env/action-name h)) (precond-var-set h) (effect-sets h))
+  (println (str "\nRefs for HLA" (env/action-name h)) (precond-var-set h) #_ (effect-sets h))
   (doseq [ref (:refinements h)]
     (println " " (util/str-join ", " (map env/action-name ref))))
   (doseq [ref (:refinements h), a ref]
