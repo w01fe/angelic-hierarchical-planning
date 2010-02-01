@@ -471,9 +471,45 @@
 
 ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;; Hierarchy induction! ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
 
-; Each HLA tries to get one var to particular var, or achieve all preconditions of an action
-(deftype SAS-VV-HLA     [var val precond-vars init-sets effect-sets refinements])
-(deftype SAS-Action-HLA [action  precond-vars init-sets effect-sets refinements])
+(def *vars* nil)
+(def *reverse-dtgs* nil)
+(def #^HashMap *hla-cache* nil) ; a map from [action-name] to map from init-sets to action.
+
+(defprotocol SAS-Induced-Action
+  (precond-var-set [a])
+;  (init-sets       [a])
+  (effect-sets     [a]))
+
+(extend ::env/FactoredPrimitive
+  SAS-Induced-Action
+    {:precond-var-set (fn [a] (util/keyset (:precond-map a)))
+     :effect-sets     (fn [a] (util/map-vals (fn [x] #{x}) (:effect-map a)))})
+
+(deftype SAS-VV-HLA     [var val precond-vars init-sets effect-sets refinements]
+  SAS-Induced-Action
+    (precond-var-set [] precond-vars)
+    (effect-sets     [] effect-sets)
+  env/Action
+    (action-name [] [::VV var val])
+    (primitive?  [] false)
+  env/ContextualAction 
+    (precondition-context [s] (assert (util/subset? (util/keyset effect-sets) precond-vars)) precond-vars)
+  hierarchy/HighLevelAction
+    (immediate-refinements- [s] refinements)
+    (cycle-level-           [s] nil))
+
+(deftype SAS-Action-HLA [action  precond-vars init-sets effect-sets refinements]
+  SAS-Induced-Action
+    (precond-var-set [] precond-vars)
+    (effect-sets     [] effect-sets)
+  env/Action
+    (action-name [] [::A (env/action-name action)])
+    (primitive?  [] false)
+  env/ContextualAction 
+    (precondition-context [s] (assert (util/subset? (util/keyset effect-sets) precond-vars)) precond-vars)
+  hierarchy/HighLevelAction
+    (immediate-refinements- [s] refinements)
+    (cycle-level-           [s] nil))
 
 (defn find-all-acyclic-paths 
   ([var init-val-set goal-val reverse-dtg]
@@ -496,84 +532,79 @@
 (declare induce-action-hla)
 
 ;    (println paths)
-;    (doseq [path paths] (induce-action-hla (first path) init-sets reverse-dtgs))
+;    (doseq [path paths] (induce-action-hla (first path) init-sets ))
 
-(defn progress-refinement [prim-ref init-sets reverse-dtgs]
+(defn progress-refinement [prim-ref init-sets ]
   (println "Progressing plan" prim-ref)
-  (loop [prim-ref prim-ref, hla-ref [], effect-sets {}]
+  (loop [prim-ref prim-ref, hla-ref [], plan-effect-sets {}]
     (if (empty? prim-ref)
-        [hla-ref effect-sets]
+        [hla-ref plan-effect-sets]
       (let [a     (first prim-ref)
-            hla-a (induce-action-hla a (merge init-sets effect-sets) reverse-dtgs)]
-        (recur (rest prim-ref) (conj hla-ref hla-a) (merge effect-sets (:effect-sets hla-a)))))))
+            hla-a (induce-action-hla a (merge init-sets plan-effect-sets) )]
+        (recur (rest prim-ref) (conj hla-ref hla-a) (merge plan-effect-sets (effect-sets hla-a)))))))
 
 ;; Want to look at acyclic paths, which include at most one free-action. (with no precond on var.)
 ;; Two things we can do here; recursive style (works from any src, more caching) or direct style
  ;; (avoid cycles, more focused description/pruning, but less caching and less general). 
-(defn induce-vv-hla [var goal-val init-sets reverse-dtgs]
-  (println "Inducing HLA to get" var "to val" val "from" (init-sets var))
+(defn induce-vv-hla [var goal-val init-sets ]
+  (println "Inducing HLA to get" var "to val" goal-val "from" (init-sets var))
   (let [inits        (init-sets var)
-        reverse-dtg  (reverse-dtgs var)
+        reverse-dtg  (*reverse-dtgs* var)
         paths        (find-all-acyclic-paths var inits goal-val reverse-dtg)
-        refs-results (filter identity (map #(progress-refinement % init-sets reverse-dtgs) paths))]
-;    (println (map second refs-results))
-    (when (seq refs-results)
-      (SAS-VV-HLA var goal-val 
-        (set (for [[ref _] refs-results, a ref, v (:precond-vars a)] v))
-        init-sets 
-        (apply merge-with clojure.set/union (map second refs-results))
-        (map first refs-results)))))
+        refs-results (filter identity (map #(progress-refinement % init-sets ) paths))]
+    (if (and (util/singleton? refs-results) (util/singleton? (ffirst refs-results)))
+        (first (ffirst refs-results))
+      (when (seq refs-results)
+        (SAS-VV-HLA var goal-val 
+                    (set (for [[ref _] refs-results, a ref, v (precond-var-set a)] v))
+                    init-sets 
+                    (apply merge-with clojure.set/union (map second refs-results))
+                    (map first refs-results))))))
 
-(defn induce-action-hla [a init-sets reverse-dtgs]
-  (println "Induce HLA for preconds of action, then action." (:name a))
+(defn induce-action-hla [a init-sets ]
+  (println "Inducing HLA for preconds + action" (:name a))
   (let [first-bits (for [[pvar pval] (:precond-map a)
                          :when (not (= (init-sets pvar) #{pval}))]
-                     (induce-vv-hla pvar pval init-sets reverse-dtgs))]
-    (doall first-bits)
-    (doseq [b first-bits] (println "\n" b "\n\n"))
+                     (induce-vv-hla pvar pval init-sets ))]
+;    (doall first-bits)
+;    (doseq [b first-bits] (println "\n" b "\n\n"))
     (when (every? identity first-bits)
      (if (empty? first-bits)
-       (SAS-Action-HLA 
-        a 
-        (util/keyset (:precond-map a))
-        init-sets 
-        (util/map-vals (fn [x] #{x}) (:effect-map a)) 
-        [[a]])
+         a
        (let [bit (util/safe-singleton first-bits)]
-         (assert (= ((:effect-sets bit) (:var bit)) #{(:val bit)}))
+         (assert (= ((effect-sets bit) (:var bit)) #{(:val bit)}))
          (SAS-Action-HLA 
           a 
-          (clojure.set/union (util/keyset (:precond-map a)) (:precond-vars bit))
+          (clojure.set/union (util/keyset (:precond-map a)) (precond-var-set bit))
           init-sets
-          (merge (:effect-sets bit) (util/map-vals (fn [x] #{x}) (:effect-map a)))
+          (merge (effect-sets bit) (util/map-vals (fn [x] #{x}) (:effect-map a)))
           [[bit a]]))))))
 
 (defn induce-hierarchy [sas-problem]
-  (let [{:keys [vars actions init]} sas-problem
-        reverse-dtgs                (make-extended-reverse-dtgs vars actions)
-        goal-action                 (util/safe-singleton (get-in reverse-dtgs [:goal [:true] [:false]]))
-        ]
-    (assert (= (:name goal-action) [:goal]))
-    (hierarchy/SimpleHierarchicalEnv sas-problem 
-      [(util/make-safe (induce-action-hla goal-action (util/map-vals (fn [x] #{x}) init) reverse-dtgs))])))
+  (let [{:keys [vars actions init]} sas-problem]
+    (binding [*vars*         vars
+              *reverse-dtgs* (make-extended-reverse-dtgs vars actions)]
+      (hierarchy/SimpleHierarchicalEnv sas-problem 
+        [(util/make-safe 
+          (induce-action-hla (util/safe-singleton (get-in *reverse-dtgs* [:goal [:true] [:false]]))
+                             (util/map-vals (fn [x] #{x}) init)))]))))
 
-(declare pretty-print-action-hla)
-(defn pretty-print-vv-hla [vv-hla]
-  (println "\n" "VV:" (:var vv-hla) (:val vv-hla) (:precond-vars vv-hla) (:effect-sets vv-hla))
-  (doseq [ref (:refinements vv-hla)]
-    (println " " (util/str-join ", " (map :action ref))))
-  (doseq [ref (:refinements vv-hla), a ref]
-    (pretty-print-action-hla a)))
+(defmulti pretty-print-action type)
 
-(defn pretty-print-action-hla [action-hla]
-  (println "\n" "A: " (:action action-hla) (:precond-vars action-hla) (:effect-sets action-hla))
-  (doseq [ref (:refinements action-hla)]
-    (println " " (util/str-join ", " (map (juxt :var :val) (butlast ref))) (:action (last ref))))
-    (doseq [ref (:refinements action-hla), a (butlast ref)]
-      (doseq [a (butlast ref)] (pretty-print-vv-hla a))))
+(defn pretty-print-hla [h]
+  (println (str "\nRefs for HLA" (env/action-name h)) (precond-var-set h) (effect-sets h))
+  (doseq [ref (:refinements h)]
+    (println " " (util/str-join ", " (map env/action-name ref))))
+  (doseq [ref (:refinements h), a ref]
+    (pretty-print-action a)))
+
+(defmethod pretty-print-action ::SAS-VV-HLA [h] (pretty-print-hla h))
+(defmethod pretty-print-action ::SAS-Action-HLA [h] (pretty-print-hla h))
+(defmethod pretty-print-action ::env/FactoredPrimitive [h] nil)
+
 
 (defn pretty-print-hierarchy [hierarchy]
-  (pretty-print-action-hla (first (:initial-plan hierarchy))))
+  (pretty-print-action (first (:initial-plan hierarchy))))
 
 
 
