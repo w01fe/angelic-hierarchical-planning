@@ -12,7 +12,7 @@
 (deftype SAS-Problem [vars init actions actions-fn]
   env/Env
     (initial-state [] init)
-    (actions-fn    [] actions-fn)
+    (actions-fn    [] (force actions-fn))
     (goal-fn       [] #(= (util/safe-get % :goal) [:true]))
   env/FactoredEnv 
     (goal-map      [] {:goal [:true]}))
@@ -36,7 +36,7 @@
                 (fn successor-gen [s] (concat (dc-sg s) (when-let [f (val-sgs (env/get-var s var-name))] (f s)))))))))
 
 (defn make-sas-problem [vars init actions]
-  (SAS-Problem vars init actions (make-simple-successor-generator (vals vars) actions)))
+  (SAS-Problem vars init actions (delay (make-simple-successor-generator (vals vars) actions))))
 
 
 (def *working-dir* "/tmp/")
@@ -568,13 +568,21 @@
                     (apply merge-with clojure.set/union (map second refs-results))
                     (map first refs-results))))))
 
+;; Ideas here:
+ ; If actions can be partitioned such that effects of each set disjoint with preconditions of all other sets,
+   ; Such sets can be ordered arbitrarily.
+     ; (+ caveat about idempotent effects)
+ ; Within a given set, ones with same effects can be ordered arbitrarily.
+
+ ; Finally, generate interleavings ...
+
+;; Watch out: what happens when single action establishes multiple preconditions, e.g. .. 
 
 (defn induce-action-hla- [a init-sets ]
   (println "Inducing HLA for preconds + action" (:name a))
-  (let [first-bits (for [[pvar pval] (:precond-map a)
-                         :when (not (= (init-sets pvar) #{pval}))]
-                     (induce-vv-hla pvar pval init-sets ))]
-    (doall first-bits)
+  (let [first-bits (doall (for [[pvar pval] (:precond-map a)
+                                :when (not (= (init-sets pvar) #{pval}))]
+                            (induce-vv-hla pvar pval init-sets )))]
 ;    (println (:name a) (count first-bits))
 ;    (doseq [b first-bits] (println "\n" (env/action-name b) "\n\n"))
     (when (every? identity first-bits)
