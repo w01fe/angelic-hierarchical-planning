@@ -12,6 +12,9 @@
 (def *reverse-dtgs* nil)
 (def #^HashMap *hla-cache* nil) ; a map from [action-name] to map from init-sets to action.
 
+(def *ap-key* :!A)
+(def *vv-key* :!VV)
+
 (defprotocol SAS-Induced-Action
   (precond-var-set [a])
   (initial-sets    [a])
@@ -23,7 +26,7 @@
      :initial-sets    (fn [a] (util/map-vals (fn [x] #{x}) (:precond-map a)))
      :effect-sets     (fn [a] (util/map-vals (fn [x] #{x}) (:effect-map a)))})
 
-(defn vv-hla-name [var val] [::VV var val])
+(defn vv-hla-name [var val] [*vv-key* var val])
 (deftype SAS-VV-HLA     [var val precond-vars init-sets effect-sets refinements]
   SAS-Induced-Action
     (precond-var-set [] precond-vars)
@@ -33,12 +36,12 @@
     (action-name [] (vv-hla-name var val))
     (primitive?  [] false)
   env/ContextualAction 
-    (precondition-context [s] (assert (util/subset? (util/keyset effect-sets) precond-vars)) precond-vars)
+    (precondition-context [s] #_ (util/assert-is (util/subset? (util/keyset effect-sets) precond-vars)) precond-vars)
   hierarchy/HighLevelAction
     (immediate-refinements- [s] refinements)
     (cycle-level-           [s] nil))
 
-(defn action-hla-name [action] [::A (env/action-name action)])
+(defn action-hla-name [action] [*ap-key* (env/action-name action)])
 (deftype SAS-Action-HLA [action  precond-vars init-sets effect-sets refinements]
   SAS-Induced-Action
     (precond-var-set [] precond-vars)
@@ -48,7 +51,7 @@
     (action-name [] (action-hla-name action))
     (primitive?  [] false)
   env/ContextualAction 
-    (precondition-context [s] (assert (util/subset? (util/keyset effect-sets) precond-vars)) precond-vars)
+    (precondition-context [s] #_ (util/assert-is (util/subset? (util/keyset effect-sets) precond-vars)) precond-vars)
   hierarchy/HighLevelAction
     (immediate-refinements- [s] refinements)
     (cycle-level-           [s] nil))
@@ -60,7 +63,7 @@
 ;    (doseq [path paths] (induce-action-hla (first path) init-sets ))
 
 (defn progress-refinement [prim-ref init-sets ]
-  (println "Progressing plan" prim-ref)
+  (util/print-debug 2 "Progressing plan" prim-ref)
   (loop [prim-ref prim-ref, hla-ref [], plan-effect-sets {}]
     (if (empty? prim-ref)
         [hla-ref plan-effect-sets]
@@ -73,9 +76,10 @@
  ;; (avoid cycles, more focused description/pruning, but less caching and less general). 
 
 ;; TODO: induce stronger preconditions for refinements? 
+(declare find-all-acyclic-paths)
 
 (defn induce-vv-hla- [var goal-val init-sets]
-  (println "Inducing HLA to get" var "to val" goal-val "from" (init-sets var))
+  (util/print-debug 2 "Inducing HLA to get" var "to val" goal-val "from" (init-sets var))
   (let [inits        (init-sets var)
         reverse-dtg  (*reverse-dtgs* var)
         paths        (find-all-acyclic-paths var inits goal-val reverse-dtg)
@@ -101,7 +105,7 @@
 ;; Watch out: what happens when single action establishes multiple preconditions, e.g. .. 
 
 (defn induce-action-hla- [a init-sets ]
-  (println "Inducing HLA for preconds + action" (:name a))
+  (util/print-debug 2 "Inducing HLA for preconds + action" (:name a))
   (let [first-bits (doall (for [[pvar pval] (:precond-map a)
                                 :when (not (= (init-sets pvar) #{pval}))]
                             (induce-vv-hla pvar pval init-sets )))]
@@ -127,7 +131,7 @@
     (if-let [v (first (filter #(let [ks (precond-var-set %)] 
                                  (= (select-keys init-sets ks) (select-keys (initial-sets %) ks))) 
                               entries))]
-        (do (println "Cache hit for" name) 
+        (do (util/print-debug 3 "Cache hit for" name) 
             v)
       (do (.put *hla-cache* name :STACK)
           (let [ret (result-fn)]
@@ -182,7 +186,9 @@
 
 
 
-(comment
+;(induce-hierarchy  (make-sas-problem-from-pddl (prln (write-infinite-taxi-strips2 (make-random-infinite-taxi-env 2 2 1)))))
+
+;(comment
   ; not needed anymore?
   
   
@@ -204,4 +210,4 @@
              (find-all-acyclic-paths var init-val-set pval reverse-dtg (cons a plan-suffix) 
                                      (conj stack-val-set goal-val) (and can-use-free? (not action-free?)))))))))
   
-  )
+;  )

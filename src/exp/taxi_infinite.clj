@@ -135,7 +135,7 @@
          "    )
            (:init "
               (util/str-join " " (for [x (range 1 width)] (str "(LEFTOF x" x " x" (inc x) ")")))
-              (util/str-join " " (for [y (range 1 height)] (str "(ABOVE y"  y " y" (inc y) ")")))              
+              (util/str-join " " (for [y (range 1 height)] (str "(ABOVE y"  (inc y) " y" y ")")))              
               "(atx x1)" "(aty y1)"
               (util/str-join " " (apply concat
                                    (for [[n [sx sy]] passengers]
@@ -228,7 +228,7 @@
               (util/str-join " " (for [w (range 1 width) h (range 1 (inc height))] 
                                    (str "(LEFTOF " w "-" h " " (inc w) "-" h ")")))
               (util/str-join " " (for [w (range 1 (inc width)) h (range 1 height)] 
-                                   (str "(ABOVE " w "-" h " " w "-" (inc h) ")")))
+                                   (str "(ABOVE " w "-" (inc h) " " w "-" h ")")))
               "(at 1-1)"
               (util/str-join " " (for [[n [sx sy]] passengers]
                                    (str "(passat " n " " sx "-" sy ")")))

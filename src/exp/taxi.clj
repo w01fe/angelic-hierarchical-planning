@@ -357,7 +357,7 @@
               (util/str-join " " (for [w (range 1 width) h (range 1 (inc height))] 
                                    (str "(LEFTOF " w "-" h " " (inc w) "-" h ")")))
               (util/str-join " " (for [w (range 1 (inc width)) h (range 1 height)] 
-                                   (str "(ABOVE " w "-" h " " w "-" (inc h) ")")))
+                                   (str "(ABOVE " w "-" (inc h) " " w "-" h ")")))
               "(taxi-at 1-1)"
               (util/str-join " " (for [[n [sx sy]] passengers]
                                    (str "(pass-at " n " " sx "-" sy ")")))
