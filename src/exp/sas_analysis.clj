@@ -67,6 +67,11 @@
   [sas-problem]
   (gv/graphviz-el (relaxed-causal-graph sas-problem)))
 
+(defn show-causal-graph-sccs
+  "Display the strongly connected components of the relaxed causal graph."
+  [sas-problem]
+  (apply gv/graphviz-el (graphs/scc-graph (relaxed-causal-graph sas-problem))))
+
 ;; This is analogous to delete-list relaxation...
 (defn state-action-graph [sas-problem]
   (let [vars    (:vars sas-problem)
