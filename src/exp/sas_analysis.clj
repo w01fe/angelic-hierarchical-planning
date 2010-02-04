@@ -62,6 +62,10 @@
                    effect       (:effect-map action)]
                [(first precondition) (first effect)])))))
 
+(defn show-causal-graph
+  "Display the relaxed causal graph."
+  [sas-problem]
+  (gv/graphviz-el (relaxed-causal-graph sas-problem)))
 
 ;; This is analogous to delete-list relaxation...
 (defn state-action-graph [sas-problem]

@@ -88,15 +88,17 @@
        
        (:action pickup 
          :parameters (?p - pass ?x - x ?y - y)
-         :precondition (and (atx ?x) (aty ?y)
-                            (passx ?p ?x)      (passy ?p ?y))
-         :effect       (and (passx ?p InTaxiX) (passy ?p InTaxiY)))
+         :precondition (and (atx ?x)            (aty ?y)
+                            (passx ?p ?x)       (passy ?p ?y))
+         :effect       (and (not (passx ?p ?x)) (not (passy ?p ?y))
+                            (passx ?p InTaxiX)  (passy ?p InTaxiY)))
                           
        (:action putdown 
          :parameters (?p - pass ?x - x ?y - y)
-         :precondition (and (atx ?x) (aty ?y)
-                            (passx ?p InTaxiX) (passy ?p InTaxiY))
-         :effect       (and (passx ?p ?x)      (passy ?p ?y)))
+         :precondition (and (atx ?x)                  (aty ?y)
+                            (passx ?p InTaxiX)        (passy ?p InTaxiY))
+         :effect       (and (not (passx ?p InTaxiX))  (not (passy ?p InTaxiY))
+                            (passx ?p ?x)             (passy ?p ?y)))
                           
        (:action left 
          :parameters (?l1 ?l2 - x)
