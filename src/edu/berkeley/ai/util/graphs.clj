@@ -1,5 +1,5 @@
 (ns edu.berkeley.ai.util.graphs
-  (:import [java.util HashSet HashMap LinkedList])
+  (:import [java.util Stack HashSet HashMap LinkedList])
   (:use clojure.test  edu.berkeley.ai.util edu.berkeley.ai.util.queues edu.berkeley.ai.util.disjoint-sets)
   )
 
@@ -125,7 +125,44 @@
 	  
 
     
+;;;;;;;;;;;;;;; Simple a'la carte algorithms that operate on edge lists, etc. ;;;;;;;;;;;;;;;;;;
 
+
+
+(defn scc-graph 
+  "Take an edge list and return [edge-list node-set-map] for graph of sccs."
+  [edges]
+  (let [pe (merge (into {} (map vector (map second edges) (repeat nil))) 
+                  (map-vals #(map second %) (unsorted-group-by first edges)))
+        e  (HashMap. pe)
+        re (HashMap. (map-vals #(map first %) (unsorted-group-by second edges)))
+        s (Stack.)]
+    (while (not (.isEmpty e))
+     ((fn dfs1 [n]
+        (when (.containsKey e n) 
+          (let [nns (.get e n)]
+            (.remove e n)
+            (doseq [nn nns] (dfs1 nn)))
+          (.push s n)))
+      (first (keys e))))
+;    (println (count s) (count pe) (count re))
+    (let [sccs (into {} 
+                 (indexed
+                  (remove empty?
+                          (for [n (reverse (seq s))]
+                            ((fn dfs2 [n]
+                               (when (.containsKey re n)
+                                 (let [nns (.get re n)]
+                                   (.remove re n)              
+                                   (cons n (apply concat (map dfs2 nns))))))
+                             n)))))
+          rev-sccs (into {} (for [[k vs] sccs, v vs] [v k]))]
+      [(distinct 
+         (for [[scc nodes] sccs
+               node nodes
+               outgoing (get pe node)]
+           [scc (get rev-sccs outgoing)]))
+       sccs])))
   
   
 

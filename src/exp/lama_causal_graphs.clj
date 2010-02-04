@@ -1,9 +1,11 @@
-(ns exp.causal-graphs
+(ns exp.lama-causal-graphs
   (:require [edu.berkeley.ai.util :as util]
-            [edu.berkeley.ai.util [pdf :as pdf] [graphviz :as gv]]
+            [edu.berkeley.ai.util [pdf :as pdf] [graphviz :as gv] [graphs :as graphs]]
             [vijual.graphical :as vg]
             )
   )
+
+;; Stuff for reading and displaying causal graphs from LAMA output.
 
 (defn show-directed-graph 
   "Take a list of [src dst] pairs and draw the graph on the screen."
@@ -32,41 +34,6 @@
       (cons [i i]
        (for [[j _] ls] [i j])))))
 
-(import '[java.util HashSet Stack HashMap])
-(defn scc-graph 
-  "Take an edge list and return [edge-list node-set-map] for graph of sccs."
-  [edges]
-  (let [pe (merge (into {} (map vector (map second edges) (repeat nil))) 
-                  (util/map-vals #(map second %) (util/unsorted-group-by first edges)))
-        e  (HashMap. pe)
-        re (HashMap. (util/map-vals #(map first %) (util/unsorted-group-by second edges)))
-        s (Stack.)]
-    (while (not (.isEmpty e))
-     ((fn dfs1 [n]
-        (when (.containsKey e n) 
-          (let [nns (.get e n)]
-            (.remove e n)
-            (doseq [nn nns] (dfs1 nn)))
-          (.push s n)))
-      (first (keys e))))
-;    (println (count s) (count pe) (count re))
-    (let [sccs (into {} 
-                 (util/indexed
-                  (remove empty?
-                          (for [n (reverse (seq s))]
-                            ((fn dfs2 [n]
-                               (when (.containsKey re n)
-                                 (let [nns (.get re n)]
-                                   (.remove re n)              
-                                   (cons n (apply concat (map dfs2 nns))))))
-                             n)))))
-          rev-sccs (into {} (for [[k vs] sccs, v vs] [v k]))]
-      [(distinct 
-         (for [[scc nodes] sccs
-               node nodes
-               outgoing (get pe node)]
-           [scc (get rev-sccs outgoing)]))
-       sccs])))
 
 (defn map-ize [key-fn s]
   (into {}
@@ -96,7 +63,7 @@
   [groups-file preproc-file]
   (let [m (read-groups groups-file)
         o (read-var-ordering preproc-file)]
-    (vec (map #(util/safe-get m %) o)))) 
+    (vec (map #(util/sfe-get m %) o)))) 
 
 (def *working-dir* "/tmp/")
 (def *lama-dir* "/Users/jawolfe/Projects/research/planners/seq-sat-lama/lama/")
@@ -113,7 +80,7 @@
 
 (defn causal-graph-info [cg]
   (gv/graphviz-el cg)
-  (let [cg (scc-graph cg)]
+  (let [cg (graphs/scc-graph cg)]
 ;    (println cg "\n\n" (sinkize cg))
     (gv/graphviz-el cg)
     cg))
