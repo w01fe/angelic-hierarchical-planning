@@ -25,6 +25,7 @@
 	node-map (node-label-fn root)]
 ;    (println node-key)
 ;    (println node-name)
+;    (println node-map)
     (when-not (.contains visited node-key)
       (.add visited node-key)
       (apply str
@@ -43,13 +44,13 @@
       roots node-key-fn node-label-fn edge-child-pair-fn))
   ([filename roots node-key-fn node-label-fn edge-child-pair-fn] 
      (let [pdf-file (str (file-stem filename) ".pdf")
+           indexer (memoize (fn [x] (double-quote (gensym))))
            vis      (HashSet.)]
        (spit filename
 	 (str "strict digraph {\n"
 	      " rankdir = LR;\n"
 ;	      " rotate=90;\n"
-	      (apply str (for [root roots] (walk-graph root node-key-fn node-label-fn edge-child-pair-fn 
-                                                       vis (memoize (fn [x] (double-quote (gensym)))))))
+	      (apply str (for [root roots] (walk-graph root node-key-fn node-label-fn edge-child-pair-fn vis indexer)))
 	      "}\n"))
        (sh "dot" "-Tpdf" "-o" pdf-file filename)
        pdf-file)))
@@ -68,8 +69,9 @@
        (show-pdf-page 
         (prln 
          (write-graphviz 
-          (or (seq (clojure.set/difference (set (concat (keys nl) (apply concat el))) (set (map second el))))
-              [(first (first el))])
+          (set (concat (keys nl) (apply concat el)))
+;          (or (seq (clojure.set/difference (set (concat (keys nl) (apply concat el))) (set (map second el))))
+;              [(first (first el))])
           identity #(get nl % %) #(for [e (get em %)] [nil e])))))))
 
 ; (graphviz 0 identity str (fn [i] (into {} (for [j (range (inc i) (min 10 (+ i 3)))] [j j]))))

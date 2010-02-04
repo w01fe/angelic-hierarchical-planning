@@ -13,9 +13,9 @@
   env/Env
     (initial-state [] init)
     (actions-fn    [] (force actions-fn))
-    (goal-fn       [] #(= (util/safe-get % :goal) [:true]))
+    (goal-fn       [] #(= (util/safe-get % :goal) [:goal :true]))
   env/FactoredEnv 
-    (goal-map      [] {:goal [:true]}))
+    (goal-map      [] {:goal [:goal :true]}))
 
 (defn make-simple-successor-generator [vars actions]
 ;  (println (count vars) (count actions))
@@ -75,11 +75,24 @@
   (let [var (nth vars varn)]
     [(:name var) (nth (:vals var) valn)]))
 
+(defn infer-var-name [val-names]
+  (let [by-f       (util/group-by first val-names)
+        prototypes (for [props (vals by-f)]
+                     (vec (for [elts (apply map vector props)]
+                            (if (apply = elts) (first elts) :?))))]
+    (if (= (count prototypes) 1) (first prototypes) (vec (cons :or prototypes)))))
+
+;(defn infer-var-name [boring-name val-names]
+;  (let [val-names (remove #(= [:other] %) val-names)
+;        prototype (for [elts (apply map vector val-names)]
+;                    (if (apply = elts) (first elts) :?))]
+;    (if (= (first prototype) :?) boring-name (vec prototype))))
+
 (defn make-sas-problem-from-pddl [stem]
   (lama-translate stem)
 ;  (println (lama-translate stem))
   (let [var-map (assoc (read-groups-file (str *working-dir* "test.groups"))
-                  :goal [[:false] [:true]])
+                  :goal [[:goal :false] [:goal :true]])
         sas-q   (LinkedList. (seq (.split #^String (slurp (str *working-dir* "output.sas")) "\n")))
         _       (dotimes [_ 3] (.pop sas-q))
         _       (assert (= (.pop sas-q) "begin_variables"))
@@ -91,7 +104,8 @@
         _       (assert (= (.pop sas-q) "end_variables"))
         vars    (vec (for [[i [n ds]] (util/indexed (concat vars-ds [[:goal 2]]))]
                        (let [var-info (util/safe-get var-map n)]
-                         (SAS-Var n (vec var-info)))))
+                         (SAS-Var (infer-var-name var-info) (vec var-info)))))
+        _       (util/assert-is (apply distinct? (map :name vars)))
         _       (assert (= (.pop sas-q) "begin_state"))
         init-v  (vec (for [_ (range n-vars)] (read-string (.pop sas-q))))
         _       (assert (= (.pop sas-q) "end_state"))        
@@ -125,7 +139,7 @@
      (util/map-map (partial expand-condition vars) (util/indexed (conj init-v 0)))
      (conj (vec ops) 
            (env/FactoredPrimitive [:goal] (util/map-map (partial expand-condition vars) goal-m) 
-                                  {:goal [:true]} 0)))))
+                                  {[:goal :?] [:goal :true]} 0)))))
 
 
 ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;; Simplification stuff ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
@@ -434,7 +448,7 @@
         old-srcs                    (make-map-of-sets (keys vars))
         dirty-var-set               (HashSet.)]
     (doseq [[var val] init] (add-mos old-srcs var val))
-    (add-mos new-goals :goal [:true])
+    (add-mos new-goals :goal [:goal :true])
     (.add dirty-var-set :goal)
     (println (count dead-actions))
     
@@ -552,6 +566,8 @@
 ;; Two things we can do here; recursive style (works from any src, more caching) or direct style
  ;; (avoid cycles, more focused description/pruning, but less caching and less general). 
 
+;; TODO: induce stronger preconditions for refinements? 
+
 (defn induce-vv-hla- [var goal-val init-sets]
   (println "Inducing HLA to get" var "to val" goal-val "from" (init-sets var))
   (let [inits        (init-sets var)
@@ -627,7 +643,7 @@
               ]
       (hierarchy/SimpleHierarchicalEnv sas-problem 
         [(util/make-safe 
-          (induce-action-hla (util/safe-singleton (get-in *reverse-dtgs* [:goal [:true] [:false]]))
+          (induce-action-hla (util/safe-singleton (get-in *reverse-dtgs* [:goal [:goal :true] [:goal :false]]))
                              (util/map-vals (fn [x] #{x}) init)))]))))
 
 
@@ -688,6 +704,21 @@
              (concat (for [[var val] (:precond-map a)] [[var val] (:name a)])
                      (for [[var val] (:effect-map  a)] [(:name a) [var val]]))))))
 
+(defn show-full-causal-graph [sas-problem]
+  (let [vars    (:vars sas-problem)
+        actions (:actions sas-problem)]
+    (gv/graphviz-el 
+     (apply concat 
+            (for [a actions]
+              (concat (for [[var val] (:precond-map a)] [val (:name a)])
+                      (for [[var val] (:effect-map  a)] [(:name a) val]))))
+     (into (util/identity-map (apply concat (map :vals (vals vars))))
+           (for [a actions]
+             [(:name a) {:label (util/double-quote (:name a)) :shape "box"}]
+             )
+           )
+     )))
+
 (defn compute-dtgs [sas-problem]
   (let [{:keys [vars actions]} sas-problem
         outer                  (HashMap.)]
@@ -716,3 +747,14 @@
                       [vn val])
                     (vals dtgs))))))
 
+(defn show-strips-causal-graph [sas-problem]
+  (let [vars    (:vars sas-problem)
+        actions (:actions sas-problem)]
+    (gv/graphviz-el
+     (distinct
+      (remove #(apply = %)
+       (apply concat 
+        (for [a actions]
+          (for [[pvar pval] (:precond-map a),
+                [evar eval] (concat (:effect-map a) (select-keys (:precond-map a) (keys (:effect-map a))))]
+            [pval eval]))))))))

@@ -37,9 +37,9 @@
   "Take an edge list and return [edge-list node-set-map] for graph of sccs."
   [edges]
   (let [pe (merge (into {} (map vector (map second edges) (repeat nil))) 
-                  (util/map-vals #(map second %) (util/group-by first edges)))
+                  (util/map-vals #(map second %) (util/unsorted-group-by first edges)))
         e  (HashMap. pe)
-        re (HashMap. (util/map-vals #(map first %) (util/group-by second edges)))
+        re (HashMap. (util/map-vals #(map first %) (util/unsorted-group-by second edges)))
         s (Stack.)]
     (while (not (.isEmpty e))
      ((fn dfs1 [n]
