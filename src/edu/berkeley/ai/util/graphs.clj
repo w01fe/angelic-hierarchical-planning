@@ -1,7 +1,7 @@
 (ns edu.berkeley.ai.util.graphs
   (:import [java.util Stack HashSet HashMap LinkedList])
-  (:use clojure.test  edu.berkeley.ai.util edu.berkeley.ai.util.queues edu.berkeley.ai.util.disjoint-sets)
-  )
+  (:use clojure.test edu.berkeley.ai.util edu.berkeley.ai.util.queues edu.berkeley.ai.util.disjoint-sets
+        edu.berkeley.ai.util.lp))
 
 ;;;; Incremental directed acyclic graphs for cycle detection (only).
 
@@ -164,6 +164,49 @@
            [scc (get rev-sccs outgoing)]))
        sccs])))
   
+
+
+
+(defn find-cyclic-edges
+  "Take a directed edge list, list of source nodes, and list of target nodes, a
+   and return a list of edges that do not participate in any acylic path from
+   a source node to a target node.  Uses a circuit-based LP solving method."
+  [edge-list sources sinks]
+  (let [nodes     (distinct (apply concat edge-list))
+        all-nodes (set (concat nodes [::SOURCE ::SINK]))
+        all-edges (concat edge-list 
+                          (for [source sources] [::SOURCE source])
+                          (for [sink sinks]     [sink     ::SINK]))
+        out-map   (map-vals #(map second %) (unsorted-group-by first all-edges)) 
+        in-map    (map-vals #(map first %)  (unsorted-group-by second all-edges))]
+    (map key
+     (filter #(and (not (all-nodes (key %))) (= 0 (val %)))
+       (first 
+        (solve-lp-clp
+         (make-lp
+          (into {}
+                (concat
+                 [[::SOURCE [0 0]]
+                  [::SINK   [1 1]]]
+                 (for [node nodes]     [node [nil nil]])
+                 (for [edge all-edges] [edge [0 nil]])))
+          (into {} (for [edge all-edges] [edge -1])) ; Minimize current
+          (into {}
+                (concat
+                 (for [node nodes] ;; Current conservation
+                   [(into {}
+                          (concat
+                           (for [in  (in-map node)]  [[in node]   1])
+                           (for [out (out-map node)] [[node out] -1])))
+                    [0 0]])
+                 (for [[s t :as edge] all-edges] ;; I >= v_t - v_s
+                   [{edge 1, s 1, t -1} [0 nil]]))))))))))
+
+(deftest find-cyclic-edges
+  (is (= (find-cyclic-edges [[:s :t] [:t :u] [:t :x]] [:s] [:u]) [[:t :x]]))
+  (is (= (find-cyclic-edges [[:s :t] [:t :u] [:t :x] [:x :t]] [:s] [:u]) [[:t :x] [:x :t]]))
+  (is (= (find-cyclic-edges [[:s :t] [:t :u] [:t :x] [:x :t] [:x :u]] [:s] [:u]) [[:x :t]]))  
+  (is (= (find-cyclic-edges [[:s :t] [:t :u] [:t :x] [:x :t] [:x :u] [:s :x]] [:s] [:u]) [])))
   
 
        
