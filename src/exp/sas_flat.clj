@@ -24,7 +24,7 @@
           (persistent! s)))
        (- cost)]))
 
-;; SAS-Problem will always have a special action [:goal] and var [:goal] with init 0, desired 1. 
+;; SAS-Problem will always have a special action goal-action-name and var goal-action-name with init 0, desired 1. 
 (deftype SAS-Problem [vars init actions actions-fn]
   env/Env
     (initial-state [] init)
@@ -135,7 +135,7 @@
             (let [var-info (util/safe-get var-map n)]
               (SAS-Var i n ds (vec var-info)))))
      (conj init-v 0)
-     (conj (vec ops) (SAS-Action [:goal] (vec (map vec goal-m)) [[n-vars 1]] 0)))))
+     (conj (vec ops) (SAS-Action goal-action-name (vec (map vec goal-m)) [[n-vars 1]] 0)))))
 
 
 ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;; Simplification stuff ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;

@@ -7,14 +7,20 @@
 
 (deftype SAS-Var     [name vals])
 
-;; SAS-Problem will always have a special action [:goal] and var :goal with init [:false], desired [:true]. 
+;; SAS-Problem will always have a special action goal-action-name and var :goal with init [:false], desired [:true]. 
+
+(def goal-action-name [:goal])
+(def goal-var-name    [:goal :?])
+(def goal-true-val    [:goal :true])
+(def goal-false-val   [:goal :false])
+
 (deftype SAS-Problem [vars init actions actions-fn]
   env/Env
     (initial-state [] init)
     (actions-fn    [] (force actions-fn))
-    (goal-fn       [] #(= (util/safe-get % [:goal :?]) [:goal :true]))
+    (goal-fn       [] #(= (util/safe-get % goal-var-name) goal-true-val))
   env/FactoredEnv 
-    (goal-map      [] {[:goal :?] [:goal :true]}))
+    (goal-map      [] {goal-var-name goal-true-val}))
 
 (defn make-simple-successor-generator [vars actions]
 ;  (println (count vars) (count actions))
@@ -96,7 +102,7 @@
   ([domain-file inst-file]
      (lama-translate domain-file inst-file)
      (let [var-map (assoc (read-groups-file (str *working-dir* "test.groups"))
-                     [:goal :?] [[:goal :false] [:goal :true]])
+                     goal-var-name [goal-false-val goal-true-val])
            sas-q   (LinkedList. (seq (.split #^String (slurp (str *working-dir* "output.sas")) "\n")))
            _       (dotimes [_ 3] (.pop sas-q))
            _       (assert (= (.pop sas-q) "begin_variables"))
@@ -106,7 +112,7 @@
                             (do (assert (not (= v "goal")))
                                 [(keyword v) (read-string ds)])))
            _       (assert (= (.pop sas-q) "end_variables"))
-           vars    (vec (for [[i [n ds]] (util/indexed (concat vars-ds [[[:goal :?] 2]]))]
+           vars    (vec (for [[i [n ds]] (util/indexed (concat vars-ds [[goal-var-name 2]]))]
                           (let [var-info (util/safe-get var-map n)]
                             (SAS-Var (infer-var-name var-info) (vec var-info)))))
            _       (util/assert-is (apply distinct? (map :name vars)))
@@ -142,8 +148,8 @@
         (into {} (map (juxt :name identity) vars)) 
         (util/map-map (partial expand-condition vars) (util/indexed (conj init-v 0)))
         (conj (vec ops) 
-              (env/FactoredPrimitive [:goal] (util/map-map (partial expand-condition vars) goal-m) 
-                                     {[:goal :?] [:goal :true]} 0))))))
+              (env/FactoredPrimitive goal-action-name (util/map-map (partial expand-condition vars) goal-m) 
+                                     {goal-var-name goal-true-val} 0))))))
 
 
 

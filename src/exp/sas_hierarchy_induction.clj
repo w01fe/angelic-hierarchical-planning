@@ -1,7 +1,7 @@
 (ns exp.sas-hierarchy-induction
   (:require [edu.berkeley.ai.util :as util]
             [edu.berkeley.ai.util  [graphs :as graphs]]
-            [exp [env :as env]  [hierarchy :as hierarchy] [sas-analysis :as sas-analysis]])
+            [exp [env :as env]  [hierarchy :as hierarchy] [sas :as sas] [sas-analysis :as sas-analysis]])
   (:import [java.util HashMap]))
 
 
@@ -149,7 +149,7 @@
               ]
       (hierarchy/SimpleHierarchicalEnv sas-problem 
         [(util/make-safe 
-          (induce-action-hla (util/safe-singleton (get-in *reverse-dtgs* [:goal [:goal :true] [:goal :false]]))
+          (induce-action-hla (util/safe-singleton (get-in *reverse-dtgs* [sas/goal-var-name sas/goal-true-val sas/goal-false-val]))
                              (util/map-vals (fn [x] #{x}) init)))]))))
 
 

@@ -163,7 +163,9 @@
                outgoing (get pe node)]
            [scc (get rev-sccs outgoing)]))
        sccs])))
-  
+
+(defn dag? [edges]
+  (every? singleton? (vals (second (scc-graph edges)))))
 
 
 

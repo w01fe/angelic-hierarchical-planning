@@ -1,7 +1,7 @@
 (ns exp.sas-analysis
   (:require [edu.berkeley.ai.util :as util]
             [edu.berkeley.ai.util [queues :as queues] [graphviz :as gv] [graphs :as graphs]]
-            [exp [env :as env]])
+            [exp [sas :as sas] [env :as env]])
   (:import [java.util HashMap HashSet]))
 
 
@@ -124,7 +124,7 @@
         action-precond-counts       (HashMap.)
         actions-by-precond          (HashMap.)
         stack                       (queues/make-stack-pq)]
-    (doseq [var (vals (dissoc vars :goal)), val (:vals var)] 
+    (doseq [var (vals (dissoc vars sas/goal-var-name)), val (:vals var)] 
       (.add untested-vals [(:name var) val])
       (.add unset-vals [(:name var) val]))
     (doseq [[var val] init] (.remove unset-vals [var val]))
@@ -354,8 +354,8 @@
         old-srcs                    (make-map-of-sets (keys vars))
         dirty-var-set               (HashSet.)]
     (doseq [[var val] init] (add-mos old-srcs var val))
-    (add-mos new-goals :goal [:goal :true])
-    (.add dirty-var-set :goal)
+    (add-mos new-goals sas/goal-var-name sas/goal-true-val)
+    (.add dirty-var-set sas/goal-var-name)
     (println (count dead-actions))
     
     (while (not (.isEmpty dirty-var-set))
