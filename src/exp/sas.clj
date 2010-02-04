@@ -12,9 +12,9 @@
   env/Env
     (initial-state [] init)
     (actions-fn    [] (force actions-fn))
-    (goal-fn       [] #(= (util/safe-get % :goal) [:goal :true]))
+    (goal-fn       [] #(= (util/safe-get % [:goal :?]) [:goal :true]))
   env/FactoredEnv 
-    (goal-map      [] {:goal [:goal :true]}))
+    (goal-map      [] {[:goal :?] [:goal :true]}))
 
 (defn make-simple-successor-generator [vars actions]
 ;  (println (count vars) (count actions))
@@ -41,9 +41,13 @@
 (def *working-dir* "/tmp/")
 (def *lama-dir* "/Users/jawolfe/Projects/research/planners/seq-sat-lama/lama/")
 
-(defn lama-translate [stem]
-  (util/sh (str *lama-dir* "translate/translate.py") (str stem "-domain.pddl") (str stem ".pddl")
-           :dir *working-dir*))
+(defn lama-translate 
+  ([stem] (lama-translate (str stem "-domain.pddl") (str stem ".pddl")))
+  ([domain-file inst-file]
+     (let [ret #^String (util/sh (str *lama-dir* "translate/translate.py") 
+                                 domain-file inst-file :dir *working-dir*)]
+       (when-not (.endsWith ret "Done!\n")
+         (throw (RuntimeException. (str "LAMA-translate failed: "  ret)))))))
 
 
 (defn map-ize [key-fn s]
@@ -87,58 +91,60 @@
 ;                    (if (apply = elts) (first elts) :?))]
 ;    (if (= (first prototype) :?) boring-name (vec prototype))))
 
-(defn make-sas-problem-from-pddl [stem]
-  (lama-translate stem)
-;  (println (lama-translate stem))
-  (let [var-map (assoc (read-groups-file (str *working-dir* "test.groups"))
-                  :goal [[:goal :false] [:goal :true]])
-        sas-q   (LinkedList. (seq (.split #^String (slurp (str *working-dir* "output.sas")) "\n")))
-        _       (dotimes [_ 3] (.pop sas-q))
-        _       (assert (= (.pop sas-q) "begin_variables"))
-        n-vars  (read-string (.pop sas-q))
-        vars-ds (doall (for [_ (range n-vars) 
-                             :let [[v ds] (.split #^String (.pop sas-q) " ")]]
-                         (do (assert (not (= v "goal")))
-                             [(keyword v) (read-string ds)])))
-        _       (assert (= (.pop sas-q) "end_variables"))
-        vars    (vec (for [[i [n ds]] (util/indexed (concat vars-ds [[:goal 2]]))]
-                       (let [var-info (util/safe-get var-map n)]
-                         (SAS-Var (infer-var-name var-info) (vec var-info)))))
-        _       (util/assert-is (apply distinct? (map :name vars)))
-        _       (assert (= (.pop sas-q) "begin_state"))
-        init-v  (vec (for [_ (range n-vars)] (read-string (.pop sas-q))))
-        _       (assert (= (.pop sas-q) "end_state"))        
-        _       (assert (= (.pop sas-q) "begin_goal"))
-        goal-m  (into {} (for [_ (range (read-string (.pop sas-q)))]
-                           (read-string (str "[" (.pop sas-q) "]"))))
-        _       (assert (= (.pop sas-q) "end_goal"))
-        ops     (doall (for [_ (range (read-string (.pop sas-q)))]
-                         (let [_        (assert (= (.pop sas-q) "begin_operator")) 
-                               name     (vec (map keyword (.split #^String (.pop sas-q) " ")))
-                               prevails (doall (for [_ (range (read-string (.pop sas-q)))]
-                                                 (read-string (str "[" (.pop sas-q) "]"))))
-                               effects  (doall (for [_ (range (read-string (.pop sas-q)))]
-                                                 (read-string (str "[" (.pop sas-q) "]"))))  
-                               cost     (read-string (.pop sas-q))]
-                           (assert (not (= (first name) :goal)))
-                           (assert (= (.pop sas-q) "end_operator"))
-                           (assert (seq effects))
-                           (assert (apply distinct? (concat (map first prevails)
-                                                            (map #(nth % 1) effects))))
-                           (assert (every? #(= 0 (first %)) effects))
-                           (env/FactoredPrimitive 
-                            name
-                            (into {} (map (partial expand-condition vars)
-                                          (concat (for [[_ v ov] effects :when (not (= ov -1))] [v ov]) 
-                                                  prevails)))
-                            (into {} (map (partial expand-condition vars) (for [[_ v _ nv] effects] [v nv])))
-                            (if (= cost 0) -1 (- cost))))))]
-    (make-sas-problem 
-     (into {} (map (juxt :name identity) vars)) 
-     (util/map-map (partial expand-condition vars) (util/indexed (conj init-v 0)))
-     (conj (vec ops) 
-           (env/FactoredPrimitive [:goal] (util/map-map (partial expand-condition vars) goal-m) 
-                                  {[:goal :?] [:goal :true]} 0)))))
+(defn make-sas-problem-from-pddl 
+  ([stem] (make-sas-problem-from-pddl  (str stem "-domain.pddl") (str stem ".pddl")))
+  ([domain-file inst-file]
+     (lama-translate domain-file inst-file)
+     (let [var-map (assoc (read-groups-file (str *working-dir* "test.groups"))
+                     [:goal :?] [[:goal :false] [:goal :true]])
+           sas-q   (LinkedList. (seq (.split #^String (slurp (str *working-dir* "output.sas")) "\n")))
+           _       (dotimes [_ 3] (.pop sas-q))
+           _       (assert (= (.pop sas-q) "begin_variables"))
+           n-vars  (read-string (.pop sas-q))
+           vars-ds (doall (for [_ (range n-vars) 
+                                :let [[v ds] (.split #^String (.pop sas-q) " ")]]
+                            (do (assert (not (= v "goal")))
+                                [(keyword v) (read-string ds)])))
+           _       (assert (= (.pop sas-q) "end_variables"))
+           vars    (vec (for [[i [n ds]] (util/indexed (concat vars-ds [[[:goal :?] 2]]))]
+                          (let [var-info (util/safe-get var-map n)]
+                            (SAS-Var (infer-var-name var-info) (vec var-info)))))
+           _       (util/assert-is (apply distinct? (map :name vars)))
+           _       (assert (= (.pop sas-q) "begin_state"))
+           init-v  (vec (for [_ (range n-vars)] (read-string (.pop sas-q))))
+           _       (assert (= (.pop sas-q) "end_state"))        
+           _       (assert (= (.pop sas-q) "begin_goal"))
+           goal-m  (into {} (for [_ (range (read-string (.pop sas-q)))]
+                              (read-string (str "[" (.pop sas-q) "]"))))
+           _       (assert (= (.pop sas-q) "end_goal"))
+           ops     (doall (for [_ (range (read-string (.pop sas-q)))]
+                            (let [_        (assert (= (.pop sas-q) "begin_operator")) 
+                                  name     (vec (map keyword (.split #^String (.pop sas-q) " ")))
+                                  prevails (doall (for [_ (range (read-string (.pop sas-q)))]
+                                                    (read-string (str "[" (.pop sas-q) "]"))))
+                                  effects  (doall (for [_ (range (read-string (.pop sas-q)))]
+                                                    (read-string (str "[" (.pop sas-q) "]"))))  
+                                  cost     (read-string (.pop sas-q))]
+                              (assert (not (= (first name) :goal)))
+                              (assert (= (.pop sas-q) "end_operator"))
+                              (assert (seq effects))
+                              (assert (apply distinct? (concat (map first prevails)
+                                                               (map #(nth % 1) effects))))
+                              (util/assert-is (every? #(= 0 (first %)) effects))
+                              (env/FactoredPrimitive 
+                               name
+                               (into {} (map (partial expand-condition vars)
+                                             (concat (for [[_ v ov] effects :when (not (= ov -1))] [v ov]) 
+                                                     prevails)))
+                               (into {} (map (partial expand-condition vars) (for [[_ v _ nv] effects] [v nv])))
+                               (if (= cost 0) -1 (- cost))))))]
+       (make-sas-problem 
+        (into {} (map (juxt :name identity) vars)) 
+        (util/map-map (partial expand-condition vars) (util/indexed (conj init-v 0)))
+        (conj (vec ops) 
+              (env/FactoredPrimitive [:goal] (util/map-map (partial expand-condition vars) goal-m) 
+                                     {[:goal :?] [:goal :true]} 0))))))
+
 
 
 

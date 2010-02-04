@@ -53,23 +53,6 @@
     (immediate-refinements- [s] refinements)
     (cycle-level-           [s] nil))
 
-(defn find-all-acyclic-paths 
-  ([var init-val-set goal-val reverse-dtg]
-     (find-all-acyclic-paths var init-val-set goal-val reverse-dtg nil #{} true))
-  ([var init-val-set goal-val reverse-dtg plan-suffix stack-val-set can-use-free?]
-;     (println "FACP" var init-val-set goal-val)
-     (when (and (seq init-val-set) (not (contains? stack-val-set goal-val)))
-       (if (contains? init-val-set goal-val)
-           (cons plan-suffix 
-                 (find-all-acyclic-paths var (disj init-val-set goal-val) goal-val reverse-dtg plan-suffix 
-                                         stack-val-set can-use-free?))
-         (apply concat
-           (for [[pval actions] (get reverse-dtg goal-val)
-                 a              actions
-                 :let  [action-free? (not (contains? (:precond-map a) var))]
-                 :when (or (not action-free?) can-use-free?)]
-             (find-all-acyclic-paths var init-val-set pval reverse-dtg (cons a plan-suffix) 
-                                     (conj stack-val-set goal-val) (and can-use-free? (not action-free?)))))))))
 
 (declare induce-action-hla induce-vv-hla)
 
@@ -193,3 +176,32 @@
 
 
 
+
+
+
+
+
+
+(comment
+  ; not needed anymore?
+  
+  
+(defn find-all-acyclic-paths 
+  ([var init-val-set goal-val reverse-dtg]
+     (find-all-acyclic-paths var init-val-set goal-val reverse-dtg nil #{} true))
+  ([var init-val-set goal-val reverse-dtg plan-suffix stack-val-set can-use-free?]
+;     (println "FACP" var init-val-set goal-val)
+     (when (and (seq init-val-set) (not (contains? stack-val-set goal-val)))
+       (if (contains? init-val-set goal-val)
+           (cons plan-suffix 
+                 (find-all-acyclic-paths var (disj init-val-set goal-val) goal-val reverse-dtg plan-suffix 
+                                         stack-val-set can-use-free?))
+         (apply concat
+           (for [[pval actions] (get reverse-dtg goal-val)
+                 a              actions
+                 :let  [action-free? (not (contains? (:precond-map a) var))]
+                 :when (or (not action-free?) can-use-free?)]
+             (find-all-acyclic-paths var init-val-set pval reverse-dtg (cons a plan-suffix) 
+                                     (conj stack-val-set goal-val) (and can-use-free? (not action-free?)))))))))
+  
+  )
