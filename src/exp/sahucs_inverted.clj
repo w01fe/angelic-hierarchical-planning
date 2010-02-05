@@ -47,12 +47,12 @@
 ;; Stores abstracted results of a state-action pair.  result-map-atom maps states
 ;; to rewards (within this anode).  parent-vec-atom is a map of parent-entries to
 ;; total rewards (minimum up to current position). parent-set is set of parents.
-(deftype SANode [context action result-map-atom parent-vec-atom #^HashSet parent-set])
+(deftype SANode [ action result-map-atom parent-vec-atom #^HashSet parent-set])
 
-(defn make-sa-node [context a init-parent-entry ip-reward]
+(defn make-sa-node [ a init-parent-entry ip-reward]
   (let [hs (HashSet.)]
     (.add hs init-parent-entry)
-    (SANode context a (atom {}) (atom [[init-parent-entry ip-reward]]) hs)))
+    (SANode  a (atom {}) (atom [[init-parent-entry ip-reward]]) hs)))
 
 
 (defn gq-parent-key [parent-info]
@@ -95,8 +95,8 @@
                 (for [[ss sr] @(:result-map-atom cache-val)]
                   [(make-gqe ss sr cache-val [[parent-entry pre-reward]]) (- 0 pre-reward sr)]))
           :else 
-            (let [s  (env/get-logger s) ;(vary-meta  assoc :opt (:opt (meta s)))
-                  nd (make-sa-node context a parent-entry pre-reward)]
+            (let [s  (env/get-logger s context) ;(vary-meta  assoc :opt (:opt (meta s)))
+                  nd (make-sa-node  a parent-entry pre-reward)]
               (.put cache cache-key nd)
               (if (env/primitive? a)
                   (when (env/applicable? a s)
@@ -109,7 +109,7 @@
                       (get-sa-node cache (first ref) (make-pe s 0 (next ref) nd) pre-reward)))))))))
 
 (defn update-parent [cache parent-entry parent-pre-reward new-state new-reward child-sanode]
-  (let [new-effects (env/extract-effects new-state (:context child-sanode))
+  (let [new-effects (env/extract-effects new-state)
         final-state  (vary-meta (env/apply-effects (:state parent-entry) new-effects)
                                 assoc :opt (concat (:opt (meta (:state parent-entry)))
                                                    (:opt (meta new-state))))
@@ -133,7 +133,7 @@
         cache (HashMap.)
         queue (queues/make-graph-search-pq)
         tla   (hierarchy/TopLevelAction e [(hierarchy/initial-plan henv)])]
-    (queues/pq-add-all! queue (get-sa-node cache tla (make-pe (env/initial-state e) 0 nil nil) 0))
+    (queues/pq-add-all! queue (get-sa-node cache tla (make-pe (env/initial-logging-state e) 0 nil nil) 0))
     (loop []
       (if (queues/g-pq-empty? queue) nil
         (let [[best neg-rew] (queues/g-pq-remove-min-with-cost! queue)] 

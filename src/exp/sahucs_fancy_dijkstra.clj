@@ -25,8 +25,8 @@
     (assoc m k v)))
 
 
-(defn extract-effect [state context opt]
-  (vary-meta (env/extract-effects state context) assoc :opt opt))
+(defn extract-effect [state  opt]
+  (vary-meta (env/extract-effects state ) assoc :opt opt))
 
 (defn stitch-effect-map [effect-map state reward-to-state]
   (util/map-map1 
@@ -36,8 +36,8 @@
       (+ reward-to-state local-reward)]) 
    effect-map))
 
-(defn stitch-state [target-state effected-state context]
-  (vary-meta (env/apply-effects target-state (env/extract-effects effected-state context))
+(defn stitch-state [target-state effected-state ]
+  (vary-meta (env/apply-effects target-state (env/extract-effects effected-state ))
              assoc :opt (concat (:opt (meta target-state)) (:opt (meta effected-state)))))
 
 
@@ -51,7 +51,7 @@
 
 
 
-(deftype SANode [context action result-map-atom queue cycle-level])
+(deftype SANode [ action result-map-atom queue cycle-level])
 
 (defn cutoff [node]
   (- (nth (queues/g-pq-peek-min (:queue node)) 1)))
@@ -81,8 +81,8 @@
 (defn get-sanode-entry [cache state reward-to-state actions]
   (make-sanode-entry state (when (seq actions) (delay (get-sa-node cache state (first actions)))) reward-to-state actions))
 
-(defn lift-sanode-entry [cache entry parent-state parent-reward parent-actions context]
-  (let [stitched (stitch-state parent-state (:state entry) context)]
+(defn lift-sanode-entry [cache entry parent-state parent-reward parent-actions ]
+  (let [stitched (stitch-state parent-state (:state entry) )]
     (SANodeEntry 
      stitched
      (or (and (seq (:remaining-actions entry)) (:sanode entry)) 
@@ -95,11 +95,11 @@
   "Create a new sa-node, or returned the cached copy if it exists."
   (let [context (env/precondition-context a s)]
     (util/cache-with cache [(env/action-name a) (env/extract-context s context)]
-      (let [s (env/get-logger s)
+      (let [s (env/get-logger s context)
             prim? (env/primitive? a)]
-        (SANode context a 
+        (SANode  a 
                 (atom (if (and prim? (env/applicable? a s)) 
-                        (let [[ss r] (env/successor a s)] {(extract-effect ss context [a]) r}) {})) 
+                        (let [[ss r] (env/successor a s)] {(extract-effect ss  [a]) r}) {})) 
                 (make-queue (for [ref (when-not prim? (hierarchy/immediate-refinements a s))]
                               [(get-sanode-entry cache s 0.0 ref) 0.0])) 
                 (hierarchy/cycle-level a s))))))
@@ -130,7 +130,7 @@
               (concat state-queue-items
                       (for [[entry neg-rew] (queues/pq-peek-pairs (:queue node))
                             :when (< neg-rew Double/POSITIVE_INFINITY)]
-                        [(lift-sanode-entry cache entry state reward-to-state following-actions (:context node)) 
+                        [(lift-sanode-entry cache entry state reward-to-state following-actions ) 
                          (- neg-rew reward-to-state)]))
               Double/NEGATIVE_INFINITY)))
       (let [[entry neg-reward] (queues/g-pq-peek-min (:queue node))
@@ -139,7 +139,7 @@
             rec-next-best (- (max next-best (cutoff node)) b-rts)]
 ;        (when-not b-sa (println b-s (map env/action-name b-ra)))
         (if (empty? b-ra) ;; Optimal path to new state in output valuation found
-            (let [eff (extract-effect b-s (:context node) (:opt (meta b-s)))]
+            (let [eff (extract-effect b-s  (:opt (meta b-s)))]
 ;              (println "GOT STATE")
               (swap! (:result-map-atom node) assoc-safe >= eff b-rts)
               (queues/g-pq-remove!  (:queue node) entry)
@@ -167,7 +167,7 @@
   [henv dijkstra?]
   (let [e     (hierarchy/env henv)
         cache (HashMap.)
-        init  (env/initial-state e)
+        init  (env/initial-logging-state e)
         root  (get-sa-node cache init (hierarchy/TopLevelAction e [(hierarchy/initial-plan henv)]))]
     (loop [cutoff 0]
       (let [result (expand-sa-node root cache cutoff init 0.0 cutoff dijkstra? nil nil)]

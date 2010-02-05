@@ -1,58 +1,65 @@
 (ns exp.env
   (:require [edu.berkeley.ai.util :as util])
+  (:import [java.util Set Map])
   )
 
-
+; Get-logger takes a precondition context.  Its equality semantics will be based
+;; on values within this context, and changes outside this context. 
+;; E.g., if context is var a, it doesn't matter if value was originally 2 or we set it to 2.
+;;       but, for var b outside context, it does matter.
 (defprotocol ContextualState
   (current-context [s])
   (extract-context [s c])
   (apply-effects   [s e])
-  (get-logger      [s]))
+  (get-logger      [s c-set]))
 
-;; For now, we pass in precondition context to help with integration -- should be ignored eventually!
 (defprotocol LoggingState
-  (extract-effects [s c]))
+  (ooc-effects     [s])  ; Return just out-of-context effects.
+  (extract-effects [s]))
 
 (defprotocol FactoredState
-  (set-var [state var val])
-  (set-vars [state vv-pairs])
-  (get-var [state var])
+  (set-var   [state var val])
+  (set-vars  [state vv-pairs])
+  (get-var   [state var])
   (list-vars [state])
-  (as-map [state]))
+  (as-map    [state]))
 
-;(defn default-set-vars [fs m]
-;  (reduce (fn [s [k v]] (set-var s k v)) fs m))
 
 (declare make-logging-factored-state)
 
-(deftype LoggingFactoredState [init] :as state
+(deftype LoggingFactoredState [init #^Set context] :as state
+  Object 
+   (equals    [lfs]
+     (and (= init (:init lfs)) (= context (:context lfs)) (= (ooc-effects state) (ooc-effects lfs))))
+   (hashCode []
+     (unchecked-add (int (hash init))
+       (unchecked-multiply (int 13) (int (hash (ooc-effects state))))))
   FactoredState
    (get-var [var]
-;     (swap! (:gets (meta state)) conj var)
      (get-var init var))
    (set-var [var val]
-;     (println "setting" var "to " val)
      (LoggingFactoredState. (set-var init var val)  ; init
-                            {;:gets (atom @(:gets (meta state))) 
-                             :puts (assoc (:puts (meta state)) var val)}
+                            context
+                            {:puts (assoc (:puts (meta state)) var val)}
                             {}))
    (set-vars [vv-pairs]
      (LoggingFactoredState. (set-vars init vv-pairs)
+                            context
                             {:puts (merge (:puts (meta state)) vv-pairs)}
                             {}))
    (list-vars [] (list-vars init))
    (as-map [] init)
   LoggingState
-   (extract-effects [c] (util/safe-get (meta state) :puts))
+   (extract-effects []  (util/safe-get (meta state) :puts))
+   (ooc-effects     []  (util/filter-map #(not (.contains context (key %))) (util/safe-get (meta state) :puts)))
   ContextualState 
-   (current-context [] (keys init))
+   (current-context []  context)
    (extract-context [c] (select-keys init c))
    (apply-effects   [e] (set-vars state e))
-   (get-logger      [] (make-logging-factored-state init)))
+   (get-logger      [c] (make-logging-factored-state (as-map init) c)))
 
-(defn make-logging-factored-state [init-state] 
-  (LoggingFactoredState init-state {;:gets (atom #{}) 
-                                    :puts {}} {}))
+(defn make-logging-factored-state [init-state context] 
+  (LoggingFactoredState init-state context {:puts {}} {}))
 
 (defn enforce-logger [state]
   (assert (= (type state) ::LoggingFactoredState))
@@ -60,7 +67,7 @@
 
 
 (def *m1* {:set-var assoc :set-vars merge :get-var util/safe-get :list-vars keys :as-map identity})
-(def *m2* {:current-context keys :extract-context select-keys 
+(def *m2* {:current-context util/keyset :extract-context select-keys 
                    :apply-effects merge :get-logger make-logging-factored-state})
 
 (extend clojure.lang.PersistentHashMap FactoredState *m1*  ContextualState *m2*)
@@ -79,10 +86,8 @@
 
 
 
-
-
-(defn get-logging-state-gets [s] @(:gets (meta s)))
-(defn get-logging-state-puts [s] (util/safe-get (meta s) :puts))
+;(defn get-logging-state-gets [s] @(:gets (meta s)))
+;(defn get-logging-state-puts [s] (util/safe-get (meta s) :puts))
 
 
 
@@ -110,7 +115,7 @@
       [(apply-effects s effect-map) reward])
   ContextualAction
     (precondition-context [s]
-      (keys precond-map)))
+      (.keySet #^Map precond-map)))
 
 (defmethod print-method ::FactoredPrimitive [a o] (print-method (action-name a) o))
 
@@ -162,6 +167,10 @@
 
 (defprotocol FactoredEnv
   (goal-map [env]))
+
+(defn initial-logging-state [env]
+  (let [init (initial-state env)]
+    (get-logger init (current-context init))))
 
 (defn make-finish-action [env]
   (FactoredPrimitive 

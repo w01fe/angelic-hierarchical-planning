@@ -44,9 +44,9 @@
             (let [result
                   (util/map-keys
                    (fn [outcome-state]
-                     (with-meta (env/extract-effects outcome-state context-schema) 
+                     (with-meta (env/extract-effects outcome-state) 
                        (select-keys (meta outcome-state) [:opt]))) 
-                   (sahtn-do-action cache (env/get-logger s) a))]
+                   (sahtn-do-action cache (env/get-logger s context-schema) a))]
               (.put cache cache-key result)
               result)))))
 
@@ -54,7 +54,7 @@
 (defn sahtn-nr [henv]
   (let [e       (hierarchy/env henv)
         cache   (HashMap.)
-        results (sahtn-action cache (env/initial-state e) (hierarchy/TopLevelAction e [(hierarchy/initial-plan henv)]) 0)]
+        results (sahtn-action cache (env/initial-logging-state e) (hierarchy/TopLevelAction e [(hierarchy/initial-plan henv)]) 0)]
     (when-not (empty? results)    
 ;      (assert (= (count results) 1))
       (let [[k v] (util/first-maximal-element val results)]

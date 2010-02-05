@@ -28,8 +28,8 @@
     (assoc m k v)))
 
 
-(defn extract-effect [state context opt]
-  (vary-meta (env/extract-effects state context) assoc :opt opt))
+(defn extract-effect [state opt]
+  (vary-meta (env/extract-effects state) assoc :opt opt))
 
 (defn stitch-effect-map [effect-map state reward-to-state]
   (util/map-map1 
@@ -51,7 +51,7 @@
 
 
 
-(deftype SANode [context action result-map-atom queue])
+(deftype SANode [ action result-map-atom queue])
 
 (defn cutoff [node]
   (- (nth (queues/g-pq-peek-min (:queue node)) 1)))
@@ -86,11 +86,11 @@
   "Create a new sa-node, or returned the cached copy if it exists."
   (let [context (env/precondition-context a s)]
     (util/cache-with cache [(env/action-name a) (env/extract-context s context)]
-      (let [s     (env/get-logger s)
+      (let [s     (env/get-logger s context)
             prim? (env/primitive? a)
             [ss r] (when-let [x (and prim? (env/applicable? a s) (env/successor a s))] x)] ;pun        
-        (SANode context a 
-          (atom (if ss {(extract-effect ss context [a]) r} {})) 
+        (SANode  a 
+          (atom (if ss {(extract-effect ss  [a]) r} {})) 
           (make-queue (for [ref (when-not prim? (hierarchy/immediate-refinements a s))]
                         [(get-sanode-entry cache s 0.0 ref) 0.0])))))))
 
@@ -106,7 +106,7 @@
              b-ra (:remaining-actions entry), b-sa (:sanode entry)
              rec-next-best (- (max next-best (cutoff node)) b-rts)]
            (if (empty? b-ra)
-               (let [eff (extract-effect b-s (:context node) (:opt (meta b-s)))]
+               (let [eff (extract-effect b-s (:opt (meta b-s)))]
                  (swap! (:result-map-atom node) assoc-safe >= eff b-rts)
                  (queues/g-pq-remove!  (:queue node) entry)
                  (recur (assoc-safe new-results >= eff b-rts)))
@@ -129,7 +129,7 @@
 (defn sahucs-simple [henv]
   (let [e     (hierarchy/env henv)
         cache (HashMap.)
-        init  (env/initial-state e)
+        init  (env/initial-logging-state e)
         root  (get-sa-node cache init (hierarchy/TopLevelAction e [(hierarchy/initial-plan henv)]))]
     (loop [cutoff 0]
       (let [result (expand-sa-node root cache cutoff init 0.0 cutoff)]

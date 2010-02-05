@@ -39,11 +39,6 @@
 
 
 
-;(deftype SimpleFactoredHLA [name relevant-vars ref-fn] 
-;  env/Action           (action-name [] name)
-;  env/ContextualAction (precondition-context [s] relevant-vars)
-;  HighLevelAction      (immediate-refinements [s] (ref-fn s)))
-
 
 (defprotocol HierarchicalEnv (env [h]) (initial-plan [h]))
 

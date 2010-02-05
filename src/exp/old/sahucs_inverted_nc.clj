@@ -138,7 +138,7 @@
         cache (HashMap.)
         queue (queues/make-graph-search-pq)
         tla   (hierarchy/TopLevelAction e [(hierarchy/initial-plan henv)])]
-    (queues/pq-add-all! queue (get-sa-node cache tla (make-pe (vary-meta (env/initial-state e) assoc :node-set #{}) 0 nil nil) 0))
+    (queues/pq-add-all! queue (get-sa-node cache tla (make-pe (vary-meta (env/initial-logging-state e) assoc :node-set #{}) 0 nil nil) 0))
     (loop []
       (if (queues/g-pq-empty? queue) nil
         (let [[best neg-rew] (queues/g-pq-remove-min-with-cost! queue)] 

@@ -45,6 +45,7 @@
 
 (defn- sahtn-action [#^HashMap cache s a r]
   "Handling boring things - caching and stitching states, etc."
+  (env/enforce-logger s)
 ;  (println s)
   (let [context-schema  (env/precondition-context a s)
         context         (env/extract-context s context-schema)
@@ -53,11 +54,11 @@
         result          
         (or cache-val
          (do (.put cache cache-key (with-meta {} {:dirty-set [cache-key]}))           
-             (let [direct-result  (sahtn-do-action cache (env/get-logger s) a)
+             (let [direct-result  (sahtn-do-action cache (env/get-logger s context-schema) a)
                    result
                    (util/map-keys
                     (fn [outcome-state]
-                      (with-meta (env/extract-effects outcome-state context-schema) 
+                      (with-meta (env/extract-effects outcome-state) 
                         (select-keys  (meta outcome-state) [:opt]))) 
                     direct-result)
                    dirty-set (disj (or (:dirty-set (meta direct-result)) #{}) cache-key)]
@@ -81,7 +82,7 @@
 (defn sahtn-simple [henv]
   (let [e       (hierarchy/env henv)
         cache   (HashMap.)
-        results (sahtn-action cache (env/initial-state e) 
+        results (sahtn-action cache (env/initial-logging-state e) 
                               (hierarchy/TopLevelAction e [(hierarchy/initial-plan henv)]) 0)]
     (when-not (empty? results)
 ;      (assert (= (count results) 1))

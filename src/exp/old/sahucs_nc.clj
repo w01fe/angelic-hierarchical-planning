@@ -310,7 +310,7 @@
 (defn sahucs-nc [henv]
   (let [e     (hierarchy/env henv)
         cache (HashMap.)
-        init  (env/initial-state e)
+        init  (env/initial-logging-state e)
         root  (get-sa-node cache init (hierarchy/TopLevelAction e [(hierarchy/initial-plan henv)]))]
     (loop [cutoff 0 last-cutoff 0]
 ;        (println "\ncutoff" cutoff "\n")

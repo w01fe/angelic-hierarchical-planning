@@ -96,7 +96,7 @@
 (deftype NavHLA [env dx dy] :as this
   env/Action                (action-name [] ['nav dx dy])
                             (primitive? [] false)
-  env/ContextualAction      (precondition-context [s] [['atx] ['aty]])
+  env/ContextualAction      (precondition-context [s] #{['atx] ['aty]})
   hierarchy/HighLevelAction (immediate-refinements- [s]
                              (if (and (= dx (env/get-var s ['atx])) 
                                       (= dy (env/get-var s ['aty])))
@@ -110,8 +110,7 @@
 (deftype ServeHLA [env pass] 
   env/Action                (action-name [] ['serve pass])
                             (primitive? [] false)
-  env/ContextualAction      (precondition-context [s] [['atx] ['aty] ['in-taxi] 
-                                                      ['pass-served? pass]])
+  env/ContextualAction      (precondition-context [s] #{ ['atx] ['aty] ['in-taxi] ['pass-served? pass]})
   hierarchy/HighLevelAction (immediate-refinements- [s]
                              (let [const (env/get-var s :const)
                                    [sx sy dx dy] 
@@ -138,7 +137,7 @@
                             (cycle-level- [s] nil))
 
 (defn make-taxi-tla [env]
-  (TaxiTLA env (keys (dissoc (env/initial-state env) :const))))
+  (TaxiTLA env (util/keyset (dissoc (env/initial-state env) :const))))
 
 (defn simple-taxi-hierarchy [#^TaxiEnv env]
   (hierarchy/SimpleHierarchicalEnv
@@ -149,7 +148,7 @@
 (defn simple-taxi-hierarchy-nsa [#^TaxiEnv env]
   (hierarchy/SimpleHierarchicalEnv
    env
-   [(hierarchy/NSAHLA (make-taxi-tla env) (keys (dissoc (env/initial-state env) :const)))]))
+   [(hierarchy/NSAHLA (make-taxi-tla env) (util/keyset (dissoc (env/initial-state env) :const)))]))
 
 ; (uniform-cost-search (ShopHTNEnv (simple-taxi-hierarchy (TaxiEnv 5 5 [ ['bob [1 1] [3 3] ] ['mary [1 1] [3 3] ] ['lisa [1 1] [3 3] ]]))))
 
@@ -159,7 +158,7 @@
 (deftype NavHHLA [env dx] :as this
   env/Action                (action-name [] ['navh dx])
                             (primitive? [] false)
-  env/ContextualAction      (precondition-context [s] [['atx]])
+  env/ContextualAction      (precondition-context [s] #{ ['atx]})
   hierarchy/HighLevelAction (immediate-refinements- [s]
                               (if (= dx (env/get-var s ['atx]))                                                                    [[]]
                                 (for [af [make-left make-right]
@@ -171,7 +170,7 @@
 (deftype NavVHLA [env dy] :as this
   env/Action                (action-name [] ['navv dy])
                             (primitive? [] false)
-  env/ContextualAction      (precondition-context [s] [['aty]])
+  env/ContextualAction      (precondition-context [s] #{ ['aty]})
   hierarchy/HighLevelAction (immediate-refinements- [s]
                               (if (= dy (env/get-var s ['aty]))                                                                    [[]]
                                 (for [af [make-up make-down]
@@ -183,7 +182,7 @@
 (deftype Nav2HLA [env dx dy] :as this
   env/Action                (action-name [] ['nav dx dy])
                             (primitive? [] false)
-  env/ContextualAction      (precondition-context [s] [['atx] ['aty]])
+  env/ContextualAction      (precondition-context [s] #{ ['atx] ['aty]})
   hierarchy/HighLevelAction (immediate-refinements- [s]
                              [[(NavHHLA env dx) (NavVHLA env dy)]])
                             (cycle-level- [s] nil))
@@ -191,8 +190,7 @@
 (deftype Serve2HLA [env pass] 
   env/Action                (action-name [] ['serve pass])
                             (primitive? [] false)
-  env/ContextualAction      (precondition-context [s] [['atx] ['aty] ['in-taxi] 
-                                                      ['pass-served? pass]])
+  env/ContextualAction      (precondition-context [s] #{ ['atx] ['aty] ['in-taxi] ['pass-served? pass]})                            
   hierarchy/HighLevelAction (immediate-refinements- [s]
                              (let [const (env/get-var s :const)
                                    [sx sy dx dy] 
@@ -219,7 +217,7 @@
                             (cycle-level- [s] nil))
 
 (defn make-taxi-tla2 [env]
-  (Taxi2TLA env (keys (dissoc (env/initial-state env) :const))))
+  (Taxi2TLA env (util/keyset (dissoc (env/initial-state env) :const))))
 
 (defn simple-taxi-hierarchy2 [#^TaxiEnv env]
   (hierarchy/SimpleHierarchicalEnv
@@ -239,8 +237,7 @@
 (deftype Serve3HLA [env pass] 
   env/Action                (action-name [] ['serve pass])
                             (primitive? [] false)
-  env/ContextualAction      (precondition-context [s] [['atx] ['aty] ['in-taxi] 
-                                                      ['pass-served? pass]])
+  env/ContextualAction      (precondition-context [s] #{ ['atx] ['aty] ['in-taxi] ['pass-served? pass]})                            
   hierarchy/HighLevelAction (immediate-refinements- [s]
                              (let [const (env/get-var s :const)
                                    [sx sy dx dy] 
@@ -268,7 +265,7 @@
                             (cycle-level- [s] nil))
 
 (defn make-taxi-tla3 [env]
-  (Taxi3TLA env (keys (dissoc (env/initial-state env) :const))))
+  (Taxi3TLA env (util/keyset (dissoc (env/initial-state env) :const))))
 
 (defn simple-taxi-hierarchy3 [#^TaxiEnv env]
   (hierarchy/SimpleHierarchicalEnv
