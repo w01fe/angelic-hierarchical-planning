@@ -54,6 +54,10 @@
   (LoggingFactoredState init-state {;:gets (atom #{}) 
                                     :puts {}} {}))
 
+(defn enforce-logger [state]
+  (assert (= (type state) ::LoggingFactoredState))
+  state)
+
 
 (def *m1* {:set-var assoc :set-vars merge :get-var util/safe-get :list-vars keys :as-map identity})
 (def *m2* {:current-context keys :extract-context select-keys 

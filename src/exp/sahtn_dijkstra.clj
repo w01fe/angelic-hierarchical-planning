@@ -46,24 +46,18 @@
           (let [level  (hierarchy/cycle-level a s)
                 q      (queues/make-graph-search-pq)
                 result (HashMap.)]
-;            (println "\n\nstarting!")
             (queues/pq-add! q [s [a]] 0)
             (while (not (queues/pq-empty? q))
-;               (println "\n"(queues/pq-size q))
               (let [[[s a] c] (queues/pq-remove-min-with-cost! q)]
-;                (println (env/as-map s) (map env/action-name a) c)
                 (if (empty? a) 
                     (.put result s (- c))
                   (let [[f & r] a
                         f-level (hierarchy/cycle-level f s)]
-;                    (println level f-level (env/action-name f))
                     (assert (or (not f-level) (<= f-level level)))
                     (if (or (not f-level) (< f-level level))
                         (doseq [[ss sr] (sahtn-action cache s f (- c))]
-;                          (println "adding" (env/as-map ss) (map env/action-name r))
                            (queues/pq-add! q [ss r] (- sr)))
                       (doseq [ref (hierarchy/immediate-refinements f s)]
-;                        (println "adding2" (map env/action-name (concat ref r)))
                          (queues/pq-add! q [s (concat ref r)] c)))))))
             (into {} result))
         :else
@@ -81,8 +75,6 @@
         context         (env/extract-context s context-schema)
 	cache-key       [(env/action-name a) context]
 	cache-val       (.get cache cache-key)]
-;    (println (env/action-name a) "\n" context-schema "\n" context "\n\n" cache-val)
-  ;  (println "\nresult for" (env/action-name a))
     (util/map-map 
         (fn [[effect-map local-reward]]
           [(vary-meta (env/apply-effects s effect-map)
