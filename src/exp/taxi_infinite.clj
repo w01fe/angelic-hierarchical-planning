@@ -1,11 +1,36 @@
 (ns exp.taxi-infinite
   (:use clojure.test)
   (:require [edu.berkeley.ai.util :as util]
-            [exp [env :as env] [sas :as sas] [taxi :as taxi]])
+            [exp [env :as env] [sas :as sas]])
   (:import [java.util Random]))
 
 
-(defn make-pickup  [s pass [x y]]
+
+(defn- make-left   [s]
+  (let [cx     (env/get-var s '[atx])]
+    (when (> cx 1) 
+      (env/FactoredPrimitive ['left cx]  {['atx] cx} {['atx] (dec cx)} -1))))
+
+(defn- make-right  [s]
+  (let [const (env/get-var s :const)
+        width  (get const '[width])
+        cx     (env/get-var s '[atx])]
+    (when (< cx width)  
+      (env/FactoredPrimitive ['right cx] {['atx] cx} {['atx] (inc cx)} -1))))
+
+(defn- make-down  [s]
+  (let [cy     (env/get-var s '[aty])]
+    (when (> cy 1)
+      (env/FactoredPrimitive ['down cy]  {['aty] cy} {['aty] (dec cy)} -1))))
+
+(defn- make-up    [s]
+  (let [const (env/get-var s :const)
+        height (get const '[height])
+        cy     (env/get-var s '[aty])]
+    (when (< cy height)
+      (env/FactoredPrimitive ['up cy] {['aty] cy} {['aty] (inc cy)} -1))))
+
+(defn- make-pickup  [s pass [x y]]
   (env/FactoredPrimitive 
    ['pickup pass x y] 
    {['atx]        x     ['aty]        y
@@ -13,7 +38,7 @@
    {['passx pass] :taxi ['passy pass] :taxi}
    -1))
 
-(defn make-dropoff [s pass [x y]]
+(defn- make-dropoff [s pass [x y]]
   (when pass 
     (env/FactoredPrimitive 
      ['dropoff pass x y] 
@@ -35,7 +60,7 @@
    (fn taxi-actions [s]
      (filter identity
        (apply concat 
-         (map #(% s) [taxi/make-left taxi/make-right taxi/make-up taxi/make-down])
+         (map #(% s) [make-left make-right make-up make-down])
          (for [[pass] passengers x (range 1 (inc width)) y (range 1 (inc height))] 
            [(make-pickup s pass [x y]) (make-dropoff s pass [x y])])))))
   (goal-fn [] 
@@ -70,7 +95,7 @@
 
 ; Identical to above.
 
-(defn write-infinite-taxi-strips-domain [file]
+(defn- write-infinite-taxi-strips-domain [file]
   (util/spit file
     ";; Taxi domain 
      
@@ -122,7 +147,7 @@
          
         ))
 
-(defn write-infinite-taxi-strips-instance [tenv file]
+(defn- write-infinite-taxi-strips-instance [tenv file]
   (let [{:keys [width height passengers]} tenv]
     (util/spit file
       (util/str-join "\n"
@@ -167,7 +192,7 @@
 
 ; This version doesn't split X and Y, to make DAG.
 
-(defn write-infinite-taxi-strips2-domain [file]
+(defn- write-infinite-taxi-strips2-domain [file]
   (util/spit file
     ";; Taxi domain 
      
@@ -213,7 +238,7 @@
          :effect       (and (not (at ?l1)) (at ?l2))))"         
         ))
 
-(defn write-infinite-taxi-strips2-instance [tenv file]
+(defn- write-infinite-taxi-strips2-instance [tenv file]
   (let [{:keys [width height passengers]} tenv]
     (util/spit file
       (util/str-join "\n"

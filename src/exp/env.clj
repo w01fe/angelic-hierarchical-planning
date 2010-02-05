@@ -6,9 +6,8 @@
 (defprotocol ContextualState
   (current-context [s])
   (extract-context [s c])
-  (apply-effects [s e])
-  (get-logger [s])  
-  )
+  (apply-effects   [s e])
+  (get-logger      [s]))
 
 ;; For now, we pass in precondition context to help with integration -- should be ignored eventually!
 (defprotocol LoggingState

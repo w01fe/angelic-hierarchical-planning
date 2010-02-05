@@ -3,31 +3,31 @@
             [exp [env :as env] [hierarchy :as hierarchy]])
   (:import [java.util Random]))
 
-(defn make-left   [s]
+(defn- make-left   [s]
   (let [cx     (env/get-var s '[atx])]
     (when (> cx 1) 
       (env/FactoredPrimitive ['left cx]  {['atx] cx} {['atx] (dec cx)} -1))))
 
-(defn make-right  [s]
+(defn- make-right  [s]
   (let [const (env/get-var s :const)
         width  (get const '[width])
         cx     (env/get-var s '[atx])]
     (when (< cx width)  
       (env/FactoredPrimitive ['right cx] {['atx] cx} {['atx] (inc cx)} -1))))
 
-(defn make-down  [s]
+(defn- make-down  [s]
   (let [cy     (env/get-var s '[aty])]
     (when (> cy 1)
       (env/FactoredPrimitive ['down cy]  {['aty] cy} {['aty] (dec cy)} -1))))
 
-(defn make-up    [s]
+(defn- make-up    [s]
   (let [const (env/get-var s :const)
         height (get const '[height])
         cy     (env/get-var s '[aty])]
     (when (< cy height)
       (env/FactoredPrimitive ['up cy] {['aty] cy} {['aty] (inc cy)} -1))))
 
-(defn make-pickup  [s pass]
+(defn- make-pickup  [s pass]
   (let [const (env/get-var s :const)]
     (env/FactoredPrimitive 
      ['pickup pass] 
@@ -38,7 +38,7 @@
      {['in-taxi] pass}
      -1)))
 
-(defn make-dropoff 
+(defn- make-dropoff 
   ([s] (make-dropoff s (env/get-var s '[in-taxi])))
   ([s pass]
      (when pass 
@@ -234,7 +234,7 @@
 
 ;;;;;;;;;;;;;;;;;;;;;;;;;;;;
 
-
+; Yet another hierarchy that does away with Nav and just directly does h then v.
 
 (deftype Serve3HLA [env pass] 
   env/Action                (action-name [] ['serve pass])
@@ -283,7 +283,7 @@
 
 ; Similar to above, except different encoding and re-picking pass is allowed.
 
-(defn write-taxi-strips-domain [file]
+(defn- write-taxi-strips-domain [file]
   (util/spit file
     ";; Taxi domain 
      
@@ -343,7 +343,7 @@
          
         ))
 
-(defn write-taxi-strips-instance [tenv file]
+(defn- write-taxi-strips-instance [tenv file]
   (let [{:keys [width height passengers]} tenv]
     (util/spit file
       (util/str-join "\n"
