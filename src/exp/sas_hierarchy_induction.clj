@@ -5,94 +5,196 @@
   (:import [java.util HashMap]))
 
 
+;; Right now, this is only for DAGs. 
 
+;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;; Utilities ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
 
+(def no-effect-val ::NO-EFFECT)
+(def no-effect-set #{no-effect-val})
+
+(defn disjoin-effect-set-maps [m1 m2]
+  (util/map-map 
+   (fn [k] (clojure.set/union (get m1 k no-effect-set) (get m2 k no-effect-set)))
+   (distinct (concat (keys m1) (keys m2)))))
+
+(defn sequence-effect-set-maps [m1 m2]
+  (merge m1 m2))
+
+(defn apply-effect-set-map [init-sets effect-set-map]
+  (reduce (fn [m [ek evs]]
+            (let [ovs (util/safe-get init-sets ek)]
+              (assoc m ek (if (contains? evs no-effect-val) (clojure.set/union ovs (disj evs no-effect-val)) evs))))
+          init-sets effect-set-map))
+
+;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;; Global bindings ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
 
 (def *vars* nil)
-(def *reverse-dtgs* nil)
+(def *extended-dtgs* nil) ; Map from var to map from prev val to map from post val to list of actions.
+(def *simple-dtgs* nil)   ; Map from var to edge list.
+(def *var-val-sets* nil)  ; Map from var name to set of all vals.
 (def #^HashMap *hla-cache* nil) ; a map from [action-name] to map from init-sets to action.
 
-(def *ap-key* :!A)
-(def *vv-key* :!VV)
 
+;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;; Action Protocol ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
+
+
+
+
+
+
+;; Difference from precond-var-set and precondition-context is for primitives (?)
 (defprotocol SAS-Induced-Action
   (precond-var-set [a])
-  (initial-sets    [a])
+;  (initial-sets    [a])
   (effect-sets     [a]))
 
 (extend ::env/FactoredPrimitive
   SAS-Induced-Action
     {:precond-var-set (fn [a] (util/keyset (:precond-map a)))
-     :initial-sets    (fn [a] (util/map-vals (fn [x] #{x}) (:precond-map a)))
+;     :initial-sets    (fn [a] (util/map-vals (fn [x] #{x}) (:precond-map a))) ;?
      :effect-sets     (fn [a] (util/map-vals (fn [x] #{x}) (:effect-map a)))})
 
-(defn vv-hla-name [var val] [*vv-key* var val])
-(deftype SAS-VV-HLA     [var val precond-vars init-sets effect-sets refinements]
+
+;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;; VV HLAs ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
+
+(declare get-current-action-hla extend-action-hla!)
+
+;; TODO: special treatment for "free"  vars without self-loops.
+
+(defn vv-hla-name [var src-val dst-val] [:!VV src-var dst-val])
+
+; successor-map is a map from dst-val to list of [ap-hla next-vv-hla] pairs. 
+(deftype SAS-VV-HLA  [var src-val dst-val src?-atom init-sets-atom precond-vars-atom effect-sets-atom successor-map-atom]
   SAS-Induced-Action
-    (precond-var-set [] precond-vars)
-    (initial-sets    [] init-sets)
-    (effect-sets     [] effect-sets)
+    (precond-var-set [] @precond-vars-atom)
+    (effect-sets     [] @effect-sets-atom)
   env/Action
-    (action-name [] (vv-hla-name var val))
+    (action-name [] (vv-hla-name var src-val dst-val))
     (primitive?  [] false)
   env/ContextualAction 
-    (precondition-context [s] #_ (util/assert-is (util/subset? (util/keyset effect-sets) precond-vars)) precond-vars)
+    (precondition-context [s] @precond-vars-atom)
   hierarchy/HighLevelAction
-    (immediate-refinements- [s] refinements)
+    (immediate-refinements- [s] (apply concat (vals @successor-map-atom)))
     (cycle-level-           [s] nil))
 
-(defn action-hla-name [action] [*ap-key* (env/action-name action)])
-(deftype SAS-Action-HLA [action  precond-vars init-sets effect-sets refinements]
+(defn get-current-vv-hla [var src-val dst-val]
+  (util/cache-with *hla-cache* (vv-hla-name var src-val dst-val)
+    (if (= src-val dst-val)
+      (SAS-VV-HLA var src-val dst-val (atom true) (atom *var-val-sets*) (atom #{var}) (atom {}) (atom {}))      
+      (SAS-VV-HLA var src-val dst-val (atom false) (atom {})            (atom #{var}) (atom {}) (atom {})))))
+
+(declare extend-vv-hla-edge!)
+
+(defn designate-vv-hla-src! [hla]
+  (let [{:keys [var src-val dst-val src?-atom]} hla]
+    (reset! src?-atom true)
+    (doseq [[s t] (graphs/find-acyclic-edges (*simple-dtgs* var) [src-val] [dst-val])]
+      (let [sn (get-current-vv-hla var s dst-val)]
+        (when-not (contains? @(:successor-map-atom sn) t)
+          (when (seq @(:init-sets-atom sn)) (println "Warning: adding outgoing edges! (sas_hierarchy_induction)"))
+          (swap! @(:successor-map-atom sn) assoc t
+            (doall (for [a (util/safe-get-in *extended-dtgs* var s t)] 
+                     [(get-current-action-hla a) (get-current-vv-hla var t dst-val)])))
+          (doseq [e (util/safe-get @(:successor-map-atom sn) t)]
+            (extend-vv-hla-edge! sn e @(:init-sets sn))))))))
+
+
+(defn extend-vv-hla! 
+  "Extend this HLA to cover new init-sets, as needed. src? indicates whether this value can be a source from a descendent."
+  [hla init-sets src?]
+  (let [{:keys [var src-val dst-val src?-atom init-sets-atom precond-vars-atom effect-sets-atom successor-map-atom]} hla
+        new-src?   (and src? (not @src?-atom))
+        new-inits? (not= (select-keys @init-sets-atom @precond-vars-atom)
+                         (select-keys (swap! @init-sets-atom #(merge-with clojure.set/union % init-sets)) @precond-vars-atom))]
+    (assert (= (get init-sets var) #{src-val}))
+    (when new-src? 
+      (designate-vv-hla-src! hla))
+    (when new-inits?
+      (doseq [e (vals @successor-map-atom)] (extend-vv-hla-edge! hla e @init-sets-atom)))
+    (when (or new-src? new-inits?)
+      (let [successors (map second (apply concat (vals @successor-map-atom)))]
+        (swap! precond-vars-atom (apply clojure.set/union       (map precond-var-set successors)))
+        (swap! effect-sets-atom  (apply disjoin-effect-set-maps (map effect-sets     successors)))))))
+
+(defn extend-vv-hla-edge! 
+  "Extend this VV-HLA edge to cover new init-sets, as needed."
+  [hla [a next-vv-hla] init-sets]
+  (extend-action-hla! a init-sets)
+  (extend-vv-hla! next-vv-hla (effect-sets a) false))
+
+
+
+;;;;;;;;;;;;;;;;;;;;;;;;;;;;;; Precondition Nodes ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
+
+;; Each precond HLA is not cached, and is owned by a particular action.
+;; It just aggregates sets of src vv-hla nodes, more or less.
+;; src-map-atom maps from src vals to sas-vv-hla instances.  Init-sets describes current init-sets.
+
+(deftype SAS-Precond-HLA [var dst-val src-map-atom] :as this
+  SAS-Induced-Action
+    (precond-var-set [] (apply clojure.set/union       (map precond-var-set (vals src-map-atom))))
+    (effect-sets     [] (apply disjoin-effect-set-maps (map effect-sets     (vals src-map-atom))))
+  env/Action
+    (action-name [] (throw (UnsupportedOperationException.)))
+    (primitive?  [] false)
+  env/ContextualAction 
+    (precondition-context [s] (precond-var-set this))
+  hierarchy/HighLevelAction
+    (immediate-refinements- [s] [(util/safe-get @src-map-atom (env/get-var s var))])
+    (cycle-level-           [s] nil))
+
+(defn make-precond-hla [var dst-val] 
+  (SAS-Precond-HLA var dst-val (atom {})))
+
+(defn extend-precond-hla! [hla init-sets]
+  (let [{:keys [var dst-val src-map-atom] hla}]
+    (doseq [src-val (util/safe-get init-sets var)]
+      (when-not (contains? @src-map-atom src-val)
+        (swap! src-map-atom assoc src-val (get-current-vv-hla var src-val dst-val)))
+      (extend-vv-hla! (util/safe-get @src-map-atom src-val) (assoc init-sets var #{src-val}) true))))
+
+
+
+
+
+;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;; Action Nodes ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
+
+;; An action.  
+;; TODO: think about splitting this based on which var it's being used for.
+;; TODO: make fancier.
+;; TODO: how do we go in parallel? 
+;; For now, considers all ways 
+
+(defn action-hla-name [action] [:!A (env/action-name action)])
+
+(deftype SAS-Action-HLA [action preconds init-sets-atom precond-vars-atom effect-sets-atom]
   SAS-Induced-Action
     (precond-var-set [] precond-vars)
-    (initial-sets    [] init-sets)
     (effect-sets     [] effect-sets)
   env/Action
     (action-name [] (action-hla-name action))
     (primitive?  [] false)
   env/ContextualAction 
-    (precondition-context [s] #_ (util/assert-is (util/subset? (util/keyset effect-sets) precond-vars)) precond-vars)
+    (precondition-context [s] precond-vars)
   hierarchy/HighLevelAction
     (immediate-refinements- [s] refinements)
     (cycle-level-           [s] nil))
 
 
-(declare induce-action-hla induce-vv-hla)
+(defn get-current-action-hla [action]
+  (util/cache-with *hla-cache* (action-hla-name action)
+    (SAS-Action-HLA action 
+      (doall (map #(partial apply make-precond-hla) (:precond-map a)))
+      (atom {}) (atom #{})
+                    )
+    (if (= src-val dst-val)
+      (SAS-VV-HLA var src-val dst-val (atom true) (atom *var-val-sets*) (atom #{var}) (atom {}) (atom {}))      
+      (SAS-VV-HLA var src-val dst-val (atom false) (atom {})            (atom #{var}) (atom {}) (atom {})))))
 
-;    (println paths)
-;    (doseq [path paths] (induce-action-hla (first path) init-sets ))
 
-(defn progress-refinement [prim-ref init-sets ]
-  (util/print-debug 2 "Progressing plan" prim-ref)
-  (loop [prim-ref prim-ref, hla-ref [], plan-effect-sets {}]
-    (if (empty? prim-ref)
-        [hla-ref plan-effect-sets]
-      (let [a     (first prim-ref)
-            hla-a (induce-action-hla a (merge init-sets plan-effect-sets) )]
-        (recur (rest prim-ref) (conj hla-ref hla-a) (merge plan-effect-sets (effect-sets hla-a)))))))
 
-;; Want to look at acyclic paths, which include at most one free-action. (with no precond on var.)
-;; Two things we can do here; recursive style (works from any src, more caching) or direct style
- ;; (avoid cycles, more focused description/pruning, but less caching and less general). 
 
-;; TODO: induce stronger preconditions for refinements? 
-(declare find-all-acyclic-paths)
 
-(defn induce-vv-hla- [var goal-val init-sets]
-  (util/print-debug 2 "Inducing HLA to get" var "to val" goal-val "from" (init-sets var))
-  (let [inits        (init-sets var)
-        reverse-dtg  (*reverse-dtgs* var)
-        paths        (find-all-acyclic-paths var inits goal-val reverse-dtg)
-        refs-results (filter identity (map #(progress-refinement % init-sets ) paths))]
-    (if (and (util/singleton? refs-results) (util/singleton? (ffirst refs-results)))
-        (first (ffirst refs-results))
-      (when (seq refs-results)
-        (assert (apply = (map util/keyset (map second refs-results)))) ;; Otherwise, no-effect not handled properly when not in PC.
-        (SAS-VV-HLA var goal-val 
-                    (set (for [[ref _] refs-results, a ref, v (precond-var-set a)] v))
-                    init-sets 
-                    (apply merge-with clojure.set/union (map second refs-results))
-                    (map first refs-results))))))
 
 ;; Ideas here:
  ; If actions can be partitioned such that effects of each set disjoint with preconditions of all other sets,
@@ -103,6 +205,7 @@
  ; Finally, generate interleavings ...
 
 ;; Watch out: what happens when single action establishes multiple preconditions, e.g. .. 
+;; TODO: need to treat subsets (i.e., transitive closure edges) specially.
 
 (defn induce-action-hla- [a init-sets ]
   (util/print-debug 2 "Inducing HLA for preconds + action" (:name a))
@@ -124,26 +227,33 @@
           [[bit a]]))))))
 
 
-;; TODO: figure out how much to generalize here.
-(defn cached-induce [name init-sets result-fn]
-  (let [entries (.get *hla-cache* name)]
-    (assert (not (identical? entries :STACK)))
-    (if-let [v (first (filter #(let [ks (precond-var-set %)] 
-                                 (= (select-keys init-sets ks) (select-keys (initial-sets %) ks))) 
-                              entries))]
-        (do (util/print-debug 3 "Cache hit for" name) 
-            v)
-      (do (.put *hla-cache* name :STACK)
-          (let [ret (result-fn)]
-            (assert ret) ;; If we run into this, need to figure out how to properly cache failures.
-            (.put *hla-cache* name (cons ret entries))
-            ret)))))
+;; Getting/extending HLA, extracting best-effort info for these init-sets, must be separate.
+;; Parent will ahve to store some sort of ref to old prec/effect sets to detect change, since others may have extended since.
 
-(defn induce-action-hla [a init-sets]
-  (cached-induce (action-hla-name a) init-sets #(induce-action-hla- a init-sets)))
+;; TODO: handle effect merges properly.
+;; TODO: make sure we don't waste our time on new descendant values. (easy, just use current context.)
+; Note: in this framework, ancestor in CG does not entail ordering? 
+ ; Can we create graph for this bit too, so we reuse ?
+; Adding to init, can totally change a-p graph.  
 
-(defn induce-vv-hla [var goal-val init-sets ]
-  (cached-induce (vv-hla-name var goal-val) init-sets #(induce-vv-hla- var goal-val init-sets)))
+; Question; how do we handle A-P actions generally (establishing 1 may change init for other). 
+; Question: can we just do all of this on the fly ? 
+
+;; Want to look at acyclic paths, which include at most one free-action. (with no precond on var.)
+;; Two things we can do here; recursive style (works from any src, more caching) or direct style
+ ;; (avoid cycles, more focused description/pruning, but less caching and less general). 
+
+;; TODO: induce stronger preconditions for refinements? 
+;; TODO: split init-sets based on init val for var ?
+;; Now: do forward search from inits.  For each init, keep track of outgoing HLAs, init sets.
+  ;  Keep iterating until no new values added to inits.  
+  ;  Also keep track of set of vals on all paths to val, to avoid cycles in exploration as possible.   
+    ; If we keep all this info around in HLA, extending becomes easier.   
+
+
+
+;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;; Top Level  ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
+
 
 (defn induce-hierarchy [sas-problem]
   (let [{:keys [vars actions init]} sas-problem]
@@ -158,7 +268,7 @@
 
 
 
-
+;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;; Printing  ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
 
 (defmulti pretty-print-action type)
 
@@ -188,7 +298,7 @@
 
 ;(induce-hierarchy  (make-sas-problem-from-pddl (prln (write-infinite-taxi-strips2 (make-random-infinite-taxi-env 2 2 1)))))
 
-;(comment
+(comment
   ; not needed anymore?
   
   
@@ -210,4 +320,21 @@
              (find-all-acyclic-paths var init-val-set pval reverse-dtg (cons a plan-suffix) 
                                      (conj stack-val-set goal-val) (and can-use-free? (not action-free?)))))))))
   
-;  )
+
+(defn induce-vv-hla- [var goal-val init-sets]
+  (util/print-debug 2 "Inducing HLA to get" var "to val" goal-val "from" (init-sets var))
+  (let [inits        (init-sets var)
+        reverse-dtg  (*reverse-dtgs* var)
+        paths        (find-all-acyclic-paths var inits goal-val reverse-dtg)
+        refs-results (filter identity (map #(progress-refinement % init-sets ) paths))]
+    (if (and (util/singleton? refs-results) (util/singleton? (ffirst refs-results)))
+        (first (ffirst refs-results))
+      (when (seq refs-results)
+        (assert (apply = (map util/keyset (map second refs-results)))) ;; Otherwise, no-effect not handled properly when not in PC.
+        (SAS-VV-HLA var goal-val 
+                    (set (for [[ref _] refs-results, a ref, v (precond-var-set a)] v))
+                    init-sets 
+                    (apply merge-with clojure.set/union (map second refs-results))
+                    (map first refs-results))))))
+
+)

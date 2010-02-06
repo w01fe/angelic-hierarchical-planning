@@ -169,12 +169,12 @@
 
 
 
-(defn find-cyclic-edges
+(defn find-acyclic-edges
   "Take a directed edge list, list of source nodes, and list of target nodes, a
    and return a list of edges that do not participate in any acylic path from
    a source node to a target node.  Uses a circuit-based LP solving method."
   [edge-list sources sinks]
-  (let [nodes     (distinct (apply concat edge-list))
+  (let [nodes     (distinct (apply concat sources sinks edge-list))
         all-nodes (set (concat nodes [::SOURCE ::SINK]))
         all-edges (concat edge-list 
                           (for [source sources] [::SOURCE source])
@@ -182,7 +182,7 @@
         out-map   (map-vals #(map second %) (unsorted-group-by first all-edges)) 
         in-map    (map-vals #(map first %)  (unsorted-group-by second all-edges))]
     (map key
-     (filter #(and (not (all-nodes (key %))) (= 0 (val %)))
+     (filter #(and (not (all-nodes (key %))) (not (some #{::SOURCE ::SINK} (key %))) (> (val %) 0))
        (first 
         (solve-lp-clp
          (make-lp
