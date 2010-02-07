@@ -11,14 +11,25 @@
 
 (def no-effect-val ::NO-EFFECT)
 (def no-effect-set #{no-effect-val})
+(def no-outcomes ::NO-EXIT)
 
-(defn disjoin-effect-set-maps [m1 m2]
-  (util/map-map 
-   (fn [k] (clojure.set/union (get m1 k no-effect-set) (get m2 k no-effect-set)))
-   (distinct (concat (keys m1) (keys m2)))))
+(defn disjoin-effect-set-maps 
+  ([] {})
+  ([m] m)
+  ([m1 m2]
+     (cond (= m1 no-outcomes) m2
+           (= m2 no-outcomes) m1
+           :else (util/map-map 
+                  (fn [k] [k (clojure.set/union (get m1 k no-effect-set) (get m2 k no-effect-set))])
+                  (distinct (concat (keys m1) (keys m2))))))
+  ([m1 m2 & maps]
+     (reduce disjoin-effect-set-maps m1 (cons m2 maps))))
 
 (defn sequence-effect-set-maps [m1 m2]
-  (merge m1 m2))
+  (reduce (fn [m [ek evs]]
+            (let [ovs (get m1 no-effect-set)]
+              (assoc m ek (if (contains? evs no-effect-val) (clojure.set/union ovs (disj evs no-effect-val)) evs))))
+          m1 m2))
 
 (defn apply-effect-set-map [init-sets effect-set-map]
   (reduce (fn [m [ek evs]]
@@ -46,7 +57,8 @@
 (defprotocol SAS-Induced-Action
   (precond-var-set [a])
 ;  (initial-sets    [a])
-  (effect-sets     [a]))
+  (effect-sets     [a])
+  (all-refinements [a]))
 
 (extend ::env/FactoredPrimitive
   SAS-Induced-Action
@@ -64,63 +76,73 @@
 (defn vv-hla-name [var src-val dst-val] [:!VV src-val dst-val])
 
 ; successor-map is a map from dst-val to list of [ap-hla next-vv-hla] pairs. 
-(deftype SAS-VV-HLA  [var src-val dst-val src?-atom init-sets-atom precond-vars-atom effect-sets-atom successor-map-atom]
+(deftype SAS-VV-HLA  [var src-val dst-val src?-atom dirty?-atom init-sets-atom precond-vars-atom effect-sets-atom successor-map-atom]
   SAS-Induced-Action
     (precond-var-set [] @precond-vars-atom)
     (effect-sets     [] @effect-sets-atom)
+    (all-refinements [] (apply concat (vals @successor-map-atom)))
   env/Action
     (action-name [] (vv-hla-name var src-val dst-val))
     (primitive?  [] false)
   env/ContextualAction 
     (precondition-context [s] @precond-vars-atom)
   hierarchy/HighLevelAction
-    (immediate-refinements- [s] (apply concat (vals @successor-map-atom)))
+    (immediate-refinements- [s] (if (= src-val dst-val) [[]] (apply concat (vals @successor-map-atom))))
     (cycle-level-           [s] nil))
 
 (defn get-current-vv-hla [var src-val dst-val]
   (util/cache-with *hla-cache* (vv-hla-name var src-val dst-val)
     (if (= src-val dst-val)
-      (SAS-VV-HLA var src-val dst-val (atom true) (atom *var-val-sets*) (atom #{var}) (atom {}) (atom {}))      
-      (SAS-VV-HLA var src-val dst-val (atom false) (atom {})            (atom #{var}) (atom {}) (atom {})))))
+      (SAS-VV-HLA var src-val dst-val (atom true) (atom false) (atom *var-val-sets*) (atom #{var}) (atom {}) (atom {}))      
+      (SAS-VV-HLA var src-val dst-val (atom false) (atom false) (atom {})            (atom #{var}) (atom no-outcomes) (atom {})))))
 
 (declare extend-vv-hla-edge!)
 
+(defn add-new-vv-edge! [var dst-val [s t]]
+  (let [sn (get-current-vv-hla var s dst-val)]
+    (when-not (contains? @(:successor-map-atom sn) t)
+      (when (seq @(:init-sets-atom sn)) (println "Warning: adding outgoing edge! (sas_hierarchy_induction)" [s t]))
+      (swap! (:successor-map-atom sn) assoc t
+             (doall (for [a (util/safe-get-in *extended-dtgs* [var s t])] 
+                      [(get-current-action-hla a var) (get-current-vv-hla var t dst-val)]))))))
+
+
 (defn designate-vv-hla-src! [hla]
-  (let [{:keys [var src-val dst-val src?-atom]} hla]
+  (let [{:keys [var src-val dst-val src?-atom]} hla
+        edges    (graphs/find-acyclic-edges (util/safe-get *simple-dtgs* var) [src-val] [dst-val])
+        any-new? (some identity (doall (map #(add-new-vv-edge! var dst-val %) edges)))]
+    (println "adding edges" edges)
+    (util/assert-is (or (seq edges) (= src-val dst-val)))
     (reset! src?-atom true)
-    (doseq [[s t] (graphs/find-acyclic-edges (*simple-dtgs* var) [src-val] [dst-val])]
-      (let [sn (get-current-vv-hla var s dst-val)]
-        (when-not (contains? @(:successor-map-atom sn) t)
-          (when (seq @(:init-sets-atom sn)) (println "Warning: adding outgoing edges! (sas_hierarchy_induction)"))
-          (swap! @(:successor-map-atom sn) assoc t
-            (doall (for [a (util/safe-get-in *extended-dtgs* var s t)] 
-                     [(get-current-action-hla a var) (get-current-vv-hla var t dst-val)])))
-          (doseq [e (util/safe-get @(:successor-map-atom sn) t)]
-            (extend-vv-hla-edge! sn e @(:init-sets sn))))))))
+    (when any-new? 
+      (doseq [s (distinct (map first edges))]
+        (reset! (:dirty?-atom (get-current-vv-hla var s dst-val)) true)))))
 
 
 (defn extend-vv-hla! 
   "Extend this HLA to cover new init-sets, as needed. src? indicates whether this value can be a source from a descendent."
   [hla init-sets src?]
-  (let [{:keys [var src-val dst-val src?-atom init-sets-atom precond-vars-atom effect-sets-atom successor-map-atom]} hla
-        new-src?   (and src? (not @src?-atom))
+  (let [{:keys [var src-val dst-val src?-atom dirty?-atom init-sets-atom precond-vars-atom successor-map-atom]} hla
         new-inits? (not= (select-keys @init-sets-atom @precond-vars-atom)
-                         (select-keys (swap! @init-sets-atom #(merge-with clojure.set/union % init-sets)) @precond-vars-atom))]
-    (assert (= (get init-sets var) #{src-val}))
-    (when new-src? 
-      (designate-vv-hla-src! hla))
-    (when new-inits?
-      (doseq [e (vals @successor-map-atom)] (extend-vv-hla-edge! hla e @init-sets-atom)))
-    (when (or new-src? new-inits?)
-      (let [successors (map second (apply concat (vals @successor-map-atom)))]
-        (reset! precond-vars-atom (apply clojure.set/union       (map precond-var-set successors)))
-        (reset! effect-sets-atom  (apply disjoin-effect-set-maps (map effect-sets     successors)))))))
+                         (select-keys (swap! init-sets-atom #(merge-with clojure.set/union % init-sets)) @precond-vars-atom))]
+    (println "Extend" (:var hla) (:src-val hla) (:dst-val hla) new-inits? (count @successor-map-atom))
+    (util/assert-is (= (util/safe-get init-sets var) #{src-val}))
+    (when (and src? (not @src?-atom)) (designate-vv-hla-src! hla))
+    (when (or new-inits? @dirty?-atom) 
+      (reset! dirty?-atom false)
+      (doseq [es (vals @successor-map-atom), e es] (extend-vv-hla-edge! hla e @init-sets-atom)))))
 
+;; TODO: make sure this is general enough handling of precond sets.
 (defn extend-vv-hla-edge! 
   "Extend this VV-HLA edge to cover new init-sets, as needed."
   [hla [a next-vv-hla] init-sets]
+  (assert (not (= (:src-val hla) (:dst-val hla))))
   (extend-action-hla! a init-sets)
-  (extend-vv-hla! next-vv-hla (effect-sets a) false))
+  (extend-vv-hla! next-vv-hla (apply-effect-set-map init-sets (effect-sets a)) false)
+  (swap! (:precond-vars-atom hla) clojure.set/union       (precond-var-set a) (precond-var-set next-vv-hla))
+  (println (env/action-name hla) (effect-sets hla) (effect-sets a) (effect-sets next-vv-hla))
+  (swap! (:effect-sets-atom hla)  disjoin-effect-set-maps (sequence-effect-set-maps (effect-sets a) (effect-sets next-vv-hla)))
+  (util/assert-is (= (get @(:effect-sets-atom hla) (:var hla)) #{(:dst-val hla)}) "%s" [(env/action-name hla)]))
 
 
 
@@ -132,15 +154,16 @@
 
 (deftype SAS-Precond-HLA [var dst-val src-map-atom] :as this
   SAS-Induced-Action
-    (precond-var-set [] (apply clojure.set/union       (map precond-var-set (vals src-map-atom))))
-    (effect-sets     [] (apply disjoin-effect-set-maps (map effect-sets     (vals src-map-atom))))
+    (precond-var-set [] (apply clojure.set/union       (map precond-var-set (vals @src-map-atom))))
+    (effect-sets     [] (apply disjoin-effect-set-maps (map effect-sets     (vals @src-map-atom))))
+    (all-refinements [] (map vector (vals @src-map-atom)))
   env/Action
-    (action-name [] (throw (UnsupportedOperationException.)))
+    (action-name [] [:precond var dst-val (System/identityHashCode this)])
     (primitive?  [] false)
   env/ContextualAction 
     (precondition-context [s] (precond-var-set this))
   hierarchy/HighLevelAction
-    (immediate-refinements- [s] [(util/safe-get @src-map-atom (env/get-var s var))])
+    (immediate-refinements- [s] [[(util/safe-get @src-map-atom (env/get-var s var))]])
     (cycle-level-           [s] nil))
 
 (defn make-precond-hla [var dst-val] 
@@ -167,13 +190,14 @@
   SAS-Induced-Action
     (precond-var-set [] (if soft-precond? (precond-var-set soft-precond?) #{}))
     (effect-sets     [] (if soft-precond? (effect-sets     soft-precond?)  {}))
+    (all-refinements [] [(if soft-precond? [soft-precond?] [])])
   env/Action
-    (action-name [] (throw (UnsupportedOperationException.)))
+    (action-name [] [:ps (System/identityHashCode this)])
     (primitive?  [] false)
   env/ContextualAction 
     (precondition-context [s] (precond-var-set this))
   hierarchy/HighLevelAction
-    (immediate-refinements- [s] (assert (env/state-matches-map? s hard-preconds)) (if soft-precond? [soft-precond?] []))
+    (immediate-refinements- [s] (assert (env/state-matches-map? s hard-preconds)) [(if soft-precond? [soft-precond?] [])])
     (cycle-level-           [s] nil))
 
 (defn make-precond-set-hla [hard-preconds soft-precond?] 
@@ -200,13 +224,14 @@
   SAS-Induced-Action
     (precond-var-set [] @precond-vars-atom)
     (effect-sets     [] @effect-sets-atom)
+    (all-refinements [] [[precond-set-hla action]])
   env/Action
     (action-name     [] (action-hla-name action))
     (primitive?      [] false)
   env/ContextualAction 
     (precondition-context [s] @precond-vars-atom)
   hierarchy/HighLevelAction
-    (immediate-refinements- [s] [precond-set-hla action])
+    (immediate-refinements- [s] [[precond-set-hla action]])
     (cycle-level-           [s] nil))
 
 
@@ -216,13 +241,16 @@
     (assert (<= (count rem-preconds) 1))
     (util/cache-with *hla-cache* (action-hla-name action)
       (SAS-Action-HLA action
-        (make-precond-set-hla (select-keys preconds [var]) (make-precond-hla (key (first rem-preconds)) (val (first rem-preconds))))
-        (atom {}) (atom (util/keyset preconds)) (atom {})))))
+        (make-precond-set-hla (select-keys preconds [var]) 
+                              (when (seq rem-preconds) 
+                                (make-precond-hla (key (first rem-preconds)) (val (first rem-preconds)))))
+        (atom {}) (atom (util/keyset preconds)) (atom no-outcomes)))))
 
 (defn extend-action-hla! [hla init-sets]
+  (assert (= (type hla) ::SAS-Action-HLA))
   (let [{:keys [action precond-set-hla init-sets-atom precond-vars-atom effect-sets-atom]} hla
         new-inits? (not= (select-keys @init-sets-atom @precond-vars-atom)
-                         (select-keys (swap! @init-sets-atom #(merge-with clojure.set/union % init-sets)) @precond-vars-atom))]
+                         (select-keys (swap! init-sets-atom #(merge-with clojure.set/union % init-sets)) @precond-vars-atom))]
     (when new-inits?
       (extend-precond-set-hla! precond-set-hla init-sets)
       (reset! precond-vars-atom (clojure.set/union (precond-var-set precond-set-hla) (util/keyset (:precond-map action))))
@@ -282,12 +310,14 @@
 (def #^HashMap *hla-cache* nil) ; a map from [action-name] to map from init-sets to action.
 
 (defn induce-hierarchy [sas-problem]
-  (let [{:keys [vars actions init]} sas-problem]
+  (let [{:keys [vars actions init]} sas-problem
+        dtgs (sas-analysis/domain-transition-graphs vars actions)]
     (binding [*vars*          vars
-              *extended-dtgs* (sas-analysis/domain-transition-graphs vars actions)
-              *simple-dtgs*   (util/map-vals (fn [dtg] (for [[pval emap] dtg, [eval _] emap] [pval eval])) *extended-dtgs*)
+              *extended-dtgs* dtgs
+              *simple-dtgs*   (util/map-vals (fn [dtg] (for [[pval emap] dtg, [eval _] emap] [pval eval])) dtgs)
               *var-val-sets*  (util/map-map (juxt :name :vals) vars)
               *hla-cache*     (HashMap.)]
+      
       (let [goal-action (util/safe-singleton (get-in *extended-dtgs* [sas/goal-var-name sas/goal-false-val sas/goal-true-val]))
             goal-hla    (get-current-action-hla goal-action sas/goal-var-name)]
         (extend-action-hla! goal-hla (util/map-vals (fn [x] #{x}) init))
@@ -300,14 +330,13 @@
 (defmulti pretty-print-action type)
 
 (defn pretty-print-hla [h]
-  (println (str "\nRefs for HLA" (env/action-name h)) (precond-var-set h) #_ (effect-sets h))
-  (doseq [ref (:refinements h)]
+  (println (str "\nRefs for HLA" (env/action-name h)) (precond-var-set h)  (effect-sets h))
+  (doseq [ref (all-refinements h)]
     (println " " (util/str-join ", " (map env/action-name ref))))
-  (doseq [ref (:refinements h), a ref]
+  (doseq [ref (all-refinements h), a ref]
     (pretty-print-action a)))
 
-(defmethod pretty-print-action ::SAS-VV-HLA [h] (pretty-print-hla h))
-(defmethod pretty-print-action ::SAS-Action-HLA [h] (pretty-print-hla h))
+(defmethod pretty-print-action :default [h] (pretty-print-hla h))
 (defmethod pretty-print-action ::env/FactoredPrimitive [h] nil)
 
 

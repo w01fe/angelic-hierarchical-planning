@@ -22,6 +22,7 @@
 ;  (println "Refs for " (env/action-name a) "from" (map #(env/get-var s %) '[[atx] [aty]]))
   (util/timeout)
   (let [refs (immediate-refinements- a s)]
+    (println "Refs for " (env/action-name a) "are" (map #(map env/action-name %) refs))
     (util/sref-set! *ref-counter*  (+ 1            (util/sref-get *ref-counter*)))
     (util/sref-set! *plan-counter* (+ (count refs) (util/sref-get *plan-counter*)))
     refs))
