@@ -111,7 +111,7 @@
   (let [{:keys [var src-val dst-val src?-atom]} hla
         edges    (graphs/find-acyclic-edges (util/safe-get *simple-dtgs* var) [src-val] [dst-val])
         any-new? (some identity (doall (map #(add-new-vv-edge! var dst-val %) edges)))]
-    (println "adding edges" edges)
+;    (println "adding edges" edges)
     (util/assert-is (or (seq edges) (= src-val dst-val)))
     (reset! src?-atom true)
     (when any-new? 
@@ -122,13 +122,13 @@
 (defn extend-vv-hla! 
   "Extend this HLA to cover new init-sets, as needed. src? indicates whether this value can be a source from a descendent."
   [hla init-sets src?]
-  (let [{:keys [var src-val dst-val src?-atom dirty?-atom init-sets-atom precond-vars-atom successor-map-atom]} hla
-        new-inits? (not= (select-keys @init-sets-atom @precond-vars-atom)
-                         (select-keys (swap! init-sets-atom #(merge-with clojure.set/union % init-sets)) @precond-vars-atom))]
-    (println "Extend" (:var hla) (:src-val hla) (:dst-val hla) new-inits? (count @successor-map-atom))
+  (let [{:keys [var src-val dst-val src?-atom dirty?-atom init-sets-atom precond-vars-atom successor-map-atom]} hla]
+;    (println "Extend" (:var hla) (:src-val hla) (:dst-val hla) new-inits? (count @successor-map-atom))
     (util/assert-is (= (util/safe-get init-sets var) #{src-val}))
     (when (and src? (not @src?-atom)) (designate-vv-hla-src! hla))
-    (when (or new-inits? @dirty?-atom) 
+    (when (or (not= (select-keys @init-sets-atom @precond-vars-atom)
+                    (select-keys (swap! init-sets-atom #(merge-with clojure.set/union % init-sets)) @precond-vars-atom))
+              @dirty?-atom) 
       (reset! dirty?-atom false)
       (doseq [es (vals @successor-map-atom), e es] (extend-vv-hla-edge! hla e @init-sets-atom)))))
 
@@ -138,9 +138,10 @@
   [hla [a next-vv-hla] init-sets]
   (assert (not (= (:src-val hla) (:dst-val hla))))
   (extend-action-hla! a init-sets)
+;  (println (env/action-name hla) init-sets (effect-sets hla) (effect-sets a) (effect-sets next-vv-hla))
   (extend-vv-hla! next-vv-hla (apply-effect-set-map init-sets (effect-sets a)) false)
+
   (swap! (:precond-vars-atom hla) clojure.set/union       (precond-var-set a) (precond-var-set next-vv-hla))
-  (println (env/action-name hla) (effect-sets hla) (effect-sets a) (effect-sets next-vv-hla))
   (swap! (:effect-sets-atom hla)  disjoin-effect-set-maps (sequence-effect-set-maps (effect-sets a) (effect-sets next-vv-hla)))
   (util/assert-is (= (get @(:effect-sets-atom hla) (:var hla)) #{(:dst-val hla)}) "%s" [(env/action-name hla)]))
 
@@ -312,6 +313,7 @@
 (defn induce-hierarchy [sas-problem]
   (let [{:keys [vars actions init]} sas-problem
         dtgs (sas-analysis/domain-transition-graphs vars actions)]
+    (assert (graphs/dag? (sas-analysis/standard-causal-graph sas-problem)))
     (binding [*vars*          vars
               *extended-dtgs* dtgs
               *simple-dtgs*   (util/map-vals (fn [dtg] (for [[pval emap] dtg, [eval _] emap] [pval eval])) dtgs)
