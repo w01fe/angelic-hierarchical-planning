@@ -135,7 +135,7 @@
     (effect-sets     [] @effect-sets-atom)
     (pre-ref-pairs   [] (if (= src-val dst-val) [[{} []]] 
                             (for [vs (vals @successor-map-atom), v vs] [{} v])))
-    (compile-hla     [] (if (= src-val dst-val) [] (default-compile-hla-noflatten this)))
+    (compile-hla     [] (if (= src-val dst-val) [] (default-compile-hla #_-noflatten this)))
   env/Action
     (action-name [] (vv-hla-name var src-val dst-val))
     (primitive?  [] false)
@@ -404,7 +404,9 @@
 
 
 (defn pretty-print-hierarchy [hierarchy]
-  (pretty-print-action (first (:initial-plan hierarchy)) (HashSet.)))
+  (let [hs (HashSet.), ip (:initial-plan hierarchy)]
+    (println "\nInitial plan is:" (map env/action-name ip ))
+    (doseq [a ip] (pretty-print-action a hs))))
 
 
 
