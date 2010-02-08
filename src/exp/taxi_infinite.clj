@@ -258,7 +258,7 @@
               (util/str-join " " (for [[n [sx sy]] passengers]
                                    (str "(passat " n " " sx "-" sy ")")))
               ")
-           (:goal (and ;(at 1-1)"
+           (:goal (and (at 1-1)"
               (util/str-join " " (for [[n _ [dx dy]] passengers]
                                    (str "(passat " n " " dx "-" dy ")")))
               ")))"]))))

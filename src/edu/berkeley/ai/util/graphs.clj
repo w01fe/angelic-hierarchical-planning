@@ -130,9 +130,10 @@
 
 
 (defn scc-graph 
-  "Take an edge list and return [edge-list node-set-map] for graph of sccs."
+  "Take an edge list and return [edge-list node-set-map] for graph of sccs. Pretends every node has self-loop."
   [edges]
-  (let [pe (merge (into {} (map vector (map second edges) (repeat nil))) 
+  (let [edges (distinct (concat edges (map (fn [x] [x x]) (apply concat edges))))
+        pe (merge (into {} (map vector (map second edges) (repeat nil))) 
                   (map-vals #(map second %) (unsorted-group-by first edges)))
         e  (HashMap. pe)
         re (HashMap. (map-vals #(map first %) (unsorted-group-by second edges)))
@@ -166,6 +167,17 @@
 
 (defn dag? [edges]
   (every? singleton? (vals (second (scc-graph edges)))))
+
+(defn topological-sort-indices 
+  "Return a map from nodes to integers, where 0 is a sink.  Nodes in same SCC will have same val."
+  [edges]
+  (let [[scc-edges scc-nodes] (scc-graph edges)]
+    (loop [scc-edges scc-edges, scc-nodes scc-nodes, out {}, i 0]
+      (if (empty? scc-nodes) out
+        (let [source (first (filter (fn [n] (every? (fn [[s t]] (or (= s t) (not= t n))) scc-edges)) (keys scc-nodes)))]        
+          (assert source)
+          (recur (remove (fn [[s t]] (= s source)) scc-edges) (dissoc scc-nodes source)
+                 (into out (map vector (get scc-nodes source) (repeat i))) (inc i)))))))
 
 
 
