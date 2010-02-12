@@ -2,7 +2,7 @@
   (:require [edu.berkeley.ai.util :as util]
             [edu.berkeley.ai.util  [graphs :as graphs]]
             [exp [env :as env]  [hierarchy :as hierarchy] [sas :as sas] [sas-analysis :as sas-analysis]])
-  (:import [java.util HashMap HashSet]))
+  (:import [java.util HashMap HashSet IdentityHashMap]))
 
 
 ;; Right now, this is only for DAGs. 
@@ -50,21 +50,23 @@
 (def *extended-dtgs* nil) ; Map from var to map from prev val to map from post val to list of actions.
 (def *simple-dtgs* nil)   ; Map from var to edge list.
 (def #^HashMap *hla-cache* nil) ; a map from [action-name] to map from init-sets to action.
+(def #^IdentityHashMap *compile-cache* nil) ; a map from [action-name] to map from init-sets to action.
 
 
 ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;; Action Protocol ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
 
 
 ;; Difference from precond-var-set and precondition-context is for primitives (?)
-;; Compile-Hla may return an HLA, or a single ref.
+;; Compile-Hla may return an HLA, or a single ref.  Takes a set of HLA types that should not be removed.
 ; extend-hla-par! extends hla to handle any other action setting these effects in-between accesses to these vars.
 (defprotocol SAS-Induced-Action
   (precond-var-set [a])
 ;  (initial-sets    [a])
   (effect-sets     [a])
   (pre-ref-pairs   [a])
-  (compile-hla     [a])
-  (extend-hla!     [a init-sets par-effect-sets]))
+  (compile-hla     [a retain-type-set])
+  (extend-hla!     [a init-sets par-effect-sets])
+  (hla-type        [a]))
 
 (extend ::env/FactoredPrimitive
   SAS-Induced-Action
@@ -72,15 +74,17 @@
 ;     :initial-sets    (fn [a] (util/map-vals (fn [x] #{x}) (:precond-map a))) ;?
      :effect-sets     (fn [a] (util/map-vals (fn [x] #{x}) (:effect-map a)))
      :pre-ref-pairs   (fn [a] (throw (UnsupportedOperationException.)))
-     :compile-hla     (fn [a] a)
-     :extend-hla!     (fn [a init-sets par-effect-sets] a)})
+     :compile-hla     (fn [a retain-type-set] a)
+     :extend-hla!     (fn [a init-sets par-effect-sets] a)
+     :hla-type        (fn [a] (throw (UnsupportedOperationException.)))})
 
-(deftype SAS-Compiled-HLA [name precond-vars effects refinements-and-preconditions ref-generator] :as this
+(deftype SAS-Compiled-HLA [name orig-type precond-vars effects refinements-and-preconditions-atom ref-generator-atom] :as this
   SAS-Induced-Action
     (precond-var-set [] precond-vars)
     (effect-sets     [] effects)
-    (pre-ref-pairs   [] refinements-and-preconditions)
-    (compile-hla     [] this)
+    (pre-ref-pairs   [] @refinements-and-preconditions-atom)
+    (compile-hla     [retain-type-set] this)
+    (hla-type        [] orig-type)
     (extend-hla!     [init-sets par-effect-sets] (throw (UnsupportedOperationException.)))
   env/Action
     (action-name [] name)
@@ -88,40 +92,50 @@
   env/ContextualAction 
     (precondition-context [s] precond-vars)
   hierarchy/HighLevelAction
-    (immediate-refinements- [s] (ref-generator s))
+    (immediate-refinements- [s] (@ref-generator-atom s))
     (cycle-level-           [s] nil))
 
 (defn make-ref-generator [refinements-and-preconditions]
   (if (every? empty? (map first refinements-and-preconditions))
       (let [refs (map second refinements-and-preconditions)]
         (constantly refs))
-    (fn [s]
+    (fn gen [s]
       (for [[pre-pairs ref] refinements-and-preconditions, 
             :when (every? (fn [[var val]] (= val (env/get-var s var))) pre-pairs)]
         ref))))
 
-(defn make-compiled-hla [name precond-vars effects pre-ref-pairs]
-  (SAS-Compiled-HLA name precond-vars effects pre-ref-pairs (make-ref-generator pre-ref-pairs)))
+(defn make-compiled-hla [name orig-type precond-vars effects]
+  (SAS-Compiled-HLA name orig-type precond-vars effects (atom :dummy) (atom :dummy)))
 
-(defn compile-refinement [ref]
+(defn set-compiled-hla-refinements [hla pre-ref-pairs]
+  (reset! (:refinements-and-preconditions-atom hla) pre-ref-pairs)
+  (reset! (:ref-generator-atom hla) (make-ref-generator pre-ref-pairs)))
+
+(defn compile-refinement [ref retain-type-set]
   (loop [ref ref, compiled []]
     (if-let [[f & r] (seq ref)]
-      (let [cf (compile-hla f)]
+      (let [cf (compile-hla f retain-type-set)]
         (if (or (nil? cf) (sequential? cf))
             (recur r (into compiled cf))
           (recur r (conj compiled cf))))
       compiled)))
 
 
-(defn default-compile-hla-noflatten [hla]
-  (make-compiled-hla (env/action-name hla) (precond-var-set hla) (effect-sets hla) 
-    (for [[p r] (pre-ref-pairs hla)] [p (compile-refinement r)])))
+(defn default-compile-hla-noflatten [hla retain-type-set]
+  (if (contains? retain-type-set (hla-type hla)) hla
+    (or (get *compile-cache* hla)
+        (let [chla (make-compiled-hla (env/action-name hla) (type hla) (precond-var-set hla) (effect-sets hla))]
+          (.put *compile-cache* hla chla)
+          (set-compiled-hla-refinements chla
+            (doall (for [[p r] (pre-ref-pairs hla)] [p (compile-refinement r retain-type-set)])))
+          chla))))
 
-(defn default-compile-hla [hla]
+(defn default-compile-hla [hla retain-type-set]
+ (if (contains? retain-type-set (hla-type hla)) hla
   (let [pr (pre-ref-pairs hla)]
     (if (and (util/singleton? pr) (empty? (ffirst pr)))
-        (compile-refinement (second (first pr)))
-      (default-compile-hla-noflatten hla))))
+      (compile-refinement (second (first pr)) retain-type-set)
+      (default-compile-hla-noflatten hla retain-type-set)))))
 
 
 ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;; VV HLAs ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
@@ -143,7 +157,8 @@
     (effect-sets     [] @effect-sets-atom)
     (pre-ref-pairs   [] (if (= src-val dst-val) [[{} []]] 
                             (for [vs (vals @successor-map-atom), v vs] [{} v])))
-    (compile-hla     [] (if (= src-val dst-val) [] (default-compile-hla #_-noflatten this)))
+    (compile-hla     [retain-type-set] (if (= src-val dst-val) [] (default-compile-hla this retain-type-set)))
+    (hla-type        [] (type this))
     (extend-hla!     [init-sets par-effect-sets] (extend-vv-hla! this init-sets par-effect-sets true))
   env/Action
     (action-name [] (vv-hla-name var src-val dst-val))
@@ -227,17 +242,18 @@
     (pre-ref-pairs   [] (if (util/singleton? @src-map-atom) 
                             [[{} [(first (vals @src-map-atom))]]]
                           (for [[k v] @src-map-atom] [{var k} [v]])))
-    (compile-hla     [] (default-compile-hla this))
+    (compile-hla     [retain-type-set] (default-compile-hla this retain-type-set))
+    (hla-type        [] (type this))
     (extend-hla!     [init-sets par-effect-sets]
       (assert (every? set? (vals init-sets)))
       (assert (every? set? (vals par-effect-sets)))
       (assert (not (contains? (apply clojure.set/union (vals init-sets)) no-effect-val)))
       (if (contains? par-effect-sets var)
-          (do (println "RAB")
+          (do ;(println "RAB")
               (swap! par-effects-atom #(merge-with clojure.set/union par-effect-sets %)) 
               (extend-hla! this (merge-with clojure.set/union init-sets (apply-effect-set-map init-sets par-effect-sets)) {}))
         (let [par-effects? (seq (clojure.set/intersection (util/keyset par-effect-sets) (precond-var-set this)))]
-          (println "OTH" );(set (get init-sets var)) (when par-effects? (keys @src-map-atom)))
+;          (println "OTH" );(set (get init-sets var)) (when par-effects? (keys @src-map-atom)))
 ;          (println (util/map-vals type init-sets))
           (assert (not (contains? (set (get init-sets var)) no-effect-val)))
           (doseq [src-val (util/union-coll (set (get init-sets var)) (when par-effects? (keys @src-map-atom)))]
@@ -304,8 +320,9 @@
     (precond-var-set [] (apply clojure.set/union        (map precond-var-set ordered-preconds)))
     (effect-sets     [] (apply sequence-effect-set-maps (map effect-sets ordered-preconds)))
     (pre-ref-pairs   [] [[{} @ref-atom]])
-    (compile-hla     [] (default-compile-hla this))
-    (extend-hla!     [init-sets par-effect-sets] ;; For now, punt in several ways, only look for independent chunks, ...
+    (compile-hla     [retain-type-set] (default-compile-hla this retain-type-set))
+    (hla-type        [] (type this))
+    (extend-hla!     [init-sets par-effect-sets] 
       (extend-precond-set-hla! this init-sets par-effect-sets))
   env/Action
     (action-name [] [:ps (System/identityHashCode this)])
@@ -316,6 +333,7 @@
     (immediate-refinements- [s] [@ref-atom])
     (cycle-level-           [s] nil))
 
+;; For now, punt in several ways, only look for independent chunks, ...
 ; Broken out so it can access bound vars.
 (defn extend-precond-set-hla! [hla init-sets par-effect-sets]  
   (let [{:keys [ordered-preconds ref-atom]} hla
@@ -331,7 +349,7 @@
            (let [all-vars (apply concat (map second chunk))
                  bad-vars (util/keyset (util/filter-map #(> (val %) 1) (util/frequencies all-vars)))
                  par-effect-sets (select-keys *var-val-sets* bad-vars)]
-             (println "BLADSFLASDFL" bad-vars par-effect-sets)
+             (println "Interleaving HLAs with common ground:" bad-vars par-effect-sets)
              (doseq [[hla] chunk] (extend-hla! hla {} par-effect-sets))
              (assert (= (set all-vars) (set (apply concat (map second chunk)))))
              (make-interleaving-hla (map (comp vector first) chunk) bad-vars))))))))
@@ -367,7 +385,8 @@
     (precond-var-set [] (clojure.set/union (precond-var-set precond-set-hla) (util/keyset (:precond-map action))))
     (effect-sets     [] (sequence-effect-set-maps (effect-sets precond-set-hla) (util/map-vals (fn [x] #{x}) (:effect-map action))))
     (pre-ref-pairs   [] [[{} [precond-set-hla action]]])
-    (compile-hla     [] (default-compile-hla this))
+    (compile-hla     [retain-type-set] (default-compile-hla this retain-type-set))
+    (hla-type        [] (type this))    
     (extend-hla!     [init-sets par-effect-sets] (extend-hla! precond-set-hla init-sets par-effect-sets))
   env/Action
     (action-name     [] (action-hla-name action))
@@ -420,10 +439,12 @@
     (precond-var-set [] (apply clojure.set/union (map precond-var-set (apply concat refinements))))
     (effect-sets     [] (throw (UnsupportedOperationException.)))
     (pre-ref-pairs   [] (throw (UnsupportedOperationException.)))
-    (compile-hla     [] (throw (UnsupportedOperationException.)))
+    (compile-hla     [retain-type-set]
+                     (SAS-Interleaving-HLA. (vec (map #(compile-refinement % (conj retain-type-set ::SAS-Precond-Set-HLA)) refinements)) shared-var-set))
+    (hla-type        [] (type this))
     (extend-hla!     [init-sets par-effect-sets] (throw (UnsupportedOperationException.)))
   env/Action
-    (action-name     [] [:!I refinements shared-var-set])
+    (action-name     [] [:!I (map #(map env/action-name %) refinements) shared-var-set])
     (primitive?      [] false)
   env/ContextualAction 
     (precondition-context [s] (precond-var-set this))
@@ -448,14 +469,14 @@
     (cycle-level-           [s] nil))
 
 (defn make-interleaving-hla [refinements shared-var-set]
-  (println "MIH " (map #(map env/action-name %) refinements))
+;  (println "MIH " (map #(map env/action-name %) refinements))
   (SAS-Interleaving-HLA (vec refinements) shared-var-set))
 
 ;; Greedily pull irrelevant actions out, until we get to a normalized HLA
 (defn make-interleaving-hla-refinement [pre-actions refinements shared-var-set]  
 ;  (println (count refinements))
 ;  (println (map type pre-actions) (map type refinements) (map #(map type %) refinements))
-  (println "MIHR" (map env/action-name pre-actions) (map #(map env/action-name %) refinements))
+;  (println "MIHR" (map env/action-name pre-actions) (map #(map env/action-name %) refinements))
   (loop [in-refinements refinements, out-refinements [], pre-actions pre-actions]
     (if-let [[f & r] (seq in-refinements)]
       (let [[front back] (split-with #(or (empty? (clojure.set/intersection shared-var-set (precond-var-set %)))
@@ -527,7 +548,8 @@
         (hierarchy/SimpleHierarchicalEnv sas-problem [goal-hla])))))
 
 (defn compile-hierarchy [h]
-  (hierarchy/SimpleHierarchicalEnv (hierarchy/env h) (compile-refinement (hierarchy/initial-plan h))))
+  (binding [*compile-cache* (IdentityHashMap.)]
+    (hierarchy/SimpleHierarchicalEnv (hierarchy/env h) (compile-refinement (hierarchy/initial-plan h) #{}))))
 
 (defn induce-hierarchy [sas-problem]
   (compile-hierarchy (induce-raw-hierarchy sas-problem)))
