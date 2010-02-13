@@ -87,7 +87,7 @@
     (hla-type        [] orig-type)
     (extend-hla!     [init-sets par-effect-sets] (throw (UnsupportedOperationException.)))
   env/Action
-    (action-name [] name)
+    (action-name [] [:!C  name])
     (primitive?  [] false)
   env/ContextualAction 
     (precondition-context [s] precond-vars)
@@ -122,20 +122,22 @@
 
 
 (defn default-compile-hla-noflatten [hla retain-type-set]
-  (if (contains? retain-type-set (hla-type hla)) hla
-    (or (get *compile-cache* hla)
-        (let [chla (make-compiled-hla (env/action-name hla) (type hla) (precond-var-set hla) (effect-sets hla))]
-          (.put *compile-cache* hla chla)
-          (set-compiled-hla-refinements chla
-            (doall (for [[p r] (pre-ref-pairs hla)] [p (compile-refinement r retain-type-set)])))
-          chla))))
+  (println "compiling-noflatten" (env/action-name hla))
+  (or (get *compile-cache* hla)
+      (let [chla (make-compiled-hla (env/action-name hla) (type hla) (precond-var-set hla) (effect-sets hla))]
+        (.put *compile-cache* hla chla)
+        (set-compiled-hla-refinements chla
+                                      (doall (for [[p r] (pre-ref-pairs hla)] [p (compile-refinement r retain-type-set)])))
+        chla)))
 
 (defn default-compile-hla [hla retain-type-set]
- (if (contains? retain-type-set (hla-type hla)) hla
+  (println "compiling" (env/action-name hla))
   (let [pr (pre-ref-pairs hla)]
-    (if (and (util/singleton? pr) (empty? (ffirst pr)))
-      (compile-refinement (second (first pr)) retain-type-set)
-      (default-compile-hla-noflatten hla retain-type-set)))))
+     (if (and (util/singleton? pr) 
+              (empty? (ffirst pr)) 
+              (not (contains? retain-type-set (hla-type hla))))
+         (compile-refinement (second (first pr)) retain-type-set)
+         (default-compile-hla-noflatten hla retain-type-set))))
 
 
 ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;; VV HLAs ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
@@ -440,7 +442,8 @@
     (effect-sets     [] (throw (UnsupportedOperationException.)))
     (pre-ref-pairs   [] (throw (UnsupportedOperationException.)))
     (compile-hla     [retain-type-set]
-                     (SAS-Interleaving-HLA. (vec (map #(compile-refinement % (conj retain-type-set ::SAS-Precond-Set-HLA)) refinements)) shared-var-set))
+      (println "interleaved compile" (map #(map env/action-name %) refinements))
+      (SAS-Interleaving-HLA. (vec (map #(compile-refinement % (conj retain-type-set ::SAS-Precond-Set-HLA)) refinements)) shared-var-set))
     (hla-type        [] (type this))
     (extend-hla!     [init-sets par-effect-sets] (throw (UnsupportedOperationException.)))
   env/Action
@@ -450,7 +453,7 @@
     (precondition-context [s] (precond-var-set this))
   hierarchy/HighLevelAction
     (immediate-refinements- [s]
-      (let [[stalled-refs rest-refs] (split-with #(= (type (first %)) ::SAS-Precond-Set-HLA) refinements)]
+      (let [[stalled-refs rest-refs] (split-with #(= (hla-type (first %)) ::SAS-Precond-Set-HLA) refinements)]
 ;        (println (map count [stalled-refs rest-refs]))
 ;        (println (map #(map type %) rest-refs))
         (if-let [[target-ref & more-refs] (seq rest-refs)]
@@ -561,7 +564,7 @@
 (defn pretty-print-hla [h #^HashSet done-set]
   (when-not (.contains done-set h)
     (.add done-set h)
-    (println (str "\nRefs for HLA" (env/action-name h)) (precond-var-set h)  (effect-sets h))
+    (println (str "\nRefs for HLA" (env/action-name h)) );(precond-var-set h)  (effect-sets h))
     (doseq [ref (map second (pre-ref-pairs   h))]
       (println " " (util/str-join ", " (map env/action-name ref))))
     (doseq [ref (map second (pre-ref-pairs   h)), a ref]
