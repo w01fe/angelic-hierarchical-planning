@@ -180,11 +180,12 @@
                  (into out (map vector (get scc-nodes source) (repeat i))) (inc i)))))))
 
 
-
-(defn find-acyclic-edges
-  "Take a directed edge list, list of source nodes, and list of target nodes, a
-   and return a list of edges that do not participate in any acylic path from
-   a source node to a target node.  Uses a circuit-based LP solving method."
+;; Seems buggy in several ways; just try on 4x3 grid world.  Loses connectivity, voltages are messed up, etc.  
+(defn find-shortest-path-stu-edges
+  "Take a directed edge list, list of source nodes, and list of target nodes,
+   and return a list of edges that may participate in a shortest s->x->t path
+   where all edges have unit cost. Usees a circuit-based LP solving method.
+   Not sure if this is actually useful for anyone..."
   [edge-list sources sinks]
   (let [nodes     (distinct (apply concat sources sinks edge-list))
         all-nodes (set (concat nodes [::SOURCE ::SINK]))
@@ -195,35 +196,195 @@
         in-map    (map-vals #(map first %)  (unsorted-group-by second all-edges))]
     (map key
      (filter #(and (not (all-nodes (key %))) (not (some #{::SOURCE ::SINK} (key %))) (> (val %) 0))
-       (first 
-        (solve-lp-clp
-         (make-lp
-          (into {}
-                (concat
-                 [[::SOURCE [0 0]]
-                  [::SINK   [1 1]]]
-                 (for [node nodes]     [node [nil nil]])
-                 (for [edge all-edges] [edge [0 nil]])))
-          (into {} (for [edge all-edges] [edge -1])) ; Minimize current
-          (into {}
-                (concat
-                 (for [node nodes] ;; Current conservation
-                   [(into {}
-                          (concat
-                           (for [in  (in-map node)]  [[in node]   1])
-                           (for [out (out-map node)] [[node out] -1])))
-                    [0 0]])
-                 (for [[s t :as edge] all-edges] ;; I >= v_t - v_s
-                   [{edge 1, s 1, t -1} [0 nil]]))))))))))
+              (first 
+                 (solve-lp-clp
+                  (make-lp
+                   (into {}
+                         (concat
+                          [[::SOURCE [0 0]]
+                           [::SINK   [1 1]]]
+                          (for [node nodes]     [node [nil nil]])
+                          (for [edge all-edges] [edge [0 nil]])))
+                   (into {} (for [edge all-edges] [edge -1])) ; Minimize current
+                   (into {}
+                         (concat
+                          (for [node nodes] ;; Current conservation
+                            [(into {}
+                                   (concat
+                                    (for [in  (in-map node)]  [[in node]   1])
+                                    (for [out (out-map node)] [[node out] -1])))
+                             [0 0]])
+                          (for [[s t :as edge] all-edges] ;; I >= v_t - v_s
+                            [{edge 1, s 1, t -1} [0 nil]]))))))))))
 
-(deftest find-cyclic-edges
-  (is (= (find-cyclic-edges [[:s :t] [:t :u] [:t :x]] [:s] [:u]) [[:t :x]]))
-  (is (= (find-cyclic-edges [[:s :t] [:t :u] [:t :x] [:x :t]] [:s] [:u]) [[:t :x] [:x :t]]))
-  (is (= (find-cyclic-edges [[:s :t] [:t :u] [:t :x] [:x :t] [:x :u]] [:s] [:u]) [[:x :t]]))  
-  (is (= (find-cyclic-edges [[:s :t] [:t :u] [:t :x] [:x :t] [:x :u] [:s :x]] [:s] [:u]) [])))
+(deftest find-shortest-path-stu-edges-complex
+  (is (= (set (find-shortest-path-stu-edges [[:s :t] [:t :u] [:t :x]] [:s] [:u])) 
+         #{[:s :t] [:t :u]}))
+  (is (= (set (find-shortest-path-stu-edges [[:s :t] [:t :u] [:t :x] [:x :t]] [:s] [:u])) 
+         #{[:s :t] [:t :u]}))
+  (is (= (set (find-shortest-path-stu-edges [[:s :t] [:t :u] [:t :x] [:x :t] [:x :u]] [:s] [:u])) 
+         #{[:s :t] [:t :u] [:t :x] [:x :u]} ))  
+ #_  (is (= (set (find-shortest-path-stu-edges [[:s :t] [:t :u] [:t :x] [:x :t] [:x :u] [:s :x]] [:s] [:u]))
+         #{[:s :t] [:t :u] [:t :x] [:x :t] [:x :u] [:s :x]} )))
   
+; Node n is reachable from s iff:
+ ; some predecessor of n is reachable from s
+
+; Node a is on every path from s to n iff:
+ ; a = n, or a is on every path from s to a predecessor of n.
+
+; Node n is acyclic-reachable from s iff:
+ ; some predecessor of n w/o n in its every-list is reachable from s
+
+; Node a is on every acyclic path from s to n iff:
+ ; a = n, or a is on every path from s to a pred. or n w/o n on its every-list.
+; Node a is on every acyclic path from s to n iff:
+ 
+(defn edge-list->incoming-map [edges]
+  (map-vals #(map first %) (unsorted-group-by second edges)))
+
+(defn edge-list->outgoing-map [edges]
+  (map-vals #(map second %) (unsorted-group-by first edges)))
+
+(defn quiescence-search 
+  "Take an edge list, and a function from nodes to initial values.
+   update-fn takes a node's name, current value and those of its (incoming) neighbors, in order, and 
+   produces an value for this node.  src-vals is a set of [node value] pairs acting as dummy incoming arcs to
+   start the process, which continues until each node's value is unchanged. Return a map from
+   node names to final values.  Will only contain updates, not init values."
+  [edge-list init-fn update-fn src-vals]
+  (let [named-srcs   (map vector (repeatedly gensym) src-vals)
+        edge-list    (concat (for [[g [s]] named-srcs] [g s]) edge-list)
+        incoming-map (edge-list->incoming-map edge-list)
+        outgoing-map (edge-list->outgoing-map edge-list)
+        node-vals    (HashMap. (into {} (for [[g [_ v]] named-srcs] [g v])))
+        node-val     #(lazy-get node-vals % (init-fn %))
+        queue        (LinkedList. (map first src-vals))]
+
+    (while (not (.isEmpty queue))
+      (let [node (.removeFirst queue)
+            old-val (node-val node)
+            new-val (apply update-fn node old-val (map node-val (incoming-map node)))]
+;        (println node old-val new-val)
+        (when-not (= new-val old-val)
+          (.put node-vals node new-val)
+          (doseq [succ (outgoing-map node)] (.addFirst queue succ)))))
+    
+    (apply dissoc (into {} node-vals) (map first named-srcs))))
+
+(defn compute-reachable-nodes-and-necessary-predecessors [edge-list s]
+  (quiescence-search edge-list (constantly nil)
+    (fn [node old-val & pred-vals]
+      (let [acyclic-reachable-preds (remove #(or (nil? %) (contains? % node)) pred-vals)]
+        (when (seq acyclic-reachable-preds)
+          (conj (apply clojure.set/intersection acyclic-reachable-preds) node))))
+    [[s #{}]]))
+
+(defn eliminate-some-cyclic-edges 
+  "Return a list of edges, where those provably on no acyclic s-t path have been eliminated.
+   Do so in polynomial time, possibly missing some always-cyclic edges."  
+  [edges s t]
+  (let [forward-sets  (compute-reachable-nodes-and-necessary-predecessors edges s)
+        backward-sets (compute-reachable-nodes-and-necessary-predecessors (map reverse edges) t)]
+    (filter
+     (fn [[a b]]
+       (let [f (forward-sets a)
+             b (backward-sets b)]
+         (and f b (empty? (clojure.set/intersection f b)))))
+     edges)))
+
+
+(deftest eliminate-some-cyclic-edges-simple-test
+  (is (= (set (eliminate-some-cyclic-edges [[:s :t] [:t :u] [:t :x]] :s :u)) 
+         #{[:s :t] [:t :u]}))
+  (is (= (set (eliminate-some-cyclic-edges [[:s :t] [:t :u] [:t :x] [:x :t]] :s :u)) 
+         #{[:s :t] [:t :u]}))
+  (is (= (set (eliminate-some-cyclic-edges [[:s :t] [:t :u] [:t :x] [:x :t] [:x :u]] :s :u)) 
+         #{[:s :t] [:t :u] [:t :x] [:x :u]} ))  
+  (is (= (set (eliminate-some-cyclic-edges [[:s :t] [:t :u] [:t :x] [:x :t] [:x :u] [:s :x]] :s :u))
+         #{[:s :t] [:t :u] [:t :x] [:x :t] [:x :u] [:s :x]} )))
+
+(defn generate-grid-graph [w h]
+  (concat
+   (for [x (range 1 w) y (range 1 (inc h))] [[x y] [(inc x) y]])
+   (for [x (range 1 w) y (range 1 (inc h))] [[(inc x) y] [x y]])
+   (for [x (range 1 (inc w)) y (range 1 h)] [[x y] [x (inc y)]])
+   (for [x (range 1 (inc w)) y (range 1 h)] [[x (inc y)] [x y]])))
+
+(deftest eliminate-some-cyclic-edges-grid-test
+  (is (= (count (eliminate-some-cyclic-edges (generate-grid-graph 2 2) [1 1] [2 2])) 4))
+  (is (= (count (eliminate-some-cyclic-edges (generate-grid-graph 3 3) [1 1] [2 2])) 18))
+  )
+
+
+
+
 
        
   
   
 
+(comment 
+  ; Failed attempt
+  
+  (defn edge-acyclic?
+    "Does there exist an acyclic path from a source to a sink that includes key-edge?
+   Uses a circuit-based method where resistances are left implicit and variable.
+   Due to precision, may fail on graphs with > 1000 nodes.  This almost seems to work,
+   but actually fails since constraints allow routing current along cycles 
+   (i.e., here, weighting of current cost matters."
+    [edge-list key-edge sources sinks]
+    (let [nodes     (distinct (apply concat sources sinks edge-list))
+          all-nodes (set (concat nodes [::SOURCE ::SINK]))
+          all-edges (concat edge-list 
+                            (for [source sources] [::SOURCE source])
+                            (for [sink sinks]     [sink     ::SINK]))
+          free-edges (remove #(= (set %) (set key-edge)) all-edges)
+          out-map   (map-vals #(map second %) (unsorted-group-by first (cons key-edge free-edges))) 
+          in-map    (map-vals #(map first %)  (unsorted-group-by second (cons key-edge free-edges)))]
+      (assert (< (count all-nodes) 500))
+      (when-let [[sol] (solve-lp-clp
+                        (make-lp
+                         (into {}
+                               (concat
+                                [[::SOURCE [0 0]]
+                                 [::SINK   [1 1]]
+                                 [key-edge [0.001 0.001]]]
+                                (for [node nodes]     [node [nil nil]])
+                                (for [edge free-edges] [edge [0 1000]])))
+                         (into {} (for [edge free-edges] [edge -1])) ; Minimize currentl
+                         (into {}
+                               (concat
+                                (for [node nodes] ;; Current conservation
+                                  [(into {}
+                                         (concat
+                                          (for [in  (in-map node)]  [[in node]   1])
+                                          (for [out (out-map node)] [[node out] -1])))
+                                   [0 0]])
+                                (for [[s t :as edge] (cons key-edge free-edges)] ;; I * R >= v_t - v_s
+                                  [{edge 1000, s 1, t -1} [0 (when (= key-edge edge) 0)]])))))]
+        (println "\n\n" key-edge "\n" sol)
+        true                            ;??
+        )))
+
+
+
+;; Seems buggy in several ways; just try on 4x3 grid world.  Loses connectivity, voltages are messed up, etc.  
+  (defn find-acyclic-edges
+    "Take a directed edge list, list of source nodes, and list of target nodes,
+   and return a list of edges that may be on an aclyic path from a source to a target.
+   Uses a the above method followed by a verification based on leaving resistances unspec.
+   in the above algorithm.  (If there exists an aclycic path through e, there must be a setting for 
+   resistances that makes current flow through it.  This almo"
+    [edge-list sources sinks]
+    (filter #(edge-acyclic? edge-list % sources sinks) edge-list))
+
+  (deftest find-acyclic-edges-simple-test
+    (is (= (set (find-acyclic-edges [[:s :t] [:t :u] [:t :x]] [:s] [:u])) 
+           #{[:s :t] [:t :u]}))
+    (is (= (set (find-acyclic-edges [[:s :t] [:t :u] [:t :x] [:x :t]] [:s] [:u])) 
+           #{[:s :t] [:t :u]}))
+    (is (= (set (find-acyclic-edges [[:s :t] [:t :u] [:t :x] [:x :t] [:x :u]] [:s] [:u])) 
+           #{[:s :t] [:t :u] [:t :x] [:x :u]} ))  
+    (is (= (set (find-acyclic-edges [[:s :t] [:t :u] [:t :x] [:x :t] [:x :u] [:s :x]] [:s] [:u]))
+           #{[:s :t] [:t :u] [:t :x] [:x :t] [:x :u] [:s :x]} ))))
