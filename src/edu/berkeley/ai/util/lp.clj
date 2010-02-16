@@ -176,6 +176,7 @@
     (util/spit in-file mps-file-data)
     (cheap-sh "glpsol" "--max" "-w" out-file "--mps" in-file)
     (let [[[rows cols] [stat1 stat2 rew] & body] (map #(read-string (str "[" % "]")) (util/read-lines out-file))]
+      (assert (is (= (count (drop rows body)) (count var-order))))
       (cond (= stat1 stat2 1) nil ;infeasible
 	    (= stat1 stat2 2) ; solved
 	      [(merge (into {} dummies)
@@ -194,15 +195,21 @@
   (let [[mps-file-data namer var-order dummies] (lp->mps* lp)
 	in-file (util/fresh-random-filename "/tmp/lp")
 	out-file (str in-file ".out")]
-;    (println in-file)
+    (println in-file "\n"  var-order "\n\n")
     (util/spit in-file mps-file-data)
     (cheap-sh "clp" "-max" "-import" in-file "-solve" "-solution" out-file)
     (let [[[status] [obj val rew] & body] (map #(read-string (str "[" % "]")) (util/read-lines out-file))]
       (assert (is (= [obj val] '[Objective value])))
+;      (assert (is (= (count body) (count var-order))))
       (cond (= status 'infeasible) nil 
 	    (= status 'optimal)
-	      [(merge (into {} dummies)
-		      (into {} (map (fn [[_ _ val _] var] [var val]) body var-order))) 
+	      [(loop [result (transient (into {} dummies)) i 0 body body vars (seq var-order)]
+                 (if-let [[[var _ val _] & more] body]
+                     (do (assert (>= var i))
+                       (if (= var i)
+                           (recur (assoc! result (first vars) val) (inc i) more (next vars))
+                         (recur (assoc! result (first vars) 0.0) (inc i) body (next vars))))
+                   (persistent! result))) 
 	       (- rew)]
 	      ;; NOTE negation of reward due to apparent bug in CLP's handling of max.
 	    :else ;huh?
