@@ -70,7 +70,8 @@
  env/FactoredEnv
   (goal-map [] 
     (into {} 
-      (apply concat 
+      (apply concat
+        [[['atx] width] [['aty] height]]
         (for [[pass _ [dx dy]] passengers] 
           [[['passx pass] dx] [['passy pass] dy]])))))
 
@@ -167,7 +168,7 @@
                                      [(str "(passx " n " x" sx ")")
                                       (str "(passy " n " y" sy ")")])))
          "  )
-           (:goal (and "
+           (:goal (and "  (str "(at " width "-" height ")")
               (util/str-join " " (apply concat
                                    (for [[n _ [dx dy]] passengers]
                                      [(str "(passx " n " x" dx ")")
@@ -258,7 +259,7 @@
               (util/str-join " " (for [[n [sx sy]] passengers]
                                    (str "(passat " n " " sx "-" sy ")")))
               ")
-           (:goal (and (at 1-1)"
+           (:goal (and " (str "(at " width "-" height ")")
               (util/str-join " " (for [[n _ [dx dy]] passengers]
                                    (str "(passat " n " " dx "-" dy ")")))
               ")))"]))))
