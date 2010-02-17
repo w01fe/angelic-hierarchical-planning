@@ -1,6 +1,6 @@
 (ns exp.sas-hierarchy-induction
   (:require [edu.berkeley.ai.util :as util]
-            [edu.berkeley.ai.util  [graphs :as graphs]]
+            [edu.berkeley.ai.util  [graphs :as graphs] [graphviz :as gv]]
             [exp [env :as env]  [hierarchy :as hierarchy] [sas :as sas] [sas-analysis :as sas-analysis]])
   (:import [java.util HashMap HashSet IdentityHashMap]))
 
@@ -29,6 +29,7 @@
   ([] {})
   ([m] m)
   ([m1 m2]
+     (util/assert-is (map? m2))
       (reduce (fn [m [ek evs]]
                 (let [ovs (get m1 no-effect-set)]
                   (assoc m ek (if (contains? evs no-effect-val) (clojure.set/union ovs (disj evs no-effect-val)) evs))))
@@ -51,6 +52,33 @@
 (def *simple-dtgs* nil)   ; Map from var to edge list.
 (def #^HashMap *hla-cache* nil) ; a map from [action-name] to map from init-sets to action.
 (def #^IdentityHashMap *compile-cache* nil) ; a map from [action-name] to map from init-sets to action.
+
+;; Memoized partial computations to speed up acylic edge generation.
+(def #^HashMap *forward-reachability-cache* nil)
+(def #^HashMap *backward-reachability-cache* nil)
+
+(defn forward-reachable-nodes-and-necessary-predecessors [var-name from-val]
+  (util/cache-with *forward-reachability-cache* [var-name from-val]
+    (graphs/compute-reachable-nodes-and-necessary-predecessors
+     (util/safe-get *simple-dtgs* var-name) from-val)))
+
+(defn backward-reachable-nodes-and-necessary-predecessors [var-name to-val]
+  (util/cache-with *backward-reachability-cache* [var-name to-val]
+    (graphs/compute-reachable-nodes-and-necessary-predecessors
+     (map reverse (util/safe-get *simple-dtgs* var-name)) to-val)))
+
+(defn get-possibly-acyclic-edges
+  "Return a list of edges, where those provably on no acyclic s-t path have been eliminated.
+   Do so in polynomial time, possibly missing some always-cyclic edges."  
+  [var from-val to-val]
+  (let [forward-sets  (forward-reachable-nodes-and-necessary-predecessors var from-val)
+        backward-sets (backward-reachable-nodes-and-necessary-predecessors var to-val)]
+    (filter
+     (fn [[a b]]
+       (let [f (forward-sets a)
+             b (backward-sets b)]
+         (and f b (empty? (clojure.set/intersection f b)))))
+     (util/safe-get *simple-dtgs* var))))
 
 
 ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;; Action Protocol ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
@@ -122,7 +150,7 @@
 
 
 (defn default-compile-hla-noflatten [hla retain-type-set]
-  (println "compiling-noflatten" (env/action-name hla))
+;  (println "compiling-noflatten" (env/action-name hla))
   (or (get *compile-cache* hla)
       (let [chla (make-compiled-hla (env/action-name hla) (type hla) (precond-var-set hla) (effect-sets hla))]
         (.put *compile-cache* hla chla)
@@ -131,7 +159,7 @@
         chla)))
 
 (defn default-compile-hla [hla retain-type-set]
-  (println "compiling" (env/action-name hla))
+;  (println "compiling" (env/action-name hla))
   (let [pr (pre-ref-pairs hla)]
      (if (and (util/singleton? pr) 
               (empty? (ffirst pr)) 
@@ -182,17 +210,19 @@
 (defn add-new-vv-edge! [var dst-val [s t]]
   (let [sn (get-current-vv-hla var s dst-val)]
     (when-not (contains? @(:successor-map-atom sn) t)
-      (when (seq @(:init-sets-atom sn)) (println "Warning: adding outgoing edge! (sas_hierarchy_induction)" [s t]))
+      (when (seq @(:init-sets-atom sn)) #_(println "Warning: adding outgoing edge! (sas_hierarchy_induction)" [s t]))
       (swap! (:successor-map-atom sn) assoc t
              (doall (for [a (util/safe-get-in *extended-dtgs* [var s t])] 
                       [(get-current-action-hla a) (get-current-vv-hla var t dst-val)]))))))
 
 
+;; TODO: take "at most 1 free action" constraint into account. 
 (defn designate-vv-hla-src! [hla]
   (let [{:keys [var src-val dst-val src?-atom]} hla
-        edges    (graphs/find-acyclic-edges (util/safe-get *simple-dtgs* var) [src-val] [dst-val])
+        edges    (get-possibly-acyclic-edges var src-val dst-val)
         any-new? (some identity (doall (map #(add-new-vv-edge! var dst-val %) edges)))]
-;    (println "adding edges" edges)
+;    (println "adding edges" edges "for" src-val "-->" dst-val)
+;    (gv/graphviz-el edges)
     (util/assert-is (or (seq edges) (= src-val dst-val)) "%s" [src-val dst-val])
     (reset! src?-atom true)
     (when any-new? 
@@ -221,13 +251,19 @@
   "Extend this VV-HLA edge to cover new init-sets, as needed."
   [hla [a next-vv-hla] init-sets par-effect-sets]
   (assert (not (= (:src-val hla) (:dst-val hla))))
+;  (println "Start extend" (:src-val hla) (:dst-val hla) "via" (:src-val next-vv-hla))
   (extend-hla! a init-sets par-effect-sets)
 ;  (println (env/action-name hla) init-sets (effect-sets hla) (effect-sets a) (effect-sets next-vv-hla))
   (extend-vv-hla! next-vv-hla (apply-effect-set-map init-sets (effect-sets a)) par-effect-sets false)
-
-  (swap! (:precond-vars-atom hla) clojure.set/union       (precond-var-set a) (precond-var-set next-vv-hla))
-  (swap! (:effect-sets-atom hla)  disjoin-effect-set-maps (sequence-effect-set-maps (effect-sets a) (effect-sets next-vv-hla)))
-  (util/assert-is (= (get @(:effect-sets-atom hla) (:var hla)) #{(:dst-val hla)}) "%s" [(env/action-name hla)]))
+  (when-not (= (effect-sets next-vv-hla) no-outcomes)
+;    (println "Warning: no effect sets ... cyclic dTG?")
+;    (throw (RuntimeException. (str (:src-val hla) (:dst-val hla) (:src-val next-vv-hla))))
+    
+    (swap! (:precond-vars-atom hla) clojure.set/union       (precond-var-set a) (precond-var-set next-vv-hla))
+    (swap! (:effect-sets-atom hla)  disjoin-effect-set-maps (sequence-effect-set-maps (effect-sets a) (effect-sets next-vv-hla)))
+    (util/assert-is (= (get @(:effect-sets-atom hla) (:var hla)) #{(:dst-val hla)}) "%s" [(env/action-name hla)])
+;    (println "Finish extend" (:src-val hla) (:dst-val hla) "via" (:src-val next-vv-hla))   
+    ))
 
 
 
@@ -357,7 +393,7 @@
              (make-interleaving-hla (map (comp vector first) chunk) bad-vars))))))))
 
 (defn make-precond-set-hla [precond-map] 
-  (SAS-Precond-Set-HLA (map (partial apply make-precond-hla) (sort-by (comp - *var-levels* key) precond-map))
+  (SAS-Precond-Set-HLA (doall (map (partial apply make-precond-hla) (sort-by (comp - *var-levels* key) precond-map)))
                        (atom :dummy)))
 
 
@@ -442,7 +478,7 @@
     (effect-sets     [] (throw (UnsupportedOperationException.)))
     (pre-ref-pairs   [] (throw (UnsupportedOperationException.)))
     (compile-hla     [retain-type-set]
-      (println "interleaved compile" (map #(map env/action-name %) refinements))
+;      (println "interleaved compile" (map #(map env/action-name %) refinements))
       (SAS-Interleaving-HLA. (vec (map #(compile-refinement % (conj retain-type-set ::SAS-Precond-Set-HLA)) refinements)) shared-var-set))
     (hla-type        [] (type this))
     (extend-hla!     [init-sets par-effect-sets] (throw (UnsupportedOperationException.)))
@@ -533,6 +569,7 @@
 
 ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;; Top Level  ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
 
+
 ;; TODO: when can we use relaxed CG ?
 (defn induce-raw-hierarchy [sas-problem]
   (let [{:keys [vars actions init]} sas-problem
@@ -543,7 +580,10 @@
               *var-levels*    (graphs/topological-sort-indices (sas-analysis/standard-causal-graph sas-problem))
               *extended-dtgs* dtgs
               *simple-dtgs*   (util/map-vals (fn [dtg] (for [[pval emap] dtg, [eval _] emap] [pval eval])) dtgs)
-              *hla-cache*     (HashMap.)]
+              *hla-cache*     (HashMap.)
+              *forward-reachability-cache* (HashMap.)
+              *backward-reachability-cache* (HashMap.)
+              ]
 ;      (println "VVS"  *var-val-sets*)
       (let [goal-action (util/safe-singleton (get-in *extended-dtgs* [sas/goal-var-name sas/goal-false-val sas/goal-true-val]))
             goal-hla    (get-current-action-hla goal-action)]
