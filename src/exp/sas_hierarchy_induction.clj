@@ -52,6 +52,7 @@
 (def *simple-dtgs* nil)   ; Map from var to edge list.
 (def #^HashMap *hla-cache* nil) ; a map from [action-name] to map from init-sets to action.
 (def #^IdentityHashMap *compile-cache* nil) ; a map from [action-name] to map from init-sets to action.
+(def *greedy-optimization?* false)
 
 ;; Memoized partial computations to speed up acylic edge generation.
 (def #^HashMap *forward-reachability-cache* nil)
@@ -106,13 +107,13 @@
      :extend-hla!     (fn [a init-sets par-effect-sets] a)
      :hla-type        (fn [a] (throw (UnsupportedOperationException.)))})
 
-(deftype SAS-Compiled-HLA [name orig-type precond-vars effects refinements-and-preconditions-atom ref-generator-atom] :as this
+(deftype SAS-Compiled-HLA [name orig-hla precond-vars effects refinements-and-preconditions-atom ref-generator-atom] :as this
   SAS-Induced-Action
     (precond-var-set [] precond-vars)
     (effect-sets     [] effects)
     (pre-ref-pairs   [] @refinements-and-preconditions-atom)
     (compile-hla     [retain-type-set] this)
-    (hla-type        [] orig-type)
+    (hla-type        [] (hla-type orig-hla))
     (extend-hla!     [init-sets par-effect-sets] (throw (UnsupportedOperationException.)))
   env/Action
     (action-name [] [:!C  name])
@@ -132,8 +133,8 @@
             :when (every? (fn [[var val]] (= val (env/get-var s var))) pre-pairs)]
         ref))))
 
-(defn make-compiled-hla [name orig-type precond-vars effects]
-  (SAS-Compiled-HLA name orig-type precond-vars effects (atom :dummy) (atom :dummy)))
+(defn make-compiled-hla [name orig-hla precond-vars effects]
+  (SAS-Compiled-HLA name orig-hla precond-vars effects (atom :dummy) (atom :dummy)))
 
 (defn set-compiled-hla-refinements [hla pre-ref-pairs]
   (reset! (:refinements-and-preconditions-atom hla) pre-ref-pairs)
@@ -152,7 +153,7 @@
 (defn default-compile-hla-noflatten [hla retain-type-set]
 ;  (println "compiling-noflatten" (env/action-name hla))
   (or (get *compile-cache* hla)
-      (let [chla (make-compiled-hla (env/action-name hla) (type hla) (precond-var-set hla) (effect-sets hla))]
+      (let [chla (make-compiled-hla (env/action-name hla) hla (precond-var-set hla) (effect-sets hla))]
         (.put *compile-cache* hla chla)
         (set-compiled-hla-refinements chla
                                       (doall (for [[p r] (pre-ref-pairs hla)] [p (compile-refinement r retain-type-set)])))
@@ -353,7 +354,7 @@
 
 (declare extend-precond-set-hla! make-interleaving-hla)
 ;; Preconds are ordered, max-level (deepest) first.
-(deftype SAS-Precond-Set-HLA [ordered-preconds ref-atom] :as this
+(deftype SAS-Precond-Set-HLA [precond-map ordered-preconds ref-atom] :as this
   SAS-Induced-Action
     (precond-var-set [] (apply clojure.set/union        (map precond-var-set ordered-preconds)))
     (effect-sets     [] (apply sequence-effect-set-maps (map effect-sets ordered-preconds)))
@@ -393,9 +394,16 @@
              (make-interleaving-hla (map (comp vector first) chunk) bad-vars))))))))
 
 (defn make-precond-set-hla [precond-map] 
-  (SAS-Precond-Set-HLA (doall (map (partial apply make-precond-hla) (sort-by (comp - *var-levels* key) precond-map)))
-                       (atom :dummy)))
+  (SAS-Precond-Set-HLA 
+   precond-map
+   (doall (map (partial apply make-precond-hla) (sort-by (comp - *var-levels* key) precond-map)))
+   (atom :dummy)))
 
+(defn trivially-satisfied-precond-set? [a s]
+  (if (= (type a) ::SAS-Compiled-HLA) (recur (:orig-hla a) s)
+      (and (= (type a) ::SAS-Precond-Set-HLA)
+           (every? (fn [p] (= (env/get-var s (:var p)) (:dst-val p)))
+                   (:ordered-preconds a)))))
 
 ; (loop [init-sets init-sets, ordered-preconds ordered-preconds, used-vars #{}]
 ;        (when-let [[f & r] (seq ordered-preconds)]        
@@ -470,6 +478,15 @@
 
 ; Also, what really matters is order *preconditions*, not sets, are achieved.
 
+;; First greedy condition - 
+ ; if a precond-set HLA is trivially satisfied, greedily do it.  
+ ; One issue: this can happen *before* or *after*
+
+;; TODO: figure out how to do greedy "tail" thing, if there are generalizations.
+ ; (i.e., drop off all passengers with dest in a square at same time.)
+  ; --> if tail sequence externalities necessarily occurs in other HLAs interleaved,
+  ;     don't do it (except by other greedy condition).
+
 (declare make-interleaving-hla-refinement)
 
 (deftype SAS-Interleaving-HLA [refinements shared-var-set] :as this
@@ -490,6 +507,7 @@
   hierarchy/HighLevelAction
     (immediate-refinements- [s]
       (let [[stalled-refs rest-refs] (split-with #(= (hla-type (first %)) ::SAS-Precond-Set-HLA) refinements)]
+;        (println "\n\n" s "\n" (map (comp env/action-name first) refinements))
 ;        (println (map count [stalled-refs rest-refs]))
 ;        (println (map #(map type %) rest-refs))
         (if-let [[target-ref & more-refs] (seq rest-refs)]
@@ -498,13 +516,20 @@
                 (make-interleaving-hla-refinement nil
                   (concat stalled-refs [(concat ref rest-a)] more-refs)
                   shared-var-set)))
-            ;; Interesting stuff here ... all refinements are blocked at precond set HLAs.
-            ;; First placeholder (not complete or smart): just pick one to do completely, no interleaving.
+           ;; Interesting stuff here ... all refinements are blocked at precond set HLAs.
+           ;; First placeholder (not complete or smart): just pick one to do completely, no interleaving.
+          (if (and *greedy-optimization?* (some #(trivially-satisfied-precond-set? (first %) s) refinements))
+              (do ;(println "GREEDY") ;; TODO: is this the best place?
+                [(make-interleaving-hla-refinement
+                  [] ; (for [ref refinements :let [f (first ref)] :when (trivially-satisfied-precond-set? f s)] f)
+                  (for [ref refinements]
+                    (if (trivially-satisfied-precond-set? (first ref) s) (next ref) ref))
+                  shared-var-set)])
             (for [i (range (count refinements))
                   :let [[f & r] (nth refinements i)]]
               (make-interleaving-hla-refinement [f]               
-               (concat (subvec refinements 0 i) [r] (subvec refinements (inc i)))
-               shared-var-set)))))
+                (concat (subvec refinements 0 i) [r] (subvec refinements (inc i)))
+                shared-var-set))))))
     (cycle-level-           [s] nil))
 
 (defn make-interleaving-hla [refinements shared-var-set]
@@ -514,7 +539,8 @@
 ;; Greedily pull irrelevant actions out, until we get to a normalized HLA
 (defn make-interleaving-hla-refinement [pre-actions refinements shared-var-set]  
 ;  (println (count refinements))
-;  (println (map type pre-actions) (map type refinements) (map #(map type %) refinements))
+;  (println pre-actions (map type refinements) (map #(map type %) refinements))
+;  (println (map type pre-actions) (map type refinements) (map #(map type %) refinements))  
 ;  (println "MIHR" (map env/action-name pre-actions) (map #(map env/action-name %) refinements))
   (loop [in-refinements refinements, out-refinements [], pre-actions pre-actions]
     (if-let [[f & r] (seq in-refinements)]
