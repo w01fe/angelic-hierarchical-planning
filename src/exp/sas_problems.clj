@@ -16,13 +16,13 @@
         (for [i (range 1 (inc n))]
           (delay (sas/make-sas-problem-from-pddl
                   (str ipc1-dir "domains/" dom "-strips.pddl")
-                  (str ipc1-dir "round1/" dom "/" p "prob" (dig2 n) ".pddl"))))])
+                  (str ipc1-dir "round1/" dom "/" p "prob" (dig2 i) ".pddl"))))])
      (for [[dom n] [["grid" 5] ["logistics" 5] #_ ["mprime" 5]]]
        [(str "IPC1-ROUND2-" dom)
         (for [i (range 1 (inc n))]
           (delay (sas/make-sas-problem-from-pddl
                   (str ipc1-dir "domains/" dom "-strips.pddl")
-                  (str ipc1-dir "round2/" dom "/" "prob" (dig2 n) ".pddl"))))]))))
+                  (str ipc1-dir "round2/" dom "/" "prob" (dig2 i) ".pddl"))))]))))
 
 (defn sas-sample-files [n]
   (into {}

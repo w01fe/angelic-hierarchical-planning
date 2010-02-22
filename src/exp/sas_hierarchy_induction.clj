@@ -7,6 +7,22 @@
 
 ;; Right now, this is only for DAGs. 
 
+;; Optimizations left TODO:
+
+; TODO: Backwards-greedy optimization: 
+;  If a tail-seq of precond-sets will necessarily occur by some other interleaved refinement,
+;  do not execute these precond-sets except greedily as a result of executing the other.
+
+; TODO: ???
+;  General case of logistics thing: don't put a passenger down until another cab is ready
+;  to pick it up.  I.e., when something has multiple independent parents,
+;  require them to line up for multiple transitions before starting the first??
+
+; TODO: Non-ordering of independent things when interleaving
+;  Right now, we only do greedy ordering when not interleaving.  Should combine both.
+
+; Also, see many ideas for TODOs below.
+
 ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;; Utilities ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
 
 (def no-effect-val ::NO-EFFECT)
@@ -52,7 +68,7 @@
 (def *simple-dtgs* nil)   ; Map from var to edge list.
 (def #^HashMap *hla-cache* nil) ; a map from [action-name] to map from init-sets to action.
 (def #^IdentityHashMap *compile-cache* nil) ; a map from [action-name] to map from init-sets to action.
-(def *greedy-optimization?* false)
+(def *greedy-optimization?* true)
 
 ;; Memoized partial computations to speed up acylic edge generation.
 (def #^HashMap *forward-reachability-cache* nil)
@@ -176,7 +192,6 @@
 (declare extend-vv-hla!)
 ;; TODO: special treatment for "free"  vars without self-loops.
 ;; TODO: try harder to avoid cycles, e.eg. in logistics / multi-taxi domain. 
-;; TODO**: look at "meeting" conditions, e.g., in logistics, only dropoff at non-goal if other vehicle waiting ?
 ;; Either all-paths or blacklist approaches will work. 
 
 (defn vv-hla-name [var src-val dst-val] [:!VV src-val dst-val])
@@ -418,10 +433,8 @@
 
 ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;; Action Nodes ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
 
-0;; An action.  
+;; An action.  
 ;; TODO: think about splitting this based on which var it's being used for.
-;; TODO: make fancier.
-
 
 (defn action-hla-name [action] [:!A (env/action-name action)])
 
@@ -446,15 +459,8 @@
 (defn get-current-action-hla [action]
   (let [preconds     (:precond-map action)]
     (util/cache-with *hla-cache* (action-hla-name action)
-      (SAS-Action-HLA action (make-precond-set-hla preconds))))); (atom {}) (atom (util/keyset preconds)) (atom no-outcomes)))))
+      (SAS-Action-HLA action (make-precond-set-hla preconds)))))
 
-;(let [new-inits? (not= (select-keys @init-sets-atom @precond-vars-atom)
-;                             (select-keys (swap! init-sets-atom #(merge-with clojure.set/union % init-sets)) @precond-vars-atom))]
-;        (when new-inits?
-;          (extend-hla! precond-set-hla init-sets)
-;          (reset! precond-vars-atom (clojure.set/union (precond-var-set precond-set-hla) (util/keyset (:precond-map action))))
-;          (reset! effect-sets-atom  (sequence-effect-set-maps (effect-sets precond-set-hla)
-;                                                              (util/map-vals (fn [x] #{x}) (:effect-map action))))))
 
 ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;; Interleaving HLA ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
 
@@ -566,32 +572,7 @@
 ;; Watch out: what happens when single action establishes multiple preconditions, e.g. .. 
 ;; TODO: need to treat subsets (i.e., transitive closure edges) specially.
 
-
-
-;; Getting/extending HLA, extracting best-effort info for these init-sets, must be separate.
-;; Parent will ahve to store some sort of ref to old prec/effect sets to detect change, since others may have extended since.
-
-;; TODO: handle effect merges properly.
-;; TODO: make sure we don't waste our time on new descendant values. (easy, just use current context.)
-; Note: in this framework, ancestor in CG does not entail ordering? 
- ; Can we create graph for this bit too, so we reuse ?
-; Adding to init, can totally change a-p graph.  
-
-; Question; how do we handle A-P actions generally (establishing 1 may change init for other). 
-; Question: can we just do all of this on the fly ? 
-
-;; Want to look at acyclic paths, which include at most one free-action. (with no precond on var.)
-;; Two things we can do here; recursive style (works from any src, more caching) or direct style
- ;; (avoid cycles, more focused description/pruning, but less caching and less general). 
-
 ;; TODO: induce stronger preconditions for refinements? 
-;; TODO: split init-sets based on init val for var ?
-;; Now: do forward search from inits.  For each init, keep track of outgoing HLAs, init sets.
-  ;  Keep iterating until no new values added to inits.  
-  ;  Also keep track of set of vals on all paths to val, to avoid cycles in exploration as possible.   
-    ; If we keep all this info around in HLA, extending becomes easier.   
-
-
 
 ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;; Top Level  ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
 
