@@ -1,5 +1,5 @@
 (ns edu.berkeley.ai.util.graphs
-  (:import [java.util Stack HashSet HashMap LinkedList])
+  (:import [java.util Stack HashSet Map HashMap LinkedList])
   (:use clojure.test edu.berkeley.ai.util edu.berkeley.ai.util.queues edu.berkeley.ai.util.disjoint-sets
         edu.berkeley.ai.util.lp))
 
@@ -135,8 +135,8 @@
   (let [edges (distinct (concat edges (map (fn [x] [x x]) (apply concat edges))))
         pe (merge (into {} (map vector (map second edges) (repeat nil))) 
                   (map-vals #(map second %) (unsorted-group-by first edges)))
-        e  (HashMap. pe)
-        re (HashMap. (map-vals #(map first %) (unsorted-group-by second edges)))
+        e  (HashMap. #^Map pe)
+        re (HashMap. #^Map (map-vals #(map first %) (unsorted-group-by second edges)))
         s (Stack.)]
     (while (not (.isEmpty e))
      ((fn dfs1 [n]
@@ -257,7 +257,7 @@
         edge-list    (concat (for [[g [s]] named-srcs] [g s]) edge-list)
         incoming-map (edge-list->incoming-map edge-list)
         outgoing-map (edge-list->outgoing-map edge-list)
-        node-vals    (HashMap. (into {} (for [[g [_ v]] named-srcs] [g v])))
+        node-vals    (HashMap. #^Map (into {} (for [[g [_ v]] named-srcs] [g v])))
         node-val     #(lazy-get node-vals % (init-fn %))
         queue        (LinkedList. (map first src-vals))]
 

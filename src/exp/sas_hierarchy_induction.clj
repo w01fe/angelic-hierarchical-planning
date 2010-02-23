@@ -5,23 +5,11 @@
   (:import [java.util HashMap HashSet IdentityHashMap]))
 
 
-;; Right now, this is only for DAGs. 
+;; Attempt to do simplest thing that works for cyclic graphs.
+;; Not trying for all DAG optimizations yet.
 
-;; Optimizations left TODO:
-
-; TODO: Backwards-greedy optimization: 
-;  If a tail-seq of precond-sets will necessarily occur by some other interleaved refinement,
-;  do not execute these precond-sets except greedily as a result of executing the other.
-
-; TODO: ???
-;  General case of logistics thing: don't put a passenger down until another cab is ready
-;  to pick it up.  I.e., when something has multiple independent parents,
-;  require them to line up for multiple transitions before starting the first??
-
-; TODO: Non-ordering of independent things when interleaving
-;  Right now, we only do greedy ordering when not interleaving.  Should combine both.
-
-; Also, see many ideas for TODOs below.
+;; TODO: check cyclic behavior of vv-hla, make sure it's OK.
+ ; (may fail to do all deductions for new init-sets.)
 
 ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;; Utilities ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
 
@@ -68,7 +56,7 @@
 (def *simple-dtgs* nil)   ; Map from var to edge list.
 (def #^HashMap *hla-cache* nil) ; a map from [action-name] to map from init-sets to action.
 (def #^IdentityHashMap *compile-cache* nil) ; a map from [action-name] to map from init-sets to action.
-(def *greedy-optimization?* true)
+(def *greedy-optimization?* false)
 
 ;; Memoized partial computations to speed up acylic edge generation.
 (def #^HashMap *forward-reachability-cache* nil)
@@ -237,9 +225,11 @@
   (let [{:keys [var src-val dst-val src?-atom]} hla
         edges    (get-possibly-acyclic-edges var src-val dst-val)
         any-new? (some identity (doall (map #(add-new-vv-edge! var dst-val %) edges)))]
-;    (println "adding edges" edges "for" src-val "-->" dst-val)
+;    (when any-new? (println "adding edges" edges "for" src-val "-->" dst-val))
 ;    (gv/graphviz-el edges)
-    (util/assert-is (or (seq edges) (= src-val dst-val)) "%s" [src-val dst-val])
+    (when-not (or (seq edges) (= src-val dst-val))
+      (println "Warning: trying to induce impossible path from" src-val "to" dst-val))
+;    (util/assert-is (or (seq edges) (= src-val dst-val)) "%s" [src-val dst-val])
     (reset! src?-atom true)
     (when any-new? 
       (doseq [s (distinct (map first edges))]
@@ -251,7 +241,7 @@
   [hla init-sets par-effect-sets src?]
   (assert (not (contains? (apply clojure.set/union (vals init-sets)) no-effect-val)))
   (let [{:keys [var src-val dst-val src?-atom dirty?-atom init-sets-atom par-effects-atom precond-vars-atom successor-map-atom]} hla]
-;    (println "Extend" (:var hla) (:src-val hla) (:dst-val hla) new-inits? (count @successor-map-atom))
+    (util/print-debug 3 "Extend" (:var hla) (:src-val hla) (:dst-val hla) (count @successor-map-atom))    
     (util/assert-is (= (util/safe-get init-sets var) #{src-val}))
     (when (and src? (not @src?-atom)) (designate-vv-hla-src! hla))
     (when (or (not= (select-keys @init-sets-atom @precond-vars-atom)
@@ -310,6 +300,7 @@
 ;          (println "OTH" );(set (get init-sets var)) (when par-effects? (keys @src-map-atom)))
 ;          (println (util/map-vals type init-sets))
           (assert (not (contains? (set (get init-sets var)) no-effect-val)))
+;          (println (count (util/union-coll (set (get init-sets var)) (when par-effects? (keys @src-map-atom)))))
           (doseq [src-val (util/union-coll (set (get init-sets var)) (when par-effects? (keys @src-map-atom)))]
             (util/assert-is  (not= src-val no-effect-val))
             (when-not (contains? @src-map-atom src-val)
@@ -325,6 +316,7 @@
     (cycle-level-           [s] nil))
 
 (defn make-precond-hla [var dst-val] 
+  (util/print-debug 3 "make new precond hla" var dst-val)
   (SAS-Precond-HLA var dst-val (atom {}) (atom {})))
 
 
@@ -581,7 +573,7 @@
 (defn induce-raw-hierarchy [sas-problem]
   (let [{:keys [vars actions init]} sas-problem
         dtgs (sas-analysis/domain-transition-graphs vars actions)]
-    (assert (graphs/dag? (sas-analysis/standard-causal-graph sas-problem)))
+;    (assert (graphs/dag? (sas-analysis/standard-causal-graph sas-problem)))
     (binding [*vars*          vars
               *var-val-sets*  (util/map-map (juxt :name (comp set :vals)) (vals vars))
               *var-levels*    (graphs/topological-sort-indices (sas-analysis/standard-causal-graph sas-problem))
@@ -633,47 +625,3 @@
 
 
 
-
-
-;(induce-hierarchy  (make-sas-problem-from-pddl (prln (write-infinite-taxi-strips2 (make-random-infinite-taxi-env 2 2 1)))))
-
-(comment
-  ; not needed anymore?
-  
-  
-(defn find-all-acyclic-paths 
-  ([var init-val-set goal-val reverse-dtg]
-     (find-all-acyclic-paths var init-val-set goal-val reverse-dtg nil #{} true))
-  ([var init-val-set goal-val reverse-dtg plan-suffix stack-val-set can-use-free?]
-;     (println "FACP" var init-val-set goal-val)
-     (when (and (seq init-val-set) (not (contains? stack-val-set goal-val)))
-       (if (contains? init-val-set goal-val)
-           (cons plan-suffix 
-                 (find-all-acyclic-paths var (disj init-val-set goal-val) goal-val reverse-dtg plan-suffix 
-                                         stack-val-set can-use-free?))
-         (apply concat
-           (for [[pval actions] (get reverse-dtg goal-val)
-                 a              actions
-                 :let  [action-free? (not (contains? (:precond-map a) var))]
-                 :when (or (not action-free?) can-use-free?)]
-             (find-all-acyclic-paths var init-val-set pval reverse-dtg (cons a plan-suffix) 
-                                     (conj stack-val-set goal-val) (and can-use-free? (not action-free?)))))))))
-  
-
-(defn induce-vv-hla- [var goal-val init-sets]
-  (util/print-debug 2 "Inducing HLA to get" var "to val" goal-val "from" (init-sets var))
-  (let [inits        (init-sets var)
-        reverse-dtg  (*reverse-dtgs* var)
-        paths        (find-all-acyclic-paths var inits goal-val reverse-dtg)
-        refs-results (filter identity (map #(progress-refinement % init-sets ) paths))]
-    (if (and (util/singleton? refs-results) (util/singleton? (ffirst refs-results)))
-        (first (ffirst refs-results))
-      (when (seq refs-results)
-        (assert (apply = (map util/keyset (map second refs-results)))) ;; Otherwise, no-effect not handled properly when not in PC.
-        (SAS-VV-HLA var goal-val 
-                    (set (for [[ref _] refs-results, a ref, v (precond-var-set a)] v))
-                    init-sets 
-                    (apply merge-with clojure.set/union (map second refs-results))
-                    (map first refs-results))))))
-
-)

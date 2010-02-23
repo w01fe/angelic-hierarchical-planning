@@ -7,6 +7,9 @@
 
 ;; Right now, this is only for DAGs. 
 
+;; TODO: check cyclic behavior of vv-hla, make sure it's OK.
+ ; (may fail to do all deductions for new init-sets.)
+
 ;; Optimizations left TODO:
 
 ; TODO: Backwards-greedy optimization: 
@@ -20,6 +23,8 @@
 
 ; TODO: Non-ordering of independent things when interleaving
 ;  Right now, we only do greedy ordering when not interleaving.  Should combine both.
+
+;; TODO: when extending, find real set of possible inits, not everything.
 
 ; Also, see many ideas for TODOs below.
 
@@ -310,6 +315,7 @@
 ;          (println "OTH" );(set (get init-sets var)) (when par-effects? (keys @src-map-atom)))
 ;          (println (util/map-vals type init-sets))
           (assert (not (contains? (set (get init-sets var)) no-effect-val)))
+;          (println (count (util/union-coll (set (get init-sets var)) (when par-effects? (keys @src-map-atom)))))
           (doseq [src-val (util/union-coll (set (get init-sets var)) (when par-effects? (keys @src-map-atom)))]
             (util/assert-is  (not= src-val no-effect-val))
             (when-not (contains? @src-map-atom src-val)

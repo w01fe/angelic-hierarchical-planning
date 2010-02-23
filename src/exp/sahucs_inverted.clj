@@ -100,6 +100,7 @@
               (.put cache cache-key nd)
               (if (env/primitive? a)
                   (when (env/applicable? a s)
+;                    (println a s cache-val)
                     (let [[ss sr] (env/successor a s)]
                       [[(make-gqe (vary-meta ss assoc :opt [a]) sr nd :fresh) (- 0 pre-reward sr)]]))
                 (apply concat
