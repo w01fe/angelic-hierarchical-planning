@@ -2,7 +2,7 @@
   (:require [edu.berkeley.ai.util :as util]
             [edu.berkeley.ai.util  [graphs :as graphs] [graphviz :as gv]]
             [exp [env :as env]  [hierarchy :as hierarchy] [sas :as sas] [sas-analysis :as sas-analysis]])
-  (:import [java.util HashMap HashSet IdentityHashMap]))
+  (:import [java.util HashMap HashSet Collection IdentityHashMap]))
 
 
 ;; Attempt to do simplest thing that works for cyclic graphs.
@@ -10,6 +10,10 @@
 
 ;; TODO: check cyclic behavior of vv-hla, make sure it's OK.
  ; (may fail to do all deductions for new init-sets.)
+
+;; TODO: put back greedy optimization for DAG bits
+
+;; NEW here: fix to speedup new edges.
 
 ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;; Utilities ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
 
@@ -61,6 +65,7 @@
 ;; Memoized partial computations to speed up acylic edge generation.
 (def #^HashMap *forward-reachability-cache* nil)
 (def #^HashMap *backward-reachability-cache* nil)
+(def #^HashMap *good-edge-cache* nil) ; Map from [var, to-val] to HashSet of unused edges.
 
 (defn forward-reachable-nodes-and-necessary-predecessors [var-name from-val]
   (util/cache-with *forward-reachability-cache* [var-name from-val]
@@ -72,7 +77,7 @@
     (graphs/compute-reachable-nodes-and-necessary-predecessors
      (map reverse (util/safe-get *simple-dtgs* var-name)) to-val)))
 
-(defn get-possibly-acyclic-edges
+#_ (defn get-possibly-acyclic-edges
   "Return a list of edges, where those provably on no acyclic s-t path have been eliminated.
    Do so in polynomial time, possibly missing some always-cyclic edges."  
   [var from-val to-val]
@@ -84,6 +89,48 @@
              b (backward-sets b)]
          (and f b (empty? (clojure.set/intersection f b)))))
      (util/safe-get *simple-dtgs* var))))
+
+#_ (defn get-possibly-acyclic-edges
+  "Return a list of new edges, where those provably on no acyclic s-t path have been eliminated.
+   Do so in polynomial time, possibly missing some always-cyclic edges.  Only returns new edges for
+   a particular to-val."  
+  [var from-val to-val]
+  (let [forward-sets  (forward-reachable-nodes-and-necessary-predecessors var from-val)
+        backward-sets (backward-reachable-nodes-and-necessary-predecessors var to-val)]
+    (filter
+     (fn [[a b]]
+       (let [e [a b to-val]]
+         (when-not (.contains *used-edge-cache* e)
+           (let [f (forward-sets a)
+                 b (backward-sets b)]
+             (when (and f b (empty? (clojure.set/intersection f b)))
+               (.add *used-edge-cache* e)
+               true)))))
+     (util/safe-get *simple-dtgs* var))))
+
+(defn get-possibly-acyclic-edges
+  "Return a list of new edges, where those provably on no acyclic s-t path have been eliminated.
+   Do so in polynomial time, possibly missing some always-cyclic edges.  Only returns new edges for
+   a particular to-val."  
+  [var from-val to-val]
+  (let [k         [var to-val]
+        cache-val #^HashSet (or (.get *good-edge-cache* k)
+                                (let [v (HashSet. #^Collection
+                                          (remove #(= (first %) to-val) (util/safe-get *simple-dtgs* var)))]
+                                  (.put *good-edge-cache* k v)
+                                  v))]
+    (when-not (empty? cache-val)
+      (let [forward-sets  (forward-reachable-nodes-and-necessary-predecessors var from-val)
+            backward-sets (backward-reachable-nodes-and-necessary-predecessors var to-val)]
+        (filter
+         (fn [[a b :as e]]
+           (when (.contains cache-val e)
+             (let [f (forward-sets a)
+                   b (backward-sets b)]
+               (when (and f b (empty? (clojure.set/intersection f b)))
+                 (.remove cache-val e)
+                 true))))
+         (util/safe-get *simple-dtgs* var))))))
 
 
 ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;; Action Protocol ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
@@ -227,8 +274,8 @@
         any-new? (some identity (doall (map #(add-new-vv-edge! var dst-val %) edges)))]
 ;    (when any-new? (println "adding edges" edges "for" src-val "-->" dst-val))
 ;    (gv/graphviz-el edges)
-    (when-not (or (seq edges) (= src-val dst-val))
-      (println "Warning: trying to induce impossible path from" src-val "to" dst-val))
+;    (when-not (or (seq edges) (= src-val dst-val))
+;      (println "Warning: trying to induce impossible path from" src-val "to" dst-val))
 ;    (util/assert-is (or (seq edges) (= src-val dst-val)) "%s" [src-val dst-val])
     (reset! src?-atom true)
     (when any-new? 
@@ -582,6 +629,7 @@
               *hla-cache*     (HashMap.)
               *forward-reachability-cache* (HashMap.)
               *backward-reachability-cache* (HashMap.)
+              *good-edge-cache* (HashMap.)
               ]
 ;      (println "VVS"  *var-val-sets*)
       (let [goal-action (util/safe-singleton (get-in *extended-dtgs* [sas/goal-var-name sas/goal-false-val sas/goal-true-val]))
