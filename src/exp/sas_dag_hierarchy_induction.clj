@@ -26,6 +26,9 @@
 
 ;; TODO: when extending, find real set of possible inits, not everything.
 
+;; TODO: include optimizations from cylcic:
+ ;  Big domain edge-adding optimization (6x improvement on 20x20 taxi).
+
 ; Also, see many ideas for TODOs below.
 
 ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;; Utilities ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
