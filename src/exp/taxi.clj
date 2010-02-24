@@ -373,4 +373,104 @@
      (write-taxi-strips-instance tenv (str prefix ".pddl"))
      prefix))
 
+
 ; (make-sas-problem-from-pddl (prln (write-taxi-strips (make-random-taxi-env 1 2 1))) )
+
+
+
+
+;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;; STRIPS version 2 ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
+
+; Identical to above, but with split x and y.
+
+(defn- write-taxi-strips2-domain [file]
+  (util/spit file
+    ";; Taxi domain 
+     
+     (define (domain taxi2)
+       (:requirements :strips :typing)
+       (:types x y pass)
+       (:predicates 
+          (LEFTOF ?x1 - x ?x2 - x)
+          (ABOVE  ?y1 - y ?y2 - y)
+          (taxi-at-x ?x - x)
+          (taxi-at-y ?y - y)
+          (pass-at-x ?p - pass ?x - x)
+          (pass-at-y ?p - pass ?y - y)
+          (pass-goal-x ?p - pass ?x - x)
+          (pass-goal-y ?p - pass ?y - y)
+          (taxi-empty)
+          (taxi-holding ?p - pass))
+       
+       (:action pickup 
+         :parameters (?p - pass ?x - x ?y - y)
+         :precondition (and 
+                         (taxi-at-x ?x) (taxi-at-y ?y)
+                         (pass-at-x ?p ?x) (pass-at-y ?p ?y)
+                         (taxi-empty))
+         :effect       (and
+                         (not (taxi-empty)) (taxi-holding ?p)
+                         (not (pass-at-x ?p ?x)) (not (pass-at-y ?p ?y))))
+                          
+       (:action putdown 
+         :parameters (?p - pass ?x - x ?y - y)
+         :precondition (and 
+                         (taxi-at-x ?x) (taxi-at-y ?y)
+                         (taxi-holding ?p)
+                         (pass-goal-x ?p ?x) (pass-goal-y ?p ?y))
+         :effect       (and
+                         (not (taxi-holding ?p)) (taxi-empty)
+                         (pass-at-x ?p ?x) (pass-at-y ?p ?y)))
+
+       (:action left 
+         :parameters (?l1 - x ?l2 - x)
+         :precondition (and (taxi-at-x ?l1) (LEFTOF ?l2 ?l1))
+         :effect       (and (not (taxi-at-x ?l1)) (taxi-at-x ?l2)))
+
+       (:action right 
+         :parameters (?l1 - x ?l2 - x)
+         :precondition (and (taxi-at-x ?l1) (LEFTOF ?l1 ?l2))
+         :effect       (and (not (taxi-at-x ?l1)) (taxi-at-x ?l2)))
+
+       (:action up 
+         :parameters (?l1 - y ?l2 - y)
+         :precondition (and (taxi-at-y ?l1) (ABOVE ?l2 ?l1))
+         :effect       (and (not (taxi-at-y ?l1)) (taxi-at-y ?l2)))
+
+       (:action down 
+         :parameters (?l1 - y ?l2 - y)
+         :precondition (and (taxi-at-y ?l1) (ABOVE ?l1 ?l2))
+         :effect       (and (not (taxi-at-y ?l1)) (taxi-at-y ?l2))))"
+         
+        ))
+
+(defn- write-taxi-strips2-instance [tenv file]
+  (let [{:keys [width height passengers]} tenv]
+    (util/spit file
+      (util/str-join "\n"
+        ["(define (problem taxi2-)
+           (:domain taxi2)
+           (:objects "
+              (util/str-join " " (map first passengers)) " - pass"
+              (util/str-join " " (for [x (range 1 (inc width))] (str "x" x))) " - x"              
+              (util/str-join " " (for [y (range 1 (inc height))] (str "y" y))) " - y"                             "    )
+           (:init "
+              (util/str-join " " (for [x (range 1 width)] (str "(LEFTOF x" x " x" (inc x) ")")))
+              (util/str-join " " (for [y (range 1 height)] (str "(ABOVE y" (inc y) " y" y ")")))         
+              "(taxi-at-x x1) (taxi-at-y y1)"
+              (util/str-join " " (for [[n [sx sy]] passengers]
+                                   (str "(pass-at-x " n " x" sx ") (pass-at-y " n " y" sy ")")))
+              (util/str-join " " (for [[n _ [dx dy]] passengers]
+                                   (str "(pass-goal-x " n " x" dx ") (pass-goal-y " n " y" dy ")")))      
+              "(taxi-empty))"
+         " (:goal (and "
+              (util/str-join " " (for [[n _ [dx dy]] passengers]
+                                   (str "(pass-at-x " n " x" dx ") (pass-at-y " n " y" dy ")")))
+              ")))"]))))
+
+(defn write-taxi-strips2
+  ([tenv] (write-taxi-strips2 tenv (str "/tmp/taxi2_" (rand-int 10000))))
+  ([tenv prefix]
+     (write-taxi-strips2-domain (str prefix "-domain.pddl"))
+     (write-taxi-strips2-instance tenv (str prefix ".pddl"))
+     prefix))

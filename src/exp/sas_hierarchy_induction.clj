@@ -669,7 +669,11 @@
 
 
 
+; (debug 0 (time (run-counted #(sahucs-inverted (simple-taxi-hierarchy (make-random-taxi-env 20 20 5 6))))))
 
+; (use '[exp env taxi hierarchy ucs sahucs-inverted sas taxi-infinite sas-hierarchy-induction sas-analysis sas-problems] 'edu.berkeley.ai.util)
 
+; (debug 0 (time (run-counted #(uniform-cost-search (identity (make-sas-problem-from-pddl (prln (write-taxi-strips2 (make-random-taxi-env 3 3 2 6)))))))))
 
+; (debug 0 (time (run-counted #(sahucs-inverted (induce-hierarchy (make-sas-problem-from-pddl (prln (write-taxi-strips2 (make-random-taxi-env 3 3 2 6)))))))))
 

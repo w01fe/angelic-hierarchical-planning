@@ -53,7 +53,8 @@
      (let [ret #^String (util/sh (str *lama-dir* "translate/translate.py") 
                                  domain-file inst-file :dir *working-dir*)]
        (when-not (.endsWith ret "Done!\n")
-         (throw (RuntimeException. (str "LAMA-translate failed: "  ret)))))))
+         (throw (RuntimeException. (str "LAMA-translate failed: "  ret))))
+       ret  )))
 
 
 (defn map-ize [key-fn s]
@@ -100,7 +101,8 @@
 (defn make-sas-problem-from-pddl 
   ([stem] (make-sas-problem-from-pddl  (str stem "-domain.pddl") (str stem ".pddl")))
   ([domain-file inst-file]
-     (lama-translate domain-file inst-file)
+     ;(lama-translate domain-file inst-file)
+     (println (lama-translate domain-file inst-file))
      (let [var-map (assoc (read-groups-file (str *working-dir* "test.groups"))
                      goal-var-name [goal-false-val goal-true-val])
            sas-q   (LinkedList. (seq (.split #^String (slurp (str *working-dir* "output.sas")) "\n")))
