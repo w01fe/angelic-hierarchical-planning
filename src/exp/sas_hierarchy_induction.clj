@@ -13,6 +13,10 @@
 
 ;; TODO: put back greedy optimization for DAG bits
 
+;; TODO: combine domains for vars always affected together ?
+
+;; TODO: infer single-goal-state condition?!  
+
 ;; NEW here: fix to speedup new edges.
 
 ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;; Utilities ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
@@ -37,11 +41,14 @@
   ([] {})
   ([m] m)
   ([m1 m2]
-     (util/assert-is (map? m2))
-      (reduce (fn [m [ek evs]]
-                (let [ovs (get m1 no-effect-set)]
-                  (assoc m ek (if (contains? evs no-effect-val) (clojure.set/union ovs (disj evs no-effect-val)) evs))))
-              m1 m2))
+     (if (or (= m1 no-outcomes) (= m2 no-outcomes)) no-outcomes
+         (do 
+         
+           (util/assert-is (map? m2))
+           (reduce (fn [m [ek evs]]
+                     (let [ovs (get m1 no-effect-set)]
+                       (assoc m ek (if (contains? evs no-effect-val) (clojure.set/union ovs (disj evs no-effect-val)) evs))))
+                   m1 m2))))
   ([m1 m2 & maps]
      (reduce sequence-effect-set-maps m1 (cons m2 maps))))
 
@@ -183,6 +190,9 @@
       (for [[pre-pairs ref] refinements-and-preconditions, 
             :when (every? (fn [[var val]] (= val (env/get-var s var))) pre-pairs)]
         ref))))
+;            (let [ret ]
+;        (assert (= (count ret) 1)))
+;        ret))) 
 
 (defn make-compiled-hla [name orig-hla precond-vars effects]
   (SAS-Compiled-HLA name orig-hla precond-vars effects (atom :dummy) (atom :dummy)))
@@ -304,19 +314,25 @@
   "Extend this VV-HLA edge to cover new init-sets, as needed."
   [hla [a next-vv-hla] init-sets par-effect-sets]
   (assert (not (= (:src-val hla) (:dst-val hla))))
-;  (println "Start extend" (:src-val hla) (:dst-val hla) "via" (:src-val next-vv-hla))
+;  (println "Start extend" (:src-val hla) (:dst-val hla) "via" (:src-val next-vv-hla) " act " (env/action-name a))
   (extend-hla! a init-sets par-effect-sets)
 ;  (println (env/action-name hla) init-sets (effect-sets hla) (effect-sets a) (effect-sets next-vv-hla))
-  (extend-vv-hla! next-vv-hla (apply-effect-set-map init-sets (effect-sets a)) par-effect-sets false)
-  (when-not (= (effect-sets next-vv-hla) no-outcomes)
+  (let [aes (effect-sets a)]
+    (when-not (= aes no-outcomes)
+      (extend-vv-hla! next-vv-hla (apply-effect-set-map init-sets (effect-sets a)) par-effect-sets false)      
+      (when-not (= (effect-sets next-vv-hla) no-outcomes)
 ;    (println "Warning: no effect sets ... cyclic dTG?")
 ;    (throw (RuntimeException. (str (:src-val hla) (:dst-val hla) (:src-val next-vv-hla))))
     
-    (swap! (:precond-vars-atom hla) clojure.set/union       (precond-var-set a) (precond-var-set next-vv-hla))
-    (swap! (:effect-sets-atom hla)  disjoin-effect-set-maps (sequence-effect-set-maps (effect-sets a) (effect-sets next-vv-hla)))
-    (util/assert-is (= (get @(:effect-sets-atom hla) (:var hla)) #{(:dst-val hla)}) "%s" [(env/action-name hla)])
+        (swap! (:precond-vars-atom hla) clojure.set/union       (precond-var-set a) (precond-var-set next-vv-hla))
+        (swap! (:effect-sets-atom hla)  disjoin-effect-set-maps (sequence-effect-set-maps aes (effect-sets next-vv-hla)))
+        (util/assert-is (= (get @(:effect-sets-atom hla) (:var hla)) #{(:dst-val hla)}) "%s" [(env/action-name hla)])
 ;    (println "Finish extend" (:src-val hla) (:dst-val hla) "via" (:src-val next-vv-hla))   
-    ))
+    )
+      )
+    )
+
+)
 
 
 
@@ -329,7 +345,10 @@
 (deftype SAS-Precond-HLA [var dst-val src-map-atom par-effects-atom] :as this
   SAS-Induced-Action
     (precond-var-set [] (apply clojure.set/union       (map precond-var-set (vals @src-map-atom))))
-    (effect-sets     [] (apply disjoin-effect-set-maps @par-effects-atom (map effect-sets     (vals @src-map-atom))))
+    (effect-sets     [] 
+      (let [reg-effects (apply disjoin-effect-set-maps (map effect-sets     (vals @src-map-atom)))]
+;        (util/prln) 
+        (if (= reg-effects no-outcomes) no-outcomes (merge-with clojure.set/union @par-effects-atom reg-effects))))
     (pre-ref-pairs   [] (if (util/singleton? @src-map-atom) 
                             [[{} [(first (vals @src-map-atom))]]]
                           (for [[k v] @src-map-atom] [{var k} [v]])))
@@ -382,11 +401,13 @@
 
 (defn compute-precond-var-sets [init-sets par-effect-sets ordered-preconds]
   (loop [init-sets init-sets, ordered-preconds ordered-preconds, ret []]
-    (if-let [[f & r] (seq ordered-preconds)]        
+    (if-let [[f & r] (seq ordered-preconds)]      
         (do (extend-hla! f init-sets par-effect-sets)
-            (recur (apply-effect-set-map init-sets (effect-sets f)) 
-                   r
-                   (conj ret [f (precond-var-set f)])))
+            (let [eff (effect-sets f)]
+              (when-not (= eff no-outcomes)              
+                (recur (apply-effect-set-map init-sets eff) 
+                       r
+                       (conj ret [f (precond-var-set f)])))))
       ret)))
 
 (defn compute-interference-graph [preconds-and-var-sets]
@@ -394,13 +415,9 @@
    (for [g preconds-and-var-sets] [::ROOT g])
    (for [[p1 s1 :as g1] preconds-and-var-sets, [p2 s2 :as g2] preconds-and-var-sets
          :when (and (not (empty? (clojure.set/intersection s1 s2)))
-                    (not (util/superset? s2 s1)))]
+                    (not (util/proper-superset? s2 s1)))]
      [g1 g2])))
 
-(defn compute-topo-map [init-sets par-effect-sets ordered-preconds]
-  (graphs/topological-sort-indices
-   (compute-interference-graph
-    (compute-precond-var-sets init-sets par-effect-sets ordered-preconds))))
 
 ;; TODO: To properly know which vars to fiddle, must be able to separate direct effects from transitive ones.  
 
@@ -429,11 +446,14 @@
 ;; For now, punt in several ways, only look for independent chunks, ...
 ; Broken out so it can access bound vars.
 (defn extend-precond-set-hla! [hla init-sets par-effect-sets]  
+;  (println "\n\n" (env/action-name hla) init-sets (map env/action-name (:ordered-preconds hla)))
   (let [{:keys [ordered-preconds ref-atom]} hla
-        topo-map (compute-topo-map init-sets par-effect-sets ordered-preconds)
-        chunks   (map #(map key %) (vals (util/group-by val topo-map)))]
-    (assert (= (first chunks) [::ROOT]))
-;    (println (map #(map (comp env/action-name first) %) (next chunks)))
+        pvs (compute-precond-var-sets init-sets par-effect-sets ordered-preconds)]
+    (when pvs
+      (let [topo-map (graphs/topological-sort-indices (compute-interference-graph pvs))
+            chunks   (map #(map key %) (vals (util/group-by val topo-map)))]
+        (assert (= (first chunks) [::ROOT]))
+;    (println (map #(map (juxt (comp env/action-name first) second) %) (next chunks)))
     (reset! ref-atom 
       (doall
        (for [chunk (next chunks)] 
@@ -445,13 +465,14 @@
              (println "Interleaving HLAs with common ground:" bad-vars par-effect-sets)
              (doseq [[hla] chunk] (extend-hla! hla {} par-effect-sets))
              (assert (= (set all-vars) (set (apply concat (map second chunk)))))
-             (make-interleaving-hla (map (comp vector first) chunk) bad-vars))))))))
+             (make-interleaving-hla (map (comp vector first) chunk) bad-vars))))))
+        ))))
 
 (defn make-precond-set-hla [precond-map] 
   (SAS-Precond-Set-HLA 
    precond-map
    (doall (map (partial apply make-precond-hla) (sort-by (comp - *var-levels* key) precond-map)))
-   (atom :dummy)))
+   (atom [])))
 
 (defn trivially-satisfied-precond-set? [a s]
   (if (= (type a) ::SAS-Compiled-HLA) (recur (:orig-hla a) s)
@@ -651,7 +672,7 @@
 (defn pretty-print-hla [h #^HashSet done-set]
   (when-not (.contains done-set h)
     (.add done-set h)
-    (println (str "\nRefs for HLA" (env/action-name h)) );(precond-var-set h)  (effect-sets h))
+    (println (str "\nRefs for HLA" (env/action-name h)) "\nPrec: " (precond-var-set h) "\nEff: "(effect-sets h) "\nRefs:");  (effect-sets h))
     (doseq [ref (map second (pre-ref-pairs   h))]
       (println " " (util/str-join ", " (map env/action-name ref))))
     (doseq [ref (map second (pre-ref-pairs   h)), a ref]
