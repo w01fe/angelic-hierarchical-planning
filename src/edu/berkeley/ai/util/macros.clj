@@ -1,5 +1,16 @@
 (in-ns 'edu.berkeley.ai.util)
 
+(defmacro memoized-fn [name args & body]
+  `(let [a# (atom {})]
+     (fn ~name ~args
+       (let [m# @a#
+             args# ~args]
+         (if-let [[_# v#] (find m# args#)]
+             v#
+           (let [v# (do ~@body)]
+             (swap! a# assoc args# v#)
+             v#))))))
+
 (defmacro forcat 
   "Like for, but concatenates the results."
   [& args]

@@ -169,7 +169,7 @@
   (every? singleton? (vals (second (scc-graph edges)))))
 
 (defn topological-sort-indices 
-  "Return a map from nodes to integers, where 0 is a sink.  Nodes in same SCC will have same val."
+  "Return a map from nodes to integers, where 0 is a source.  Nodes in same SCC will have same val."
   [edges]
   (let [[scc-edges scc-nodes] (scc-graph edges)]
     (loop [scc-edges scc-edges, scc-nodes scc-nodes, out {}, i 0]
