@@ -11,13 +11,14 @@
 (defn domain-transition-graphs 
   "Return a map from var to map from val to map from next-val to seq of actions
    causing this transition."
-  [vars actions]
-  (reduce (fn [m [ks a]] (update-in m ks (partial cons a))) {} 
-          (for [a actions
-                [evar eval] (:effect-map a)
-                pval        (if-let [x ((:precond-map a) evar)] [x] (:vals (vars evar)))
-                :when       (not (= eval pval))]
-            [[evar pval eval] a])))
+  ([sas-problem] (domain-transition-graphs (:vars sas-problem) (:actions sas-problem)))
+  ([vars actions]
+      (reduce (fn [m [ks a]] (update-in m ks (partial cons a))) {} 
+              (for [a actions
+                    [evar eval] (:effect-map a)
+                    pval        (if-let [x ((:precond-map a) evar)] [x] (:vals (vars evar)))
+                    :when       (not (= eval pval))]
+                [[evar pval eval] a]))))
 
 (defn show-dtgs [sas-problem]
   (gv/graphviz-el   
@@ -111,6 +112,24 @@
             [pval eval]))))))))
 
 
+;;;;;;;;;;;;;;;;;;;;;;;;;;             Homogeneity            ;;;;;;;;;;;;;;;;;;;;;;;;
+
+; An SAS problem is homogenous if every action that affects a particular var
+; conditions on the same set of precondition vars.
+
+; For now, we only operate on DAGs, so that each action has exactly one effect.
+
+(defn homogenous? [sas-problem]
+  (assert (graphs/dag? (standard-causal-graph sas-problem)))
+  (every?
+   (fn [[var dtg]]
+     (let [actions (apply concat (for [[sv ddtg] dtg, [dv as] ddtg] as))]
+       (util/assert-is (apply = #{var} (map (comp util/keyset :effect-map) actions)))
+       (apply = (map (comp util/keyset :precond-map) actions))))
+   (domain-transition-graphs sas-problem)))
+
+;(defn homogenize [sas-problem]  
+;  )
 
 
 ;;;;;;;;;;;;;;;;;;;;;;;;;; Simple, non-mutex forward analysis ;;;;;;;;;;;;;;;;;;;;;;;;
