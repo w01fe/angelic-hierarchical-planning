@@ -82,7 +82,7 @@
         (if (= cur-val dst-val)
             [[]]
           (for [as (vals (get dtg cur-val)), action as]
-            [(make-action-hla action) this]))))
+            [(make-action-hla hierarchy action) this]))))
     (cycle-level-           [s] cycle-level))
 
 (defn- make-precond-hla [hierarchy var dst-val]
@@ -103,7 +103,7 @@
   env/ContextualAction 
     (precondition-context [s] precond-var-set)
   hierarchy/HighLevelAction
-    (immediate-refinements- [s] (concat precond-hlas [action]))
+    (immediate-refinements- [s] [(concat precond-hlas [action])])
     (cycle-level-           [s] nil))
 
 (defn- make-action-hla [hierarchy action]
@@ -116,3 +116,6 @@
                     ((:ancestor-var-set hierarchy) effect-var))))
 
 
+
+
+; (run-counted #(sahucs-inverted (make-simple-tree-hierarchy (make-sas-problem-from-pddl (prln (write-infinite-taxi-strips2 (make-random-infinite-taxi-env 2 2 1 6)))))))
