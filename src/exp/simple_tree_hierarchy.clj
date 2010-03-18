@@ -11,7 +11,10 @@
 ;; split HLAs.  Here, this amounts to, more or less, just removing outgoing arcs from goal.
 ;; We can just do this implicitly, and forget about real acyclic stuff in this version.
 ; TODO: (could do better, e.g., for line DTGs)
+; In fact, this makes thngs *ugly* for even simple taxi
 
+
+;; I.e, when searching backwards from goal, source is necessary predecessor of target.
 
 
 (declare make-action-hla)
@@ -30,7 +33,18 @@
         pred-var-set (util/map-vals (comp set #(map first %))
                                     (util/unsorted-group-by second causal-graph)) 
         dtgs         (sas-analysis/domain-transition-graphs sas-problem)
-        dtg-to       (fn [var dst-val] (util/safe-get dtgs var))]
+        sr-dtg       (memoize (fn [var] (for [[pv em] (dtgs var), nv (keys em)] [nv pv])))
+        dtg-to       (memoize (fn [var to-val] ;; Edges s.t. all paths from nv to goal include pv
+                                ;(println "Computing dtg for" var to-val)
+                                 (let [np (graphs/compute-reachable-nodes-and-necessary-predecessors
+                                             (sr-dtg var) to-val)]
+                                     (util/map-map 
+                                      (fn [[pv emap]]
+                                        [pv
+                                         (util/filter-map 
+                                          (fn [[nv]] (not (contains? (get np nv) pv)))
+                                          emap)])
+                                      (dtgs var)))))]
 
     (assert (graphs/inverted-tree-reducible? causal-graph))
     (assert (sas-analysis/homogenous? sas-problem))    
@@ -48,6 +62,7 @@
          (graphs/topological-sort-indices causal-graph)
          dtg-to
          (util/memoized-fn cycle-to [var dst-val]
+           (println "computing cycle-to for" var dst-val)
            (let [dtg (dtg-to var dst-val)
                  tsi (graphs/topological-sort-indices
                       (for [[pval emap] dtg, eval (keys emap)
@@ -86,10 +101,11 @@
     (cycle-level-           [s] (force cycle-level)))
 
 (defn- make-precond-hla [hierarchy var dst-val]
+;  (println "MAKE precond" var dst-val)
   (STH-Precond-HLA hierarchy [:!PRECOND var dst-val] var dst-val 
                    ((:dtg-to            hierarchy) var dst-val)
                    ((:ancestor-var-set hierarchy) var)
-                   (identity (when ((:cycle-to hierarchy) var dst-val)
+                   (delay (when ((:cycle-to hierarchy) var dst-val)
                             ((:var-levels hierarchy) var)))))
 
 
@@ -111,7 +127,9 @@
     (STH-Action-HLA hierarchy [:!A (env/action-name action)] action 
                     (for [[var val] (sort-by (comp - (:var-levels hierarchy) key) 
                                              (:precond-map action))
-                          :when (not (= var effect-var))] 
+                          :when (not (= var effect-var))
+;                          :let [_ (println (env/action-name action) var effect-var val)]
+                          ] 
                       (make-precond-hla hierarchy var val))
                     ((:ancestor-var-set hierarchy) effect-var))))
 

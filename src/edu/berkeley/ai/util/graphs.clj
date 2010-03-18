@@ -161,7 +161,7 @@
             (doseq [nn nns] (dfs1 nn)))
           (.push s n)))
       (first (keys e))))
-    (println s pe e re)
+;    (println s pe e re)
     (let [sccs (into {} 
                  (indexed
                   (remove empty?
@@ -324,8 +324,8 @@
     (apply dissoc (into {} node-vals) (map first named-srcs))))
 
 (defn compute-reachable-nodes-and-necessary-predecessors [edge-list s]
-  (quiescence-search edge-list (constantly nil)
-    (fn [node old-val & pred-vals]
+  (quiescence-search edge-list (fn init-fn [_] nil)
+    (fn update-fn [node old-val & pred-vals]
       (let [acyclic-reachable-preds (remove #(or (nil? %) (contains? % node)) pred-vals)]
         (when (seq acyclic-reachable-preds)
           (conj (apply clojure.set/intersection acyclic-reachable-preds) node))))
