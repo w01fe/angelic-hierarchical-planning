@@ -9,6 +9,19 @@
 ; Simplest possible implementation (for now), don't keep track of anything.
 ; A DAG is just a map from node labels (arbitrary objects) to sets of child node labels.
 
+ 
+(defn edge-list->incoming-map [edges]
+  (map-vals #(map first %) (unsorted-group-by second edges)))
+
+(defn edge-list->outgoing-map [edges]
+  (map-vals #(map second %) (unsorted-group-by first edges)))
+
+(defn outgoing-map->edge-list [outgoing-map]
+  (for [[k vs] outgoing-map, v vs] [k v]))
+
+(defn incoming-map->edge-list [incoming-map]
+  (for [[k vs] incoming-map, v vs] [v k]))
+
 (defn make-empty-dag [] {})
 
 (defn dag-children [dag s] (get dag s #{}))
@@ -165,8 +178,46 @@
            [scc (get rev-sccs outgoing)]))
        sccs])))
 
-(defn dag? [edges]
+(defn dag? "Is this a dag, ignoring self-loops." [edges]
   (every? singleton? (vals (second (scc-graph edges)))))
+
+(defn tree? "Is this connected graph a tree?" [edges]
+  (->> edges 
+       (group-by second)
+       vals
+       (every? singleton?)))
+
+(defn inverted-tree? [edges] (tree? (for [[s t] edges] [t s])))
+
+(defn transitive-closure-map [edge-map]
+  (assert (dag? (for [[k vs] edge-map, v vs] [k v])))
+  (let [d-fn (memoized-fn descendent-set [node]
+                          (->> (edge-map node)
+                               (remove #{node})
+                               (map descendent-set)
+                               (apply clojure.set/union (edge-map node))))]
+    (into {} (for [k (keys edge-map)] [k (d-fn k)]))))
+
+(defn transitive-closure [edges]
+  (-> edges edge-list->outgoing-map transitive-closure-map outgoing-map->edge-list))
+
+(defn transitive-reduction [edges]
+;  (assert (dag? edges))
+  (let [tsi      (topological-sort-indices edges)
+        edge-map (edge-list->outgoing-map edges)
+        tcm      (transitive-closure-map edge-map)]
+    (apply concat
+      (for [[s ts] edge-map]
+        (loop [desc #{} ts ts edges []]
+          (if (empty? ts) edges
+            (let [[t & rt] ts]
+              (if (desc t)
+                  (recur desc rt edges)
+                (recur (union-coll desc (tcm t)) rt (cons [s t] edges))))))))))
+
+(defn tree-reducible? [edges] (tree? (transitive-reduction edges)))
+
+(defn inverted-tree-reducible? [edges] (tree-reducible? (for [[s t] edges] [t s])))
 
 (defn topological-sort-indices 
   "Return a map from nodes to integers, where 0 is a source.  Nodes in same SCC will have same val."
@@ -239,12 +290,7 @@
 ; Node a is on every acyclic path from s to n iff:
  ; a = n, or a is on every path from s to a pred. or n w/o n on its every-list.
 ; Node a is on every acyclic path from s to n iff:
- 
-(defn edge-list->incoming-map [edges]
-  (map-vals #(map first %) (unsorted-group-by second edges)))
 
-(defn edge-list->outgoing-map [edges]
-  (map-vals #(map second %) (unsorted-group-by first edges)))
 
 (defn quiescence-search 
   "Take an edge list, and a function from nodes to initial values.

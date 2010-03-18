@@ -19,7 +19,7 @@
 
 (declare make-action-hla)
 
-(deftype Simple-DAG-Hierarchy 
+(deftype Simple-Tree-Hierarchy 
   [sas-problem 
    predecessor-var-set
    ancestor-var-set
@@ -28,19 +28,19 @@
    cycle-to     ; from from var & dst-val to map from cur-val to bool, if can cycle from cur-val
    greedy-optimization?])
 
-(defn make-simple-dag-hierarchy [sas-problem]
+(defn make-simple-tree-hierarchy [sas-problem]
   (let [causal-graph (sas-analysis/standard-causal-graph sas-problem)
         pred-var-set (util/map-vals (comp set #(map first %))
                                     (util/unsorted-group-by second causal-graph)) 
         dtgs         (sas-analysis/domain-transition-graphs sas-problem)
         dtg-to       (fn [var dst-val] (util/safe-get dtgs var))]
 
-    (assert (graphs/dag? causal-graph))
+    (assert (graphs/inverted-tree-reducible? causal-graph))
     (assert (sas-analysis/homogenous? sas-problem))    
 
     (hierarchy/SimpleHierarchicalEnv sas-problem 
       [(make-action-hla 
-        (Simple-DAG-Hierarchy
+        (Simple-Tree-Hierarchy
          sas-problem
          pred-var-set
          (util/memoized-fn ancestor-var-set [var]
