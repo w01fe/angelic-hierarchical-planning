@@ -22,6 +22,8 @@
 (defn incoming-map->edge-list [incoming-map]
   (for [[k vs] incoming-map, v vs] [v k]))
 
+(defn invert-edges [edges] (for [[s t] edges] [t s]))
+
 (defn make-empty-dag [] {})
 
 (defn dag-children [dag s] (get dag s #{}))
@@ -181,13 +183,14 @@
 (defn dag? "Is this a dag, ignoring self-loops." [edges]
   (every? singleton? (vals (second (scc-graph edges)))))
 
-(defn tree? "Is this connected graph a tree?" [edges]
+(defn tree? "Is this connected graph a tree?, paying attn to self loops" [edges]
   (->> edges 
+       (remove #(apply = %))
        (group-by second)
        vals
        (every? singleton?)))
 
-(defn inverted-tree? [edges] (tree? (for [[s t] edges] [t s])))
+(defn inverted-tree? [edges] (tree? (invert-edges edges)))
 
 (defn transitive-closure-map [edge-map]
   (assert (dag? (for [[k vs] edge-map, v vs] [k v])))
@@ -203,21 +206,21 @@
 
 (defn transitive-reduction [edges]
 ;  (assert (dag? edges))
-  (let [tsi      (topological-sort-indices edges)
-        edge-map (edge-list->outgoing-map edges)
+  (let [edge-map (edge-list->outgoing-map edges)
         tcm      (transitive-closure-map edge-map)]
     (apply concat
       (for [[s ts] edge-map]
         (loop [desc #{} ts ts edges []]
           (if (empty? ts) edges
             (let [[t & rt] ts]
-              (if (desc t)
-                  (recur desc rt edges)
-                (recur (union-coll desc (tcm t)) rt (cons [s t] edges))))))))))
+;              (println s t desc)
+              (cond (= s t)  (recur desc rt (cons [s t] edges))
+                    (desc t) (recur desc rt edges)
+                    :else  (recur (union-coll desc (tcm t)) rt (cons [s t] edges))))))))))
 
 (defn tree-reducible? [edges] (tree? (transitive-reduction edges)))
 
-(defn inverted-tree-reducible? [edges] (tree-reducible? (for [[s t] edges] [t s])))
+(defn inverted-tree-reducible? [edges] (tree-reducible? (invert-edges edges)))
 
 (defn topological-sort-indices 
   "Return a map from nodes to integers, where 0 is a source.  Nodes in same SCC will have same val."
