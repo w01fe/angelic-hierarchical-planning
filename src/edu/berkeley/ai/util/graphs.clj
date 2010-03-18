@@ -161,7 +161,7 @@
             (doseq [nn nns] (dfs1 nn)))
           (.push s n)))
       (first (keys e))))
-;    (println (count s) (count pe) (count re))
+    (println s pe e re)
     (let [sccs (into {} 
                  (indexed
                   (remove empty?
@@ -170,7 +170,7 @@
                                (when (.containsKey re n)
                                  (let [nns (.get re n)]
                                    (.remove re n)              
-                                   (cons n (apply concat (map dfs2 nns))))))
+                                   (cons n (apply concat (doall (map dfs2 nns)))))))
                              n)))))
           rev-sccs (into {} (for [[k vs] sccs, v vs] [v k]))]
       [(distinct 
@@ -225,11 +225,13 @@
 (defn topological-sort-indices 
   "Return a map from nodes to integers, where 0 is a source.  Nodes in same SCC will have same val."
   [edges]
+;  (println edges)
   (let [[scc-edges scc-nodes] (scc-graph edges)]
+    (assert-is (dag? scc-edges) "%%" (def *tmp edges))
     (loop [scc-edges scc-edges, scc-nodes scc-nodes, out {}, i 0]
       (if (empty? scc-nodes) out
         (let [source (first (filter (fn [n] (every? (fn [[s t]] (or (= s t) (not= t n))) scc-edges)) (keys scc-nodes)))]        
-          (assert source)
+          (assert-is (identity source) (str  (vec (map vec [scc-edges scc-nodes]))))
           (recur (remove (fn [[s t]] (= s source)) scc-edges) (dissoc scc-nodes source)
                  (into out (map vector (get scc-nodes source) (repeat i))) (inc i)))))))
 

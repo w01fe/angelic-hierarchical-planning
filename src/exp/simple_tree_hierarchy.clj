@@ -83,14 +83,14 @@
             [[]]
           (for [as (vals (get dtg cur-val)), action as]
             [(make-action-hla hierarchy action) this]))))
-    (cycle-level-           [s] cycle-level))
+    (cycle-level-           [s] (force cycle-level)))
 
 (defn- make-precond-hla [hierarchy var dst-val]
   (STH-Precond-HLA hierarchy [:!PRECOND var dst-val] var dst-val 
                    ((:dtg-to            hierarchy) var dst-val)
                    ((:ancestor-var-set hierarchy) var)
-                   (when ((:cycle-to hierarchy) var dst-val)
-                     ((:var-levels hierarchy) var))))
+                   (identity (when ((:cycle-to hierarchy) var dst-val)
+                            ((:var-levels hierarchy) var)))))
 
 
 
