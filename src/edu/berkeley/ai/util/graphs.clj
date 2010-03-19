@@ -143,9 +143,9 @@
 ;;;;;;;;;;;;;;; Simple a'la carte algorithms that operate on edge lists, etc. ;;;;;;;;;;;;;;;;;;
 
 
-
+; TODO: should really just return a vector for clusters...
 (defn scc-graph 
-  "Take an edge list and return [edge-list node-set-map] for graph of sccs. Pretends every node has self-loop."
+  "Take an edge list and return [edge-list node-set-map] for graph of sccs. Pretends every node has self-loop.  Clusters returned will be in topological order."
   [edges]
   (let [edges (distinct (concat edges (map (fn [x] [x x]) (apply concat edges))))
         pe (merge (into {} (map vector (map second edges) (repeat nil))) 
@@ -162,7 +162,7 @@
           (.push s n)))
       (first (keys e))))
 ;    (println s pe e re)
-    (let [sccs (into {} 
+    (let [sccs (into (sorted-map) 
                  (indexed
                   (remove empty?
                           (for [n (reverse (seq s))]
@@ -176,8 +176,10 @@
       [(distinct 
          (for [[scc nodes] sccs
                node nodes
-               outgoing (get pe node)]
-           [scc (get rev-sccs outgoing)]))
+               outgoing (get pe node)
+               :let [n-scc (get rev-sccs outgoing),
+                     _     (assert (<= scc n-scc))]]
+           [scc n-scc]))
        sccs])))
 
 (defn dag? "Is this a dag, ignoring self-loops." [edges]
@@ -225,15 +227,21 @@
 (defn topological-sort-indices 
   "Return a map from nodes to integers, where 0 is a source.  Nodes in same SCC will have same val."
   [edges]
+  (into {}
+    (for [[cn vars] (second (scc-graph edges))
+          var vars]
+      [var cn])))
+
+; Old version, before realized that scc-graph outputs topological order.
 ;  (println edges)
-  (let [[scc-edges scc-nodes] (scc-graph edges)]
-    (assert-is (dag? scc-edges) "%%" (def *tmp edges))
-    (loop [scc-edges scc-edges, scc-nodes scc-nodes, out {}, i 0]
-      (if (empty? scc-nodes) out
-        (let [source (first (filter (fn [n] (every? (fn [[s t]] (or (= s t) (not= t n))) scc-edges)) (keys scc-nodes)))]        
-          (assert-is (identity source) (str  (vec (map vec [scc-edges scc-nodes]))))
-          (recur (remove (fn [[s t]] (= s source)) scc-edges) (dissoc scc-nodes source)
-                 (into out (map vector (get scc-nodes source) (repeat i))) (inc i)))))))
+;  (let [[scc-edges scc-nodes] (scc-graph edges)]
+;    (assert-is (dag? scc-edges) "%%" (def *tmp edges))
+;    (loop [scc-edges scc-edges, scc-nodes scc-nodes, out {}, i 0]
+;      (if (empty? scc-nodes) out
+;        (let [source (first (filter (fn [n] (every? (fn [[s t]] (or (= s t) (not= t n))) scc-edges)) (keys scc-nodes)))]        
+;          (assert-is (identity source) (str  (vec (map vec [scc-edges scc-nodes]))))
+;          (recur (remove (fn [[s t]] (= s source)) scc-edges) (dissoc scc-nodes source)
+;                 (into out (map vector (get scc-nodes source) (repeat i))) (inc i)))))))
 
 
 ;; Seems buggy in several ways; just try on 4x3 grid world.  Loses connectivity, voltages are messed up, etc.  
