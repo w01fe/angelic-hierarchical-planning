@@ -5,16 +5,15 @@
   )
 
 
-;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;; Global bindings ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
+;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;; Types, Protocols, Setup ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
 
 ;; Note: in purely static analysis, either cannot prune source vals, or must 
 ;; split HLAs.  Here, this amounts to, more or less, just removing outgoing arcs from goal.
-;; We can just do this implicitly, and forget about real acyclic stuff in this version.
-; TODO: (could do better, e.g., for line DTGs)
-; In fact, this makes thngs *ugly* for even simple taxi
 
+;; TODO: actual precond var set may not go all the way back to sources... shoudl take this into account.  Should relax these where possible. 
 
-;; I.e, when searching backwards from goal, source is necessary predecessor of target.
+;; TODO: when can greedy sat arise?  After creation, other-sat, or finish
+
 
 
 (declare make-action-hla)
@@ -24,6 +23,7 @@
    predecessor-var-set
    ancestor-var-set
    var-levels
+;   separator-var-set 
    dtg-to       ; fn from var & dst-val to map from cur-val to map from nxt-val to actions
    cycle-to     ; from from var & dst-val to map from cur-val to bool, if can cycle from cur-val
    greedy-optimization?])
@@ -60,6 +60,7 @@
                       (apply clojure.set/union))
                  var))
          (graphs/topological-sort-indices causal-graph)
+;         (graphs/separator-node-set causal-graph)
          dtg-to
          (util/memoized-fn cycle-to [var dst-val]
            (println "computing cycle-to for" var dst-val)
@@ -79,25 +80,84 @@
             util/safe-singleton))])))
 
 
-;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;; Action Protocol ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
+(defprotocol SDH-HLA
+  (active-var-set  [a])
+  (leaf-var-set    [a])
+  (precond-var-set [a s])  ; like precondition-context, but is guaranteed not to change with state
+  (greedy?         [a s v av])
+  (do-refinement   [a s v av ipv]) ;returns [action-seq new-hla]. av is active-var set, ipv is interleaved precondition (ancestor) variables.
+  ) 
 
-#_ (defprotocol SDH-Action
-  (precond-var-set [a])
-  (effect-sets     [a])
-  (pre-ref-pairs   [a])
-  (compile-hla     [a retain-type-set])
-  (extend-hla!     [a init-sets par-effect-sets])
-  (hla-type        [a]))
+;; TODO: Problem with IPV: should take mutexes into account
+;; TODO: should handle actions with no preconditions.
 
+(defprotocol SDH-Precond-HLA
+  (active?    [a])
+  (satisfied? [a s]))
 
-;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;; Precond HLAs ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
+;;;;;;;;;;;;;;;;;;;;;;;;;;;;;; Active Precond HLAs ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
 
-(deftype SDH-Precond-HLA  [hierarchy name var dst-val dtg precond-var-set] :as this
+; ?Note, for bookkeeping to work properly we have to retain an active precond in an action even if we have also pushed it out front.
+
+; first-action can be null, iff we're done.  
+
+(declare make-active-precond-hla)
+
+(deftype SDH-Active-Precond-HLA  [hierarchy name first-action leaf-precond active-var-set leaf-var-set] :as this
+  SDH-HLA
+    (active-var-set  []  (conj active-var-set (:var leaf-precond)))
+    (leaf-var-set    []  leaf-var-set)
+    (precond-var-set [s] (env/precondition-context this s))
+    (greedy?         [s v av] 
+       (greedy? first-action s v av))
+    (do-refinement   [s v av ipv]
+       (if (empty? (clojure.set/intersection ipv (env/precondition-context leaf-precond s)))
+           [[[leaf-precond] (make-active-precond-hla hierarchy nil leaf-precond)]]                   
+         (for [[prefix new-fa] (do-refinement first-action s v av ipv)
+               new-fa          (if new-fa [new-fa] (map first (hierarchy/immediate-refinements leaf-precond s)))]
+           [prefix (make-active-precond-hla hierarchy new-fa leaf-precond)])))
+  SDH-Precond-HLA  
+    (active?     []  true)
+    (satisfied?  [s]
+      (assert (= (not first-action) (satisfied? leaf-precond s)))
+      (not first-action))    
   env/Action
     (action-name [] name)
     (primitive?  [] false)
   env/ContextualAction 
-    (precondition-context [s] precond-var-set)
+    (precondition-context [s] (env/precondition-context leaf-precond s)))
+
+(defn- make-active-precond-hla [hierarchy first-action leaf-precond]
+  (SDH-Active-Precond-HLA hierarchy 
+    [:!P* (when first-action (env/action-name first-action)) (env/action-name leaf-precond)]
+    first-action leaf-precond
+    (conj (if first-action (active-var-set first-action) #{}) (:var leaf-precond))
+    (if first-action (leaf-var-set first-action) #{})))
+
+
+
+;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;; Leaf Precond HLAs ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
+
+(deftype SDH-Leaf-Precond-HLA  [hierarchy name var dst-val dtg precond-var-set] :as this
+  SDH-HLA
+    (active-var-set  []  #{})
+    (leaf-var-set    []  #{var})
+    (precond-var-set [s] precond-var-set)
+    (greedy?         [s v av] false)
+    (do-refinement   [s v av ipv]
+      (assert (= v var))
+      (if (empty? (clojure.set/intersection ipv precond-var-set))
+           [[[this] (make-active-precond-hla hierarchy nil this)]] 
+         (for [[a _] (hierarchy/immediate-refinements this s)]
+           [[] (make-active-precond-hla hierarchy a this)])))
+  SDH-Precond-HLA 
+    (active?     []  false)
+    (satisfied?  [s] (= (env/get-var s var) dst-val))    
+  env/Action
+    (action-name [] name)
+    (primitive?  [] false)
+  env/ContextualAction 
+    (precondition-context [s] (if (satisfied? this s) #{var} precond-var-set))
   hierarchy/HighLevelAction
     (immediate-refinements- [s] 
       (let [cur-val (env/get-var s var)]
@@ -109,42 +169,115 @@
       (when ((:cycle-to hierarchy) var dst-val)
         ((:var-levels hierarchy) var))))
 
-(defn- make-precond-hla [hierarchy var dst-val]
-  (SDH-Precond-HLA hierarchy [:!P var dst-val] var dst-val 
+(defn- make-leaf-precond-hla [hierarchy var dst-val]
+  (SDH-Leaf-Precond-HLA hierarchy [:!P var dst-val] var dst-val 
                    ((:dtg-to           hierarchy) var dst-val)
                    ((:ancestor-var-set hierarchy) var)))
 
-
-;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;; Precond Set HLAs ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
-
-;; This is where all the interleaving magic happens
-
-(deftype SDH-Precond-Set-HLA  [hierarchy name var dst-val dtg precond-var-set] :as this
-  env/Action
-    (action-name [] name)
-    (primitive?  [] false)
-  env/ContextualAction 
-    (precondition-context [s] precond-var-set)
-  hierarchy/HighLevelAction
-    (immediate-refinements- [s] 
-      (let [cur-val (env/get-var s var)]
-        (if (= cur-val dst-val)
-            [[]]
-          (for [as (vals (get dtg cur-val)), action as]
-            [(make-action-hla hierarchy action) this]))))
-    (cycle-level-           [s] 
-      (when ((:cycle-to hierarchy) var dst-val)
-        ((:var-levels hierarchy) var))))
-
-(defn- make-precond-set-hla [hierarchy var dst-val]
-  (SDH-Precond-Set-HLA hierarchy [:!P var dst-val] var dst-val 
-                   ((:dtg-to           hierarchy) var dst-val)
-                   ((:ancestor-var-set hierarchy) var)))
-
+;; TODO: when can greedy sat arise?  After creation, other-sat, or finish
 
 
 ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;; Action HLAs ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
 
+;; TODO: actions need to fire; immediately; after completion of a precondition; greedily; ...
+;; TODO: fire more than one greedy action at once ...
+; ;TODO: how do we keep track of preconditions moved up front ?
+
+(declare make-action-hla)
+
+(deftype SDH-Action-HLA [hierarchy name action precond-var-set precond-hlas]
+  SDH-HLA
+    (active-var-set []  (apply clojure.set/union (map active-var-set precond-hlas)))
+    (leaf-var-set   []  (apply clojure.set/union (map leaf-var-set precond-hlas)))
+    (precond-var-set [] precond-var-set)
+    (greedy?        [s v av] 
+      (or (every? #(and (satisfied? %) (or (active? %) (not (av (:var %))))) precond-hlas)
+          (some #(greedy? % s v av) 
+                (util/make-safe (seq (filter #(contains? (leaf-var-set %) v) precond-hlas))))))
+    (do-refinement  [s v av ipv]
+      (if (greedy? this s v av) [[[action] nil]]
+        (let [deepest-var    (util/first-maximal-element (:var-levels hierarchy) var-options)
+                possible-vals  (filter #(contains? (leaf-var-set %) deepest-var) precond-hlas)
+                [deep shallow] (separate active? possible-vals)
+                val-options    (or (and (:greedy-optimization? hierarchy) 
+                                        (when-first [x (filter #(greedy? % s deepest-var) deep)] x)) 
+                                   (seq deep) 
+                                   (seq shallow))]
+
+            (assert (seq val-options))
+            (assert (<= (count shallow) 1))
+        
+            (for [precond-hla val-options
+                  [prefix remaining] (do-refinement precond-hla s deepest-var 
+                                                    (active-var-set this)
+                                                    
+                                                    )]
+              [prefix 
+               (let [new-precond-hlas
+                      (for [hla precond-hlas]
+                        (if (identical? hla precond-hla) remaining hla))]
+                 (SDH-Action-HLA hierarchy
+                   [:!A* (env/action-name action) (map env/action-name new-precond-hlas)]
+                   action precond-var-set new-precond-hlas))]))))
+  env/Action
+    (action-name     [] name)
+    (primitive?      [] false)
+  env/ContextualAction 
+    (precondition-context [s] precond-var-set)
+  hierarchy/HighLevelAction
+    (immediate-refinements- [s]
+      (if (every? satisfied? precond-hlas) [[action]]
+        (let [var-actives (active-var-set this)
+              var-leaves  (leaf-var-set this)
+              var-options (clojure.set/difference var-leaves var-actives)]
+          (if (empty? var-options)
+              (println "Dead end!")
+            (do-refinement this s (util/first-maximal-element (:var-levels hierarchy) var-options))))))
+    (cycle-level-           [s] nil))
+
+(defn- make-action-hla [hierarchy action]
+  (let [effect-var (key (util/safe-singleton (:effect-map action)))
+        reduced-em (dissoc (:precond-map action) effect-var)]
+    (if (empty? reduced-em)
+        action
+      (SDH-Action-HLA hierarchy [:!A (env/action-name action)] action
+                      ((:ancestor-var-set hierarchy) effect-var)
+                      (for [[pvar pval] ]
+                        (make-leaf-precond-hla hierarchy pvar pval))))))
+
+;; TODO: 
+
+;; suppose we have A and B, share some ancestor;
+;; C, an ancestor of A but not B.  
+;    C shares ancestors with B --> must interleave (constrained)
+;    C shares no ancestors with B --> may as well 
+
+; i.e., two actions must be interleaved if 
+; - Have ancestors in common
+; - Neither an ancestor of the other.
+
+; i.e., go in topological order, keep clusters:
+ ; each has (1) set of vars, (2) union of ancestors, (3) intersection of ancestors.
+ ; new var is added to set if not in set 3, ancestors intersect with set 2.
+ ; else left alone?
+ ; Can a new precond ever "bridge" two previously separate ones?  Yes.
+ ; so just do it by connected components?  Then, how do we order?
+
+
+
+
+; (run-counted #(sahucs-inverted (make-simple-dag-hierarchy (make-sas-problem-from-pddl (prln (write-infinite-taxi-strips2 (make-random-infinite-taxi-env 2 2 1 6)))))))
+
+
+
+
+
+
+
+
+(comment
+  
+  
 
 (deftype SDH-Action-HLA [hierarchy name action effect-var precond-var-set]
   env/Action
@@ -172,7 +305,7 @@
           (for [pc-batch batches]
             (if (> (count pc-batch) 1)
                 (do (println "Interleaving preconditions " pc-batch "for" name)
-                    (make-precond-set-hla hierarchy (select-keys pc-map pc-batch)))
+                    (make-interleaving-hla hierarchy (select-keys pc-map pc-batch)))
               (let [pc (util/safe-singleton pc-batch)]
                 (make-precond-hla hierarchy pc (get pc-map pc))))))
         [action])])
@@ -183,25 +316,5 @@
     (SDH-Action-HLA hierarchy [:!A (env/action-name action)] action effect-var
                     ((:ancestor-var-set hierarchy) effect-var))))
 
-;; TODO: 
 
-;; suppose we have A and B, share some ancestor;
-;; C, an ancestor of A but not B.  
-;    C shares ancestors with B --> must interleave (constrained)
-;    C shares no ancestors with B --> may as well 
-
-; i.e., two actions must be interleaved if 
-; - Have ancestors in common
-; - Neither an ancestor of the other.
-
-; i.e., go in topological order, keep clusters:
- ; each has (1) set of vars, (2) union of ancestors, (3) intersection of ancestors.
- ; new var is added to set if not in set 3, ancestors intersect with set 2.
- ; else left alone?
- ; Can a new precond ever "bridge" two previously separate ones?  Yes.
- ; so just do it by connected components?  Then, how do we order?
-
-
-
-
-; (run-counted #(sahucs-inverted (make-simple-dag-hierarchy (make-sas-problem-from-pddl (prln (write-infinite-taxi-strips2 (make-random-infinite-taxi-env 2 2 1 6)))))))
+  )

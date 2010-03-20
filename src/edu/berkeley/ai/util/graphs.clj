@@ -232,6 +232,7 @@
           var vars]
       [var cn])))
 
+
 ; Old version, before realized that scc-graph outputs topological order.
 ;  (println edges)
 ;  (let [[scc-edges scc-nodes] (scc-graph edges)]
@@ -377,6 +378,27 @@
 
 
 
+(defn separator-node-set
+  "Return a set of nodes, such that removing these nodes disconnects this (directed) graph."
+  [edges]
+  (let [ordered-vars (map safe-singleton (vals (second (scc-graph edges))))
+        all-vars     (set ordered-vars)
+        rnnp         (compute-reachable-nodes-and-necessary-predecessors 
+                      (invert-edges edges) (last ordered-vars))
+        edge-map     (edge-list->outgoing-map edges)]
+    (loop [remaining-vars ordered-vars, necessary-map {}, result #{}]
+      (println necessary-map)
+      (if (empty? remaining-vars) result
+        (let [[var & rest-vars] remaining-vars
+              nec               (get necessary-map var)
+              next-necessary-map 
+                (reduce 
+                 (fn [m sv] (update-in m [sv] #(clojure.set/intersection 
+                                                (or nec (rnnp var)) (or % all-vars))))
+                 necessary-map (edge-map var))]
+          (if (or (nil? nec) (contains? nec var))
+              (recur rest-vars next-necessary-map (conj result var))
+            (recur rest-vars next-necessary-map result)))))))
 
 
        
