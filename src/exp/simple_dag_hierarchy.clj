@@ -12,7 +12,9 @@
 
 ;; TODO: actual precond var set may not go all the way back to sources... shoudl take this into account.  Should relax these where possible. 
 
-;; TODO: when can greedy sat arise?  After creation, other-sat, or finish
+;; TODO: more sophisticated interleaveing-condition based on dynamic descendent set.
+
+;; TODO: immediate refinemetns wrapper that chases chains.
 
 
 
@@ -23,20 +25,22 @@
    predecessor-var-set
    ancestor-var-set
    var-levels
-;   separator-var-set 
+   interfering-set ; fn from var to set of vars: descendents of ancestors but not descendents. 
    dtg-to       ; fn from var & dst-val to map from cur-val to map from nxt-val to actions
    cycle-to     ; from from var & dst-val to map from cur-val to bool, if can cycle from cur-val
    greedy-optimization?])
 
-(defn make-simple-dag-hierarchy [sas-problem]
-  (let [causal-graph (remove #(apply = %) (sas-analysis/standard-causal-graph sas-problem))
-        pred-var-set (util/map-vals (comp set #(map first %))
-                                    (util/unsorted-group-by second causal-graph)) 
-        dtgs         (sas-analysis/domain-transition-graphs sas-problem)
-        sr-dtg       (memoize (fn [var] (for [[pv em] (dtgs var), nv (keys em)] [nv pv])))
-        dtg-to       (memoize (fn [var to-val] ;; Edges s.t. all paths from nv to goal include pv
-                                ;(println "Computing dtg for" var to-val)
-                                 (let [np (graphs/compute-reachable-nodes-and-necessary-predecessors
+(defn make-simple-dag-hierarchy 
+  ([sas-problem] (make-simple-dag-hierarchy sas-problem true))
+  ([sas-problem greedy?]
+     (let [causal-graph (remove #(apply = %) (sas-analysis/standard-causal-graph sas-problem))
+           pred-var-set (util/map-vals (comp set #(map first %))
+                                       (util/unsorted-group-by second causal-graph)) 
+           dtgs         (sas-analysis/domain-transition-graphs sas-problem)
+           sr-dtg       (memoize (fn [var] (for [[pv em] (dtgs var), nv (keys em)] [nv pv])))
+           dtg-to       (memoize (fn [var to-val] ;; Edges s.t. all paths from nv to goal include pv
+                                        ;(println "Computing dtg for" var to-val)
+                                   (let [np (graphs/compute-reachable-nodes-and-necessary-predecessors
                                              (sr-dtg var) to-val)]
                                      (util/map-map 
                                       (fn [[pv emap]]
@@ -46,50 +50,53 @@
                                           emap)])
                                       (dtgs var)))))]
 
-    (assert (graphs/dag? causal-graph))
-    (assert (sas-analysis/homogenous? sas-problem))    
+       (assert (graphs/dag? causal-graph))
+       (assert (sas-analysis/homogenous? sas-problem))    
   
-    (hierarchy/SimpleHierarchicalEnv sas-problem 
-      [(make-action-hla 
-        (Simple-DAG-Hierarchy
-         sas-problem
-         pred-var-set
-         (util/memoized-fn ancestor-var-set [var]
-           (conj (->> (pred-var-set var)
-                      (map ancestor-var-set)
-                      (apply clojure.set/union))
-                 var))
-         (graphs/topological-sort-indices causal-graph)
-;         (graphs/separator-node-set causal-graph)
-         dtg-to
-         (util/memoized-fn cycle-to [var dst-val]
-           (println "computing cycle-to for" var dst-val)
-           (let [dtg (dtg-to var dst-val)]
-             (reduce (fn [m next-vars]
-                       (if (> (count next-vars) 1)
-                           (reduce #(assoc %1 %2 true) m next-vars)
-                         (let [v (util/safe-singleton next-vars)]
-                           (assoc m v (some m (keys (get dtg v)))))))
-                     {} 
-                     (reverse (vals (second (graphs/scc-graph 
-                                             (for [[pval emap] dtg, eval (keys emap)] 
-                                               [pval eval]))))))))
-         false)
-        (-> dtgs
-            (get-in [sas/goal-var-name sas/goal-false-val sas/goal-true-val])
-            util/safe-singleton))])))
+       (hierarchy/SimpleHierarchicalEnv 
+        sas-problem 
+         [(make-action-hla 
+           (Simple-DAG-Hierarchy
+            sas-problem
+            pred-var-set
+            (util/memoized-fn ancestor-var-set [var]
+                              (conj (->> (pred-var-set var)
+                                         (map ancestor-var-set)
+                                         (apply clojure.set/union))
+                                    var))
+            (graphs/topological-sort-indices causal-graph)
+            (memoize
+             (fn interfering-set [var] 
+               (clojure.set/difference 
+                (graphs/descendant-set causal-graph (graphs/ancestor-set causal-graph [var]))
+                (graphs/descendant-set causal-graph [var]))))
+            dtg-to
+            (util/memoized-fn cycle-to [var dst-val]
+              (println "computing cycle-to for" var dst-val)
+              (let [dtg (dtg-to var dst-val)]
+                (reduce (fn [m next-vars]
+                          (if (> (count next-vars) 1)
+                            (reduce #(assoc %1 %2 true) m next-vars)
+                            (let [v (util/safe-singleton next-vars)]
+                              (assoc m v (some m (keys (get dtg v)))))))
+                        {} (reverse (vals (second (graphs/scc-graph 
+                                                   (for [[pval emap] dtg, eval (keys emap)] 
+                                                     [pval eval]))))))))
+            greedy?)
+           (-> dtgs
+               (get-in [sas/goal-var-name sas/goal-false-val sas/goal-true-val])
+               util/safe-singleton))]))))
 
 
 (defprotocol SDH-HLA
   (active-var-set  [a])
   (leaf-var-set    [a])
-  (precond-var-set [a s])  ; like precondition-context, but is guaranteed not to change with state
   (greedy?         [a s v av])
-  (do-refinement   [a s v av ipv]) ;returns [action-seq new-hla]. av is active-var set, ipv is interleaved precondition (ancestor) variables.
+  (do-refinement   [a s v av lv]) ;returns [action-seq new-hla]. av is active-var set, lv is leaf-var set
   ) 
 
-;; TODO: Problem with IPV: should take mutexes into account
-;; TODO: should handle actions with no preconditions.
+
+
 
 (defprotocol SDH-Precond-HLA
   (active?    [a])
@@ -107,13 +114,12 @@
   SDH-HLA
     (active-var-set  []  (conj active-var-set (:var leaf-precond)))
     (leaf-var-set    []  leaf-var-set)
-    (precond-var-set [s] (env/precondition-context this s))
     (greedy?         [s v av] 
        (greedy? first-action s v av))
-    (do-refinement   [s v av ipv]
-       (if (empty? (clojure.set/intersection ipv (env/precondition-context leaf-precond s)))
+    (do-refinement   [s v av lv]
+       (if (empty? (clojure.set/intersection lv ((:interfering-var-set hierarchy) (:var leaf-precond))))
            [[[leaf-precond] (make-active-precond-hla hierarchy nil leaf-precond)]]                   
-         (for [[prefix new-fa] (do-refinement first-action s v av ipv)
+         (for [[prefix new-fa] (do-refinement first-action s v av lv)
                new-fa          (if new-fa [new-fa] (map first (hierarchy/immediate-refinements leaf-precond s)))]
            [prefix (make-active-precond-hla hierarchy new-fa leaf-precond)])))
   SDH-Precond-HLA  
@@ -142,11 +148,10 @@
   SDH-HLA
     (active-var-set  []  #{})
     (leaf-var-set    []  #{var})
-    (precond-var-set [s] precond-var-set)
     (greedy?         [s v av] false)
-    (do-refinement   [s v av ipv]
+    (do-refinement   [s v av lv]
       (assert (= v var))
-      (if (empty? (clojure.set/intersection ipv precond-var-set))
+      (if (empty? (clojure.set/intersection lv ((:interfering-var-set hierarchy) var)))
            [[[this] (make-active-precond-hla hierarchy nil this)]] 
          (for [[a _] (hierarchy/immediate-refinements this s)]
            [[] (make-active-precond-hla hierarchy a this)])))
@@ -157,7 +162,7 @@
     (action-name [] name)
     (primitive?  [] false)
   env/ContextualAction 
-    (precondition-context [s] (if (satisfied? this s) #{var} precond-var-set))
+    (precondition-context [s] precond-var-set)
   hierarchy/HighLevelAction
     (immediate-refinements- [s] 
       (let [cur-val (env/get-var s var)]
@@ -185,38 +190,33 @@
 
 (declare make-action-hla)
 
-(deftype SDH-Action-HLA [hierarchy name action precond-var-set precond-hlas]
+(deftype SDH-Action-HLA [hierarchy name action precond-var-set precond-hlas] :as this
   SDH-HLA
     (active-var-set []  (apply clojure.set/union (map active-var-set precond-hlas)))
     (leaf-var-set   []  (apply clojure.set/union (map leaf-var-set precond-hlas)))
-    (precond-var-set [] precond-var-set)
     (greedy?        [s v av] 
-      (or (every? #(and (satisfied? %) (or (active? %) (not (av (:var %))))) precond-hlas)
+      (or (every? #(and (satisfied? % s) (or (active? %) (not (av (:var %))))) precond-hlas)
           (some #(greedy? % s v av) 
                 (util/make-safe (seq (filter #(contains? (leaf-var-set %) v) precond-hlas))))))
-    (do-refinement  [s v av ipv]
+    (do-refinement  [s v av lv]
       (if (greedy? this s v av) [[[action] nil]]
-        (let [deepest-var    (util/first-maximal-element (:var-levels hierarchy) var-options)
-                possible-vals  (filter #(contains? (leaf-var-set %) deepest-var) precond-hlas)
-                [deep shallow] (separate active? possible-vals)
-                val-options    (or (and (:greedy-optimization? hierarchy) 
-                                        (when-first [x (filter #(greedy? % s deepest-var) deep)] x)) 
-                                   (seq deep) 
-                                   (seq shallow))]
+        (let [possible-vals  (filter #(contains? (leaf-var-set %) v) precond-hlas)
+              [deep shallow] (util/separate active? possible-vals)
+              val-options    (or (and (:greedy-optimization? hierarchy) 
+                                      (when-first [x (filter #(greedy? % s v av) deep)] x)) 
+                                 (seq deep) 
+                                 (seq shallow))]
 
             (assert (seq val-options))
             (assert (<= (count shallow) 1))
         
             (for [precond-hla val-options
-                  [prefix remaining] (do-refinement precond-hla s deepest-var 
-                                                    (active-var-set this)
-                                                    
-                                                    )]
+                  [prefix remaining] (do-refinement precond-hla s v av lv)]
               [prefix 
                (let [new-precond-hlas
                       (for [hla precond-hlas]
                         (if (identical? hla precond-hla) remaining hla))]
-                 (SDH-Action-HLA hierarchy
+                 (SDH-Action-HLA. hierarchy
                    [:!A* (env/action-name action) (map env/action-name new-precond-hlas)]
                    action precond-var-set new-precond-hlas))]))))
   env/Action
@@ -226,13 +226,14 @@
     (precondition-context [s] precond-var-set)
   hierarchy/HighLevelAction
     (immediate-refinements- [s]
-      (if (every? satisfied? precond-hlas) [[action]]
+      (if (every? #(satisfied? % s) precond-hlas) [[action]]
         (let [var-actives (active-var-set this)
               var-leaves  (leaf-var-set this)
               var-options (clojure.set/difference var-leaves var-actives)]
           (if (empty? var-options)
               (println "Dead end!")
-            (do-refinement this s (util/first-maximal-element (:var-levels hierarchy) var-options))))))
+            (do-refinement this s (util/first-maximal-element (:var-levels hierarchy) var-options)
+                           var-actives var-leaves)))))
     (cycle-level-           [s] nil))
 
 (defn- make-action-hla [hierarchy action]
@@ -242,7 +243,7 @@
         action
       (SDH-Action-HLA hierarchy [:!A (env/action-name action)] action
                       ((:ancestor-var-set hierarchy) effect-var)
-                      (for [[pvar pval] ]
+                      (for [[pvar pval] reduced-em]
                         (make-leaf-precond-hla hierarchy pvar pval))))))
 
 ;; TODO: 

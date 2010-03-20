@@ -400,6 +400,20 @@
               (recur rest-vars next-necessary-map (conj result var))
             (recur rest-vars next-necessary-map result)))))))
 
+(defn descendant-set [edges source-nodes]
+  (let [edge-map (edge-list->outgoing-map edges)
+        h        (HashSet.)]
+    (doseq [s source-nodes]
+      ((fn helper [n]
+         (when-not (.contains h n)
+           (.add h n)
+           (doseq [nn (edge-map n)]
+             (helper nn))))
+       s))
+    (set h)))
+
+(defn ancestor-set [edges source-nodes]
+  (descendant-set (invert-edges edges) source-nodes))
 
        
   
