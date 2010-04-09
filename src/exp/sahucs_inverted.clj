@@ -16,6 +16,8 @@
 ;; Or, at time of first pop, snatch current parent set, order it, pop only best at a time.
 ;; Generate immediate refinements
 
+;; TODO: why is it OK to do things state-based, not effect-based, here? 
+
 ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
 ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;   Helpers       ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
 ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
@@ -174,3 +176,59 @@ nil
 ;                (util/assert-is (seq good-parents)  "%s" [(keyword? cpa-val) neg-rew (:reward-to-state best) best-rew (map second cur-parents) (env/action-name (:action (:sanode best))) (count cur-parents) (count (:parent-vec-atom (:sanode best)))])
 
 ;                    (util/assert-is (nil? (queues/g-pq-priority queue nxt)) "%s" [(:reward-to-state best) (second (first bad-parents))  (count cur-parents) (count bad-parents) (map second cur-parents) (count @(:parent-vec-atom (:sanode best)))])
+
+
+(comment
+  
+  Inefficient in cyclic hierarchies, expensive since lots of queues. 
+
+Detailed workings
+------------------------
+At top-level, keep a queue of ``entries''
+Each ``entry'' has a concrete state, reward-to-state, ``sanode'', and remaining-parents list.
+  - remaining-parents can be :fresh, whith means ..., or list of [parent-entry pre-reward]
+  - Equality based on the state, sanode identity, and identity of first parent.
+Each ``sanode'' represents a particular subproblem
+ -- computing the results of a particular action from a particular (abstracted) state.
+ - Contains an action, atom of results found so far, atom of [parent-entry reward] parents
+ -    (set is redundant?).  Never compared on equality.
+ - Redundant parent entries (i.e., from coalescence within parent) skipped.
+ 
+Global cache maps [action, state-in-context] pairs to sanodes.
+
+Each ``parent entry'' has a concrete state, reward-to-state, remaining-actions, parent sanode
+ - (reward is reward *within the parent*)
+ - Equality is based on remaining-actions and sanode (enough for uniqueness in context ? )
+ - Represents a reference to an sanode from a parent sanode, more or less. 
+    - State in parent context, reward within parent context, remaining actions, ...
+ - If we followed chain upwards, we would get particular context + cost.
+
+
+So, we have a chain of sanode --> parent --> sanode --> parent upwards. 
+
+Basic idea: when we discover a subproblem, we create an sanode and register ourselves as a parent.
+
+Get-sa-node
+-----------------------
+This is probably the main workhorse.  We pass in an action, parent-entry, and pre-reward.
+If the node exists
+ If the parent is already known, we've found a worse path, and skip.
+ Else, add the parent entry, and return queue entries for already discovered states.
+Else, create a new SA-node, and make queue entries for its children (either primitive result, or refinements left to go).
+ 
+TODO: how aren't we missing intermediate states here?
+
+
+Flow
+-----------------------
+Each queue entry represents an *outcome* state for some action, in a (tail) subset of contexts discovered so far.  By default it's remaining parent set is just ``fresh'', meaning grab the list of contexts from the sanode on first expansion.  After that, it's the set of not-yet-good-enough parents. 
+
+Pop the best state off the queue.  The reward associated it is the best reward to reach this state, in any currently established hierarchical context.  We've discovered a new output state for some HLA, so we 
+(1) Add new queue entries for all optimal parents, by looking up cached results, and 
+  (a) adding entry for parent, if we're done there too, or
+  (b) jumping through next action / adding to notify list, if it exists, or 
+  (c) Creating a cascade of node/pe all the way to the primitive level, where we take our first step, for each refinement at each level.  
+
+Note, exploit canonicality of extra variables at any SA-node. 
+
+  )
