@@ -9,6 +9,14 @@
 ;; This version may be inefficient in graphy domains, but should still be complete+optimal
 ;; (as long as rewards for primitives are strictly negative)
 
+; similar to simple-dijkstra, except:
+ ; We delay creation of children.
+ ; We reuse work "upwards" with cyclic children, but not downwards.
+ ; I.e., when we come into a cycle, we take all the work done at che child and reuse it,
+ ; but future work will not be saved.  
+
+;; TODO: lift-sanode-entry is buggy ?
+
 ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
 ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;   Helpers       ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
 ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
@@ -89,7 +97,7 @@
          (and (seq parent-actions) (delay (get-sa-node cache stitched (first parent-actions)))))  
      (+ (:reward-to-state entry) parent-reward)
      (concat (:remaining-actions entry) parent-actions)
-     (:hash-code entry))))
+     (:hash-code entry)))) ;; TODO?!
 
 (defn get-sa-node [#^HashMap cache s a]
   "Create a new sa-node, or returned the cached copy if it exists."

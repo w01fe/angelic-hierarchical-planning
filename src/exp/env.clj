@@ -119,13 +119,18 @@
 
 (defprotocol PrimitiveAction
   (applicable? [a s])
-  (next-state-and-reward  [a s])
+  (next-state-and-reward  [a s]) ; Precondition: applicable.
   )
 
 (defprotocol ContextualAction
   (precondition-context [a s]))
 
-(deftype FactoredPrimitive [name precond-map effect-map reward] 
+;; TODO: better to have single map from state to range ?
+(defprotocol AngelicAction
+  (optimistic-map [a s])
+  (pessimistic-map [a s]))
+
+(deftype FactoredPrimitive [name precond-map effect-map reward] :as this
   Action 
     (action-name [] name)
     (primitive? [] true)
@@ -136,7 +141,16 @@
       [(apply-effects s effect-map) reward])
   ContextualAction
     (precondition-context [s]
-      (.keySet #^Map precond-map)))
+      (.keySet #^Map precond-map))
+  AngelicAction
+    (optimistic-map [s]
+      (if (applicable? this s) 
+        (let [[s r] (next-state-and-reward this s)] {s r}) 
+        {}))
+    (pessimistic-map [s]
+      (if (applicable? this s) 
+        (let [[s r] (next-state-and-reward this s)] {s r}) 
+        {})))
 
 (defmethod print-method ::FactoredPrimitive [a o] (print-method (action-name a) o))
 
