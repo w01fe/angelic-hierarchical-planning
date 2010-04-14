@@ -110,12 +110,12 @@
                               (let [cx (env/get-var s ['atx])
                                     cy (env/get-var s ['aty])]
                                 {(env/set-var (env/set-var s ['atx] dx) ['aty] dy)
-                                 (- 0 (abs (- dx sx)) (abs (- dy sy)))}))
+                                 (- 0 (util/abs (- dx cx)) (util/abs (- dy cy)))}))
                             (pessimistic-map [s]
                               (let [cx (env/get-var s ['atx])
                                     cy (env/get-var s ['aty])]
                                 {(env/set-var (env/set-var s ['atx] dx) ['aty] dy)
-                                 (- 0 (abs (- dx sx)) (abs (- dy sy)))})))
+                                 (- 0 (util/abs (- dx cx)) (util/abs (- dy cy)))})))
 
 (deftype ServeHLA [env pass] 
   env/Action                (action-name [] ['serve pass])
