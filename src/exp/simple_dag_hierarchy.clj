@@ -180,6 +180,7 @@
     (needs-expand?   []  (not (satisfied? this :dummy)))
     (expand          [lv] 
       (let [{:keys [hierarchy var dst-val dtg]} inactive-leaf]               
+;        (println cur-val dst-val)
        (cond (empty? (clojure.set/intersection lv ((:interfering-set hierarchy) var)))
                [[[inactive-leaf] (advance-active-leaf-precond-hla this dst-val)]]
              (= cur-val dst-val)
@@ -254,6 +255,7 @@
 
 ;; NOTE: precond always needs expand after selection, even though it won't say so if satisfied.
 ;; this override is handled below.
+
 (deftype SDH-Action-HLA [hierarchy name action precond-var-set precond-hlas expand-index] :as this
   SDH-HLA
     (active-var-set []  (apply clojure.set/union (map active-var-set precond-hlas)))
@@ -261,12 +263,14 @@
     (needs-expand?  []  expand-index)
     (expand         [lv]
       (assert expand-index)
-      (for [[prefix new-precond] (expand (precond-hlas expand-index) lv)]
-        (if (and (satisfied? new-precond :dummy) (every? #(and (active? %) (satisfied? % :dummy)) precond-hlas))
+      (for [[prefix new-precond] (expand (precond-hlas expand-index) lv)
+            :let [next-hlas (assoc precond-hlas expand-index new-precond)]]        
+        (do ; (println (map env/action-name next-hlas) (env/action-name new-precond))
+         (if (and (satisfied? new-precond :dummy) (every? #(and (active? %) (satisfied? % :dummy)) next-hlas))
             [(conj prefix action) nil]
-          [prefix (SDH-Action-HLA hierarchy name action precond-var-set
-                                  (assoc precond-hlas expand-index new-precond) 
-                                  (when (needs-expand? new-precond) expand-index))])))
+            [prefix (SDH-Action-HLA. hierarchy [:!A* (env/action-name action) (map env/action-name next-hlas)] 
+                                     action precond-var-set next-hlas                              
+                                     (when (needs-expand? new-precond) expand-index))]))))
     (greedy-select? [s v av] 
       (or (every? #(and (satisfied? % s) (or (active? %) (not (av (:var %))))) precond-hlas)
           (some #(greedy-select? % s v av) (util/make-safe (seq (filter #(contains? (leaf-var-set %) v) precond-hlas))))))
@@ -291,15 +295,18 @@
     (precondition-context [s] precond-var-set)
   hierarchy/HighLevelAction
     (immediate-refinements- [s]
-      (let [var-leaves  (leaf-var-set this)]
-       (if (needs-expand? this)
-         (let [[prefix next] (expand this var-leaves)]
-           (if next (conj prefix next) prefix))
+     (let [var-leaves  (leaf-var-set this)]
+       (if (needs-expand? this)  ; Prevent loop where new trivial-sat prec.
+           (let [nexts  (for [[prefix nxt] (expand this var-leaves)] (if nxt (conj prefix nxt) prefix))]
+             (if-let [a (util/singleton (util/singleton nexts))]
+                 (hierarchy/immediate-refinements- a s)
+               nexts))
          (let [var-actives (active-var-set this)
                var-options (clojure.set/difference var-leaves var-actives)]
+;           (println "selecting...")
            (if (empty? var-options)
-             (println "Dead end!")
-             (select-leaf this s (util/first-maximal-element (:var-levels hierarchy) var-options) var-actives))))))
+               (println "Dead end!")
+             (map vector (select-leaf this s (util/first-maximal-element (:var-levels hierarchy) var-options) var-actives)))))))
     (cycle-level-           [s] nil))
 
 (defn- make-action-hla [hierarchy action]

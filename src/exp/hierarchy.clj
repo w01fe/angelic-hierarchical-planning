@@ -23,8 +23,8 @@
 ;  (println "Computing Refs for " (env/action-name a))
   (util/timeout)
   (let [refs (immediate-refinements- a s)]
-    (println "\nRefs for " (env/action-name a) "from" (vals (env/as-map s)) "are" 
-             (apply str (doall (map #(str "\n  " (util/str-join ", " (map env/action-name %))) refs))))
+;    (println "\nRefs for " (env/action-name a) "from" (vals (env/as-map s)) "are" 
+;             (apply str (doall (map #(str "\n  " (util/str-join ", " (map env/action-name %))) refs))))
     (util/sref-set! *ref-counter*  (+ 1            (util/sref-get *ref-counter*)))
     (util/sref-set! *plan-counter* (+ (count refs) (util/sref-get *plan-counter*)))
     refs))
