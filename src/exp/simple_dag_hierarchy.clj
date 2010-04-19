@@ -177,9 +177,9 @@
   SDH-HLA
     (active-var-set  []  (leaf-var-set inactive-leaf))
     (leaf-var-set    []  (active-var-set inactive-leaf))
-    (needs-expand?   []  (not (satisfied? this)))
+    (needs-expand?   []  (not (satisfied? this :dummy)))
     (expand          [lv] 
-      (let [{:keys [hierarchy var dst-val]} inactive-leaf]               
+      (let [{:keys [hierarchy var dst-val dtg]} inactive-leaf]               
        (cond (empty? (clojure.set/intersection lv ((:interfering-set hierarchy) var)))
                [[[inactive-leaf] (advance-active-leaf-precond-hla this dst-val)]]
              (= cur-val dst-val)
@@ -259,10 +259,10 @@
     (active-var-set []  (apply clojure.set/union (map active-var-set precond-hlas)))
     (leaf-var-set   []  (apply clojure.set/union (map leaf-var-set precond-hlas)))
     (needs-expand?  []  expand-index)
-    (expand         []
+    (expand         [lv]
       (assert expand-index)
-      (for [[prefix new-precond] (expand (precond-hlas expand-index))]
-        (if (and (satisfied? new-precond) (every? #(and (active? %) (satisfied? % :dummy)) precond-hlas))
+      (for [[prefix new-precond] (expand (precond-hlas expand-index) lv)]
+        (if (and (satisfied? new-precond :dummy) (every? #(and (active? %) (satisfied? % :dummy)) precond-hlas))
             [(conj prefix action) nil]
           [prefix (SDH-Action-HLA hierarchy name action precond-var-set
                                   (assoc precond-hlas expand-index new-precond) 
@@ -270,7 +270,7 @@
     (greedy-select? [s v av] 
       (or (every? #(and (satisfied? % s) (or (active? %) (not (av (:var %))))) precond-hlas)
           (some #(greedy-select? % s v av) (util/make-safe (seq (filter #(contains? (leaf-var-set %) v) precond-hlas))))))
-    (select-leaf    [s v av lv]
+    (select-leaf    [s v av]
       (let [possible-vals  (filter #(contains? (leaf-var-set (precond-hlas %)) v) (range (count precond-hlas)))
             [deep shallow] (util/separate (comp active? precond-hlas) possible-vals)
             val-options    (or (and (:greedy-optimization? hierarchy) 
@@ -280,7 +280,7 @@
         (assert (seq val-options))
         (assert (<= (count shallow) 1))
         (for [idx         val-options,
-              next        (select-leaf (precond-hlas idx) s v a v lv)
+              next        (select-leaf (precond-hlas idx) s v av)
               :let [new-precond-hlas (assoc precond-hlas idx next)]]
           (SDH-Action-HLA. hierarchy [:!A* (env/action-name action) (map env/action-name new-precond-hlas)]
                            action precond-var-set new-precond-hlas idx))))
@@ -291,16 +291,15 @@
     (precondition-context [s] precond-var-set)
   hierarchy/HighLevelAction
     (immediate-refinements- [s]
-      (if (every? #(satisfied? % s) precond-hlas) (do (println "gREED!") [[action]])
-        (let [var-actives (active-var-set this)
-              var-leaves  (leaf-var-set this)
-              var-options (clojure.set/difference var-leaves var-actives)]
-          (if (empty? var-options)
-              (println "Dead end!")
-            (for [[prefix remaining]
-                  (do-refinement this s (util/first-maximal-element (:var-levels hierarchy) var-options)
-                                 var-actives var-leaves)]
-              (if remaining (concat prefix [remaining]) prefix))))))
+      (let [var-leaves  (leaf-var-set this)]
+       (if (needs-expand? this)
+         (let [[prefix next] (expand this var-leaves)]
+           (if next (conj prefix next) prefix))
+         (let [var-actives (active-var-set this)
+               var-options (clojure.set/difference var-leaves var-actives)]
+           (if (empty? var-options)
+             (println "Dead end!")
+             (select-leaf this s (util/first-maximal-element (:var-levels hierarchy) var-options) var-actives))))))
     (cycle-level-           [s] nil))
 
 (defn- make-action-hla [hierarchy action]
