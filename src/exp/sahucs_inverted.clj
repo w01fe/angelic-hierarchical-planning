@@ -36,15 +36,26 @@
 ;; Stores a reference to a parent of an SANode.
 ;; state is the concrete state from the parent, reward is its reward within the parent,
 ;; sanode is the parent, and remaining-actions are the remaining actions.
-(deftype ParentEntry [state reward-to-state remaining-actions sanode hash-code]
+  (deftype ParentEntry [state reward-to-state remaining-actions sanode hash-code]
+    Object
+    (equals [y] (and (= (map env/action-name remaining-actions) (map env/action-name (:remaining-actions y))) (identical? sanode (:sanode y))))
+    (hashCode [] hash-code))
+
+  (defn make-pe [state reward-to-state remaining-actions sanode]
+    (ParentEntry state reward-to-state remaining-actions sanode
+                 (unchecked-add (int (hash (map env/action-name remaining-actions)))
+                                (unchecked-multiply (int 13) (System/identityHashCode sanode)))))
+
+(comment 
+  (deftype ParentEntry [state reward-to-state remaining-actions sanode hash-code]
     Object
     (equals [y] (and (= remaining-actions (:remaining-actions y)) (identical? sanode (:sanode y))))
     (hashCode [] hash-code))
 
-(defn make-pe [state reward-to-state remaining-actions sanode]
-  (ParentEntry state reward-to-state remaining-actions sanode
-    (unchecked-add (int (hash remaining-actions))
-      (unchecked-multiply (int 13) (System/identityHashCode sanode)))))
+  (defn make-pe [state reward-to-state remaining-actions sanode]
+    (ParentEntry state reward-to-state remaining-actions sanode
+                 (unchecked-add (int (hash remaining-actions))
+                                (unchecked-multiply (int 13) (System/identityHashCode sanode))))))
 
 ;; Stores abstracted results of a state-action pair.  result-map-atom maps states
 ;; to rewards (within this anode).  parent-vec-atom is a map of parent-entries to
@@ -54,7 +65,7 @@
 (defn make-sa-node [ a init-parent-entry ip-reward]
   (let [hs (HashSet.)]
     (.add hs init-parent-entry)
-    (SANode  a (atom {}) (atom [[init-parent-entry ip-reward]]) hs)))
+    (SANode  a (atom {}) (atom [[init-parent-entry ip-reward]]) hs )))
 
 
 (defn gq-parent-key [parent-info]

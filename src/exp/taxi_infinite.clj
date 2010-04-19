@@ -274,4 +274,95 @@
 (deftest infinite-taxi-generic2
   (is (= -15 (second (exp.ucs/uniform-cost-search (sas/make-sas-problem-from-pddl (write-infinite-taxi-strips2 (InfiniteTaxiEnv 5 5 [['red [2 1] [5 4]] ['green [1 4] [3 3]]]))))))))
 
+
+
+
+;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;; STRIPS version 3 ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
+
+; This version doesn't split X and Y, to make DAG, and only allows putdown at goal.
+
+(defn- write-infinite-taxi-strips3-domain [file]
+  (util/spit file
+    ";; Taxi domain 
+     
+     (define (domain infinite-taxi3)
+       (:requirements :typing)
+       (:types loc pass)
+       (:constants InTaxi - loc)
+       (:predicates 
+          (LEFTOF ?l1 ?l2 - loc)
+          (ABOVE  ?l1 ?l2 - loc)
+          (PASSGOAL ?p - pass ?l - loc)
+          (at ?l - loc)
+          (passat ?p - pass ?l - loc))
+
+       
+       (:action pickup 
+         :parameters (?p - pass ?l - loc)
+         :precondition (and (at ?l) (passat ?p ?l))
+         :effect       (and (not (passat ?p ?l)) (passat ?p InTaxi)))
+                          
+       (:action putdown 
+         :parameters (?p - pass ?l - loc)
+         :precondition (and (at ?l) (PASSGOAL ?p ?l) (passat ?p InTaxi))
+         :effect       (and (not (passat ?p InTaxi)) (passat ?p ?l)))
+
+       (:action left 
+         :parameters (?l1 ?l2 - loc)
+         :precondition (and (at ?l1) (LEFTOF ?l2 ?l1))
+         :effect       (and (not (at ?l1)) (at ?l2)))
+
+       (:action right 
+         :parameters (?l1 ?l2 - loc)
+         :precondition (and (at ?l1) (LEFTOF ?l1 ?l2))
+         :effect       (and (not (at ?l1)) (at ?l2)))
+
+       (:action up 
+         :parameters (?l1 ?l2 - loc)
+         :precondition (and (at ?l1) (ABOVE ?l2 ?l1))
+         :effect       (and (not (at ?l1)) (at ?l2)))
+
+       (:action down 
+         :parameters (?l1 ?l2 - loc)
+         :precondition (and (at ?l1) (ABOVE ?l1 ?l2))
+         :effect       (and (not (at ?l1)) (at ?l2))))"         
+        ))
+
+(defn- write-infinite-taxi-strips3-instance [tenv file]
+  (let [{:keys [width height passengers]} tenv]
+    (util/spit file
+      (util/str-join "\n"
+        ["(define (problem infinite-taxi3-)
+           (:domain infinite-taxi3)
+           (:objects "
+              (util/str-join " " (map first passengers)) " - pass"
+              (util/str-join " " (for [w (range 1 (inc width)) h (range 1 (inc height))] (str w "-" h)))
+                             " - loc"
+         "    )
+           (:init "
+              (util/str-join " " (for [w (range 1 width) h (range 1 (inc height))] 
+                                   (str "(LEFTOF " w "-" h " " (inc w) "-" h ")")))
+              (util/str-join " " (for [w (range 1 (inc width)) h (range 1 height)] 
+                                   (str "(ABOVE " w "-" (inc h) " " w "-" h ")")))
+              "(at 1-1)"
+              (util/str-join " " (for [[n [sx sy]] passengers]
+                                   (str "(passat " n " " sx "-" sy ")")))
+              (util/str-join " " (for [[n _ [dx dy]] passengers]
+                                   (str "(PASSGOAL " n " " dx "-" dy ")")))
+              ")
+           (:goal (and " (str "(at " width "-" height ")")
+              (util/str-join " " (for [[n _ [dx dy]] passengers]
+                                   (str "(passat " n " " dx "-" dy ")")))
+              ")))"]))))
+
+(defn write-infinite-taxi-strips3 
+  ([tenv] (write-infinite-taxi-strips3 tenv (str "/tmp/inf-taxi3" (rand-int 10000))))
+  ([tenv prefix]
+     (write-infinite-taxi-strips3-domain (str prefix "-domain.pddl"))
+     (write-infinite-taxi-strips3-instance tenv (str prefix ".pddl"))
+     prefix))
+
+(deftest infinite-taxi-generic3
+  (is (= -15 (second (exp.ucs/uniform-cost-search (sas/make-sas-problem-from-pddl (write-infinite-taxi-strips3 (InfiniteTaxiEnv 5 5 [['red [2 1] [5 4]] ['green [1 4] [3 3]]]))))))))
+
 ; (make-sas-problem-from-pddl (prln (write-taxi-strips (make-random-taxi-env 1 2 1))) )

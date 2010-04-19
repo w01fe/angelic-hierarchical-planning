@@ -32,9 +32,11 @@
 
 
 
-
+;; !!!!!!!!!!!!!!!!!!!!!!!!!!!
 ;; TODO: this is fundamentlaly broken, since it doesn't do "lookahead".
 
+;Idea: just take current algorithm, add phantom preconditions?
+;How much do we have to lose by not doing the fancy bookkeeping ? 
 
 (declare make-action-hla)
 
@@ -69,7 +71,7 @@
                                       (dtgs var)))))]
 
        (assert (graphs/dag? causal-graph))
-       (assert (sas-analysis/homogenous? sas-problem))    
+;       (assert (sas-analysis/homogenous? sas-problem))    
   
        (hierarchy/SimpleHierarchicalEnv 
         sas-problem 
@@ -283,11 +285,11 @@
                                (seq shallow))]
         (assert (seq val-options))
         (assert (<= (count shallow) 1))
-        (for [idx         val-options,
-              next        (select-leaf (precond-hlas idx) s v av)
-              :let [new-precond-hlas (assoc precond-hlas idx next)]]
-          (SDH-Action-HLA. hierarchy [:!A* (env/action-name action) (map env/action-name new-precond-hlas)]
-                           action precond-var-set new-precond-hlas idx))))
+        (doall (for [idx         val-options,
+               next        (select-leaf (precond-hlas idx) s v av)
+               :let [new-precond-hlas (assoc precond-hlas idx next)]]
+           (SDH-Action-HLA. hierarchy [:!A* (env/action-name action) (map env/action-name new-precond-hlas)]
+                            action precond-var-set new-precond-hlas idx)))))
   env/Action
     (action-name     [] name)
     (primitive?      [] false)
@@ -341,6 +343,7 @@
 
 ; (run-counted #(sahucs-inverted (make-simple-dag-hierarchy (make-sas-problem-from-pddl (prln (write-infinite-taxi-strips2 (make-random-infinite-taxi-env 2 2 1 6)))))))
 
+; (let [p (make-sas-problem-from-pddl (write-infinite-taxi-strips2 (make-random-infinite-taxi-env 3 3 3 0)))] (println (time (run-counted #(second (uniform-cost-search p))))) (println (time (run-counted #(second (sahucs-inverted (make-simple-dag-hierarchy p)))))))
 
 
 
