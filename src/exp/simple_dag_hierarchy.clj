@@ -15,7 +15,14 @@
 ;; TODO: more sophisticated interleaveing-condition based on dynamic descendent set.
 
 ;; TODO: immediate refinemetns wrapper that chases chains.
+ ; or, resolve tension between greediness and maximal caching? 
 
+;; Currently, was written as if we've always done as much greedy stuff as possible, leave ourselves with a choice of leaf preconds.
+;; Problem is, e.g., in source var this means we lose caching.
+;; Also problems when we have moved something out front, would rather not hypothetically clean up current.
+
+
+;; TODO: this is fundamentlaly broken, since it doesn't do "lookahead".
 
 
 (declare make-action-hla)
@@ -91,7 +98,7 @@
 (defprotocol SDH-HLA
   (active-var-set  [a])
   (leaf-var-set    [a])
-  (greedy?         [a s v av])
+  (greedy?         [a s v av])    ; Has a descendent that can be done greedily.
   (do-refinement   [a s v av lv]) ;returns [action-seq new-hla]. av is active-var set, lv is leaf-var set
   ) 
 
@@ -106,7 +113,17 @@
 
 ; ?Note, for bookkeeping to work properly we have to retain an active precond in an action even if we have also pushed it out front.
 
-; first-action can be null, iff we're done.  
+; first-action can be null, iff we're done.
+
+;; Which function to calal for recursive i-r.  Should probably be hierarchy/immediate-refs.
+
+;; Note: can get primitives 
+
+(defn rec-immediate-refinements [a s]
+  (hierarchy/immediate-refinements- a s))
+
+(defn effect-val [a]
+  (val (util/safe-singleton (:effect-map (if (env/primitive? a) a (:action a) )))))
 
 (declare make-active-precond-hla)
 
@@ -115,12 +132,14 @@
     (active-var-set  []  (conj active-var-set (:var leaf-precond)))
     (leaf-var-set    []  leaf-var-set)
     (greedy?         [s v av] 
-       (greedy? first-action s v av))
+       (and first-action (or (env/primitive? first-action) (greedy? first-action s v av))))
     (do-refinement   [s v av lv]
-       (if (empty? (clojure.set/intersection lv ((:interfering-var-set hierarchy) (:var leaf-precond))))
+       (if (empty? (clojure.set/intersection lv ((:interfering-set hierarchy) (:var leaf-precond))))
            [[[leaf-precond] (make-active-precond-hla hierarchy nil leaf-precond)]]                   
-         (for [[prefix new-fa] (do-refinement first-action s v av lv)
-               new-fa          (if new-fa [new-fa] (map first (hierarchy/immediate-refinements leaf-precond s)))]
+         (for [[prefix new-fa] (if (env/primitive? first-action) 
+                                   [[first-action] nil]
+                                 (do-refinement first-action s v av lv))
+               new-fa          (if new-fa [new-fa] (map first (rec-immediate-refinements leaf-precond (env/set-var s (:var leaf-precond) (effect-val first-action)))))]
            [prefix (make-active-precond-hla hierarchy new-fa leaf-precond)])))
   SDH-Precond-HLA  
     (active?     []  true)
@@ -151,9 +170,9 @@
     (greedy?         [s v av] false)
     (do-refinement   [s v av lv]
       (assert (= v var))
-      (if (empty? (clojure.set/intersection lv ((:interfering-var-set hierarchy) var)))
+      (if (empty? (clojure.set/intersection lv ((:interfering-set hierarchy) var)))
            [[[this] (make-active-precond-hla hierarchy nil this)]] 
-         (for [[a _] (hierarchy/immediate-refinements this s)]
+         (for [[a _] (rec-immediate-refinements this s)]
            [[] (make-active-precond-hla hierarchy a this)])))
   SDH-Precond-HLA 
     (active?     []  false)
@@ -166,6 +185,7 @@
   hierarchy/HighLevelAction
     (immediate-refinements- [s] 
       (let [cur-val (env/get-var s var)]
+;        (println cur-val dst-val)
         (if (= cur-val dst-val)
             [[]]
           (for [as (vals (get dtg cur-val)), action as]
@@ -188,6 +208,7 @@
 ;; TODO: fire more than one greedy action at once ...
 ; ;TODO: how do we keep track of preconditions moved up front ?
 
+; Am I greedy, or do I have a 
 (declare make-action-hla)
 
 (deftype SDH-Action-HLA [hierarchy name action precond-var-set precond-hlas] :as this
@@ -196,17 +217,18 @@
     (leaf-var-set   []  (apply clojure.set/union (map leaf-var-set precond-hlas)))
     (greedy?        [s v av] 
       (or (every? #(and (satisfied? % s) (or (active? %) (not (av (:var %))))) precond-hlas)
-          (some #(greedy? % s v av) 
-                (util/make-safe (seq (filter #(contains? (leaf-var-set %) v) precond-hlas))))))
+          (some #(greedy? % s v av) (util/make-safe (seq (filter #(contains? (leaf-var-set %) v) precond-hlas))))
+          ))
     (do-refinement  [s v av lv]
-      (if (greedy? this s v av) [[[action] nil]]
+      (if (every? #(and (satisfied? % s) (or (active? %) (not (av (:var %))))) precond-hlas) 
+          (do (println "GREED2") [[[action] nil]])
         (let [possible-vals  (filter #(contains? (leaf-var-set %) v) precond-hlas)
               [deep shallow] (util/separate active? possible-vals)
               val-options    (or (and (:greedy-optimization? hierarchy) 
-                                      (when-first [x (filter #(greedy? % s v av) deep)] x)) 
+                                      (when-first [x (filter #(greedy? % s v av) deep)] [x])) 
                                  (seq deep) 
                                  (seq shallow))]
-
+;          (println "refining at " v "with options" val-options)
             (assert (seq val-options))
             (assert (<= (count shallow) 1))
         
@@ -226,14 +248,16 @@
     (precondition-context [s] precond-var-set)
   hierarchy/HighLevelAction
     (immediate-refinements- [s]
-      (if (every? #(satisfied? % s) precond-hlas) [[action]]
+      (if (every? #(satisfied? % s) precond-hlas) (do (println "gREED!") [[action]])
         (let [var-actives (active-var-set this)
               var-leaves  (leaf-var-set this)
               var-options (clojure.set/difference var-leaves var-actives)]
           (if (empty? var-options)
               (println "Dead end!")
-            (do-refinement this s (util/first-maximal-element (:var-levels hierarchy) var-options)
-                           var-actives var-leaves)))))
+            (for [[prefix remaining]
+                  (do-refinement this s (util/first-maximal-element (:var-levels hierarchy) var-options)
+                                 var-actives var-leaves)]
+              (if remaining (concat prefix [remaining]) prefix))))))
     (cycle-level-           [s] nil))
 
 (defn- make-action-hla [hierarchy action]
