@@ -111,13 +111,10 @@
                                     cy (env/get-var s ['aty])]
                                 {(env/set-var (env/set-var s ['atx] dx) ['aty] dy)
                                  (- 0 (util/abs (- dx cx)) (util/abs (- dy cy)))}))
-                            (pessimistic-map [s]
-                              (let [cx (env/get-var s ['atx])
-                                    cy (env/get-var s ['aty])]
-                                {(env/set-var (env/set-var s ['atx] dx) ['aty] dy)
-                                 (- 0 (util/abs (- dx cx)) (util/abs (- dy cy)))})))
+                            (pessimistic-map [s] 
+                              (env/optimistic-map this s)))
 
-(deftype ServeHLA [env pass] 
+(deftype ServeHLA [env pass] :as this
   env/Action                (action-name [] ['serve pass])
                             (primitive? [] false)
   env/ContextualAction      (precondition-context [s] #{ ['atx] ['aty] ['in-taxi] ['pass-served? pass]})
@@ -129,7 +126,34 @@
                                    pd (make-dropoff s pass)]
                                (util/assert-is (and pu pd))
                                [[(NavHLA env sx sy) pu (NavHLA env dx dy) pd]]))
-                            (cycle-level- [s] nil))
+                            (cycle-level- [s] nil)
+  env/AngelicAction         (optimistic-map [s]
+                              (let [const (env/get-var s :const)
+                                    [cx cy] (map #(env/get-var s [%]) '[atx aty])
+                                    [sx sy dx dy] (map #(get const [% pass]) '[srcx srcy dstx dsty])]
+                                {(env/set-vars s [[['atx] dx] [['aty] dy] [['pass-served? pass] true]])
+                                 (- -2 
+                                    (util/abs (- sx cx)) (util/abs (- sy cy))
+                                    (util/abs (- sx dx)) (util/abs (- sy dy)))}))
+                            (pessimistic-map [s] 
+                              (env/optimistic-map this s)))
+
+(defn taxi-hungarian-heuristic [env s] "destination-to-destination."
+  (let [[cx cy] (map #(env/get-var s [%]) '[atx aty])
+        pass    (remove #(env/get-var s ['pass-served? (first %)]) (:passengers env))]
+    (if (empty? pass) 0
+      (util/maximum-matching
+       (cons ::current (map first pass))
+       (cons ::goal    (map first pass))
+       (concat
+        (for [[p1 _ [dx1 dy1]]         (cons [::current nil [cx cy]] pass)
+              [p2 [sx2 sy2] [dx2 dy2]] pass]
+          [p1 p2
+           (- -2
+              (util/abs (- dx1 sx2)) (util/abs (- dy1 sy2))
+              (util/abs (- dx2 sx2)) (util/abs (- dy2 sy2)))])        
+        (for [[p [sx sy] [dx dy]] pass]
+          [p ::goal 0]))))))
 
 (deftype TaxiTLA [env context]      :as this
   env/Action                (action-name [] ['top])
@@ -144,7 +168,11 @@
                                     [[(env/make-finish-action env)]]
                                   (for [pass remaining-passengers]
                                     [(ServeHLA env pass) this]))))
-                            (cycle-level- [s] nil))
+                            (cycle-level- [s] nil)
+  env/AngelicAction         (optimistic-map [s]
+                              {(env/make-finish-goal-state env)
+                               (taxi-hungarian-heuristic env s)})
+                            (pessimistic-map [s] {}))
 
 (defn make-taxi-tla [env]
   (TaxiTLA env (util/keyset (dissoc (env/initial-state env) :const))))

@@ -46,7 +46,7 @@
    (set-vars [vv-pairs]
      (LoggingFactoredState. (set-vars init vv-pairs)
                             context
-                            {:puts (merge (:puts (meta state)) vv-pairs)}
+                            {:puts (into (:puts (meta state)) vv-pairs)}
                             {}))
    (list-vars [] (list-vars init))
    (as-map [] init)
@@ -67,9 +67,9 @@
   state)
 
 
-(def *m1* {:set-var assoc :set-vars merge :get-var util/safe-get :list-vars keys :as-map identity})
+(def *m1* {:set-var assoc :set-vars into :get-var util/safe-get :list-vars keys :as-map identity})
 (def *m2* {:current-context util/keyset :extract-context select-keys 
-                   :apply-effects merge :get-logger make-logging-factored-state})
+                   :apply-effects into :get-logger make-logging-factored-state})
 
 (extend clojure.lang.PersistentHashMap FactoredState *m1*  ContextualState *m2*)
 (extend clojure.lang.PersistentArrayMap FactoredState *m1*  ContextualState *m2*)

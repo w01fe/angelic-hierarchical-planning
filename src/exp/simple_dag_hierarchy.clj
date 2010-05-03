@@ -38,6 +38,10 @@
 ;Idea: just take current algorithm, add phantom preconditions?
 ;How much do we have to lose by not doing the fancy bookkeeping ? 
 
+;; Still not good in logistics, despite different paths not having common ancestors,
+;; since we make choices when not all things present. 
+
+
 (declare make-action-hla)
 
 (deftype Simple-DAG-Hierarchy 
@@ -71,7 +75,7 @@
                                       (dtgs var)))))]
 
        (assert (graphs/dag? causal-graph))
-;       (assert (sas-analysis/homogenous? sas-problem))    
+       (assert (sas-analysis/homogenous? sas-problem))    
   
        (hierarchy/SimpleHierarchicalEnv 
         sas-problem 
