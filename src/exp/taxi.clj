@@ -142,18 +142,19 @@
   (let [[cx cy] (map #(env/get-var s [%]) '[atx aty])
         pass    (remove #(env/get-var s ['pass-served? (first %)]) (:passengers env))]
     (if (empty? pass) 0
-      (util/maximum-matching
-       (cons ::current (map first pass))
-       (cons ::goal    (map first pass))
-       (concat
-        (for [[p1 _ [dx1 dy1]]         (cons [::current nil [cx cy]] pass)
-              [p2 [sx2 sy2] [dx2 dy2]] pass]
-          [p1 p2
-           (- -2
-              (util/abs (- dx1 sx2)) (util/abs (- dy1 sy2))
-              (util/abs (- dx2 sx2)) (util/abs (- dy2 sy2)))])        
-        (for [[p [sx sy] [dx dy]] pass]
-          [p ::goal 0]))))))
+      (int (Math/floor 
+         (util/maximum-matching
+         (cons ::current (map first pass))
+         (cons ::goal    (map first pass))
+         (concat
+          (for [[p1 _ [dx1 dy1]]         (cons [::current nil [cx cy]] pass)
+                [p2 [sx2 sy2] [dx2 dy2]] pass]
+            [p1 p2
+             (- -2
+                (util/abs (- dx1 sx2)) (util/abs (- dy1 sy2))
+                (util/abs (- dx2 sx2)) (util/abs (- dy2 sy2)))])        
+          (for [[p [sx sy] [dx dy]] pass]
+            [p ::goal 0]))))))))
 
 (deftype TaxiTLA [env context]      :as this
   env/Action                (action-name [] ['top])
@@ -170,7 +171,7 @@
                                     [(ServeHLA env pass) this]))))
                             (cycle-level- [s] nil)
   env/AngelicAction         (optimistic-map [s]
-                              {(env/make-finish-goal-state env)
+                              {(env/set-vars s (env/make-finish-goal-state env))
                                (taxi-hungarian-heuristic env s)})
                             (pessimistic-map [s] {}))
 
