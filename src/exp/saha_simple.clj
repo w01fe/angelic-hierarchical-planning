@@ -14,59 +14,17 @@
 ; Want to keep track of where best val for each came from.
 
 ; When we refine, pass in an outcome state and cutoff cost.
-; Return value is simply new cost.
-
-; Assume right-factored? Can we wtill do within-action DP ? 
-; Trick: can do this as long as we always refine-first.
-; Can keep similar format as before - action+rest-plan. 
-; Question is how we factor this, or something...
 
 ; For now, easier if we assume all sharing is expressed by hierarchy ?
-; Every state is "inside" a lower-level?
-; Need a way to know which states are exact.
-; I.e., may as well propagate both sides.  
-; Do we do it as two separate maps, or a single map to interval? 
-; Even if latter, still need to know if we have primitive solution for "wrap-up" phase.
+ ; (don't bother to factor)
 
-; Two sets:
-;   Final outcome states
-;   Set of "leads" - primitive reachable state, partial first HLA, plus remaining HLAs. Right-factor: state-seq node, state-action node, 
-
-; state-seq node is always just heuristics? No reason for this, really.
-
-;; TODO: tiebreaking?
-
-;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
-;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;   Helpers       ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
-;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
-
-(defn assoc-safe [m pred k v]
-  (if (contains? m k) 
-    (do (assert (pred (get m k) v)) m)
-    (assoc m k v)))
-
-
-(defn extract-effect [state opt]
-  (vary-meta (env/extract-effects state) assoc :opt opt))
-
-(defn stitch-effect-map [effect-map state reward-to-state]
-  (util/map-map1 
-   (fn [[effects local-reward]]
-     [(vary-meta (env/apply-effects state effects) assoc 
-                 :opt (concat (:opt (meta state)) (:opt (meta effects))))
-      (+ reward-to-state local-reward)]) 
-   effect-map)) 
-
+;; Note: sorting is stable, so tiebreaking is not really needed ? 
 
 
 ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
 ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;; Data Structures ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
 ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
 
-;; TODO: handle state abstraction.
-;; Whenever coming into SA-node, need to abstract.
-;; Stitching *could* all happen at setup.  Then, where do solutions go ?
-; They can go on outcome states, that's fine .. ?
 
 ; Two problems: 
   ; Querying states.  Now keeping LFS is fine, equality is correct.

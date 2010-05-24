@@ -36,6 +36,36 @@
 
 (defmacro get-time-pair [expr] `(with-time t# [v# ~expr] [v# t#]))
 
+(defn- ft [x] (apply str (drop-last 3 (format "%f" x))))
+
+(defn microbench*
+  [{:keys [warmup-time min-runs min-time]} body-fn]
+  (let [warmup-watch (start-stopwatch)]
+;    (println warmup-time min-runs min-time (body-fn))
+       (while (within-time-limit? warmup-watch warmup-time) (body-fn))
+       (let [main-watch (start-stopwatch)
+             times      (loop [times nil runs min-runs]
+                          (if (and (<= runs 0) 
+                                   (not (within-time-limit? main-watch min-time)))
+                              times
+                            (recur (cons (get-time (body-fn)) times) (dec runs))))]
+;         (println "Params: " params) 
+         (println "min; avg; max ms: " 
+                  (ft (apply min times)) ";"
+                  (ft (/ (apply + times) (count times))) ";"
+                  (ft (apply max times))
+                  "   (" (count times) " iterations)"
+                  ))))
+
+(defmacro microbench
+  "Microbenchmark a body.  Takes optional map first argument, with keys
+   :warmup-time, :min-runs, :min-time."
+  ([form & body]
+     (let [defaults {:warmup-time 1 :min-runs 3 :min-time 2}
+           [params body] (if (map? form) [(merge form defaults) body] [defaults (cons form body)])
+           body-fn `(fn [] ~@body)]
+        
+       `(microbench* ~params ~body-fn))))
 
 
 (import '(java.util.concurrent ExecutorService Executors Future TimeUnit TimeoutException))
