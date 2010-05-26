@@ -105,7 +105,7 @@
        (let [[entry neg-reward] (queues/g-pq-peek-min (:queue node))
              b-s (:state entry), b-rts (:reward-to-state entry), 
              b-ra (:remaining-actions entry), b-sa (:sanode entry)
-             rec-next-best (- (max next-best (cutoff node)) b-rts)]
+             rec-next-best (- (max next-best (cutoff node)) b-rts)] ;; TODO: too conservative.  Prevents loops though :)
            (if (empty? b-ra)
                (let [eff (extract-effect b-s (:opt (meta b-s)))]
                  (swap! (:result-map-atom node) assoc-safe >= eff b-rts)

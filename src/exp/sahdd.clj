@@ -42,12 +42,13 @@
   (when-not (queue-cutoff? child-queue reward-threshold)
     (let [[best next-best-reward] (queue-best-and-next-reward child-queue)]
       (if-let [g (goal-fn best)]
-            (do (when single-goal? (empty-queue child-queue))
-                (queues/pq-remove! child-queue best) ;; TODO: Is this always right? 
+            (do (if single-goal? 
+                    (empty-queue child-queue)
+                  (queues/pq-remove! child-queue best)) ;; TODO: Is this always right? 
                 (assert (not (contains? @goal-atom g)))
                 (swap! goal-atom assoc g (reward-fn best)))
           (do (queues/pq-add-all! child-queue 
-                                  (for [x (expand-fn best (max next-best-reward reward-threshold))]
+                                  (for [x (expand-fn best (max next-best-reward reward-threshold (reward-fn best)))] ;; TODO
                                     [x (- (reward-fn x))]))
               (let [r (reward-fn best)] 
                 (if (= r Double/NEGATIVE_INFINITY) 
@@ -71,26 +72,25 @@
 
 
 (defprotocol Subproblem 
-  (sub-reward-threshold [sp last-threshold])
-  (sub-refine           [sp last-threshold new-threshold]))
+  (sub-max-open-reward [sp])
+  (sub-refine          [sp min-reward max-reward]))
 
-(declare se-goal se-reward-threshold se-refine)
+(declare se-goal se-max-reward se-refine)
 
 (defn pretty-state [s]
   (dissoc (env/as-map (or s {})) :const))
 
 (deftype OpenSubproblem [name child-queue result-atom single-goal?] :as this
   Subproblem
-  (sub-reward-threshold [last-threshold]
-    (let [queue-reward (queue-best-reward child-queue)]
-      (if (>= last-threshold queue-reward) queue-reward
-          (apply max queue-reward (filter #(< % last-threshold) (vals @result-atom))))))
-  (sub-refine           [last-threshold new-threshold]
-    (println "\nRefining " (second  name) (first name) "\n" (util/map-keys pretty-state @result-atom)  "\n"(map #(cons (pretty-state (:initial-state (first %))) (next %)) (queues/pq-peek-pairs child-queue)))
+  (sub-max-open-reward [] (queue-best-reward child-queue))
+  (sub-refine           [min-reward max-reward]
+    ;(println "\nRefining " (second  name) (first name) "in range [" min-reward max-reward "]" "\n" (util/map-keys pretty-state @result-atom)  "\n"(map #(vector (pretty-state (:initial-state (first %))) (map env/action-name (:remaining-actions (first %))) (next %)) (queues/pq-peek-pairs child-queue)))
+    (assert (<= min-reward max-reward))    
 ;    (println "\nRefining " (second  name) (first name) "\n" (util/map-keys identity @result-atom)  "\n"(map #(cons (identity (first %)) (next %)) (queues/pq-peek-pairs child-queue)))    
-    (refine-open child-queue result-atom se-goal se-refine se-reward-threshold single-goal? new-threshold)
-    (println "\nDONE Refining " (second  name) (first name) "\n" (util/map-keys pretty-state @result-atom)  "\n" (map #(cons (pretty-state (:initial-state (first %))) (next %)) (queues/pq-peek-pairs child-queue)))
-    (util/filter-map #(and (<= new-threshold (val %)) (< (val %) last-threshold)) @result-atom)))
+    (refine-open child-queue result-atom se-goal se-refine se-max-reward single-goal? min-reward)
+    ;(println "\nDONE Refining " (second  name) (first name) "\n" (util/map-keys pretty-state @result-atom)  "\n" (map #(vector (pretty-state (:initial-state (first %))) (map env/action-name (:remaining-actions (first %))) (next %)) (queues/pq-peek-pairs child-queue)))
+    (util/filter-map #(<= #_ min-reward (val %) max-reward) @result-atom)))
+  ; Note: if we use min-reward here, we have to keep track of which closed states we've used when computing max-open0-reward as well.  ?!
 
 (declare make-subproblem-entry)
 
@@ -114,10 +114,12 @@
          inst# (find *subproblem-cache* name#)]
      (if inst# (nth inst# 1)
        (let [x# (do ~@body)]
+;         (println "Created fresh.")
          (.put *subproblem-cache* name# x#)
          x#))))
 
 (defn create-open-subproblem [state action]
+;  (println "\nGetting subproblem" (env/as-map state) (env/action-name action) "\n")
   (let [context   (env/precondition-context action state)
         name     [(env/extract-context state context) (env/action-name action)]]
     (get-subproblem-instance name (make-open-subproblem name (env/get-logger state context) action false))))
@@ -130,48 +132,50 @@
 ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;; Subproblem Entries ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
 
 (defprotocol SubproblemEntry
-  (se-goal             [se])
-  (se-reward-threshold [se])
-  (se-refine           [se new-threshold]))
+  (se-goal       [se])
+  (se-max-reward [se])
+  (se-refine     [se new-threshold]))
 
 (deftype SubproblemSolutionEntry [initial-state reward]
   Object
-  (equals [y] (= initial-state (:initial-state y)))
-  (hashCode [] (hash initial-state))
+  (equals        [y] (= initial-state (:initial-state y)))
+  (hashCode      [] (hash initial-state))
   SubproblemEntry
-  (se-goal             [] initial-state)
-  (se-reward-threshold [] reward)
-  (se-refine           [new-threshold] (throw (RuntimeException. "Not refinable"))))
+  (se-goal       [] initial-state)
+  (se-max-reward [] reward)
+  (se-refine     [new-threshold] (throw (RuntimeException. "Not refinable"))))
 
 
 
-(deftype SubproblemPartialEntry [hash-code last-cutoff-atom initial-state reward child-subproblem remaining-actions] :as this
+(deftype SubproblemPartialEntry [hash-code max-reward-atom initial-state reward child-subproblem remaining-actions] :as this
   Object
   (equals [y] (or (identical? this y) 
                   (and (identical? child-subproblem (:child-subproblem y)) 
                        (= remaining-actions (:remaining-actions y)))))
   (hashCode [] hash-code)
   SubproblemEntry
-  (se-goal     [] nil)
-  (se-reward-threshold [] @last-cutoff-atom #_(+ reward (sub-reward-threshold child-subproblem @last-cutoff-atom)))
-  (se-refine           [reward-cutoff]
-    (let [results     (sub-refine child-subproblem @last-cutoff-atom (- reward-cutoff reward))]
-      (reset! last-cutoff-atom (- reward-cutoff reward))
-      (println "got " results " new cutoff " (se-reward-threshold this))
+  (se-goal       [] nil)
+  (se-max-reward [] @max-reward-atom)
+  (se-refine     [new-threshold]
+    (let [old-thresh @max-reward-atom
+          results  (sub-refine child-subproblem (- new-threshold reward) (- @max-reward-atom reward))
+          new-max-reward (+ (sub-max-open-reward child-subproblem) reward)]
+      (assert (< new-max-reward @max-reward-atom))
+      (reset! max-reward-atom new-max-reward)
+;      (println "got " results " new cutoff " old-thresh (se-max-reward this) reward new-threshold "stitched" (stitch-outcome-map results initial-state reward) )
       (for [[s r] (stitch-outcome-map results initial-state reward)]
         (make-subproblem-entry s r remaining-actions)))))
 
 (defn make-subproblem-entry [initial-state reward remaining-actions]
-  (if (empty? remaining-actions) 
+  #_(if (empty? remaining-actions) 
       (println "DONE"  initial-state reward)
-    (println "PARTIAL" initial-state reward (map env/action-name remaining-actions))
-      )
+    (println "PARTIAL" initial-state reward (map env/action-name remaining-actions)))
   (if-let [[f & r] (seq remaining-actions)]
     (let [sp (create-open-subproblem initial-state f)]
       (SubproblemPartialEntry 
        (unchecked-add (int (System/identityHashCode sp)) 
                       (unchecked-multiply (int 13) (int (hash r))))
-       (atom Double/POSITIVE_INFINITY) initial-state reward sp r))
+       (atom reward) initial-state reward sp r))
     (SubproblemSolutionEntry initial-state reward)))
 
 
@@ -183,7 +187,7 @@
     (binding [*subproblem-cache* (HashMap.)]
       (when-first [p (sub-refine (make-open-subproblem [:init] init  
                                    (hierarchy/TopLevelAction e [(hierarchy/initial-plan henv)]) true)
-                                 Double/POSITIVE_INFINITY Double/NEGATIVE_INFINITY)]
+                                 Double/NEGATIVE_INFINITY Double/POSITIVE_INFINITY)]
         (second p)))))
 
 ;; For SAHA, nothing is open.
