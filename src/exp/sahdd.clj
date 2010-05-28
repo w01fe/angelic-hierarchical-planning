@@ -30,15 +30,8 @@
  ; bottom-up: give me updates as you get them, only of particular form. 
  ; For now, fix this, then extend. 
 
-
 ; We should still (unfortunately) never close open subproblems with cycles.  
 
-;; For now, how do we pass states up?
-  ; Store index / partial list in SubproblemEntry?
-  ; Store cost and loop through?
-  ; Keep queue, upwards pointers? 
-  ;  Ideally, have single queue, "fingers" into it in each subproblem. 
-  ;   Can almost do this with lazy seqs... ?!
 
 
 (defn viable? [reward cutoff]
@@ -126,7 +119,6 @@
 ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;; Cached Search ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
 
 ;; TODO: split refine into PartialResult type, always give new reward -- more accurate.
-;; TODO: 
 
 (defn make-cached-search-factory
   "Return a cache-fn, where (cache-fn) returns fresh IncrementalSearch views on
@@ -197,13 +189,12 @@
   SearchNode
   (extract-goal-state []  nil)
   (expand-node        [min-reward]
-    (let [result (next-solution-or-cutoff subproblem min-reward)]
+    (let [result (next-solution-or-cutoff (force subproblem) min-reward)]
       (if (number? result) 
           [[this result]]
         [[this (nth result 1)]
          (make-sp-recursive-node result remaining-actions)]))))
 
-;; TODO: lazy
 (defn make-initial-sp-nodes [state action]
   (if (env/primitive? action)
     (when-let [[ss sr] (and (env/applicable? action state) (env/successor action state))]
@@ -216,13 +207,15 @@
      (let [context          (env/precondition-context f state)
            state-in-context (env/extract-context state context)
            sub-name         [state-in-context (env/action-name f)]
-           sup-name         [state-in-context (map env/action-name remaining-actions)]
-           sp               (make-search-in-context 
-                             (get-cached-search sub-name 
-                               (make-incremental-dijkstra-search
-                                (make-initial-sp-nodes (env/get-logger state context) f)))
-                              state reward)]
-       (SPRecursiveNode sup-name sp r))
+           sup-name         [state-in-context (map env/action-name remaining-actions)]]
+       (SPRecursiveNode sup-name
+         (delay 
+          (make-search-in-context 
+           (get-cached-search sub-name 
+             (make-incremental-dijkstra-search
+              (make-initial-sp-nodes (env/get-logger state context) f)))
+           state reward))
+         r))
      (GoalNode state))
    reward])
 
