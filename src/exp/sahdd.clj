@@ -89,7 +89,7 @@
 (defn make-descendents [state action prim-constructor ref-constructor]
   (if (env/primitive? action)
       (when-let [[ss sr] (and (env/applicable? action state) (env/successor action state))]
-        [(prim-constructor ss sr)])
+        [(prim-constructor (vary-meta ss assoc :opt [action]) sr)])
     (map ref-constructor (hierarchy/immediate-refinements action state))))
 
 (defn generalize-outcome-pair [[outcome-state reward] gen-state reward-to-gen-state]
@@ -272,15 +272,19 @@
 ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;; Drivers  ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
 ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
 
-(defn sahucs-simple [henv]
+(defn hierarchical-search [henv search-maker]
   (binding [*problem-cache* (HashMap.)]
     (let [e    (hierarchy/env henv)
           init (env/initial-logging-state e)
           tla  (hierarchy/TopLevelAction e [(hierarchy/initial-plan henv)])
-          top  (make-incremental-dijkstra-search (make-initial-sp-nodes init tla)) 
-          result (next-partial-solution top Double/NEGATIVE_INFINITY)]
-      (assert (< (count (:result-pairs result 1))))
-      (second (first (:result-pairs result))))))
+          top  (search-maker init tla)]
+      (when-let [[s r] (first (:result-pairs (next-partial-solution top Double/NEGATIVE_INFINITY)))]
+        [(map env/action-name (:opt (meta s))) r ]))))
+
+(defn sahucs-simple [henv]
+  (hierarchical-search henv (fn [s a] (make-incremental-dijkstra-search (make-initial-sp-nodes s a)))))
+
+
 
 
 (defn blablabla [henv]
@@ -300,6 +304,9 @@
           result (next-partial-solution top Double/NEGATIVE_INFINITY)]
       (assert (< (count (:result-pairs result 1))))
       (second (first (:result-pairs result))))))
+
+;; TODO: compare performance to other algorithms.  
+
 
 ;; For SAHA, nothing is open.
 ;  Or strcture is same.
