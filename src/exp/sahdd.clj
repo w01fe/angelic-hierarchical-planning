@@ -60,18 +60,34 @@
   (queues/pq-remove-all! queue)
   (queues/g-pq-replace! queue :dummy (make-queue-priority Double/NEGATIVE_INFINITY)))
 
+(defn pop-queue [queue]
+  (let [[best [c]] (queues/pq-remove-min-with-cost! queue)]
+    [best (- c)]))
+
 (defn queue-best-reward [queue]
   (- (first (nth (queues/g-pq-peek-min queue) 1))))
 
-(defn queue-best-and-next-reward [queue]
-  (let [[best bc] (queues/pq-remove-min-with-cost! queue)
-        next-reward (queue-best-reward queue)]
-    (queues/pq-replace! queue best bc)
-    [best next-reward]))
 
-(defn queue-cutoff [queue min-reward]
-  (let [cutoff (double (queue-best-reward queue))]
-    (when-not (viable? cutoff min-reward) cutoff)))
+;; TODO: generalize goal condition, etc.
+
+(defn incremental-dijkstra 
+  "Expand queue items until (1) goal, or (2) (queue-cutoff queue min-reward). 
+   Safe against recursive calls in expand-fn, which takes a node and min-reward and
+   returns [[old-node new-reward] & [new-node reward]*]"
+  [queue min-reward expand-fn goal-fn]
+  (loop []
+    (or (let [cutoff (queue-best-reward queue)] 
+          (when (not (viable? cutoff min-reward)) cutoff)) 
+        (let [[best best-reward] (pop-queue queue)]
+          (or (when-let [g (goal-fn best)] [g best-reward])
+              (let [next-min-reward (max min-reward (queue-best-reward queue))]
+                (queues/pq-replace! queue best (make-queue-priority best-reward))
+                (let [[[_ new-reward] & new-items] (expand-fn best next-min-reward)]
+                  (assert (identical? _ best))
+                  (queues/pq-replace! queue best (make-queue-priority new-reward))
+                  (doseq [[ni nr] new-items] 
+                    (queues/pq-add! queue ni (make-queue-priority nr)))
+                  (recur))))))))
 
 ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;; Outcome maps ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
 
@@ -81,151 +97,147 @@
               :opt (concat (:opt (meta gen-state)) (:opt (meta outcome-state))))
    (+ reward reward-to-gen-state)])
 
-
-
-;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;; Subproblems ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
-
-(defprotocol Subproblem 
-  (sub-refine [sp min-reward] "Output is [result reward], reward >= min, or new threshold < min."))
-
-(declare se-goal se-refine)
-
 (defn pretty-state [s]
   (dissoc (env/as-map (or s {})) :const))
 
-(deftype OpenSubproblem [name child-queue] :as this
-  Subproblem
-  (sub-refine           [min-reward]
-    (util/print-debug 1 "\nRefining " (second  name) (first name) "with min-reward [" min-reward "]" "\n" (map #(vector (pretty-state (:initial-state (first %))) (map env/action-name (:remaining-actions (first %))) (next %)) (queues/pq-peek-pairs child-queue)))
-    (loop []                        
-;      (println (queue-best-reward child-queue))
-      (or (queue-cutoff child-queue min-reward) 
-          (let [[best next-best-reward] (queue-best-and-next-reward child-queue)]
-            (if-let [g (se-goal best)]
-              (do (queues/pq-remove! child-queue best) g)
-              (let [[[_ new-rew] & new-items] (se-refine best (max min-reward next-best-reward))]
-                (queues/pq-replace! child-queue best (make-queue-priority new-rew))
-                (doseq [[ni nr] new-items] (queues/pq-add! child-queue ni (make-queue-priority nr)))
-                (recur))))))))
-
-(declare make-subproblem-entry)
-
-(defn make-subproblem-entries [action state]
-  (if (env/primitive? action)
-      (when-let [p (and (env/applicable? action state) (env/successor action state))]
-        [(make-subproblem-entry p nil)])
-    (for [ref (hierarchy/immediate-refinements action state)]
-      (make-subproblem-entry [state 0] ref))))
-
-(defn make-open-subproblem [name state action]
-  (OpenSubproblem name (make-queue (make-subproblem-entries action state))))
 
 
-;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;; Shared Subproblems ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
+;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
+;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;; Search ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
+;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
 
-;; An interface to allow subproblems to be shared, while pretending they have single consumer.
-;;; Not thread safe. 
+(defprotocol IncrementalSearch 
+  (next-solution-or-cutoff [sp min-reward]
+     "Output is [new-outcome-state reward] where reward >= min, or new threshold < min."))
 
-(deftype SharedSubproblemCache [subproblem result-vec-atom next-reward-atom]
-  Subproblem
-  (sub-refine [min-reward]
-    (util/print-debug 2 "SSPC" min-reward (Thread/sleep 10))               
-    (assert (viable? @next-reward-atom min-reward))
-    (let [result (sub-refine subproblem min-reward)]
-      (if (number? result)
-          (reset! next-reward-atom result)
-        (do (swap! result-vec-atom conj result)
-            (reset! next-reward-atom (nth result 1))))
-      result)))
+(declare extract-goal-state expand-node)
 
-(defn make-shared-subproblem-cache [subproblem]
-  (SharedSubproblemCache subproblem (atom []) (atom Double/POSITIVE_INFINITY)))
+;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;; Dijkstra Search ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
 
+(defn make-incremental-dijkstra-search [initial-nodes]
+  (let [q (make-queue initial-nodes)]
+    (reify IncrementalSearch
+      (next-solution-or-cutoff [min-reward]
+        (incremental-dijkstra q min-reward expand-node extract-goal-state)))))
 
-(deftype SharedSubproblem [cache index-atom]
-  Subproblem
-  (sub-refine [min-reward]
-   (let [{:keys [subproblem result-vec-atom next-reward-atom]} cache]
-     (util/print-debug 2 "SSP" min-reward @next-reward-atom (Thread/sleep 10)) 
-    (if (< @index-atom (count @result-vec-atom))
-          (let [[_ rew :as result] (nth @result-vec-atom @index-atom)]
-            (if (>= rew min-reward)
-                (do (swap! index-atom inc) result)
-              rew))
-        (if (viable? @next-reward-atom min-reward)
-            (do (sub-refine cache min-reward)
-                (recur min-reward))
-          @next-reward-atom)))))
-
-(defn make-shared-subproblem [cache]
-  (SharedSubproblem cache (atom 0)))
+; (util/print-debug 1 "\nRefining " (second  name) (first name) "with min-reward [" min-reward "]" "\n" (map #(vector (pretty-state (:initial-state (first %))) (map env/action-name (:remaining-actions (first %))) (next %)) (queues/pq-peek-pairs child-queue)))
 
 
-(def #^HashMap *subproblem-cache*)
+;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;; Cached Search ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
 
-(defmacro get-subproblem-instance [name & body]
-  `(let [name# ~name
-         inst# (find *subproblem-cache* name#)]
-     (if inst# (nth inst# 1)
-       (let [x# (do ~@body)]
-;         (println "Created fresh.")
-         (.put *subproblem-cache* name# x#)
-         x#))))
+;; TODO: split refine into PartialResult type, always give new reward -- more accurate.
+;; TODO: 
 
-(defn get-open-subproblem-instance [state action]
-;  (println "\nGetting subproblem" (env/as-map state) (env/action-name action) "\n")
-  (let [context   (env/precondition-context action state)
-        name     [(env/extract-context state context) (env/action-name action)]]
-    (make-shared-subproblem 
-     (get-subproblem-instance name 
-       (make-shared-subproblem-cache
-        (make-open-subproblem name (env/get-logger state context) action))))))
+(defn make-cached-search-factory
+  "Return a cache-fn, where (cache-fn) returns fresh IncrementalSearch views on
+   the IncrementalSearch input (from here on out). Not thread-safe."
+  [search-problem]
+  (let [result-vec-atom  (atom [])
+        next-reward-atom (atom Double/POSITIVE_INFINITY)]
+    (fn cache-factory []
+      (let [index-atom   (atom 0)]
+        (reify IncrementalSearch
+          (next-solution-or-cutoff [min-reward]
+            (if (< @index-atom (count @result-vec-atom))
+                (let [[_ rew :as result] (nth @result-vec-atom @index-atom)]
+                  (if (>= rew min-reward)
+                      (do (swap! index-atom inc) result)
+                    rew))
+              (if (viable? @next-reward-atom min-reward)
+                  (let [result (next-solution-or-cutoff search-problem min-reward)]
+                    (if (number? result)
+                        (reset! next-reward-atom result)
+                      (do (swap! result-vec-atom conj result)
+                          (reset! next-reward-atom (nth result 1))))
+                    (recur min-reward))
+                @next-reward-atom))))))))
+; (util/print-debug 2 "SSPC" min-reward (Thread/sleep 10))               
+
+(def #^HashMap *problem-cache*)
+
+(defmacro get-cached-search [name factory-expr]
+  `((util/cache-with *problem-cache* ~name (make-cached-search-factory ~factory-expr))))
 
 
+;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;; State-Abstracted Search ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
 
-;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;; Subproblem Entries ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
+(defn make-search-in-context [subsearch context-state context-reward]
+  (reify IncrementalSearch
+    (next-solution-or-cutoff [min-reward]
+      (let [result (next-solution-or-cutoff subsearch (- min-reward context-reward))]
+        (if (number? result) (+ result context-reward)
+          (generalize-outcome-pair result context-state context-reward))))))
 
-(defprotocol PSubproblemEntry
-  (se-goal       [se])
-  (se-refine     [se new-threshold] "Returns list of new queue entries; first is always self."))
 
-(deftype SubproblemEntry [hash-code initial-state reward child-subproblem remaining-actions] :as this
+;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
+;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;; Search Nodes ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
+;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
+
+
+(defprotocol SearchNode
+  (extract-goal-state [se]
+    "This entire node is one solution state, which is returned.")
+  (expand-node        [se new-threshold]
+    "Returns list of [SearchNode reward] pairs; first is always self"))
+
+(deftype GoalNode [goal-state]
+  SearchNode
+  (extract-goal-state []           goal-state)
+  (expand-node        [min-reward] (throw (UnsupportedOperationException.))))
+
+
+;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;; Recursive Node ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
+
+(declare make-sp-recursive-node)
+
+(deftype SPRecursiveNode [name subproblem remaining-actions] :as this
   Object
-  (equals [y] (or (identical? this y) 
-                  (and (identical? child-subproblem (:child-subproblem y)) 
-                       (= remaining-actions (:remaining-actions y)))))
-  (hashCode [] hash-code)
-  PSubproblemEntry
-  (se-goal       [] (when (nil? child-subproblem) [initial-state reward]))
-  (se-refine     [min-reward]
-    (util/print-debug 2 "SE-R" min-reward (Thread/sleep 10)) 
-    (assert child-subproblem)
-    (let [result (sub-refine child-subproblem (- min-reward reward))]
+  (equals [y] (= name (:name y)))
+  (hashCode [] (hash name))
+  SearchNode
+  (extract-goal-state []  nil)
+  (expand-node        [min-reward]
+    (let [result (next-solution-or-cutoff subproblem min-reward)]
       (if (number? result) 
-          [[this (+ result reward)]]
-        [[this (nth result 1)] 
-         (make-subproblem-entry (generalize-outcome-pair result initial-state reward) remaining-actions)]))))
+          [[this result]]
+        [[this (nth result 1)]
+         (make-sp-recursive-node result remaining-actions)]))))
 
-(defn make-subproblem-entry [[initial-state reward] remaining-actions]
-  (let [[f & r] remaining-actions
-        sp (when f (get-open-subproblem-instance initial-state f))]
-    [(SubproblemEntry 
-      (unchecked-add (int (if sp (System/identityHashCode sp) 0)) 
-                     (unchecked-multiply (int 13) (int (hash r))))
-      initial-state reward sp r)
-     reward]))
+;; TODO: lazy
+(defn make-initial-sp-nodes [state action]
+  (if (env/primitive? action)
+    (when-let [[ss sr] (and (env/applicable? action state) (env/successor action state))]
+      [[(GoalNode ss) sr]])
+    (for [ref (hierarchy/immediate-refinements action state)]
+      (make-sp-recursive-node [state 0] ref))))
+
+(defn make-sp-recursive-node [[state reward] remaining-actions]
+  [(if-let [[f & r] (seq remaining-actions)]
+     (let [context          (env/precondition-context f state)
+           state-in-context (env/extract-context state context)
+           sub-name         [state-in-context (env/action-name f)]
+           sup-name         [state-in-context (map env/action-name remaining-actions)]
+           sp               (make-search-in-context 
+                             (get-cached-search sub-name 
+                               (make-incremental-dijkstra-search
+                                (make-initial-sp-nodes (env/get-logger state context) f)))
+                              state reward)]
+       (SPRecursiveNode sup-name sp r))
+     (GoalNode state))
+   reward])
+
 
 ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;; Drivers  ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
 
 (defn sahucs-simple [henv]
-  (let [e     (hierarchy/env henv)
-        init  (env/initial-logging-state e)]
-    (binding [*subproblem-cache* (HashMap.)]
-      (let [tla (hierarchy/TopLevelAction e [(hierarchy/initial-plan henv)])
-            top (make-open-subproblem [:init] init tla)
-            result (sub-refine top Double/NEGATIVE_INFINITY)]
-        (when (not (number? result))
-          (second result))))))
+  (binding [*problem-cache* (HashMap.)]
+    (let [e    (hierarchy/env henv)
+          init (env/initial-logging-state e)
+          tla  (hierarchy/TopLevelAction e [(hierarchy/initial-plan henv)])
+          top  (make-incremental-dijkstra-search (make-initial-sp-nodes init tla)) 
+          result (next-solution-or-cutoff top Double/NEGATIVE_INFINITY)]
+      (when (not (number? result))
+        (second result)))))
 
 ;; For SAHA, nothing is open.
 ;  Or strcture is same.

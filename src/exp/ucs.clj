@@ -5,6 +5,12 @@
 
 ;; TODO: tie breaking
 
+;(defn incremental-search 
+;  "Expand queue items until (1) goal is reached, or (2) goal "
+;  [queue goal-condition])
+
+
+
 (defn uniform-cost-search 
   ([env] (uniform-cost-search env true))
   ([env graph?]
