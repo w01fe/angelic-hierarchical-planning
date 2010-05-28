@@ -86,12 +86,6 @@
 ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;; Outcome maps ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
 
 
-(defn make-descendents [state action prim-constructor ref-constructor]
-  (if (env/primitive? action)
-      (when-let [[ss sr] (and (env/applicable? action state) (env/successor action state))]
-        [(prim-constructor (vary-meta ss assoc :opt [action]) sr)])
-    (map ref-constructor (hierarchy/immediate-refinements action state))))
-
 (defn generalize-outcome-pair [[outcome-state reward] gen-state reward-to-gen-state]
   [(vary-meta (env/apply-effects gen-state (env/extract-effects outcome-state)) assoc 
               :opt (concat (:opt (meta gen-state)) (:opt (meta outcome-state))))
@@ -117,11 +111,13 @@
 (defn make-incremental-dijkstra-search [initial-nodes]
   (let [q (make-queue initial-nodes)]
     (reify IncrementalSearch
-      (next-partial-solution [min-reward]
-        (incremental-dijkstra q min-reward expand-node extract-goal-state)))))
+           (next-partial-solution [min-reward]
+             (incremental-dijkstra q min-reward expand-node extract-goal-state)))))
+
 
 
 ;; TODO: need "generalized-goal" dijkstra search.  
+;; TODO: single-goal.
 
 ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;; Exhaustive Search ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
 
@@ -186,6 +182,26 @@
                            context-state context-reward))))
 
 
+
+
+;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;; State-Action searches ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
+
+(declare make-search-node)
+
+(defn make-incremental-dijkstra-sa-search [state action]
+  (make-incremental-dijkstra-search [(make-search-node :transparent [state 0] [action])]))
+
+(defn make-abstracted-incremental-dijkstra-sa-search [state reward action]
+  (let [context (env/precondition-context action state)]
+    (make-search-in-context 
+     (get-cached-search [(env/extract-context state context) (env/action-name action)] 
+       (make-incremental-dijkstra-sa-search (env/get-logger state context) action))
+     state reward)))
+
+(defn make-abstracted-exhaustive-dijkstra-sa-search [state reward action]
+  (make-exhaustive-search (make-abstracted-incremental-dijkstra-sa-search state reward action)))
+
+
 ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
 ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;; Search Nodes ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
 ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
@@ -197,13 +213,12 @@
   (expand-node        [se new-threshold]
     "Returns PartialResult of SearchNodes."))
 
+
+
 (deftype GoalNode [goal-state]
   SearchNode
   (extract-goal-state []           goal-state)
   (expand-node        [min-reward] (throw (UnsupportedOperationException.))))
-
-
-;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;; Named Node (Helper) ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
 
 ;; Named node is simple non-terminal node whose equality semantics are given by name.
 (deftype NamedNode [name expand-fn] :as this
@@ -212,48 +227,44 @@
   (hashCode [] (hash name))
   SearchNode
   (extract-goal-state []  nil)
-  (expand-node        [min-reward] (expand-fn min-reward)))
+  (expand-node        [min-reward] (expand-fn this min-reward)))
 
 
-;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;; Recursive Node ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
+(defn make-node-descendant [parent & args]
+  (apply make-search-node :recursive args))
 
-(declare make-sp-recursive-node)
+(defn make-recursive-expander [sp more-actions]
+  (fn sp-recursive-expand [this min-reward]
+      (let [{:keys [result-pairs max-reward]} (next-partial-solution (force sp) min-reward)]
+        (PartialResult (map #(make-node-descendant this % more-actions) result-pairs) max-reward))))
 
-(defn make-initial-sp-nodes [state action]
-  (make-descendents state action 
-    (fn [ss sr] [(GoalNode ss) sr]) 
-    (fn [ref] (make-sp-recursive-node [state 0] ref))))    
+;(def #^IFn node-type-policy)
 
-(defn make-sp-recursive-node [[state reward] remaining-actions]
-  [(if-let [[f & r] (seq remaining-actions)]
-     (let [context (env/precondition-context f state)
-           sp      (delay 
-                    (make-search-in-context 
-                     (get-cached-search [(env/extract-context state context) (env/action-name f)] 
-                       (make-incremental-dijkstra-search
-                        (make-initial-sp-nodes (env/get-logger state context) f)))
-                     state reward))]
-       (NamedNode [state (map env/action-name remaining-actions)] 
-          (fn sp-recursive-expand [min-reward]
-            (let [{:keys [result-pairs max-reward]} (next-partial-solution (force sp) min-reward)]
-              (PartialResult (map #(make-sp-recursive-node % r) result-pairs) max-reward)))))   
-     (GoalNode state))
-   reward])
-
-
-;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;; Transparent Node ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
-
-(defn make-sp-transparent-node [[state reward] remaining-actions]
+(defn make-search-node [type [state reward :as result] remaining-actions]
   [(if-let [[f & r] (seq remaining-actions)]
        (NamedNode [state (map env/action-name remaining-actions)]
-         (fn sp-transparent-expand [min-reward]
-           (PartialResult
-            (make-descendents state f 
-              (fn [ss sr] (make-sp-transparent-node [ss (+ sr reward)] r))
-              (fn [ref]   (make-sp-transparent-node [state reward] (concat ref r))))
-            Double/NEGATIVE_INFINITY)))
+         (case type
+          :transparent          
+            (fn sp-transparent-expand [this min-reward]
+              (PartialResult
+               (if (env/primitive? f)
+                 (when-let [[ss sr] (and (env/applicable? f state) (env/successor f state))]
+                   [(make-node-descendant this [(vary-meta ss assoc :opt [f]) (+ sr reward)] r)])
+                 (for [ref (hierarchy/immediate-refinements f state)]
+                   (make-node-descendant this [state reward] (concat ref r))))
+               Double/NEGATIVE_INFINITY))
+          :recursive            
+            (make-recursive-expander 
+             (delay (make-abstracted-incremental-dijkstra-sa-search state reward f)) r)          
+          :recursive-exhaustive 
+            (make-recursive-expander 
+             (delay (make-abstracted-exhaustive-dijkstra-sa-search state reward f)) r)))
      (GoalNode state))
    reward])
+
+
+
+
 
 
 ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;; Semi-Transparent Node ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
@@ -282,7 +293,7 @@
         [(map env/action-name (:opt (meta s))) r ]))))
 
 (defn sahucs-simple [henv]
-  (hierarchical-search henv (fn [s a] (make-incremental-dijkstra-search (make-initial-sp-nodes s a)))))
+  (hierarchical-search henv (fn [s a] (make-incremental-dijkstra-sa-search s a))))
 
 
 
