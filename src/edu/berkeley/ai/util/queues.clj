@@ -614,7 +614,15 @@
     (is (= :re-added (pq-add! pq 'c [-1 100])))
     (is (= (pq-size pq) 1))))
 
-
+(defn first-minimal-element-comp [key-fn coll]
+  (assert (seq coll))
+  (loop [best (first coll) bk (key-fn best) coll (next coll)]
+    (if (empty? coll) best
+      (let [[f & r] coll
+            k       (key-fn f)]
+        (if (neg? (compare k bk))
+            (recur f k r)
+          (recur best bk r))))))
 
 
 (derive ::UnionPriorityQueue ::PriorityQueue)
@@ -628,14 +636,14 @@
   (throw (UnsupportedOperationException.)))
 
 (defmethod pq-peek-min ::UnionPriorityQueue [pq]
-  (first-maximal-element (comp - second) (map pq-peek-min (remove pq-empty? (:queues pq)))))
+  (first-minimal-element-comp second (map pq-peek-min (remove pq-empty? (:queues pq)))))
 
 (defmethod pq-remove! ::UnionPriorityQueue [pq item]
   (throw (UnsupportedOperationException.)))
 
 (defmethod pq-remove-min-with-cost! ::UnionPriorityQueue [pq]
   (pq-remove-min-with-cost!
-    (first-maximal-element #(- (second (pq-peek-min %))) (remove pq-empty? (:queues pq)))))
+    (first-minimal-element-comp #(second (pq-peek-min %)) (remove pq-empty? (:queues pq)))))
 
 (defmethod pq-size  ::UnionPriorityQueue [pq]
   (apply + (map pq-size (:queues pq))))

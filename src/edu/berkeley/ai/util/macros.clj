@@ -89,3 +89,8 @@
        (~norm-args (~name ~@norm-args {}))
        (~(conj norm-args g) 
 	(parse-optional-argmap ~g ~opt-args ~@body))))) 
+
+(defmacro aand "Anaphoric and"
+  ([] nil)
+  ([x] x)
+  ([x y & args] `(when-let [~'it ~x] (aand ~y ~@args))))

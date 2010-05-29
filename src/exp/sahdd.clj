@@ -5,6 +5,8 @@
             [exp.hierarchy :as hierarchy])
   (:import  [java.util HashMap]))
 
+;; TODO: note other implementations are incorrect, since they don't handle reward decreases of partial nodes properly. ?  
+
 ; Here, there is no real Seq character.  No real choices.  
 ; Note: hard (impossible?) to unify down and up.
 ; Best: at least have common interface, shared parts, to simplify.
@@ -45,43 +47,49 @@
 
 (defn make-queue [initial-elements]
   (let [q (queues/make-graph-search-pq)]
-    (queues/g-pq-add! q :dummy (make-queue-priority Double/NEGATIVE_INFINITY))
+    (queues/pq-add! q :dummy (make-queue-priority Double/NEGATIVE_INFINITY))
     (doseq [[e r] initial-elements] (queues/pq-add! q e (make-queue-priority r)))
     q))
 
-(defn empty-queue [queue]
-  (queues/pq-remove-all! queue)
-  (queues/g-pq-replace! queue :dummy (make-queue-priority Double/NEGATIVE_INFINITY)))
+;(defn empty-queue [queue]
+;  (queues/pq-remove-all! queue)
+;  (queues/g-pq-replace! queue :dummy (make-queue-priority Double/NEGATIVE_INFINITY)))
 
 (defn pop-queue [queue]
   (let [[best [c]] (queues/pq-remove-min-with-cost! queue)]
     [best (- c)]))
 
 (defn queue-best-reward [queue]
-  (- (first (nth (queues/g-pq-peek-min queue) 1))))
+  (- (first (nth (queues/pq-peek-min queue) 1))))
 
 
 ;; TODO: generalize goal condition, etc.
 
 (deftype PartialResult [result-pairs max-reward])
 
+;; TODO: once we start expanding a node, it should be off-limits to reward increases
+ ; ; (subject to a check that actual *initial* reward does not increase.)
+
 (defn incremental-dijkstra 
   "Expand queue items until (1) goal, or (2) (queue-cutoff queue min-reward). 
    Safe against recursive calls in expand-fn, which takes a node and min-reward and
    returns a PartialResult of nodes."
-  [queue min-reward expand-fn goal-fn]
-  (loop []
-    (or (let [cutoff (queue-best-reward queue)] 
-          (when (not (viable? cutoff min-reward)) (PartialResult nil cutoff))) 
-        (let [[best best-reward] (pop-queue queue)]
-          (or (when-let [g (goal-fn best)] (PartialResult [[g best-reward]] (queue-best-reward queue)))
-              (let [next-min-reward (max min-reward (queue-best-reward queue))]
-                (queues/pq-replace! queue best (make-queue-priority best-reward))
-                (let [{:keys [result-pairs max-reward]} (expand-fn best next-min-reward)]
-                  (queues/pq-replace! queue best (make-queue-priority max-reward))
-                  (doseq [[ni nr] result-pairs] 
-                    (queues/pq-add! queue ni (make-queue-priority nr)))
-                  (recur))))))))
+  [new-queue partial-queue min-reward expand-fn goal-fn]
+  (let [queue (queues/make-union-pq new-queue partial-queue)]
+    (loop []
+ ;    (println (queues/pq-size queue))
+      (or (let [cutoff (queue-best-reward queue)] 
+            (when (not (viable? cutoff min-reward)) (PartialResult nil cutoff))) 
+          (let [[best best-reward] (pop-queue queue)]
+            (or (when-let [g (goal-fn best)] (PartialResult [[g best-reward]] (queue-best-reward queue)))
+                (let [next-min-reward (max min-reward (queue-best-reward queue))]
+                  (queues/pq-replace! partial-queue best (make-queue-priority best-reward))
+                  (let [{:keys [result-pairs max-reward]} (expand-fn best next-min-reward)]
+                    (queues/pq-replace! partial-queue best (make-queue-priority max-reward))
+                    (doseq [[ni nr] result-pairs] 
+ ;                    (println "NEW" max-reward (class ni) nr (:name ni))
+                      (assert (not (= :re-added (queues/pq-add! new-queue ni (make-queue-priority nr))))))
+                    (recur)))))))))
 
 ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;; Outcome maps ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
 
@@ -109,10 +117,11 @@
 ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;; Dijkstra Search ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
 
 (defn make-incremental-dijkstra-search [initial-nodes]
-  (let [q (make-queue initial-nodes)]
+;  (println "Creating new search.")
+  (let [new-q (make-queue initial-nodes) partial-q (make-queue nil)]
     (reify IncrementalSearch
            (next-partial-solution [min-reward]
-             (incremental-dijkstra q min-reward expand-node extract-goal-state)))))
+             (incremental-dijkstra new-q partial-q min-reward expand-node extract-goal-state)))))
 
 
 
@@ -127,8 +136,10 @@
 (defn make-exhaustive-search [sp]
   (reify IncrementalSearch
     (next-partial-solution [min-reward]
+;      (println "Entering")
       (loop [results []]
         (let [{:keys [result-pairs max-reward]} (next-partial-solution sp Double/NEGATIVE_INFINITY)]
+;          (println "Got results " (map (juxt (comp pretty-state first) second) result-pairs) max-reward)
           (let [next-results (into results result-pairs)]
             (if (= max-reward Double/NEGATIVE_INFINITY)
                 (PartialResult next-results max-reward)
@@ -189,7 +200,7 @@
 (declare make-search-node)
 
 (defn make-incremental-dijkstra-sa-search [state action]
-  (make-incremental-dijkstra-search [(make-search-node :transparent [state 0] [action])]))
+  (make-incremental-dijkstra-search [(make-search-node :transparent [state action] [state 0] [action])]))
 
 (defn make-abstracted-incremental-dijkstra-sa-search [state reward action]
   (let [context (env/precondition-context action state)]
@@ -197,9 +208,6 @@
      (get-cached-search [(env/extract-context state context) (env/action-name action)] 
        (make-incremental-dijkstra-sa-search (env/get-logger state context) action))
      state reward)))
-
-(defn make-abstracted-exhaustive-dijkstra-sa-search [state reward action]
-  (make-exhaustive-search (make-abstracted-incremental-dijkstra-sa-search state reward action)))
 
 
 ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
@@ -221,47 +229,51 @@
   (expand-node        [min-reward] (throw (UnsupportedOperationException.))))
 
 ;; Named node is simple non-terminal node whose equality semantics are given by name.
-(deftype NamedNode [name expand-fn] :as this
+(deftype NamedNode [name root-sa expand-fn] :as this
   Object
   (equals [y] (= name (:name y)))
   (hashCode [] (hash name))
   SearchNode
   (extract-goal-state []  nil)
-  (expand-node        [min-reward] (expand-fn this min-reward)))
+  (expand-node        [min-reward] (expand-fn root-sa min-reward)))
 
 
-(defn make-node-descendant [parent & args]
-  (apply make-search-node :recursive args))
+(def *node-type-policy* (fn [root-sa state first-action] :unknown))
+
+(defn make-node-descendant [root-sa [state reward :as result] remaining-actions]
+  (make-search-node (when-first [f remaining-actions] (*node-type-policy* root-sa state f))
+                    root-sa result remaining-actions))
 
 (defn make-recursive-expander [sp more-actions]
-  (fn sp-recursive-expand [this min-reward]
+  (fn sp-recursive-expand [root-sa min-reward]
       (let [{:keys [result-pairs max-reward]} (next-partial-solution (force sp) min-reward)]
-        (PartialResult (map #(make-node-descendant this % more-actions) result-pairs) max-reward))))
+        (PartialResult (map #(make-node-descendant root-sa % more-actions) result-pairs) max-reward))))
 
-;(def #^IFn node-type-policy)
 
-(defn make-search-node [type [state reward :as result] remaining-actions]
+(defn make-search-node [type root-sa [state reward :as result] remaining-actions]
+;  (println "making node" [state (map env/action-name remaining-actions)]) 
+;  (Thread/sleep 100)
   [(if-let [[f & r] (seq remaining-actions)]
-       (NamedNode [state (map env/action-name remaining-actions)]
+       (NamedNode [state (map env/action-name remaining-actions)] root-sa
          (case type
           :transparent          
-            (fn sp-transparent-expand [this min-reward]
+            (fn sp-transparent-expand [root-sa min-reward]
               (PartialResult
                (if (env/primitive? f)
                  (when-let [[ss sr] (and (env/applicable? f state) (env/successor f state))]
-                   [(make-node-descendant this [(vary-meta ss assoc :opt [f]) (+ sr reward)] r)])
+                   [(make-node-descendant root-sa [(vary-meta ss assoc :opt [f]) (+ sr reward)] r)])
                  (for [ref (hierarchy/immediate-refinements f state)]
-                   (make-node-descendant this [state reward] (concat ref r))))
+                   (make-node-descendant root-sa [state reward] (concat ref r))))
                Double/NEGATIVE_INFINITY))
           :recursive            
             (make-recursive-expander 
              (delay (make-abstracted-incremental-dijkstra-sa-search state reward f)) r)          
           :recursive-exhaustive 
             (make-recursive-expander 
-             (delay (make-abstracted-exhaustive-dijkstra-sa-search state reward f)) r)))
+             (delay (make-exhaustive-search 
+                     (make-abstracted-incremental-dijkstra-sa-search state reward f))) r)))
      (GoalNode state))
    reward])
-
 
 
 
@@ -280,11 +292,14 @@
 ;; TODO: how to switch between these as we go?!
 
 ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
-;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;; Drivers  ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
+;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;; Top-level  ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
 ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
 
-(defn hierarchical-search [henv search-maker]
-  (binding [*problem-cache* (HashMap.)]
+
+
+(defn hierarchical-search [henv policy search-maker]
+  (binding [*node-type-policy* policy
+            *problem-cache*    (HashMap.)]
     (let [e    (hierarchy/env henv)
           init (env/initial-logging-state e)
           tla  (hierarchy/TopLevelAction e [(hierarchy/initial-plan henv)])
@@ -292,29 +307,39 @@
       (when-let [[s r] (first (:result-pairs (next-partial-solution top Double/NEGATIVE_INFINITY)))]
         [(map env/action-name (:opt (meta s))) r ]))))
 
+(defn if-cycle-fn [if-cycle else]
+  (fn [[parent-state parent-action] state action]
+    #_(println (env/action-name action) (hierarchy/cycle-level action state)
+             (env/action-name (:action parent)) (hierarchy/cycle-level (:action parent) (:state parent)))
+    (if (util/aand (hierarchy/cycle-level action state)
+                   (= it (hierarchy/cycle-level parent-action parent-state)))
+        if-cycle else)))
+
+
+;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;   Drivers   ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
+
+(defn sahtn-simple [henv]
+  (hierarchical-search henv (constantly :recursive-exhaustive)
+    (comp make-exhaustive-search make-incremental-dijkstra-sa-search)))
+
+(defn sahtn-dijkstra [henv]
+  (hierarchical-search henv (if-cycle-fn :transparent :recursive-exhaustive) 
+    (comp make-exhaustive-search make-incremental-dijkstra-sa-search)))
+
+(defn sahucs-flat [henv]
+  (hierarchical-search henv (constantly :transparent)
+    make-incremental-dijkstra-sa-search))
+
 (defn sahucs-simple [henv]
-  (hierarchical-search henv (fn [s a] (make-incremental-dijkstra-sa-search s a))))
+  (hierarchical-search henv (constantly :recursive)
+    make-incremental-dijkstra-sa-search))
+
+(defn sahucs-dijkstra [henv]
+  (hierarchical-search henv (if-cycle-fn :transparent :recursive) 
+    make-incremental-dijkstra-sa-search))
 
 
 
-
-(defn blablabla [henv]
-  (binding [*problem-cache* (HashMap.)]
-    (let [e    (hierarchy/env henv)
-          init (env/initial-logging-state e)
-          tla  (hierarchy/TopLevelAction e [(hierarchy/initial-plan henv)])
-          top  (make-incremental-dijkstra-search (make-initial-sp-nodes init tla))]
-      (next-partial-solution (make-exhaustive-search top) Double/NEGATIVE_INFINITY))))
-
-(defn sahucs-transparent [henv]
-  (binding [*problem-cache* (HashMap.)]
-    (let [e    (hierarchy/env henv)
-          init (env/initial-logging-state e)
-          tla  (hierarchy/TopLevelAction e [(hierarchy/initial-plan henv)])
-          top  (make-incremental-dijkstra-search [(make-sp-transparent-node [init 0] [tla])]) 
-          result (next-partial-solution top Double/NEGATIVE_INFINITY)]
-      (assert (< (count (:result-pairs result 1))))
-      (second (first (:result-pairs result))))))
 
 ;; TODO: compare performance to other algorithms.  
 
