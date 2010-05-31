@@ -5,7 +5,8 @@
             [exp.hierarchy :as hierarchy])
   (:import  [java.util HashMap]))
 
-;; TODO: note other implementations are incorrect, since they don't handle reward decreases of partial nodes properly. ?  
+;; TODO: note other sahucs implementations are incorrect, since they don't handle reward decreases of partial nodes properly. ?  
+;; For the same reason, sahucs-fancy-dijkstra is doubly-incorrect ? 
 
 ; Here, there is no real Seq character.  No real choices.  
 ; Note: hard (impossible?) to unify down and up.
@@ -85,7 +86,9 @@
                 (let [next-min-reward (max min-reward (queue-best-reward queue))]
                   (queues/pq-replace! partial-queue best (make-queue-priority best-reward))
                   (let [{:keys [result-pairs max-reward]} (expand-fn best next-min-reward)]
-                    (queues/pq-replace! partial-queue best (make-queue-priority max-reward))
+                    (if (= max-reward Double/NEGATIVE_INFINITY) 
+                        (queues/pq-remove! partial-queue best)
+                      (queues/pq-replace! partial-queue best (make-queue-priority max-reward)))
                     (doseq [[ni nr] result-pairs] 
  ;                    (println "NEW" max-reward (class ni) nr (:name ni))
                       (assert (not (= :re-added (queues/pq-add! new-queue ni (make-queue-priority nr))))))
@@ -160,15 +163,19 @@
           (next-partial-solution [min-reward]
             (if (< @index-atom (count @result-vec-atom))
                 (let [[_ rew :as result] (nth @result-vec-atom @index-atom)]
+                 ;; TODO: remove
+                  (util/assert-is (<= (count @result-vec-atom) 1) "%s" [@result-vec-atom])
                   (if (>= rew min-reward)
                       (do (swap! index-atom inc) 
                           (PartialResult [result] 
-                                         (max (get @result-vec-atom @index-atom Double/NEGATIVE_INFINITY) 
+                                         (max (second (get @result-vec-atom @index-atom [nil Double/NEGATIVE_INFINITY])) 
                                               @next-reward-atom)))
                     (PartialResult nil rew)))
               (if (viable? @next-reward-atom min-reward)
                   (let [{:keys [result-pairs max-reward]} (next-partial-solution search-problem min-reward)]
                     (reset! next-reward-atom max-reward)
+                    ;; TODO: remove!
+                    (doseq [x1 @result-vec-atom x2 result-pairs] (assert (not (= (first x1) (first x2)))))
                     (swap!  result-vec-atom into result-pairs)
                     (recur min-reward))
                 (PartialResult nil @next-reward-atom)))))))))
@@ -221,12 +228,10 @@
   (expand-node        [se new-threshold]
     "Returns PartialResult of SearchNodes."))
 
-
-
-(deftype GoalNode [goal-state]
-  SearchNode
-  (extract-goal-state []           goal-state)
-  (expand-node        [min-reward] (throw (UnsupportedOperationException.))))
+(defn make-goal-node [goal-state]
+  (reify SearchNode
+       (extract-goal-state [] goal-state)
+       (expand-node        [min-reward] (throw (UnsupportedOperationException.)))))
 
 ;; Named node is simple non-terminal node whose equality semantics are given by name.
 (deftype NamedNode [name root-sa expand-fn] :as this
@@ -272,7 +277,7 @@
             (make-recursive-expander 
              (delay (make-exhaustive-search 
                      (make-abstracted-incremental-dijkstra-sa-search state reward f))) r)))
-     (GoalNode state))
+     (make-goal-node state))
    reward])
 
 
@@ -288,8 +293,78 @@
 
 ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;; Inverted Node ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
 
+;; Can we do it as "state-to-go", not "finished state" ?
+; i.e., state, reward, remaining-actions, parent-cache.
+; when r-a is empty, update.  Can add factoring later if we need it ? 
 
-;; TODO: how to switch between these as we go?!
+;; Note: can we cache results across calls? 
+;; We need same initial state, at least. 
+;;  Different goal is possible, but might as well integrate this above as well. 
+
+; Note: right now, reward in parent-pair is being ignored. 
+
+;; TODO: remove expensive tests.
+(defn- add-monotonic! [result-pair-atom [new-result new-reward :as new-result-pair]]
+  (assert (every? #(not (= (first %) new-result)) @result-pair-atom))
+  (when (seq @result-pair-atom) (assert (<= new-reward (second (last @result-pair-atom)))))
+  (swap! result-pair-atom conj new-result-pair))
+
+(defprotocol InvertedItem (notify-upward [item outcome-pair]))
+
+(deftype InvertedCache [result-pairs-atom parent-pairs-atom]
+  InvertedItem 
+    (notify-upward [outcome-pair]
+      (add-monotonic! result-pairs-atom outcome-pair)
+      (mapcat #(notify-upward (first %) outcome-pair) @parent-pairs-atom)))
+
+(declare make-inverted-node notify-upward-node)
+
+(defn connect-downward-cache [state action [new-parent new-reward :as new-parent-pair]]
+  (let [context (env/precondition-context action state)
+        ic      (get-cached-search [::INV (env/extract-context state context) (env/action-name action)]
+                  (InvertedCache (atom []) (atom [])))
+        {:keys [result-pairs-atom parent-pairs-atom]} ic 
+        first-visit?  (empty? @parent-pairs-atom)]
+    (add-monotonic! parent-pairs-atom new-parent-pair)
+    (if first-visit?  ; first time: create and return sub-nodes.
+        (let [state (env/get-logger state context)]
+          (if (env/primitive? action)
+              (when-let [[ss sr] (and (env/applicable? action state) (env/successor action state))]
+                [(make-inverted-node (vary-meta ss assoc :opt [action]) (+ new-reward sr) nil ic)])
+            (for [ref (hierarchy/immediate-refinements action state)]
+              (make-inverted-node state new-reward ref ic))))
+      (map #(notify-upward-node new-parent %) @result-pairs-atom))))
+
+
+;; TODO: partial expansions for goals ? 
+(deftype InvertedNode   [name state reward remaining-actions parent-cache] :as this
+  Object
+   (equals   [y] (= name (:name y)))
+   (hashCode []  (hash name))
+  SearchNode
+   (extract-goal-state [] nil)
+   (expand-node        [min-reward]
+     (if-let [[f & r] remaining-actions]
+         (connect-downward-cache state f [this reward])
+       (notify-upward parent-cache [state reward])))
+  InvertedItem 
+   (notify-upward [outcome-pair]
+     (let [[outcome-state outcome-rew] (generalize-outcome-pair outcome-pair state reward)]
+       [(make-inverted-node outcome-state outcome-rew (next remaining-actions) parent-cache)])))
+
+(defn make-inverted-node [state reward remaining-actions parent-cache]
+  [(InvertedNode [state remaining-actions parent-cache] state reward remaining-actions parent-cache) reward])
+
+(defn make-inverted-root-node [state action]
+  (connect-downward-cache state action 
+    [(reify InvertedItem 
+      (notify-upward [outcome-pair] [(update-in outcome-pair 0 make-goal-node)])) 
+     0]))
+
+(defn make-inverted-sa-search [state action]
+  (make-incremental-dijkstra-search [(make-inverted-root-node state action)]))
+
+
 
 ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
 ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;; Top-level  ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
@@ -326,6 +401,7 @@
   (hierarchical-search henv (if-cycle-fn :transparent :recursive-exhaustive) 
     (comp make-exhaustive-search make-incremental-dijkstra-sa-search)))
 
+
 (defn sahucs-flat [henv]
   (hierarchical-search henv (constantly :transparent)
     make-incremental-dijkstra-sa-search))
@@ -337,6 +413,10 @@
 (defn sahucs-dijkstra [henv]
   (hierarchical-search henv (if-cycle-fn :transparent :recursive) 
     make-incremental-dijkstra-sa-search))
+
+(defn sahucs-inverted [henv]
+  (hierarchical-search henv :dummy
+    make-inverted-sa-search))
 
 
 
