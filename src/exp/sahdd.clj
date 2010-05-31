@@ -86,10 +86,12 @@
                 (let [next-min-reward (max min-reward (queue-best-reward queue))]
                   (queues/pq-replace! partial-queue best (make-queue-priority best-reward))
                   (let [{:keys [result-pairs max-reward]} (expand-fn best next-min-reward)]
+;                    (println result-pairs max-reward)
                     (if (= max-reward Double/NEGATIVE_INFINITY) 
                         (queues/pq-remove! partial-queue best)
                       (queues/pq-replace! partial-queue best (make-queue-priority max-reward)))
                     (doseq [[ni nr] result-pairs] 
+;                      (util/assert-is (not (nil? nr)) "%s" (def badd (vec result-pairs)))
  ;                    (println "NEW" max-reward (class ni) nr (:name ni))
                       (assert (not (= :re-added (queues/pq-add! new-queue ni (make-queue-priority nr))))))
                     (recur)))))))))
@@ -304,6 +306,8 @@
 
 ; Note: right now, reward in parent-pair is being ignored. 
 
+;; TODO: don't clobber global cache.
+
 ;; TODO: remove expensive tests.
 (defn- add-monotonic! [result-pair-atom [new-result new-reward :as new-result-pair]]
   (assert (every? #(not (= (first %) new-result)) @result-pair-atom))
@@ -318,11 +322,11 @@
       (add-monotonic! result-pairs-atom outcome-pair)
       (mapcat #(notify-upward (first %) outcome-pair) @parent-pairs-atom)))
 
-(declare make-inverted-node notify-upward-node)
+(declare make-inverted-node)
 
-(defn connect-downward-cache [state action [new-parent new-reward :as new-parent-pair]]
+(defn connect-downward-cache [#^HashMap cc state action [new-parent new-reward :as new-parent-pair]]
   (let [context (env/precondition-context action state)
-        ic      (get-cached-search [::INV (env/extract-context state context) (env/action-name action)]
+        ic      (util/cache-with cc [(env/extract-context state context) (env/action-name action)]
                   (InvertedCache (atom []) (atom [])))
         {:keys [result-pairs-atom parent-pairs-atom]} ic 
         first-visit?  (empty? @parent-pairs-atom)]
@@ -331,39 +335,41 @@
         (let [state (env/get-logger state context)]
           (if (env/primitive? action)
               (when-let [[ss sr] (and (env/applicable? action state) (env/successor action state))]
-                [(make-inverted-node (vary-meta ss assoc :opt [action]) (+ new-reward sr) nil ic)])
+                [(make-inverted-node cc (vary-meta ss assoc :opt [action]) (+ new-reward sr) nil ic)])
             (for [ref (hierarchy/immediate-refinements action state)]
-              (make-inverted-node state new-reward ref ic))))
-      (map #(notify-upward-node new-parent %) @result-pairs-atom))))
+              (make-inverted-node cc state new-reward ref ic))))
+      (mapcat #(notify-upward new-parent %) @result-pairs-atom))))
 
 
 ;; TODO: partial expansions for goals ? 
-(deftype InvertedNode   [name state reward remaining-actions parent-cache] :as this
+(deftype InvertedNode   [cache-cache name state reward remaining-actions parent-cache] :as this
   Object
    (equals   [y] (= name (:name y)))
    (hashCode []  (hash name))
   SearchNode
    (extract-goal-state [] nil)
    (expand-node        [min-reward]
-     (if-let [[f & r] remaining-actions]
-         (connect-downward-cache state f [this reward])
-       (notify-upward parent-cache [state reward])))
+     (PartialResult                   
+      (if-let [[f & r] remaining-actions]
+          (connect-downward-cache cache-cache state f [this reward])
+        (notify-upward parent-cache [state reward]))
+      Double/NEGATIVE_INFINITY ))
   InvertedItem 
    (notify-upward [outcome-pair]
      (let [[outcome-state outcome-rew] (generalize-outcome-pair outcome-pair state reward)]
-       [(make-inverted-node outcome-state outcome-rew (next remaining-actions) parent-cache)])))
+       [(make-inverted-node cache-cache outcome-state outcome-rew (next remaining-actions) parent-cache)])))
 
-(defn make-inverted-node [state reward remaining-actions parent-cache]
-  [(InvertedNode [state remaining-actions parent-cache] state reward remaining-actions parent-cache) reward])
+(defn make-inverted-node [cc state reward remaining-actions parent-cache]
+  [(InvertedNode cc [state remaining-actions parent-cache] state reward remaining-actions parent-cache) reward])
 
-(defn make-inverted-root-node [state action]
-  (connect-downward-cache state action 
+(defn make-inverted-roots [state action]
+  (connect-downward-cache (HashMap.) state action 
     [(reify InvertedItem 
-      (notify-upward [outcome-pair] [(update-in outcome-pair 0 GoalNode)])) 
+      (notify-upward [outcome-pair]  [(update-in outcome-pair 0 GoalNode)])) 
      0]))
 
 (defn make-inverted-sa-search [state action]
-  (make-incremental-dijkstra-search [(make-inverted-root-node state action)]))
+  (make-incremental-dijkstra-search (make-inverted-roots state action)))
 
 
 
