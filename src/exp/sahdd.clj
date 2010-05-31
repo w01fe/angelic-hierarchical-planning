@@ -164,7 +164,7 @@
             (if (< @index-atom (count @result-vec-atom))
                 (let [[_ rew :as result] (nth @result-vec-atom @index-atom)]
                  ;; TODO: remove
-                  (util/assert-is (<= (count @result-vec-atom) 1) "%s" [@result-vec-atom])
+;                  (util/assert-is (<= (count @result-vec-atom) 1) "%s" [@result-vec-atom])
                   (if (>= rew min-reward)
                       (do (swap! index-atom inc) 
                           (PartialResult [result] 
@@ -175,7 +175,8 @@
                   (let [{:keys [result-pairs max-reward]} (next-partial-solution search-problem min-reward)]
                     (reset! next-reward-atom max-reward)
                     ;; TODO: remove!
-                    (doseq [x1 @result-vec-atom x2 result-pairs] (assert (not (= (first x1) (first x2)))))
+ ;                   (doseq [x1 @result-vec-atom x2 result-pairs] 
+ ;                     (util/assert-is (not (= (first x1) (first x2))) "%s" [@result-vec-atom result-pairs]))
                     (swap!  result-vec-atom into result-pairs)
                     (recur min-reward))
                 (PartialResult nil @next-reward-atom)))))))))
@@ -228,10 +229,10 @@
   (expand-node        [se new-threshold]
     "Returns PartialResult of SearchNodes."))
 
-(defn make-goal-node [goal-state]
-  (reify SearchNode
-       (extract-goal-state [] goal-state)
-       (expand-node        [min-reward] (throw (UnsupportedOperationException.)))))
+(deftype GoalNode [goal-state]
+  SearchNode
+   (extract-goal-state [] goal-state)
+   (expand-node        [min-reward] (throw (UnsupportedOperationException.))))
 
 ;; Named node is simple non-terminal node whose equality semantics are given by name.
 (deftype NamedNode [name root-sa expand-fn] :as this
@@ -277,7 +278,7 @@
             (make-recursive-expander 
              (delay (make-exhaustive-search 
                      (make-abstracted-incremental-dijkstra-sa-search state reward f))) r)))
-     (make-goal-node state))
+     (GoalNode state))
    reward])
 
 
@@ -358,7 +359,7 @@
 (defn make-inverted-root-node [state action]
   (connect-downward-cache state action 
     [(reify InvertedItem 
-      (notify-upward [outcome-pair] [(update-in outcome-pair 0 make-goal-node)])) 
+      (notify-upward [outcome-pair] [(update-in outcome-pair 0 GoalNode)])) 
      0]))
 
 (defn make-inverted-sa-search [state action]
@@ -419,6 +420,13 @@
     make-inverted-sa-search))
 
 
+
+(comment
+ (let [e (make-random-taxi-env 3 3 3 2) h (simple-taxi-hierarchy e)]  
+  (println "ucs" (run-counted #(second (uniform-cost-search e))))
+  (doseq [alg `[sahtn-dijkstra sahucs-flat sahucs-simple sahucs-dijkstra sahucs-inverted]]
+         (time (println alg (run-counted #(second ((resolve alg) h)))))))
+ )
 
 
 ;; TODO: compare performance to other algorithms.  
