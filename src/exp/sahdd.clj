@@ -37,14 +37,10 @@
 
 ;; TODO: need tests, domains with multiple outcome states. ! 
 
-;; TODO: Is there even more symmetry here?  I.e., multiple searches going on ?
- ;  I.e., what if we move sequencing into dijkstra search algorithm itself?
- ;  I.e., note this is essentially a wimpy form of hierarchy without sequencing.
- ;  If we have a single search algorithm that understands sequencing
- ;  Then all of these search methods just become (?!?)
- ;    transformations on ways of generating refinements?  
- ;    i.e., you get all of this just with partial expansion of HLAs ? 
-;  Questions: what is "true" 
+; More general ways to express sequencing, primitives?
+; Ways to merge "searches" and "nodes"? 
+; 
+; In all of this, how do "policies" get specified.  I.e., search types for lower levels? 
 
   ; I.e., AHA* 
 
