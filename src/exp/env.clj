@@ -25,6 +25,12 @@
   (list-vars [state])
   (as-map    [state]))
 
+;; TODO: use dissoc in some cases?
+(defn fast-select-keys [map key-set]
+  (let [mc (count map) kc (count key-set)]
+    (assert (<= kc mc))
+    (if (= mc kc) map
+      (persistent! (reduce #(assoc! %1 %2 (get map %2)) (transient {}) key-set)))))
 
 (declare make-logging-factored-state)
 
@@ -55,7 +61,7 @@
    (ooc-effects     []  (util/filter-map #(not (.contains context (key %))) (util/safe-get (meta state) :puts)))
   ContextualState 
    (current-context []  context)
-   (extract-context [c] (select-keys init c))
+   (extract-context [c] (fast-select-keys init c))
    (apply-effects   [e] (set-vars state e))
    (get-logger      [c] (make-logging-factored-state (as-map init) c)))
 

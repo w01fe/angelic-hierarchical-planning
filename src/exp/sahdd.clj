@@ -8,6 +8,8 @@
 ;; TODO: note other sahucs implementations are incorrect, since they don't handle reward decreases of partial nodes properly. ?  
 ;; For the same reason, sahucs-fancy-dijkstra is doubly-incorrect ? 
 
+;; Note: true state abstraction condition: every optimal solution of A is optimal solution of B. 
+
 ; Here, there is no real Seq character.  No real choices.  
 ; Note: hard (impossible?) to unify down and up.
 ; Best: at least have common interface, shared parts, to simplify.
@@ -23,7 +25,7 @@
 
 ; Question: what is general way to do this? 
 ; Note: to think of this as like SAHA, always refining a given outcome state.
-;    Can think: always refining *abstracted* outcome state.
+                                        ;    Can think: always refining *abstracted* outcome state.
 ;    Note key difference: in SAHA we're doing bidi, in UCS we do forward dijkstra
 
 ; Also need goal-hiding, etc. ?
@@ -43,6 +45,10 @@
 ; In all of this, how do "policies" get specified.  I.e., search types for lower levels? 
 
   ; I.e., AHA* 
+
+
+
+;; TODO: dijkstra ones should actually be ALTs, with pruning etc. (?!)
 
 
 (defn viable? [reward cutoff]
@@ -320,10 +326,10 @@
 
 
 
-;; TODO: remove expensive tests.
+;; TODO: conditionally add expensive tests.
 (defn- add-monotonic! [result-pair-atom [new-result new-reward :as new-result-pair]]
-  (assert (every? #(not (= (first %) new-result)) @result-pair-atom))
-  (when (seq @result-pair-atom) (assert (<= new-reward (second (last @result-pair-atom)))))
+;  (assert (every? #(not (= (first %) new-result)) @result-pair-atom))
+;  (when (seq @result-pair-atom) (assert (<= new-reward (second (last @result-pair-atom)))))
   (swap! result-pair-atom conj new-result-pair))
 
 (defprotocol InvertedItem (notify-upward [item outcome-pair]))

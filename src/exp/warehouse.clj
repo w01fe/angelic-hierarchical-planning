@@ -96,7 +96,7 @@
   (let [bottomleft [1 1]
         topright   [width height]
         blocks     (set (util/cons-when initial-holding (apply concat (vals initial-stacks))))
-        tables     (set (for [i (range 1 (inc height))] (util/symbol-cat 'table i)))]
+        tables     (set (for [i (range 1 (inc width))] (util/symbol-cat 'table i)))]
     (assert (not (contains? blocks nil)))
     (assert (empty? (clojure.set/intersection tables blocks)))
     (assert (every? identity (map <= [1 1] initial-pos topright)))
@@ -147,60 +147,62 @@
   ([x1 x2] (if (<= x1 x2) (range x1 (inc x2)) (range x2 (inc x1))))
   ([x1 x2 x3] (range (min x1 x2 x3) (inc (max x1 x2 x3)))))
 
-(defn make-nav-hla [env dx dy gx gy h]
-  (NavHLA ['nav dx dy] (into '#{[at]} (for [x (incl-range dx gx) y (range (min dy gy) (inc h))] ['someblockat x y])) [dx dy]))
+;Issue with context: we also learn for other initial states, possibly outside initial range.
+(defn make-nav-hla [dx dy nav-context]
+  (NavHLA ['nav dx dy] nav-context [dx dy]))
+                                        ;(into '#{[at]} (for [x (incl-range dx gx) y (range (min dy gy) (inc h))] ['someblockat x y])) [dx dy]))
 
 ; state vars are: (const), at, facingright, holding, blockat, someblockat, on
 
-(deftype MoveBlockHLA [env name context b bx by a c cx cy] :as this
+(deftype MoveBlockHLA [env name context nav-context b bx by a c cx cy] :as this
     env/Action                (action-name [] name)
                               (primitive? [] false)
     env/ContextualAction      (precondition-context [s] context)
-    hierarchy/HighLevelAction (immediate-refinements- [s]
-                                (assert (= b (env/get-var s ['blockat bx by])))
-                                (assert (= a (env/get-var s ['blockat bx (dec by)])))                                
-                                (assert (= c (env/get-var s ['blockat cx cy])))                                           
-                                (let [[w h] (get (env/get-var s :const) '[topright])
-                                      [gx gy]  (env/get-var s '[at])
-                                      fr?   (env/get-var s '[facingright])
-                                      dirs  '[[true 1] [false -1]]]
-                                  (for [[fr1 dx1] dirs
-                                        :let [gx1  (- bx dx1), gy1 by]
-                                        :when (and (<= 1 gx1 w) (not (env/get-var s  ['someblockat gx1 gy1])))
-                                        [fr2 dx2] dirs
-                                        :let [gx2  (- cx dx2), gy2 (inc cy)]
-                                        :when (and (<= 1 gx2 w) 
-                                                   (contains? #{nil b} (env/get-var s ['blockat gx2 gy2])))]
-                                    (concat
-                                     (when (not (util/truth= fr? fr1))
-                                       [(make-nav-hla env gx1 h gx gy h) (make-specific-turn [gx1 h] fr?)])
-                                     [(make-nav-hla env gx1 gy1 gx gy h) (make-specific-get b a fr1 gx1 gy1)]
-                                     (when (not (util/truth= fr1 fr2))
-                                       [(make-nav-hla env gx2 h gx gy h) (make-specific-turn [gx2 h] fr1)])
-                                     [(make-nav-hla env gx2 gy2 gx gy h) (make-specific-put b c fr2 gx2 gy2)]))))
-                              (cycle-level- [s] nil))
+    hierarchy/HighLevelAction 
+      (immediate-refinements- [s]
+        (assert (= b (env/get-var s ['blockat bx by])))
+        (assert (= a (env/get-var s ['blockat bx (dec by)])))                                             (assert (= c (env/get-var s ['blockat cx cy])))                                           
+        (let [[w h] (get (env/get-var s :const) '[topright])
+  ;                                      [gx gy]  (env/get-var s '[at])
+              fr?   (env/get-var s '[facingright])
+              dirs  '[[true 1] [false -1]]]
+          (for [[fr1 dx1] dirs
+                :let [gx1  (- bx dx1), gy1 by]
+                :when (and (<= 1 gx1 w) (not (env/get-var s  ['someblockat gx1 gy1])))
+                [fr2 dx2] dirs
+                :let [gx2  (- cx dx2), gy2 (inc cy)]
+                :when (and (<= 1 gx2 w) 
+                           (contains? #{nil b} (env/get-var s ['blockat gx2 gy2])))]
+            (concat
+             (when (not (util/truth= fr? fr1))
+               [(make-nav-hla gx1 h nav-context) (make-specific-turn [gx1 h] fr?)])
+             [(make-nav-hla gx1 gy1 nav-context) (make-specific-get b a fr1 gx1 gy1)]
+             (when (not (util/truth= fr1 fr2))
+               [(make-nav-hla gx2 h nav-context) (make-specific-turn [gx2 h] fr1)])
+             [(make-nav-hla gx2 gy2 nav-context) (make-specific-put b c fr2 gx2 gy2)]))))
+      (cycle-level- [s] nil))
 
-(defn make-move-block-hla [env freespace-context b bx by a c cx cy]
+(defn make-move-block-hla [env nav-context b bx by a c cx cy]
   (MoveBlockHLA env ['move-block b c]
-                (into freespace-context
-                      ['[at] '[facingright] ['on a] ['on c] '[holding]
-                       ['blockat bx by] ['blockat cx (inc cy)]])
-                b bx by a c cx cy))
+                (into nav-context
+                      ['[facingright] ['on a] ['on c] '[holding]
+                       ['blockat bx by] ['blockat cx (inc cy)]]) 
+                nav-context b bx by a c cx cy))
 
 
 (declare possible-move-refinements)
 
-(deftype MoveBlocksHLA [env goal-fn context freespace-context block-off-limits] :as this
-    env/Action                (action-name [] '[top])
+(deftype MoveBlocksHLA [env goal-fn context nav-context block-off-limits] :as this
+    env/Action                (action-name [] ['move-blocks block-off-limits ])
                               (primitive? [] false)
     env/ContextualAction      (precondition-context [s] context)
     hierarchy/HighLevelAction (immediate-refinements- [s] 
-                                 (possible-move-refinements env goal-fn context freespace-context block-off-limits s))
+                                 (possible-move-refinements env goal-fn context nav-context block-off-limits s))
                               (cycle-level- [s] 2))
 
 ; Note: differs from previous (strips) version in use of goal test.
 ;; TODO: should allow self-moves? 
-(defn possible-move-refinements [env goal-fn context freespace-context block-off-limits state]
+(defn possible-move-refinements [env goal-fn context nav-context block-off-limits state]
   (let [[w h] (get (env/get-var state :const) '[topright])
         tops  (for [x (range 1 (inc w))] 
                 [x (last (take-while #(and (<= % h) (env/get-var state ['someblockat x %])) (range 1 (inc h))))])]
@@ -212,9 +214,9 @@
            [cx cy] tops
            :let [c (env/get-var state ['blockat cx cy])]
            :when (and (< cy h) (not (= b c)))]
-       [(make-move-block-hla env freespace-context
+       [(make-move-block-hla env nav-context
                              b bx by (env/get-var state ['blockat bx (dec by)]) c cx cy)
-        (MoveBlocksHLA env goal-fn context freespace-context b)]))))
+        (MoveBlocksHLA env goal-fn context nav-context b)]))))
 
 (deftype WarehouseTLA [env context] :as this
     env/Action                (action-name [] '[top])
@@ -224,7 +226,7 @@
                                  (let [goal-fn (env/goal-fn env)
                                        [w h] (get (env/get-var s :const) '[topright])]
                                    (possible-move-refinements env goal-fn context 
-                                     (set (for [x (range 1 (inc w)) y (range 2 (inc h))] ['someblockat x y])) nil s)))
+                                     (set (cons '[at] (for [x (range 1 (inc w)) y (range 2 (inc h))] ['someblockat x y]))) nil s)))
                               (cycle-level- [s] nil))
 
  
@@ -278,6 +280,15 @@
   (doseq [alg `[sahtn-dijkstra  sahucs-simple sahucs-dijkstra sahucs-inverted]]
          (time (debug 0 (println alg (run-counted #(second ((resolve alg) h))))))))
 
+(let [e (make-warehouse-env 4 4 [2 3] false {1 '[a] 3 '[c b]} nil ['[a c table2]]) h (exp.warehouse/simple-warehouse-hierarchy e)]  
+  (time (println "ucs" (run-counted #(second (uniform-cost-search e)))))
+  (doseq [alg `[sahtn-dijkstra  sahucs-simple sahucs-dijkstra sahucs-inverted]]
+         (time (debug 0 (println alg (run-counted #(second (exp.env/verify-solution e ((resolve alg) h)))))))))
+
+(let [e (make-warehouse-env 6 5 [1 5] false {1 '[a c] 4 '[e g]} nil '[[a e table2] [c g table5]]) h (exp.warehouse/simple-warehouse-hierarchy e)]  
+  (time (println "ucs" (run-counted #(second (uniform-cost-search e)))))
+  (doseq [alg `[sahtn-dijkstra  sahucs-simple sahucs-dijkstra sahucs-inverted]]
+         (time (debug 0 (println alg (run-counted #(second (exp.env/verify-solution e ((resolve alg) h)))))))))
   )
 
 
