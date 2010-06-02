@@ -5,6 +5,8 @@
 
 ; Note: WW heuristic is inconsistent.
 
+
+
 (defn- make-dir [s name [dx dy]]
   (let [[cx cy :as cp] (env/get-var s '[at])
         [w h]          (get (env/get-var s :const) '[topright])
@@ -22,12 +24,25 @@
 (defn- make-up    [s] (make-dir s '[up]    [ 0  1]))
 
 
+(defn- make-specific-turn [pos cur-fr]
+  (env/FactoredPrimitive [(if cur-fr 'turn-l 'turn-r)] {['at] pos ['facingright] cur-fr} 
+                         {'[facingright] (not cur-fr)} -1))
+
 (defn- make-turn   [s]
   (let [[cx cy] (env/get-var s '[at])
         cur-fr  (env/get-var s '[facingright])]
     (when (= cy (nth (get (env/get-var s :const) '[topright]) 1))  
-      (env/FactoredPrimitive [(if cur-fr 'turn-l 'turn-r)] {['at] [cx cy] ['facingright] cur-fr} 
-                             {'[facingright] (not cur-fr)} -1))))
+      (make-specific-turn [cx cy] cur-fr))))
+
+
+(defn- make-specific-get [b c fr? gx gy]
+  (let [bx (+ gx (if fr? 1 -1))]
+    (env/FactoredPrimitive
+     [(if fr? 'get-r 'get-l) b c]
+     {'[at] [gx gy] '[facingright] fr? ['blockat bx gy] b 
+      ['on c] b ['on b] nil '[holding] nil}
+     {['blockat bx gy] nil ['on c] nil ['someblockat bx gy] false ['holding] b}
+     -1)))
 
 (defn- make-get [s]
   (when-not (env/get-var s ['holding])
@@ -38,12 +53,16 @@
       (when-let [b (and (<= 1 bx width) (env/get-var s ['blockat bx cy]))]
         (when-not (env/get-var s ['on b])
           (let [c (env/get-var s ['blockat bx (dec cy)])]
-            (env/FactoredPrimitive
-             [(if cur-fr 'get-r 'get-l) b c]
-             {'[at] [cx cy] '[facingright] cur-fr ['blockat bx cy] b 
-              ['on c] b ['on b] nil '[holding] nil}
-             {['blockat bx cy] nil ['on c] nil ['someblockat bx cy] false ['holding] b}
-             -1)))))))
+            (make-specific-get b c cur-fr cx cy)))))))
+
+(defn- make-specific-put [b c fr? gx gy]
+  (let [bx (+ gx (if fr? 1 -1))]
+    (env/FactoredPrimitive
+     [(if fr? 'put-r 'put-l) b c]
+     {'[at] [gx gy] '[facingright] fr? ['blockat bx (dec gy)] c 
+      ['on c] nil '[holding] b}
+     {['blockat bx gy] b ['on c] b ['someblockat bx gy] true ['holding] nil}
+     -1)))
 
 (defn- make-put [s]
   (when-let [b (env/get-var s ['holding])]
@@ -53,12 +72,7 @@
           bx      (+ cx (if cur-fr 1 -1))]
       (when-let [c (and (<= 1 bx width) (env/get-var s ['blockat bx (dec cy)]))]
         (when-not (env/get-var s ['on c])
-          (env/FactoredPrimitive
-           [(if cur-fr 'put-r 'put-l) b c]
-           {'[at] [cx cy] '[facingright] cur-fr ['blockat bx (dec cy)] c 
-            ['on c] nil '[holding] b}
-           {['blockat bx cy] b ['on c] b ['someblockat bx cy] true ['holding] nil}
-           -1))))))
+          (make-specific-put b c cur-fr cx cy))))))
 
 
 
@@ -74,7 +88,7 @@
  env/FactoredEnv
   (goal-map [] goal))
 
-
+; state vars are: (const), at, facingright, holding, blockat, someblockat, on
 ; initial-stacks is map from column number to stacks of block names (top-down).
 ; goal-stacks is seq of desired stacks
 (defn make-warehouse-env 
@@ -112,32 +126,157 @@
 
 
 
+;;;;;;;; hierarchy ;;;;;;;;;;;;
+
+;; TODO: fix nav dependence growth? 
+
+(deftype NavHLA [name context dest] :as this
+  env/Action                (action-name [] name)
+                            (primitive? [] false)
+  env/ContextualAction      (precondition-context [s] context )
+  hierarchy/HighLevelAction (immediate-refinements- [s]
+                              (if (= dest (env/get-var s ['at]))
+                               [[]]
+                               (for [af [make-left make-right make-up make-down]
+                                     :let [a (af s)]
+                                     :when a]
+                                 [a this])))
+                            (cycle-level- [s] 1))
+
+(defn incl-range 
+  ([x1 x2] (if (<= x1 x2) (range x1 (inc x2)) (range x2 (inc x1))))
+  ([x1 x2 x3] (range (min x1 x2 x3) (inc (max x1 x2 x3)))))
+
+(defn make-nav-hla [env dx dy gx gy h]
+  (NavHLA ['nav dx dy] (into '#{[at]} (for [x (incl-range dx gx) y (range (min dy gy) (inc h))] ['someblockat x y])) [dx dy]))
+
+; state vars are: (const), at, facingright, holding, blockat, someblockat, on
+
+(deftype MoveBlockHLA [env name context b bx by a c cx cy] :as this
+    env/Action                (action-name [] name)
+                              (primitive? [] false)
+    env/ContextualAction      (precondition-context [s] context)
+    hierarchy/HighLevelAction (immediate-refinements- [s]
+                                (assert (= b (env/get-var s ['blockat bx by])))
+                                (assert (= a (env/get-var s ['blockat bx (dec by)])))                                
+                                (assert (= c (env/get-var s ['blockat cx cy])))                                           
+                                (let [[w h] (get (env/get-var s :const) '[topright])
+                                      [gx gy]  (env/get-var s '[at])
+                                      fr?   (env/get-var s '[facingright])
+                                      dirs  '[[true 1] [false -1]]]
+                                  (for [[fr1 dx1] dirs
+                                        :let [gx1  (- bx dx1), gy1 by]
+                                        :when (and (<= 1 gx1 w) (not (env/get-var s  ['someblockat gx1 gy1])))
+                                        [fr2 dx2] dirs
+                                        :let [gx2  (- cx dx2), gy2 (inc cy)]
+                                        :when (and (<= 1 gx2 w) 
+                                                   (contains? #{nil b} (env/get-var s ['blockat gx2 gy2])))]
+                                    (concat
+                                     (when (not (util/truth= fr? fr1))
+                                       [(make-nav-hla env gx1 h gx gy h) (make-specific-turn [gx1 h] fr?)])
+                                     [(make-nav-hla env gx1 gy1 gx gy h) (make-specific-get b a fr1 gx1 gy1)]
+                                     (when (not (util/truth= fr1 fr2))
+                                       [(make-nav-hla env gx2 h gx gy h) (make-specific-turn [gx2 h] fr1)])
+                                     [(make-nav-hla env gx2 gy2 gx gy h) (make-specific-put b c fr2 gx2 gy2)]))))
+                              (cycle-level- [s] nil))
+
+(defn make-move-block-hla [env freespace-context b bx by a c cx cy]
+  (MoveBlockHLA env ['move-block b c]
+                (into freespace-context
+                      ['[at] '[facingright] ['on a] ['on c] '[holding]
+                       ['blockat bx by] ['blockat cx (inc cy)]])
+                b bx by a c cx cy))
+
+
+(declare possible-move-refinements)
+
+(deftype MoveBlocksHLA [env goal-fn context freespace-context block-off-limits] :as this
+    env/Action                (action-name [] '[top])
+                              (primitive? [] false)
+    env/ContextualAction      (precondition-context [s] context)
+    hierarchy/HighLevelAction (immediate-refinements- [s] 
+                                 (possible-move-refinements env goal-fn context freespace-context block-off-limits s))
+                              (cycle-level- [s] 2))
+
+; Note: differs from previous (strips) version in use of goal test.
+;; TODO: should allow self-moves? 
+(defn possible-move-refinements [env goal-fn context freespace-context block-off-limits state]
+  (let [[w h] (get (env/get-var state :const) '[topright])
+        tops  (for [x (range 1 (inc w))] 
+                [x (last (take-while #(and (<= % h) (env/get-var state ['someblockat x %])) (range 1 (inc h))))])]
+    (util/cons-when
+     (when (goal-fn state) [])
+     (for [[bx by] tops
+           :let [b (env/get-var state ['blockat bx by])]
+           :when (and (> by 1) (not (= b block-off-limits))) 
+           [cx cy] tops
+           :let [c (env/get-var state ['blockat cx cy])]
+           :when (and (< cy h) (not (= b c)))]
+       [(make-move-block-hla env freespace-context
+                             b bx by (env/get-var state ['blockat bx (dec by)]) c cx cy)
+        (MoveBlocksHLA env goal-fn context freespace-context b)]))))
+
+(deftype WarehouseTLA [env context] :as this
+    env/Action                (action-name [] '[top])
+                              (primitive? [] false)
+    env/ContextualAction      (precondition-context [s] context)
+    hierarchy/HighLevelAction (immediate-refinements- [s] 
+                                 (let [goal-fn (env/goal-fn env)
+                                       [w h] (get (env/get-var s :const) '[topright])]
+                                   (possible-move-refinements env goal-fn context 
+                                     (set (for [x (range 1 (inc w)) y (range 2 (inc h))] ['someblockat x y])) nil s)))
+                              (cycle-level- [s] nil))
+
+ 
+
+(defn make-warehouse-tla [env]
+  (WarehouseTLA env (util/keyset (dissoc (env/initial-state env) :const))))
+
+(defn simple-warehouse-hierarchy [#^WarehouseEnv env]
+  (hierarchy/SimpleHierarchicalEnv env [(make-warehouse-tla env)]))
+
+;; TODO: heuristic
+;; TODO: missing precond handling && preconds ? 
 
 (comment 
-  (debug 0 (uniform-cost-search (make-warehouse-env 2 2 [2 2] false {1 '[a]} nil ['[a table2]])))
-
-  (time (map :name (first (a-star-search (make-initial-state-space-node (constant-predicate-simplify (make-warehouse-strips-env 2 2 [1 1] false {0 '[a]} nil ['[a table1]])) (constantly 0))))))
-  (time (map :name (first (a-star-search (make-initial-state-space-node (constant-predicate-simplify (make-warehouse-strips-env 3 3 [1 1] false {0 '[a] 2 '[b]} nil ['[a b]])) (constantly 0))))))
-  (time (map :name (first (a-star-search (make-initial-state-space-node (constant-predicate-simplify (make-warehouse-strips-env 3 3 [1 1] false {0 '[a] 2 '[b]} nil ['[b a]])) (constantly 0))))))
-  (time (map :name (first (a-star-graph-search (make-initial-state-space-node (constant-predicate-simplify (make-warehouse-strips-env 3 4 [1 2] true {0 '[b a] 2 '[c]} nil ['[a b c]])) (constantly 0))))))
-  (time (map :name (first (a-star-graph-search (make-initial-state-space-node (constant-predicate-simplify (make-warehouse-strips-env 4 4 [1 2] false {0 '[a] 2 '[c b]} nil ['[a c table1]])) (constantly 0))))))
 
 
-  (let [node (make-initial-state-space-node (constant-predicate-simplify (make-warehouse-strips-env 3 3 [1 1] false {0 '[a] 2 '[b]} nil ['[ b a]])) (constantly 0))]
-    (time (map :name (first (a-star-search node)))))
+  (defn warehouse-hungarian-heuristic [env s] "destination-to-destination."
+    (let [[cx cy] (map #(env/get-var s [%]) '[atx aty])
+          pass    (remove #(env/get-var s ['pass-served? (first %)]) (:passengers env))]
+      (if (empty? pass) 0
+          (int (Math/floor 
+                (util/maximum-matching
+                 (cons ::current (map first pass))
+                 (cons ::goal    (map first pass))
+                 (concat
+                  (for [[p1 _ [dx1 dy1]]         (cons [::current nil [cx cy]] pass)
+                        [p2 [sx2 sy2] [dx2 dy2]] pass]
+                    [p1 p2
+                     (- -2
+                        (util/abs (- dx1 sx2)) (util/abs (- dy1 sy2))
+                        (util/abs (- dx2 sx2)) (util/abs (- dy2 sy2)))])        
+                  (for [[p [sx sy] [dx dy]] pass]
+                    [p ::goal 0]))))))))
 
-  (let [env (constant-predicate-simplify
-	     (make-warehouse-strips-env 4 4 [1 2] false {0 '[a] 2 '[c b]} nil ['[a c table1]]))]
-    (println 
-     (str-join "\n\n"
-     (map #(state-str env %)
-       (nth
-        (check-solution env
-	  (a-star-graph-search (make-initial-state-space-node env (constantly 0)))) 2)))))
+)
 
-  (parse-hierarchy "/Users/jawolfe/projects/angel/src/edu/berkeley/ai/domains/warehouse.hierarchy" (make-warehouse-strips-domain))
 
-  (time (map :name (first (a-star-search (alt-node (get-hierarchy *warehouse-hierarchy* (constant-predicate-simplify (make-warehouse-strips-env 2 2 [1 1] false {0 '[a]} nil ['[a table1]]))))))))
+
+
+
+
+
+(comment 
+  (time (debug 0 (uniform-cost-search (make-warehouse-env 2 2 [2 2] false {1 '[a]} nil ['[a table2]]))))
+  (time (debug 0 (uniform-cost-search (make-warehouse-env 3 3 [2 2] false {1 '[a] 3 '[b]} nil ['[a b]]))))
+  (time (debug 0 (uniform-cost-search (make-warehouse-env 4 4 [2 3] false {1 '[a] 3 '[c b]} nil ['[a c table1]]))))
+
+  ;; TODO: hierarchy somehow beats non for this ?! 
+(let [e (make-warehouse-env 2 2 [2 2] false {1 '[a]} nil ['[a table2]]) h (exp.warehouse/simple-warehouse-hierarchy e)]  
+  (time (println "ucs" (run-counted #(second (uniform-cost-search e)))))
+  (doseq [alg `[sahtn-dijkstra  sahucs-simple sahucs-dijkstra sahucs-inverted]]
+         (time (debug 0 (println alg (run-counted #(second ((resolve alg) h))))))))
 
   )
 

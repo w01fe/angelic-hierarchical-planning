@@ -184,7 +184,13 @@
        :reward (+ reward (or (:reward old-meta) 0)))
      reward]))
 
-
+(defn successor-seq [actions state]
+  (loop [actions actions state state rew 0]
+    (if (not actions) [state rew]
+      (let [[f & r] actions]
+        (util/assert-is  (applicable? f state))
+        (let [[next-state step-rew] (next-state-and-reward f state)]
+          (recur r next-state (+ rew step-rew)))))))
 
 (defn solution-and-reward [state]
   (let [{:keys [act-seq reward]} (meta state)]
@@ -218,6 +224,10 @@
 (defn make-finish-goal-state [env]
   (zipmap (list-vars (initial-state env)) (repeat :goal)))
 
-
+(defn verify-solution [env [sol rew]]
+  (let [[result result-rew] (successor-seq sol (initial-state env))]
+    (assert ((goal-fn env) result))
+    (assert (= result-rew rew))
+    [sol rew]))
 
 

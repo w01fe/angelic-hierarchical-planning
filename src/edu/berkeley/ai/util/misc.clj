@@ -248,6 +248,9 @@
 (defn same-truth-value? [& args]
   (apply = (map #(when % true) args)))
 
+(defn truth= [& args]
+  (apply = (map #(when % true) args)))
+
 (comment 
   (match-mappings 
    '[[:optional [:FOO [clojure.core/unquote x]]]

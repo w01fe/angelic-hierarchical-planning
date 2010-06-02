@@ -404,7 +404,7 @@
           tla  (hierarchy/TopLevelAction e [(hierarchy/initial-plan henv)])
           top  (search-maker init tla)]
       (when-let [[s r] (first (:result-pairs (next-partial-solution top Double/NEGATIVE_INFINITY)))]
-        [(map env/action-name (:opt (meta s))) r ]))))
+        [(map identity #_env/action-name (:opt (meta s))) r ]))))
 
 (defn if-cycle-fn [if-cycle else]
   (fn [[parent-state parent-action] state action]

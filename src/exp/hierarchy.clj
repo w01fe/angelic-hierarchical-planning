@@ -23,7 +23,7 @@
 ;  (println "Computing Refs for " (env/action-name a))
   (util/timeout)
   (let [refs (immediate-refinements- a s)]
-  #_  (println "\nRefs for " (env/action-name a) ;"from" (env/as-map s) "are" 
+    (util/print-debug 3 "\nRefs for " (env/action-name a) ;"from" (env/as-map s) "are" 
              (apply str (doall (map #(str "\n  " (util/str-join ", " (map env/action-name %))) refs))))
     (util/sref-set! *ref-counter*  (+ 1            (util/sref-get *ref-counter*)))
     (util/sref-set! *plan-counter* (+ (count refs) (util/sref-get *plan-counter*)))
@@ -61,7 +61,7 @@
     (print-method  [(map env/action-name sol) rew (map env/action-name (:rest-plan p))]
                    os)))
 
-(defn successor-seq [actions state]
+(defn- successor-seq [actions state]
   (if (empty? actions) state
     (let [[first-action & rest-actions] actions]
       (when (= (env/action-name first-action) '[finish]) (print "."))
