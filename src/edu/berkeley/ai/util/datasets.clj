@@ -1,5 +1,5 @@
 (ns edu.berkeley.ai.util.datasets
-  (:use edu.berkeley.ai.util edu.berkeley.ai.util.charts)
+  (:use edu.berkeley.ai.util edu.berkeley.ai.util.charts clojure.contrib.pprint)
   )
 
 ; Data set is just a list of maps with the same keys.

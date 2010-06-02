@@ -8,18 +8,18 @@
 (defn- make-dir [s name [dx dy]]
   (let [[cx cy :as cp] (env/get-var s '[at])
         [w h]          (get (env/get-var s :const) '[topright])
-        nx (+ cx dx), ny (+ dy dy)]
-    (when (and (<= 1 nx w) (<= 1 ny h))
+        nx (+ cx dx), ny (+ cy dy)]
+    (when (and (<= 1 nx w) (<= 1 ny h) (not (env/get-var s ['someblockat nx ny])))
       (env/FactoredPrimitive
        name
        {['at] cp ['someblockat nx ny] false}
        {['at] [nx ny]}
        -1))))
 
-(defn- make-left  [s] (make-dir '[left]  [-1 0 ]))
-(defn- make-right [s] (make-dir '[right] [ 1 0 ]))
-(defn- make-down  [s] (make-dir '[down]  [ 0 -1]))
-(defn- make-up    [s] (make-dir '[up]    [ 0  1]))
+(defn- make-left  [s] (make-dir s '[left]  [-1 0 ]))
+(defn- make-right [s] (make-dir s '[right] [ 1 0 ]))
+(defn- make-down  [s] (make-dir s '[down]  [ 0 -1]))
+(defn- make-up    [s] (make-dir s '[up]    [ 0  1]))
 
 
 (defn- make-turn   [s]
@@ -27,7 +27,7 @@
         cur-fr  (env/get-var s '[facingright])]
     (when (= cy (nth (get (env/get-var s :const) '[topright]) 1))  
       (env/FactoredPrimitive [(if cur-fr 'turn-l 'turn-r)] {['at] [cx cy] ['facingright] cur-fr} 
-                             {'facingright (not cur-fr)} -1))))
+                             {'[facingright] (not cur-fr)} -1))))
 
 (defn- make-get [s]
   (when-not (env/get-var s ['holding])
@@ -35,13 +35,13 @@
           cur-fr  (env/get-var s '[facingright])
           [width] (get (env/get-var s :const) '[topright])
           bx      (+ cx (if cur-fr 1 -1))]
-      (when-let [b (and (<= bx 1 width) (env/get-var s ['blockat bx cy]))]
+      (when-let [b (and (<= 1 bx width) (env/get-var s ['blockat bx cy]))]
         (when-not (env/get-var s ['on b])
           (let [c (env/get-var s ['blockat bx (dec cy)])]
             (env/FactoredPrimitive
              [(if cur-fr 'get-r 'get-l) b c]
-             {['at] [cx cy] ['facingright] cur-fr ['blockat bx cy] b 
-              ['on c] b ['on b] nil ['holding] nil}
+             {'[at] [cx cy] '[facingright] cur-fr ['blockat bx cy] b 
+              ['on c] b ['on b] nil '[holding] nil}
              {['blockat bx cy] nil ['on c] nil ['someblockat bx cy] false ['holding] b}
              -1)))))))
 
@@ -51,12 +51,12 @@
           cur-fr  (env/get-var s '[facingright])
           [width] (get (env/get-var s :const) '[topright])
           bx      (+ cx (if cur-fr 1 -1))]
-      (when-let [c (and (<= bx 1 width) (env/get-var s ['blockat bx (dec cy)]))]
+      (when-let [c (and (<= 1 bx width) (env/get-var s ['blockat bx (dec cy)]))]
         (when-not (env/get-var s ['on c])
           (env/FactoredPrimitive
            [(if cur-fr 'put-r 'put-l) b c]
-           {['at] [cx cy] ['facingright] cur-fr ['blockat bx (dec cy)] c 
-            ['on c] nil ['holding] b}
+           {'[at] [cx cy] '[facingright] cur-fr ['blockat bx (dec cy)] c 
+            ['on c] nil '[holding] b}
            {['blockat bx cy] b ['on c] b ['someblockat bx cy] true ['holding] nil}
            -1))))))
 
@@ -87,14 +87,13 @@
     (assert (empty? (clojure.set/intersection tables blocks)))
     (assert (every? identity (map <= [1 1] initial-pos topright)))
     (assert (every? #(<= 1 % width) (keys initial-stacks)))
-    (assert (every? #(< (count %) (dec height)) (vals initial-stacks)))
+    (assert (every? #(< (count %) height) (vals initial-stacks)))
     (assert (every? (into blocks tables) (apply concat goal-stacks)))
-    (assert (every? #(= (count % 2)) goal-stacks))
     (assert (< (count (get initial-stacks (first initial-pos))) (second initial-pos)))
-    (let [stacks (for [i (range 1 (inc width))] 
-                   (take height (concat [(util/symbol-cat 'table i)] 
-                                        (reverse (get initial-stacks i)) 
-                                        (repeat nil))))]
+    (let [stacks (vec (for [i (range 1 (inc width))] 
+                        (vec (take height (concat [(util/symbol-cat 'table i)] 
+                                                  (reverse (get initial-stacks i)) 
+                                                  (repeat nil))))))]
       (WarehouseEnv 
        (into {:const {['topright] topright}
               '[at]  (vec initial-pos)
@@ -102,11 +101,12 @@
               '[holding]     (or initial-holding nil)}
              (apply concat    
                     (for [[x stack] (util/indexed stacks)
-                          [y block] (util/indexed stack)]
+                          [y block] (util/indexed stack)
+                          :let [x (inc x) y (inc y)]]
                       (util/cons-when
-                       (when block ['on block] (or (get stack (inc y)) nil))
-                       [['blockat x y] (or block nil)]
-                       [['someblockat x y] (if block true false)]))))
+                       (when block [['on block] (or (get stack y) nil)])
+                       [[['blockat x y] (or block nil)]
+                        [['someblockat x y] (if block true false)]]))))
        (into {} (for [stack goal-stacks, [a b] (partition 2 1 stack)] [['on b] a]))))))
 
 
@@ -114,7 +114,8 @@
 
 
 (comment 
-  (u util envs.strips domains.warehouse envs search search.algorithms.textbook)
+  (debug 0 (uniform-cost-search (make-warehouse-env 2 2 [2 2] false {1 '[a]} nil ['[a table2]])))
+
   (time (map :name (first (a-star-search (make-initial-state-space-node (constant-predicate-simplify (make-warehouse-strips-env 2 2 [1 1] false {0 '[a]} nil ['[a table1]])) (constantly 0))))))
   (time (map :name (first (a-star-search (make-initial-state-space-node (constant-predicate-simplify (make-warehouse-strips-env 3 3 [1 1] false {0 '[a] 2 '[b]} nil ['[a b]])) (constantly 0))))))
   (time (map :name (first (a-star-search (make-initial-state-space-node (constant-predicate-simplify (make-warehouse-strips-env 3 3 [1 1] false {0 '[a] 2 '[b]} nil ['[b a]])) (constantly 0))))))

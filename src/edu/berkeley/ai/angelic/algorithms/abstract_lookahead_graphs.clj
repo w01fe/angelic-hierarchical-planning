@@ -705,7 +705,7 @@
  ; (when next-clause (util/assert-is (clause-includes-state? next-clause next-state)))
   (if next-clause
       (or 
-        (when-let [prev-node (get (meta n)ext-clause :source-node)]
+        (when-let [prev-node (get (meta next-clause) :source-node)]
 	  (when (and (contains? (util/sref-get (:previous-set node)) prev-node)
 		     (or (not (= :strict (util/safe-get alg :consistent-search?)))
 			 (let [np (util/sref-get (:newest-previous node))]
