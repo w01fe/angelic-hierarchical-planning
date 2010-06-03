@@ -51,6 +51,13 @@
 ;; TODO: dijkstra ones should actually be ALTs, with pruning etc. (?!)
 
 
+;; TODO: this should be fast with inverteD?! 
+
+(comment (let [e (exp.nav-switch/make-random-nav-switch-env 5 10) h (exp.nav-switch/make-nav-switch-hierarchy e false)]  
+   (time (println "ucs" (run-counted #(second (uniform-cost-search e)))))
+   (doseq [alg `[exp.sahucs-inverted/sahucs-inverted sahucs-inverted sahucs-dijkstra   sahucs-simple]]
+     (time (debug 0 (println alg (run-counted #(second (exp.env/verify-solution e ((resolve alg) h))))))))))
+
 (defn viable? [reward cutoff]
   (and (> reward Double/NEGATIVE_INFINITY)
        (>= reward cutoff)))
@@ -283,7 +290,7 @@
               (PartialResult
                (if (env/primitive? f)
                  (when-let [[ss sr] (and (env/applicable? f state) (env/successor f state))]
-                   [(make-node-descendant root-sa [(vary-meta ss assoc :opt [f]) (+ sr reward)] r)])
+                   [(make-node-descendant root-sa [(vary-meta ss assoc :opt (conj (or (:opt (meta state)) []) f)) (+ sr reward)] r)])
                  (for [ref (hierarchy/immediate-refinements f state)]
                    (make-node-descendant root-sa [state reward] (concat ref r))))
                Double/NEGATIVE_INFINITY))

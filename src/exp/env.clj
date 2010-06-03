@@ -232,7 +232,7 @@
 
 (defn verify-solution [env [sol rew]]
   (let [[result result-rew] (successor-seq sol (initial-state env))]
-    (assert ((goal-fn env) result))
+    (util/assert-is ((goal-fn env) result))
     (assert (= result-rew rew))
     [sol rew]))
 
