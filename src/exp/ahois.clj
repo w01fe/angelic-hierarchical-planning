@@ -1,8 +1,8 @@
 (ns exp.ahois
   (:require [edu.berkeley.ai.util :as util]
-            [edu.berkeley.ai.util.queues :as queues]
             [exp.env :as env] 
-            [exp.hierarchy :as hierarchy])
+            [exp.hierarchy :as hierarchy]
+            [exp.incremental-search :as is])
   (:import  [java.util HashMap]))
 
 
@@ -10,7 +10,6 @@
 
 ;; Cleaned up version of sahdd, should hopefully be more efficient, include SAHA as well,
 ;; also ALTs, goal abstractions, more info propagation.
-
 
 
 ;; Note: true state abstraction condition: every optimal solution of A is optimal solution of B. 
@@ -29,18 +28,37 @@
 ;; TODO: think about suffix sharing and node merging, as much as possible. (ALT-like?)
 ;; TODO: ALTs option for dijkstra?
 
+; TODO TODO: watch for equality. 
 
+;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;; Primitives ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
+
+(defn 
+  (when-let [[ss sr] (and (env/applicable? f state) (env/successor f state))]
+    [(make-node-descendant root-sa [(vary-meta ss assoc :opt (conj (or (:opt (meta state)) []) f)) (+ sr reward)] r)]))
+
+
+(defn make-eager-primitive-ss-pair-or-nil [state action]
+  (when (env/applicable? action state)
+    (let [[ss sr] (env/successor action state)]
+      (is/make-goal-ss-pair ss sr [action]))))
+
+(deftype PrimitiveIS [state action])
+(defn make-lazy-primitive-ss-pair [state action]
+  (reify )
+  )
 
 ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;; Outcome maps ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
-
 
 (defn generalize-outcome-pair [[outcome-state reward] gen-state reward-to-gen-state]
   [(vary-meta (env/apply-effects gen-state (env/extract-effects outcome-state)) assoc 
               :opt (concat (:opt (meta gen-state)) (:opt (meta outcome-state))))
    (+ reward reward-to-gen-state)])
 
-(defn pretty-state [s]
-  (dissoc (env/as-map (or s {})) :const))
+(defn lift-search-result [search-result context-state context-reward]
+  (let [{:keys [new-status new-search-status-pairs]} search-result]
+    (SearchResult 
+     (map #(generalize-outcome-pair % context-state context-reward) result-pairs)
+                   (+ max-reward context-reward))))
 
 
 
@@ -50,10 +68,7 @@
 
 ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;; State-Abstracted Search ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
 
-(defn lift-partial-result [partial-result context-state context-reward]
-  (let [{:keys [result-pairs max-reward]} partial-result]
-    (PartialResult (map #(generalize-outcome-pair % context-state context-reward) result-pairs)
-                   (+ max-reward context-reward))))
+
 
 (defn make-search-in-context [subsearch context-state context-reward]
   (reify IncrementalSearch

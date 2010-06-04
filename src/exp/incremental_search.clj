@@ -4,35 +4,25 @@
   (:import  [java.util HashMap]))
 
 
-;; Generic incremental dijkstra algorithm
+;; Generic incremental search definitions and implementations
 
 
 ;; NOTE: must handle reward decreasses of parital nodes properly. (first versions still mess this up).
 
 
 ;; TODO: fancier info going up
-;; TODO: fancier goals, etc.
-;; TODO: tests
-;; TODO: merge searches and nodes
-;; TODO: more general ways to express sequencing, primitives?
+;; TODO: fancier goals, etc. ?
 
 ; May need: node merging?
+;; TODO: beware of all these reifies, they break equality. 
 
-; Question: What does search return?
-;  Can return [updated GoalInfo, new GoalInfos]
-;  Should be able to return new searches too, though; how does that fit in?
-;   This is really similar to new outcome states.  Just not associated with *this* search.
-;   Whatever, should not be too inefficient for transparent case either. 
-; Question: is every parent set up to handle both kinds of new things?
 
 ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
 ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;; Search Protocols ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
 ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
 
-;; Assume "nil" is special state, meaning "everything else".
-
 (defprotocol IncrementalSearchStatus
-  (max-reward       [gi] "Upper bound on reward to reach this goal.")
+  (max-reward       [gi] "Upper bound on reward to reach the goal.")
   (optimal-solution [gi] "Optimal solution to reach goal-state, or nil if not yet known."))
 
 (defmethod queues/get-cost IncrementalSearchStatus [gi] (- (max-reward gi)))
@@ -44,10 +34,10 @@
 (deftype IncrementalSearchResult [new-status new-search-status-pairs])
 
 (defprotocol IncrementalSearch 
-  (goal-state                            [is])
+  (goal-state                            [is]
+     "Return the goal state of this search, which can be nil meaning 'any new state'")
   (#^IncrementalSearchResult next-result [is min-reward]
-     "Stopping-fn is a function from next status to boolean, telling us whether to stop before
-      expanding that node.  We may stop earlier for other reasons, based on type of search.
+     "Evaluate until a goal is found, or the next entry is worse than min-reward.
       Returns an IncrementalSearchResult; all statusus must have max-reward <= that of this."))
 
 ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;; Helpers ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
@@ -60,24 +50,24 @@
     (and (>= reward min-reward) 
          (> reward neg-inf))))
 
+(deftype SimpleISStatus [max-reward optimal-solution])
 
-(def *best-status*
-  (reify IncrementalSearchStatus
-    (max-reward [] pos-inf)
-    (optimal-solution [] nil)))
+(def *best-status* (SimpleISStatus pos-inf nil))
 
-(def *worst-status*
-  (reify IncrementalSearchStatus
-    (max-reward [] neg-inf)
-    (optimal-solution [] nil)))
+(def *worst-status* (SimpleISStatus neg-inf nil))
 
-(def *worst-search*
-  (let [worst-result (IncrementalSearchResult *worst-status* [])]
-    (reify IncrementalSearch
-      (goal-state  [] nil)
-      (next-result [min-reward] worst-result))))
+;(def *worst-search*
+;  (let [worst-result (IncrementalSearchResult *worst-status* [])]
+;    (reify IncrementalSearch
+;      (goal-state  [] nil)
+;      (next-result [min-reward] worst-result))))
+;(def *worst-ss-pair* [*worst-status* *worst-search*])
 
-(def *worst-ss-pair* [*worst-status* *worst-search*])
+(deftype Goal [goal]
+  (goal-state [] goal)
+  (next-result [min-reward] (throw (UnsupportedOperationException.))))
+
+(defn make-goal-ss-pair [goal reward solution] [(Goal goal) (SimpleISStatus reward solution)])
 
 
 (defn best-status 
@@ -128,7 +118,7 @@
 
 (defn make-queue [initial-elements]
   (doto (queues/make-graph-search-pq)
-    (queues/pq-add! *worst-search* *worst-status*)
+    (queues/pq-add! :dummy *worst-status*)
     (queues/pq-add-all! initial-elements)))
 
 (defn make-incremental-dijkstra-search [initial-pairs goal-state]
@@ -158,7 +148,7 @@
                 (if (viable? next-status min-reward) ; New result in range
                     (IncrementalSearchResult 
                      (best-status @next-status-atom (nth (get result-pairs (swap! index-atom inc) 
-                                                              *worst-ss-pair*) 1))
+                                                              [nil *worst-status*]) 1))
                      [result]) 
                   (IncrementalSearchResult next-status nil))
                 (if (viable? @next-status-atom min-reward)
@@ -190,8 +180,18 @@
     (all-results (c))
     (c)))
 
-;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;; Exhaustive Search ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
+;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;; Transformed Search ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
 
+(defn make-transformed-search 
+  ([is result-transform] (make-transformed-search is result-transform 0))
+  ([is result-transform mro] (make-transformed-search is result-transform mro (goal-state is)))
+  ([is result-transform min-reward-offset goal]
+     (reify IncrementalSearch
+       (goal-state [] goal)
+       (next-result [min-reward] (result-transform (next-result is (- min-reward min-reward-offset)))))))
 
+;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;; Generalized-Goal Search ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
+
+;??????
 
 
