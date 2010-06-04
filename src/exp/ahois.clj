@@ -1,128 +1,35 @@
-(ns exp.sahdd
+(ns exp.ahois
   (:require [edu.berkeley.ai.util :as util]
             [edu.berkeley.ai.util.queues :as queues]
             [exp.env :as env] 
             [exp.hierarchy :as hierarchy])
   (:import  [java.util HashMap]))
 
-;; TODO: note other sahucs implementations are incorrect, since they don't handle reward decreases of partial nodes properly. ?  
-;; For the same reason, sahucs-fancy-dijkstra is doubly-incorrect ? 
+
+; Angelic hierarchy of optimal incremental searches
+
+;; Cleaned up version of sahdd, should hopefully be more efficient, include SAHA as well,
+;; also ALTs, goal abstractions, more info propagation.
+
+
 
 ;; Note: true state abstraction condition: every optimal solution of A is optimal solution of B. 
+; Note:  We should still (unfortunately) never close open subproblems with cycles.  
 
-; Here, there is no real Seq character.  No real choices.  
-; Note: hard (impossible?) to unify down and up.
-; Best: at least have common interface, shared parts, to simplify.
-
-; Also fancier info going up, abstracted goals, etc.  
-
-;; Also pass in antagonistic measure ? 
+ 
+;; NOTE: must handle reward decreasses of parital nodes properly. (first versions still mess this up).
 
 
-; Question: what is general way to do this? 
-; Note: to think of this as like SAHA, always refining a given outcome state.
-                                        ;    Can think: always refining *abstracted* outcome state.
-;    Note key difference: in SAHA we're doing bidi, in UCS we do forward dijkstra
-
-; Also need goal-hiding, etc. ?
-
-; We should still (unfortunately) never close open subproblems with cycles.  
-
-;; TODO: need tests
-
-; More general ways to express sequencing, primitives?
-; Ways to merge "searches" and "nodes"? 
-; 
-; In all of this, how do "policies" get specified.  I.e., search types for lower levels? 
-
-  ; I.e., AHA* 
+;; TODO: fancier info going up
+;; TODO: fancier goals, etc.
+;; TODO: tests
+;; TODO: metalevel policies
+;; TODO: merge searches and nodes
+;; TODO: more general ways to express sequencing, primitives?
+;; TODO: think about suffix sharing and node merging, as much as possible. (ALT-like?)
+;; TODO: ALTs option for dijkstra?
 
 
-
-;; TODO: dijkstra ones should actually be ALTs, with pruning etc. (?!)
-
-
-;; TODO: this should be fast with inverteD?! 
-
-; Stack looks like :
-
-;      *Act*
-; Nav(x) Flip *Act*
-;          *Nav(y)* Flip Act
-;          L *Nav(y)*
-;           R *Nav(y)*
-
-; Real problem is: each nav dest starts a new dijkstra subproblem. 
-; With this hierarchy, it is *completely unavoidable* that we refine each Nav once form each state. ? 
-
-(comment (let [e (exp.nav-switch/make-random-nav-switch-env 5 10) h (exp.nav-switch/make-nav-switch-hierarchy e false)]  
-   (time (println "ucs" (run-counted #(second (uniform-cost-search e)))))
-   (doseq [alg `[exp.sahucs-inverted/sahucs-inverted sahucs-inverted sahucs-dijkstra   sahucs-simple]]
-     (time (debug 0 (println alg (run-counted #(second (exp.env/verify-solution e ((resolve alg) h))))))))))
-
-;; TODO: share endings between states, to fix slowness here? !  Or provide version that just ignores suffix?  But Suboptimal.
- ; Solution: backwards tree, to go with top-down (and possibly forward - impilcit?) trees.
-
-;; TODO: unify with SAHA, merge node and search abstractions.
-
-(defn viable? [reward cutoff]
-  (and (> reward Double/NEGATIVE_INFINITY)
-       (>= reward cutoff)))
-
-;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;; Queues ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
-
-(defn make-queue-priority [reward]
-  [(- reward)])
-
-(defn make-queue [initial-elements]
-  (let [q (queues/make-graph-search-pq)]
-    (queues/pq-add! q :dummy (make-queue-priority Double/NEGATIVE_INFINITY))
-    (doseq [[e r] initial-elements] (queues/pq-add! q e (make-queue-priority r)))
-    q))
-
-;(defn empty-queue [queue]
-;  (queues/pq-remove-all! queue)
-;  (queues/g-pq-replace! queue :dummy (make-queue-priority Double/NEGATIVE_INFINITY)))
-
-(defn pop-queue [queue]
-  (let [[best [c]] (queues/pq-remove-min-with-cost! queue)]
-    [best (- c)]))
-
-(defn queue-best-reward [queue]
-  (- (first (nth (queues/pq-peek-min queue) 1))))
-
-
-;; TODO: generalize goal condition, etc.
-
-(deftype PartialResult [result-pairs max-reward])
-
-;; TODO: once we start expanding a node, it should be off-limits to reward increases
- ; ; (subject to a check that actual *initial* reward does not increase.)
-
-(defn incremental-dijkstra 
-  "Expand queue items until (1) goal, or (2) (queue-cutoff queue min-reward). 
-   Safe against recursive calls in expand-fn, which takes a node and min-reward and
-   returns a PartialResult of nodes."
-  [new-queue partial-queue min-reward expand-fn goal-fn]
-  (let [queue (queues/make-union-pq new-queue partial-queue)]
-    (loop []
- ;    (println (queues/pq-size queue))
-      (or (let [cutoff (queue-best-reward queue)] 
-            (when (not (viable? cutoff min-reward)) (PartialResult nil cutoff))) 
-          (let [[best best-reward] (pop-queue queue)]
-            (or (when-let [g (goal-fn best)] (PartialResult [[g best-reward]] (queue-best-reward queue)))
-                (let [next-min-reward (max min-reward (queue-best-reward queue))]
-                  (queues/pq-replace! partial-queue best (make-queue-priority best-reward))
-                  (let [{:keys [result-pairs max-reward]} (expand-fn best next-min-reward)]
-;                    (println result-pairs max-reward)
-                    (if (= max-reward Double/NEGATIVE_INFINITY) 
-                        (queues/pq-remove! partial-queue best)
-                      (queues/pq-replace! partial-queue best (make-queue-priority max-reward)))
-                    (doseq [[ni nr] result-pairs] 
-;                      (util/assert-is (not (nil? nr)) "%s" (def badd (vec result-pairs)))
- ;                    (println "NEW" max-reward (class ni) nr (:name ni))
-                      (assert (not (= :re-added (queues/pq-add! new-queue ni (make-queue-priority nr))))))
-                    (recur)))))))))
 
 ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;; Outcome maps ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
 
@@ -140,82 +47,6 @@
 ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
 ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;; Search ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
 ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
-
-(defprotocol IncrementalSearch 
-  (next-partial-solution [sp min-reward]
-     "Output is PartialResult, where results are states."))
-
-(declare extract-goal-state expand-node)
-
-;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;; Dijkstra Search ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
-
-(defn make-incremental-dijkstra-search [initial-nodes]
-;  (println "Creating new search.")
-  (let [new-q (make-queue initial-nodes) partial-q (make-queue nil)]
-    (reify IncrementalSearch
-           (next-partial-solution [min-reward]
-             (incremental-dijkstra new-q partial-q min-reward expand-node extract-goal-state)))))
-
-
-
-;; TODO: need "generalized-goal" dijkstra search.  
-;; TODO: single-goal.
-
-;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;; Exhaustive Search ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
-
-;; No reason to use this except to emulate SAHTN.
-;; Note: destroys cost order, but should still work correctly.
-
-(defn make-exhaustive-search [sp]
-  (reify IncrementalSearch
-    (next-partial-solution [min-reward]
-;      (println "Entering")
-      (loop [results []]
-        (let [{:keys [result-pairs max-reward]} (next-partial-solution sp Double/NEGATIVE_INFINITY)]
-;          (println "Got results " (map (juxt (comp pretty-state first) second) result-pairs) max-reward)
-          (let [next-results (into results result-pairs)]
-            (if (= max-reward Double/NEGATIVE_INFINITY)
-                (PartialResult next-results max-reward)
-              (recur next-results))))))))
-
-
-;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;; Cached Search ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
-
-(defn make-cached-search-factory
-  "Return a cache-fn, where (cache-fn) returns fresh IncrementalSearch views on
-   the IncrementalSearch input (from here on out). Not thread-safe."
-  [search-problem]
-  (let [result-vec-atom  (atom [])
-        next-reward-atom (atom Double/POSITIVE_INFINITY)]
-    (fn cache-factory []
-      (let [index-atom   (atom 0)]
-        (reify IncrementalSearch
-          (next-partial-solution [min-reward]
-            (if (< @index-atom (count @result-vec-atom))
-                (let [[_ rew :as result] (nth @result-vec-atom @index-atom)]
-                 ;; TODO: remove
-;                  (util/assert-is (<= (count @result-vec-atom) 1) "%s" [@result-vec-atom])
-                  (if (>= rew min-reward)
-                      (do (swap! index-atom inc) 
-                          (PartialResult [result] 
-                                         (max (second (get @result-vec-atom @index-atom [nil Double/NEGATIVE_INFINITY])) 
-                                              @next-reward-atom)))
-                    (PartialResult nil rew)))
-              (if (viable? @next-reward-atom min-reward)
-                  (let [{:keys [result-pairs max-reward]} (next-partial-solution search-problem min-reward)]
-                    (reset! next-reward-atom max-reward)
-                    ;; TODO: remove!
- ;                   (doseq [x1 @result-vec-atom x2 result-pairs] 
- ;                     (util/assert-is (not (= (first x1) (first x2))) "%s" [@result-vec-atom result-pairs]))
-                    (swap!  result-vec-atom into result-pairs)
-                    (recur min-reward))
-                (PartialResult nil @next-reward-atom)))))))))
-
-(def #^HashMap *problem-cache*)
-
-(defmacro get-cached-search [name factory-expr]
-  `((util/cache-with *problem-cache* ~name (make-cached-search-factory ~factory-expr))))
-
 
 ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;; State-Abstracted Search ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
 
