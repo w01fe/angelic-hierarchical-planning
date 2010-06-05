@@ -21,112 +21,125 @@
 ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;; Search Protocols ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
 ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
 
-(defprotocol IncrementalSearchStatus
-  (max-reward       [gi] "Upper bound on reward to reach the goal.")
-  (optimal-solution [gi] "Optimal solution to reach goal-state, or nil if not yet known."))
-
-(defmethod queues/get-cost IncrementalSearchStatus [gi] (- (max-reward gi)))
-
-;; TODO: generify
-(defn better-status? [s1 s2] (> (max-reward s1) (max-reward s2)))
-
-
-(deftype IncrementalSearchResult [new-status new-search-status-pairs])
-
-(defprotocol IncrementalSearch 
-  (goal-state                            [is]
-     "Return the goal state of this search, which can be nil meaning 'any new state'")
-  (#^IncrementalSearchResult next-result [is min-reward]
+(defprotocol IncrementalSearch
+  (node-name        [is] "Return the name, used for identity.  Equals and hash-code on object ignored.")
+  (goal-state       [is] "Return the goal state of this search, which can be nil meaning 'any new state'")  
+  (max-reward       [is] "Upper bound on reward to reach the goal.")
+  (optimal-solution [is] "Optimal solution to reach goal-state, or nil if not yet known.")
+  (#^IncrementalSearchResult next-results [is min-reward]
      "Evaluate until a goal is found, or the next entry is worse than min-reward.
-      Returns an IncrementalSearchResult; all statusus must have max-reward <= that of this."))
+      Results are typically, but not always, singletons with reward >= min. 
+      They are, however, required to be in decreasing order of reward (also across calls)."))
+
+(defn better-search? [s1 s2] (> (max-reward s1) (max-reward s2))) ;; TODO: generify
 
 ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;; Helpers ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
 
 (def pos-inf Double/POSITIVE_INFINITY)
 (def neg-inf Double/NEGATIVE_INFINITY)
 
-(defn viable? [status min-reward]
-  (let [reward (max-reward status)]
+(defn viable? [is min-reward]
+  (let [reward (max-reward is)]
     (and (>= reward min-reward) 
          (> reward neg-inf))))
 
-(deftype SimpleISStatus [max-reward optimal-solution])
 
-(def *best-status* (SimpleISStatus pos-inf nil))
+(def failed-search
+  (reify IncrementalSearch
+    (node-name        [] (gensym 'failed))
+    (goal-state       [] nil)
+    (max-reward       [] neg-inf)
+    (optimal-solution [] nil)
+    (next-results      [min-reward] (throw (UnsupportedOperationException.)))))
 
-(def *worst-status* (SimpleISStatus neg-inf nil))
+(defn make-goal-search [goal reward solution]
+  (reify IncrementalSearch
+    (node-name        [] [:goal goal])
+    (goal-state       [] goal)
+    (max-reward       [] reward)
+    (optimal-solution [] solution)
+    (next-results      [min-reward] (throw (UnsupportedOperationException.)))))
 
-;(def *worst-search*
-;  (let [worst-result (IncrementalSearchResult *worst-status* [])]
-;    (reify IncrementalSearch
-;      (goal-state  [] nil)
-;      (next-result [min-reward] worst-result))))
-;(def *worst-ss-pair* [*worst-status* *worst-search*])
+(defn make-expanding-search [name goal-state init-reward items]
+  (let [done?-atom (atom false)]
+    (reify IncrementalSearch
+      (node-name        [] name)
+      (goal-state       [] goal-state)
+      (max-reward       [] (if @done?-atom neg-inf init-reward))
+      (optimal-solution [] nil)
+      (next-results      [min-reward] ;(println "Expand" name init-reward)
+        (assert (not @done?-atom)) (reset! done?-atom true)
+        items))))
 
-(deftype Goal [goal]
-  (goal-state [] goal)
-  (next-result [min-reward] (throw (UnsupportedOperationException.))))
-
-(defn make-goal-ss-pair [goal reward solution] [(Goal goal) (SimpleISStatus reward solution)])
-
-
-(defn best-status 
-  ([] *worst-status*)
+(defn best-search
+  ([] failed-search)
   ([s] s) 
-  ([s1 s2] (if (better-status? s2 s1) s2 s1)) 
-  ([s1 s2 s3 & more] (reduce best-status s1 (cons s2 (cons s3 more)))))
+  ([s1 s2] (if (better-search? s2 s1) s2 s1)) 
+  ([s1 s2 s3 & more] (reduce best-search s1 (cons s2 (cons s3 more)))))
 
 
 (defn all-results [incremental-search]
-  (loop [status *best-status* results []]
-    (if (not (viable? status neg-inf)) results
-      (let [{:keys [new-status new-search-status-pairs]} (next-result incremental-search neg-inf)]
-        (recur new-status (into results new-search-status-pairs))))))
+  (loop [results []]
+    (if (not (viable? incremental-search)) results
+        (recur (into results (next-results incremental-search neg-inf))))))
 
 ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
 ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;; Generic Search Implementations ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
 ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
 
-
 ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;; Incremental Recursive Dijkstra ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
 
+;; Wrapper needed since queue expects comparable.
 
-(defn queue-best-status [queue]
-  (nth (queues/pq-peek-min queue) 1))
+(deftype ComparableSearch [is]
+  java.lang.Comparable
+   (compareTo [o] (- (max-reward (:is o)) (max-reward is))))
 
-(defn incremental-dijkstra-step 
-  "Expand queue items until (1) goal, or (2) best max-reward falls below min-reward. 
-   Returns an IncrementalSearchResult.  Safe against recursive calls through next-result."
-  [new-queue partial-queue goal-fn min-reward]
-  (let [queue (queues/make-union-pq new-queue partial-queue)]
-    (loop []
-      (or (let [best-status (queue-best-status queue)] 
-            (when (viable? best-status min-reward) 
-              (IncrementalSearchResult best-status nil))) 
-          (let [[best best-status] (queues/pq-remove-min-with-cost! queue)]
-            (or (when-let [g (goal-fn best best-status)] 
-                  (IncrementalSearchResult (queue-best-status queue) [[best best-status]]))
-                (let [next-min-reward (max min-reward (max-reward (queue-best-status queue)))]
-                  (queues/pq-replace! partial-queue best best-status)
-                  (let [{:keys [new-status new-search-status-pairs]} (next-result best next-min-reward)]
-                    (if (= (max-reward new-status) neg-inf) 
-                        (queues/pq-remove! partial-queue best)
-                      (queues/pq-replace! partial-queue best new-status))
-                    (doseq [[s ss] new-search-status-pairs] 
-                      (assert (not (= :re-added (queues/pq-add! new-queue s ss)))))
-                    (recur)))))))))
+(defmethod queues/get-cost (class (ComparableSearch nil)) [x] (- (max-reward (:is x))))
 
-(defn make-queue [initial-elements]
-  (doto (queues/make-graph-search-pq)
-    (queues/pq-add! :dummy *worst-status*)
-    (queues/pq-add-all! initial-elements)))
+(defn queue-best [queue]
+  (:is (nth (queues/pq-peek-min queue) 1)))
 
-(defn make-incremental-dijkstra-search [initial-pairs goal-state]
-  (let [new-q (make-queue initial-pairs) partial-q (make-queue nil)]
-    (reify IncrementalSearch
-      (goal-state [] goal-state)
-      (next-result [min-reward] 
-        (incremental-dijkstra-step new-q partial-q optimal-solution min-reward)))))
+(defn queue-remove-best! [queue]
+  (:is (nth (queues/pq-remove-min-with-cost! queue) 1)))
+
+(defn queue-add-all! [queue items]
+  (doseq [item items] 
+    (util/assert-is (not (= :re-added (queues/g-pq-add! queue (node-name item) (ComparableSearch item))))
+                    "%s" [(map node-name items) (println (map node-name items) (map max-reward items))])))
+
+(defn partial-queue-replace! [queue item]
+  (if (= (max-reward item) neg-inf)
+      (queues/pq-remove! queue (node-name item))   
+    (queues/pq-replace! queue (node-name item) (ComparableSearch item))))
+
+(deftype IncrementalDijkstraSearch [name new-queue partial-queue union-queue goal] :as this
+  IncrementalSearch
+    (node-name        [] name)
+    (goal-state       [] goal)
+    (max-reward       [] (max-reward (queue-best union-queue))) ;; TODO: too slow - need cache?
+    (optimal-solution [] nil)
+    (next-results      [min-reward]
+      (when (viable? this min-reward)
+        (let [best (queue-remove-best! union-queue)]
+          (util/print-debug 2 "Best for " name "is " (node-name best) (max-reward best))
+          (if (optimal-solution best) [best]
+            (let [next-min-reward (max min-reward (max-reward (queue-best union-queue)))]
+              (partial-queue-replace! partial-queue best)
+              (queue-add-all! new-queue (next-results best next-min-reward))
+              (partial-queue-replace! partial-queue best)
+              (recur min-reward)))))))
+
+
+(defn make-queue [initial-nodes]
+  (doto (queues/make-graph-search-pq) 
+    (queue-add-all!  (cons failed-search initial-nodes))))
+
+(defn make-incremental-dijkstra-search [name initial-nodes goal-state]
+  (let [new-q (make-queue initial-nodes) partial-q (queues/make-graph-search-pq)]
+;    (println (map max-reward initial-nodes))
+;    (println (queues/pq-size new-q) (queues/pq-size partial-q) (max-reward (queue-best new-q)))
+    (IncrementalDijkstraSearch name new-q partial-q (queues/make-union-pq new-q partial-q) goal-state)))
 
 
 ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;; Cached Incremental Search ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
@@ -135,28 +148,24 @@
   "Take a *fresh* incremental-search, and return a function of no arguments that returns 
    independent incremental-search objects backed by it.  Not thread-safe."
   [backing-search]
-  (let [result-pair-atom (atom [])
-        next-status-atom *best-status*
-        b-goal-state     (goal-state backing-search)]
+  (let [results-atom (atom [])
+        goal         (goal-state backing-search)
+        name         (node-name backing-search)]
     (fn cache-factory []
-      (let [index-atom   (atom 0)]
-        (reify IncrementalSearch
-          (goal-state [] b-goal-state)
-          (next-result [min-reward]
-            (let [result-pairs @result-pair-atom]
-              (if-let [[_ next-status :as result] (nth result-pairs @index-atom nil)]
-                (if (viable? next-status min-reward) ; New result in range
-                    (IncrementalSearchResult 
-                     (best-status @next-status-atom (nth (get result-pairs (swap! index-atom inc) 
-                                                              [nil *worst-status*]) 1))
-                     [result]) 
-                  (IncrementalSearchResult next-status nil))
-                (if (viable? @next-status-atom min-reward)
-                  (let [{:keys [new-status new-search-status-pairs]} (next-result backing-search min-reward)]
-                    (reset! next-status-atom new-status)
-                    (swap!  result-pair-atom into new-search-status-pairs)
-                    (recur min-reward))
-                  (IncrementalSearchResult @next-status-atom nil))))))))))
+      (if (optimal-solution backing-search) backing-search
+       (let [index-atom   (atom 0)]
+         (reify IncrementalSearch
+           (node-name        [] name)
+           (goal-state       [] goal)
+           (optimal-solution [] nil)
+           (max-reward       [] (max (max-reward (nth @results-atom @index-atom failed-search)) 
+                                     (max-reward backing-search)))
+           (next-results [min-reward]
+             (if-let [next (nth @results-atom  @index-atom nil)]
+               (when (viable? next min-reward) [next])
+               (when (viable? backing-search min-reward)
+                 (do (swap! results-atom into (next-results backing-search min-reward))
+                     (recur min-reward)))))))))))
 
 (defmacro get-cached-search 
   "Take a Map, name, and expression that constructs a fresh IncrementalSearch.  If this is the first
@@ -188,7 +197,7 @@
   ([is result-transform min-reward-offset goal]
      (reify IncrementalSearch
        (goal-state [] goal)
-       (next-result [min-reward] (result-transform (next-result is (- min-reward min-reward-offset)))))))
+       (next-results [min-reward] (result-transform (next-results is (- min-reward min-reward-offset)))))))
 
 ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;; Generalized-Goal Search ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
 
