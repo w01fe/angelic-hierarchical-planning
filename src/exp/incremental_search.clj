@@ -192,12 +192,19 @@
 ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;; Transformed Search ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
 
 (defn make-transformed-search 
-  ([is result-transform] (make-transformed-search is result-transform 0))
-  ([is result-transform mro] (make-transformed-search is result-transform mro (goal-state is)))
-  ([is result-transform min-reward-offset goal]
+  ([name is result-transform] 
+     (make-transformed-search name is result-transform 0))
+  ([name is result-transform reward-offset] 
+     (make-transformed-search name is result-transform reward-offset (goal-state is)))
+  ([name is result-transform reward-offset goal]
+     (assert (not (optimal-solution is)))
      (reify IncrementalSearch
-       (goal-state [] goal)
-       (next-results [min-reward] (result-transform (next-results is (- min-reward min-reward-offset)))))))
+       (node-name        [] name)
+       (goal-state       [] goal)
+       (optimal-solution [] nil)
+       (max-reward       [] (+ (max-reward is) reward-offset))
+       (next-results [min-reward] 
+         (map result-transform (next-results is (- min-reward reward-offset)))))))
 
 ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;; Generalized-Goal Search ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
 
