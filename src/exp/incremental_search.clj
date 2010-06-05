@@ -91,40 +91,47 @@
 
 ;; Wrapper needed since queue expects comparable.
 
-(deftype ComparableSearch [is]
+(deftype ComparableSearch [is max-reward]
   java.lang.Comparable
-   (compareTo [o] (- (max-reward (:is o)) (max-reward is))))
+   (compareTo [o] (- (:max-reward o) max-reward)))
 
-(defmethod queues/get-cost (class (ComparableSearch nil)) [x] (- (max-reward (:is x))))
+(defn make-comparable-search [is]
+  (ComparableSearch is (max-reward is)))
+
+(defmethod queues/get-cost (class (ComparableSearch nil nil)) [x] (- (:max-reward x)))
 
 (defn queue-best [queue]
   (:is (nth (queues/pq-peek-min queue) 1)))
+
+(defn queue-max-reward [queue]
+  (:max-reward (nth (queues/pq-peek-min queue) 1)))
 
 (defn queue-remove-best! [queue]
   (:is (nth (queues/pq-remove-min-with-cost! queue) 1)))
 
 (defn queue-add-all! [queue items]
   (doseq [item items] 
-    (util/assert-is (not (= :re-added (queues/g-pq-add! queue (node-name item) (ComparableSearch item))))
+    (util/assert-is (not (= :re-added (queues/g-pq-add! queue (node-name item) (make-comparable-search item))))
                     "%s" [(map node-name items) (println (map node-name items) (map max-reward items))])))
 
 (defn partial-queue-replace! [queue item]
   (if (= (max-reward item) neg-inf)
       (queues/pq-remove! queue (node-name item))   
-    (queues/pq-replace! queue (node-name item) (ComparableSearch item))))
+    (queues/pq-replace! queue (node-name item) (make-comparable-search item))))
 
 (deftype IncrementalDijkstraSearch [name new-queue partial-queue union-queue goal] :as this
   IncrementalSearch
     (node-name        [] name)
     (goal-state       [] goal)
-    (max-reward       [] (max-reward (queue-best union-queue))) ;; TODO: too slow - need cache?
+    (max-reward       [] (queue-max-reward union-queue)) ;; TODO: too slow - need cache?
     (optimal-solution [] nil)
     (next-results      [min-reward]
       (when (viable? this min-reward)
-        (let [best (queue-remove-best! union-queue)]
-          (util/print-debug 2 "Best for " name "is " (node-name best) (max-reward best))
+        (let [;best-rew (queue-max-reward union-queue)
+              best (queue-remove-best! union-queue)]
+          (util/print-debug 2 "Best for " name "is " (node-name best) (max-reward best) "SZ" (queues/pq-size new-queue) (queues/pq-size partial-queue))
           (if (optimal-solution best) [best]
-            (let [next-min-reward (max min-reward (max-reward (queue-best union-queue)))]
+            (let [next-min-reward (max min-reward (queue-max-reward union-queue))]
               (partial-queue-replace! partial-queue best)
               (queue-add-all! new-queue (next-results best next-min-reward))
               (partial-queue-replace! partial-queue best)
@@ -154,15 +161,16 @@
     (fn cache-factory []
       (if (optimal-solution backing-search) backing-search
        (let [index-atom   (atom 0)]
-         (reify IncrementalSearch
+         (reify IncrementalSearch 
            (node-name        [] name)
            (goal-state       [] goal)
            (optimal-solution [] nil)
            (max-reward       [] (max (max-reward (nth @results-atom @index-atom failed-search)) 
                                      (max-reward backing-search)))
            (next-results [min-reward]
+;             (println "CACHE" min-reward (max-reward backing-search) (max-reward (nth @results-atom @index-atom failed-search)) @index-atom (count @results-atom))
              (if-let [next (nth @results-atom  @index-atom nil)]
-               (when (viable? next min-reward) [next])
+               (when (viable? next min-reward) (swap! index-atom inc) [next])
                (when (viable? backing-search min-reward)
                  (do (swap! results-atom into (next-results backing-search min-reward))
                      (recur min-reward)))))))))))
@@ -204,6 +212,7 @@
        (optimal-solution [] nil)
        (max-reward       [] (+ (max-reward is) reward-offset))
        (next-results [min-reward] 
+         (println "N-R" name min-reward reward-offset) (Thread/sleep 100)
          (map result-transform (next-results is (- min-reward reward-offset)))))))
 
 ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;; Generalized-Goal Search ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
