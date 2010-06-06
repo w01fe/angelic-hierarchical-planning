@@ -17,6 +17,19 @@
 ;; TODO: beware of all these reifies, they break equality. 
 
 
+;; What we're missing here (again)? 
+ ;  - distinction between *problem* and *solution method*.
+ ;  - Problem has:
+ ;     - name
+ ;     - (goal-state) -- we shouldn't know anything about this? 
+ ;     - max-reward
+ ;     - optimal-solution or nil
+ ;  - Solution method has:
+ ;     - problem
+ ;     - next-results [min-reward]
+ ;     - (possibly) slurp
+ ;    
+
 ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
 ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;; Search Protocols ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
 ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
@@ -29,7 +42,8 @@
   (#^IncrementalSearchResult next-results [is min-reward]
      "Evaluate until a goal is found, or the next entry is worse than min-reward.
       Results are typically, but not always, singletons with reward >= min. 
-      They are, however, required to be in decreasing order of reward (also across calls)."))
+      They are, however, required to be in decreasing order of reward (also across calls).
+      Searches with a fixed goal should have max-reward infinity after finding first goal."))
 
 (defn better-search? [s1 s2] (> (max-reward s1) (max-reward s2))) ;; TODO: generify
 
@@ -212,8 +226,42 @@
        (optimal-solution [] nil)
        (max-reward       [] (+ (max-reward is) reward-offset))
        (next-results [min-reward] 
-         (println "N-R" name min-reward reward-offset) (Thread/sleep 100)
+;         (println "N-R" name min-reward reward-offset) (Thread/sleep 100)
          (map result-transform (next-results is (- min-reward reward-offset)))))))
+
+
+;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;; Sequencing ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
+
+;; Sequence two closed searches (with concrete goal states).
+
+(defn make-closed-sequence-search
+  "Sequence two searches, where goal of s1 must be input of s2.
+   Choice-fn takes the searches, and returns the one to refine (only when both non-goal)."
+  [name search1 search2 choice-fn]
+  (let [s1-atom (atom search1), s2-atom (atom search2) 
+        goal    (goal-state search2)]
+    (reify :as this IncrementalSearch 
+      (node-name        [] name)
+      (goal-state       [] goal)
+      (optimal-solution [] nil)
+      (max-reward       [] (+ (max-reward @s1-atom) (max-reward @s2-atom)))
+      (next-results     [min-reward]
+        (let [s1 @s1-atom, s2 @s2-atom
+              s1-opt (optimal-solution s1) s2-opt (optimal-solution s2)]
+          (if (and s1-opt s2-opt)
+              (util/prog1 (make-goal-search goal (concat s1-opt s2-opt) (max-reward this))
+                          (reset! s1-atom failed-search)) 
+            (let [choice (cond s1-opt s2 s2-opt s1 :else (choice-fn s1 s2))
+                  [ref-atom oth-atom] (cond (identical? choice s1) [s1-atom s2-atom]
+                                            (identical? choice s2) [s2-atom s1-atom]
+                                            :else (throw (RuntimeException.)))]
+              (let [results (next-results @ref-atom (- min-reward (max-reward @oth-atom)))]
+                (assert (<= (count results) 1))
+                (when (seq results) 
+                  (assert (optimal-solution (first results)))
+                  (reset! ref-atom (first results)))
+                (when (viable? this min-reward)
+                  (recur min-reward))))))))))
 
 ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;; Generalized-Goal Search ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
 

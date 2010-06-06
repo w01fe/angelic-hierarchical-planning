@@ -31,30 +31,13 @@
 ; TODO TODO: watch for equality. 
 
 
-;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;; Primitives ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
+;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;; Utilities ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
+
+(def *node-type-policy* (fn [state first-action] :unknown))
 
 (defn sa-node-name 
   ([state action] (sa-node-name state action (env/precondition-context action state)))
   ([state action context] [(env/extract-context state context) (env/action-name action)]))
-
-(defn make-eager-primitive-search-or-nil [state action]
-  (when (env/applicable? action state)
-    (let [name    (sa-node-name state action)
-          [ss sr] (env/successor action state)]
-      (reify is/IncrementalSearch
-        (node-name        [] name)
-        (goal-state       [] ss)
-        (max-reward       [] sr)
-        (optimal-solution [] [action])
-        (next-results     [min-reward] (throw (UnsupportedOperationException.)))))))
-
-
-
-
-
-;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;; Utilities ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
-
-(def *node-type-policy* (fn [state first-action] :unknown))
 
 (defn make-node-descendant [root goal-node remaining-actions] 
   (assert (is/optimal-solution goal-node))
@@ -62,24 +45,32 @@
     ((*node-type-policy* root [goal-node f]) root goal-node remaining-actions)
     goal-node))
 
-
 (defn sp-node-name [state actions]
   [state (map env/action-name actions)])
+
+(defn next-goal [start-node prim-action]
+  (let [state (is/goal-state start-node)]
+    (when-let [[ss sr] (and (env/applicable? prim-action state) (env/successor prim-action state))]
+      (is/make-goal-search ss (+ is/max-reward start-node sr)
+                           (conj (is/optimal-solution start-node) prim-action)))))
+
+(defn sa-children 
+  "Compute children (refinements or result) of action from state.  Return a list of
+   [next-node remaining-action' pairs."
+  [start-node action]
+  (lazy-seq
+   (if (env/primitive? action)
+     (result-fn (next-goal start-node action) nil)
+     (for [ref (hierarchy/immediate-refinements action (is/goal-state start-node))]
+       (result-fn start-node ref)))))
 
 ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;; Straight search ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
 
 
 (defn next-transparent-node [root goal-node [f & r :as remaining-actions]]
-  (let [state (is/goal-state goal-node)]
-;    (println "T " (sp-node-name state remaining-actions) (is/max-reward goal-node)) (Thread/sleep 100)    
-    (is/make-expanding-search (sp-node-name state remaining-actions) nil (is/max-reward goal-node)
-      (lazy-seq
-       (if (env/primitive? f)
-         (when-let [[ss sr] (and (env/applicable? f state) (env/successor f state))]
-           [(make-node-descendant root (is/make-goal-search ss (+ (is/max-reward goal-node) sr) 
-                                                       (conj (is/optimal-solution goal-node)  f)) r)])
-         (for [ref (hierarchy/immediate-refinements f state)]
-           (make-node-descendant root goal-node (concat ref r))))))))
+  (is/make-expanding-search 
+   (sp-node-name (is/goal-state goal-node) remaining-actions) nil (is/max-reward goal-node)
+   (for [[n ref] (sa-children goal-node f)] (make-node-descendant root n (concat ref r)))))
 
 (defn make-incremental-dijkstra-sa-search 
   ([state action] (make-incremental-dijkstra-sa-search (sa-node-name state action) state action))
@@ -102,7 +93,6 @@
   (let [state   (is/goal-state goal-node)
         context (env/precondition-context f state)
         in-name (sa-node-name state f context)]
-;    (println "R " (sp-node-name state remaining-actions) (is/max-reward goal-node)) (Thread/sleep 100)
     (is/make-transformed-search 
      (sp-node-name state remaining-actions)
      (is/get-cached-search *problem-cache* in-name
@@ -110,6 +100,119 @@
      #(make-node-descendant root (contextualize-goal goal-node %) r)
      (is/max-reward goal-node)
      nil)))
+
+;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;; SAHA ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
+
+; Spse we have two different paths to same sps
+; Do we have to reify sps as separate OR-searches? No guaranteed ijkstra structure here so ...
+
+; Note: either creation must be eager, OR sasps must be smarter.
+
+;; Now, ?? ? ? ??
+ ; Issue: we really want SA-node + wrapper ? 
+
+(declare make-saha-sasps-node)
+
+(defn make-saha-sps-node [start-node remaining-actions final-state]
+  (if-let [[f & r] (seq remaining-actions)]
+    (let [state (is/goal-state start-node)
+          name  [state (map env/action-name remaining-actions) final-state]]
+      (is/get-cached-search *problem-cache* name
+        (make-incremental-dijkstra-search name
+          (let [next-children (sa-children start-node f)]
+            (for [[ss sr] (env/optimistic-map next-action state)] 
+              (make-saha-sasps-node start-node f ss sr r final-state next-children)))
+          final-state)))
+    start-node))
+
+(defn make-saha-sas-node 
+  ([start-node action final-state]
+     (make-saha-sas-node start-node action final-state ref-seq)
+     )
+  ([start-node action final-state opt-reward next-children]
+     (let [state   (is/goal-state start-node)
+           context (env/precondition-context action state)
+           log-state (env/get-logger state context)
+           in-name (sa-node-name state f context)]
+       (is/make-transformed-search (gensym)
+         (is/get-cached-search *problem-cache* in-name
+           (make-incremental-dijkstra-search in-name 
+             (for [[n ref] ref-seq] )
+             (lazy-seq
+              (if (env/primitive? f)
+                (when-let [[ss sr] (and (env/applicable? f state) (env/successor f state))]
+                  [(make-node-descendant root 
+                     (is/make-goal-search ss (+ (is/max-reward goal-node) sr) 
+                                          (conj (is/optimal-solution goal-node)  f)) r)])
+                (for [ref (hierarchy/immediate-refinements f state)]
+                  (make-node-descendant root goal-node (concat ref r)))))
+             final-state))
+         #(make-node-descendant root (contextualize-goal goal-node %) r) ;; TODO...
+         (is/max-reward goal-node)
+         nil)))
+   
+  (is/make-transformed-search 
+     (sa-node-name state actions)
+     (is/get-cached-search *problem-cache* in-name
+       (make-incremental-dijkstra-sa-search in-name (env/get-logger state context) f))
+     #(make-node-descendant root (contextualize-goal goal-node %) r)
+     (is/max-reward goal-node)
+     nil))
+
+(defn make-saha-sasps-node [start-node action med-state med-reward remaining-actions final-state refs]
+  (let [sas      (make-saha-sas-node start-node action med-state med-reward refs)
+        med-node (is/make-goal-search med-state med-reward nil) ])
+  (if (empty? remaining-actions) sas  ;; just for efficiency, could be removed.
+    (is/make-closed-sequence-search 
+     (gensym) sas 
+     (make-saha-sps-node med-node remaining-actions final-state)
+     (fn [a b] a))))
+
+(defn make-saha-sas-node 
+  ([start-node action final-state]
+     (make-saha-sas-node start-node action final-state ref-seq)
+     )
+  (let [state   (is/goal-state start-node)
+        context (env/precondition-context action state)
+        log-state (env/get-logger state context)
+        in-name (sa-node-name state f context)]
+    (is/make-transformed-search (gensym)
+     (is/get-cached-search *problem-cache* in-name
+       (make-incremental-dijkstra-search in-name 
+         (lazy-seq
+          (if (env/primitive? f)
+            (when-let [[ss sr] (and (env/applicable? f state) (env/successor f state))]
+              [(make-node-descendant root (is/make-goal-search ss (+ (is/max-reward goal-node) sr) 
+                                                               (conj (is/optimal-solution goal-node)  f)) r)])
+            (for [ref (hierarchy/immediate-refinements f state)]
+              (make-node-descendant root goal-node (concat ref r)))))
+         final-state))
+     #(make-node-descendant root (contextualize-goal goal-node %) r) ;; TODO...
+     (is/max-reward goal-node)
+     nil))
+   
+  (is/make-transformed-search 
+     (sa-node-name state actions)
+     (is/get-cached-search *problem-cache* in-name
+       (make-incremental-dijkstra-sa-search in-name (env/get-logger state context) f))
+     #(make-node-descendant root (contextualize-goal goal-node %) r)
+     (is/max-reward goal-node)
+     nil))
+
+(defn make-saha-sa-node [root goal-node remaining-actions outcome-state opt-rew]
+  (if-let [[f & r] (seq remaining-actions)]
+    ((*node-type-policy* root [goal-node f]) root goal-node remaining-actions)
+    goal-node)
+
+  )
+
+(defn make-saha-sa-node [root goal-node next-action]
+  (let [state (is/goal-state goal-node)]
+    (is/make-expanding-search (sa-node-name state next-action) nil (is/max-reward goal-node)
+      (lazy-seq 
+       (for [[s r] (env/optimistic-map next-action state)]
+         (make-saha-refinement-node root goal-node next-action s r))))))
+
 
 
 ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;; Primitives ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;

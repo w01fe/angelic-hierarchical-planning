@@ -12,7 +12,7 @@
 
 (defn double-quote [s] (str "\"" s "\""))
 
-(defn prog1 [arg & args] arg)
+(defn prog1 [arg & args] (dorun args) arg)
 
 (defmacro with-out-str2
   "Evaluates exprs in a context in which *out* is bound to a fresh
