@@ -8,6 +8,179 @@
 
 ; Angelic hierarchy of optimal incremental searches
 
+;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;; Forward Search Node ;;;;;;;;;;;;;;;;;;;;;;;;;;;;
+
+(defn make-forward-search-node [actions-fn goal-fn state reward opt-sol]
+  (is/SimpleNode state reward (if (goal-fn state) opt-sol)       
+    (lazy-seq
+     (for [a (actions-fn state)
+           :when (env/applicable? a state)
+           :let  [[ss r] (env/successor a state)]]
+       (make-forward-search-node actions-fn goal-fn ss (+ reward r) (conj opt-sol a))))))
+
+(defn make-forward-search-root-node [env]
+  (make-forward-search-node (env/actions-fn env) (env/goal-fn env) (env/initial-state env) [] 0))
+
+
+
+;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;; Utilities ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
+
+(defn sa-node-name 
+  ([state action] (sa-node-name state action (env/precondition-context action state)))
+  ([state action context] [(env/extract-context state context) (env/action-name action)]))
+
+(defn sp-node-name [state actions]
+  [state (map env/action-name actions)])
+
+
+;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;; Straight search ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
+
+(declare make-hfs-node)
+
+(deftype HierarchicalForwardSeqNode [name state reward opt-sol remaining-actions]
+  Comparable (compareTo  [x] (- (max-reward x) reward))
+  is/Summary (max-reward [] reward)
+             (solution   [] (if (empty? remaining-actions) opt-sol))   
+  is/Node    (node-name  [] name)
+             (expand     []
+              (when-let [[f & r] (seq remaining-actions)]
+                (if (env/primitive? f)
+                  (when-let [[ss sr] (and (env/applicable? f state) (env/successor f state))]
+                    (make-hfs-node ss (+ reward sr) (conj opt-sol f) r))
+                  (for [ref (hierarchy/immediate-refinements f state)]
+                    (make-hfs-node state reward opt-sol (concat ref r)))))))
+
+(defn make-hfs-node [state reward opt-sol remaining-actions]
+  (HierarchicalForwardSeqNode (sp-node-name state remaining-actions) 
+                              state reward opt-sol remaining-actions))
+
+(defn make-hfs-root-node [state action]
+  (make-fs-node state 0 [] [action]))
+
+;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;; Recursive search ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
+
+(declare make-rhs-node)
+
+(deftype HierarchicalRecursiveSeqNode [name state reward opt-sol remaining-actions]
+  Comparable (compareTo  [x] (- (max-reward x) reward))
+  is/Summary (max-reward [] reward)
+             (solution   [] (if (empty? remaining-actions) opt-sol))   
+  is/Node    (node-name  [] name)
+             (expand     []
+              (when-let [[f & r] (seq remaining-actions)]
+                (if (env/primitive? f)
+                  (when-let [[ss sr] (and (env/applicable? f state) (env/successor f state))]
+                    (make-hfs-node ss (+ reward sr) (conj opt-sol f) r))
+                  (for [ref (hierarchy/immediate-refinements f state)]
+                    (make-hfs-node state reward opt-sol (concat ref r)))))))
+
+(defn lift-node [parent-node child-node]
+  
+  )
+
+(defn search-wrapper [root]
+  (fn [child]
+    (let [lifted (lift-node root child)]
+      (if (is/solution lifted)
+          lifted
+        (is/get-cached-search *problem-cache* in-name
+         (make-incremental-dijkstra-sa-search in-name (env/get-logger state context) f))
+         
+         
+        )
+      )
+    )
+  )
+
+(defn make-rhs-node [state reward opt-sol remaining-actions]
+  (if-let [[f & r] (seq remaining-actions)]
+      ()
+    goal-node)
+  )
+
+(defn make-rhs-root-node [state action]
+  (make-rhs-node state 0 [] [action]))
+
+
+
+;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
+;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;; Top-level  ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
+;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
+
+(def *node-type-policy*)
+
+(defn hierarchical-search [henv policy search-maker]
+  (binding [*node-type-policy* policy
+            *problem-cache*    (HashMap.)]
+    (let [e    (hierarchy/env henv)
+          init (env/initial-logging-state e)
+          tla  (hierarchy/TopLevelAction e [(hierarchy/initial-plan henv)])
+          top  (search-maker init tla)]
+      (when-let [sol (is/next-goal-node top Double/NEGATIVE_INFINITY)]
+        (assert (is/solution sol))
+        [(map identity #_env/action-name (is/solution sol)) (is/max-reward sol) ]))))
+
+
+;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;   Drivers   ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
+
+
+(defn sahucs-flat [henv]
+  (hierarchical-search henv nil (comp make-flat-incremental-dijkstra make-hfs-root-node)))
+
+(defn sahucs-simple [henv]
+  (hierarchical-search henv nil
+    #(make-flat-incremental-dijkstra (make-hfs-node %1 0 [] [%2]))))
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+;;;;;;;;;;;;;;;;;;;;;;;;;;;; Hierarchical Search Node ;;;;;;;;;;;;;;;;;;;;;;;;;;
+
+
+(deftype HierarchicalNode [state action]
+  Comparable
+   (compareTo [x] (- (max-reward x) reward))
+  is/Summary
+   (max-reward [] reward)
+   (is-goal?   [] (goal-fn state))  
+  is/Node
+   (node-name [] state)
+   (expand    []
+     (for [a (actions-fn state)
+           :when (env/applicable? a state)
+           :let  [[ss r] (env/successor a state)]]
+       (ForwardSearchNode. actions-fn goal-fn ss (conj opt-sol a) (+ reward r)))))
+
+(defn make-forward-search-root-node [env]
+  (ForwardSearchNode (env/actions-fn env) (env/goal-fn env) (env/initial-state env) [] 0))
+;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;; Utilities ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
+
+
+
+
+
+
+
+
+
+
+
 ;; Cleaned up version of sahdd, should hopefully be more efficient, include SAHA as well,
 ;; also ALTs, goal abstractions, more info propagation.
 

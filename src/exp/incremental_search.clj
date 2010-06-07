@@ -7,6 +7,234 @@
 ;; Generic incremental search definitions and implementations
 
 
+
+;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;; Summary ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
+
+; A Summary of a portion of the search space, i.e., descendents of a Node.
+; Summary objects should be immutable and Comparable, with "lower" meaning
+; "greater upper bound on reward", optionally tiebreaking by other methods.
+
+; Possible: goal criteria: must affect both rewards, solution status, etc.  ?
+
+(defprotocol Summary
+  (max-reward [s])
+  (solution   [s])
+  (is-goal?   [s]))
+
+(defmethod queues/get-cost exp.incremental_search.Summary [x] (- (max-reward x)))
+
+;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;; Node ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
+
+; A Node is an immutable object describing a portion of a search space, along
+; with a single method of decomposing into SubNodes that cover the same portion.
+
+; Note: this essentially mandates that all choices in how to decompose are 
+; embedded in the top-level node.  Not sure if this is desirable.
+
+
+(defprotocol Node
+  (node-name    [node])
+  (expand       [node]))
+
+
+(deftype SimpleNode [name reward solution children]
+  Comparable (compareTo  [x] (- (max-reward x) reward))
+  is/Summary (max-reward [] reward)
+             (solution   [] solution)   
+  is/Node    (node-name  [] name)
+             (expand     [] children))
+
+
+
+;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;; IncrementalSearch ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
+
+(defprotocol IncrementalSearch
+  (root-node       [is] "Return the node that is the root of this search.")
+  (current-summary [is])
+  (next-goal-node  [is min-reward]
+     "Evaluate until a goal is found, or the next entry is worse than min-reward (return nil).
+      Results are typically, but not always, singletons with reward >= min. 
+      They are, however, required to be in decreasing order of reward (across calls).
+      Searches with a fixed goal should have max-reward infinity after finding first goal."))
+
+
+
+;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;; Helpers ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
+
+(def pos-inf Double/POSITIVE_INFINITY)
+(def neg-inf Double/NEGATIVE_INFINITY)
+
+(defn viable? [summary min-reward]
+  (let [reward (max-reward summary)]
+    (and (>= reward min-reward) 
+         (> reward neg-inf))))
+
+(def worst-summary
+  (reify Summary
+    (max-reward       [] neg-inf)
+    (is-goal?         [] false)
+    ???
+    ))
+
+(defn all-results [incremental-search]
+  (loop [results []]
+    (if (not (viable? incremental-search neg-inf)) results
+        (recur (into results (next-goal-nodes incremental-search neg-inf))))))
+
+
+
+;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
+;;;;;;;;;;;;;;;;;;;;;;;; Generic Search Implementations ;;;;;;;;;;;;;;;;;;;;;;;;
+;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
+
+;;;;;;;;;;;;;;;;;;;;;;;;;;;; Flat Dijkstra over Nodes ;;;;;;;;;;;;;;;;;;;;;;;;;;
+
+; nodes queued by name
+
+(defn pq-add-node [pq node] (queues/pq-add! (node-name root-node) root-node))
+
+(deftype FlatIncrementalDijkstra [root queue] :as this
+  IncrementalSearch
+    (root-node       [] root)
+    (current-summary [] (nth (queues/pq-peek-min queue) 1))
+    (next-goal-node  [min-reward]
+      (when (viable? this min-reward)
+        (let [best (nth (queues/pq-remove-min-with-cost! queue) 1)]
+          (doseq [n (expand best)] (pq-add-node queue n))
+          (if (???? best) best (recur min-reward))))))
+
+(defn make-flat-incremental-dijkstra [root-node]
+  (FlatIncrementalDijkstra root-node (doto (queues/make-graph-search-pq) (pq-add-node root-node))))
+
+
+;;;;;;;;;;;;;;;;;;;;;;;; Recursive Dijkstra over Searches ;;;;;;;;;;;;;;;;;;;;;;
+
+
+
+(deftype RecursiveIncrementalDijkstra [root queue] :as this
+  IncrementalSearch
+    (root-node       [] root)
+    (current-summary [] ???)
+    (next-goal-node  [min-reward]
+      ...))
+
+(defn make-recursive-incremental-dijkstra [root-node child-searches])
+
+
+
+;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;; Cached Incremental Search ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
+
+(defn cache-incremental-search
+  "Take a *fresh* incremental-search, and return a function of no arguments that returns 
+   independent incremental-search objects backed by it.  Not thread-safe."
+  [backing-search]
+  (let [results-atom (atom [])
+        goal         (goal-state backing-search)
+        name         (node-name backing-search)]
+    (fn cache-factory []
+      (if (optimal-solution backing-search) backing-search
+       (let [index-atom   (atom 0)]
+         (reify IncrementalSearch 
+           (node-name        [] name)
+           (goal-state       [] goal)
+           (optimal-solution [] nil)
+           (max-reward       [] (max (max-reward (nth @results-atom @index-atom failed-search)) 
+                                     (max-reward backing-search)))
+           (next-results [min-reward]
+;             (println "CACHE" min-reward (max-reward backing-search) (max-reward (nth @results-atom @index-atom failed-search)) @index-atom (count @results-atom))
+             (if-let [next (nth @results-atom  @index-atom nil)]
+               (when (viable? next min-reward) (swap! index-atom inc) [next])
+               (when (viable? backing-search min-reward)
+                 (do (swap! results-atom into (next-results backing-search min-reward))
+                     (recur min-reward)))))))))))
+
+(defmacro get-cached-search 
+  "Take a Map, name, and expression that constructs a fresh IncrementalSearch.  If this is the first
+   call to this function with this name, execute factory-expr, wrap the result in a cache, and return it.
+   Subsequent calls with the same name will return a new cached view on the same search, without 
+   executing factory-expr."
+  [cache-map name factory-expr]
+  `((util/cache-with ~cache-map ~name (cache-incremental-search ~factory-expr))))
+
+
+;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;; Exhaustive Search ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
+
+;; No reason to use this except to emulate SAHTN.
+;; Note: destroys cost order, but should still work correctly.
+
+(defn make-eager-search 
+  "Fully evaluate the search problem, and return an incremental view on the results.
+   Useless except for testing, or to emulate other exhaustive algorithms (e.g., SAHTN)."
+  [is]
+  (let [c (cache-incremental-search is)]
+    (all-results (c))
+    (c)))
+
+;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;; Transformed Search ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
+
+(defn make-transformed-search 
+  ([name is result-transform] 
+     (make-transformed-search name is result-transform 0))
+  ([name is result-transform reward-offset] 
+     (make-transformed-search name is result-transform reward-offset (goal-state is)))
+  ([name is result-transform reward-offset goal]
+     (assert (not (optimal-solution is)))
+     (reify IncrementalSearch
+       (node-name        [] name)
+       (goal-state       [] goal)
+       (optimal-solution [] nil)
+       (max-reward       [] (+ (max-reward is) reward-offset))
+       (next-results [min-reward] 
+;         (println "N-R" name min-reward reward-offset) (Thread/sleep 100)
+         (map result-transform (next-results is (- min-reward reward-offset)))))))
+
+
+;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;; Sequencing ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
+
+;; Sequence two closed searches (with concrete goal states).
+
+(defn make-closed-sequence-search
+  "Sequence two searches, where goal of s1 must be input of s2.
+   Choice-fn takes the searches, and returns the one to refine (only when both non-goal)."
+  [name search1 search2 choice-fn]
+  (let [s1-atom (atom search1), s2-atom (atom search2) 
+        goal    (goal-state search2)]
+    (reify :as this IncrementalSearch 
+      (node-name        [] name)
+      (goal-state       [] goal)
+      (optimal-solution [] nil)
+      (max-reward       [] (+ (max-reward @s1-atom) (max-reward @s2-atom)))
+      (next-results     [min-reward]
+        (let [s1 @s1-atom, s2 @s2-atom
+              s1-opt (optimal-solution s1) s2-opt (optimal-solution s2)]
+          (if (and s1-opt s2-opt)
+              (util/prog1 (make-goal-search goal (concat s1-opt s2-opt) (max-reward this))
+                          (reset! s1-atom failed-search)) 
+            (let [choice (cond s1-opt s2 s2-opt s1 :else (choice-fn s1 s2))
+                  [ref-atom oth-atom] (cond (identical? choice s1) [s1-atom s2-atom]
+                                            (identical? choice s2) [s2-atom s1-atom]
+                                            :else (throw (RuntimeException.)))]
+              (let [results (next-results @ref-atom (- min-reward (max-reward @oth-atom)))]
+                (assert (<= (count results) 1))
+                (when (seq results) 
+                  (assert (optimal-solution (first results)))
+                  (reset! ref-atom (first results)))
+                (when (viable? this min-reward)
+                  (recur min-reward))))))))))
+
+
+
+
+
+
+
+
+
+
+
+
+
+
 ;; NOTE: must handle reward decreasses of parital nodes properly. (first versions still mess this up).
 
 
@@ -24,25 +252,59 @@
  ;     - (goal-state) -- we shouldn't know anything about this? 
  ;     - max-reward
  ;     - optimal-solution or nil
+ ;     - child-subproblems
  ;  - Solution method has:
  ;     - problem
  ;     - next-results [min-reward]
  ;     - (possibly) slurp
- ;    
+
+
+
+
+; flat / dijkstra solution method:
+  ; - dijkstra over problems
+
+; recursive solution method:
+  ; - dijkstra over (incremental) searches over problems
+
+; Node can behave directly as a search -- just not incremental.
+; Search can behave like a node, as well. ? 
+
+
+; If we want to support fancier statuses (pessimistic, etc),  want this too.
+; Node is its own status.
+; Search has separate status. 
+; Status includes, at minimum, max-reward.
+
+
 
 ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
 ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;; Search Protocols ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
 ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
 
-(defprotocol IncrementalSearch
+; Really want abstract class ? .. . ?
+
+(defprotocol SearchStatus
+  (max-reward       [se]))
+
+(defprotocol SearchEntry
+  (name             [se])
+  (max-reward       [se])
+  (optimal-solution [se]))
+
+(defprotocol SearchNode
   (node-name        [is] "Return the name, used for identity.  Equals and hash-code on object ignored.")
-  (goal-state       [is] "Return the goal state of this search, which can be nil meaning 'any new state'")  
-  (max-reward       [is] "Upper bound on reward to reach the goal.")
+  (node-max-reward  [is] "Upper bound on reward to reach the goal.")
   (optimal-solution [is] "Optimal solution to reach goal-state, or nil if not yet known.")
-  (#^IncrementalSearchResult next-results [is min-reward]
+  (expand           [is] "Return a sequence of sub-nodes, which cover solution space of this one."))
+
+(defprotocol IncrementalSearch
+  (root-node        [is] "Return the node that is the root of this search.")
+  (is-max-reward    [is] "Current upper bound on reward to reach the goal.")
+  (next-goal-nodes  [is min-reward]
      "Evaluate until a goal is found, or the next entry is worse than min-reward.
       Results are typically, but not always, singletons with reward >= min. 
-      They are, however, required to be in decreasing order of reward (also across calls).
+      They are, however, required to be in decreasing order of reward (across calls).
       Searches with a fixed goal should have max-reward infinity after finding first goal."))
 
 (defn better-search? [s1 s2] (> (max-reward s1) (max-reward s2))) ;; TODO: generify
