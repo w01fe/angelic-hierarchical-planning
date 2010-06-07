@@ -37,12 +37,15 @@
   (expand       [node]))
 
 
-(deftype SimpleNode [name reward solution children]
+(deftype SimpleNode [name reward solution children data]
   Comparable (compareTo  [x] (- (max-reward x) reward))
   is/Summary (max-reward [] reward)
              (solution   [] solution)   
   is/Node    (node-name  [] name)
              (expand     [] children))
+
+(defn make-meta-goal-node [node]
+  (SimpleNode (node-name node) (max-reward node) node nil nil))
 
 
 
@@ -58,6 +61,12 @@
       Searches with a fixed goal should have max-reward infinity after finding first goal."))
 
 
+; Problem with this is that in recursive searches, we need to transform goal of lower-level
+; into something that is not goal of upper-level.  
+
+; (SAHA does not need this faculty).
+
+; Can do this by
 
 ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;; Helpers ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
 
@@ -76,6 +85,8 @@
     ???
     ))
 
+(def worst-search ...)
+
 (defn all-results [incremental-search]
   (loop [results []]
     (if (not (viable? incremental-search neg-inf)) results
@@ -93,18 +104,17 @@
 
 (defn pq-add-node [pq node] (queues/pq-add! (node-name root-node) root-node))
 
-(deftype FlatIncrementalDijkstra [root queue] :as this
-  IncrementalSearch
-    (root-node       [] root)
-    (current-summary [] (nth (queues/pq-peek-min queue) 1))
-    (next-goal-node  [min-reward]
-      (when (viable? this min-reward)
-        (let [best (nth (queues/pq-remove-min-with-cost! queue) 1)]
-          (doseq [n (expand best)] (pq-add-node queue n))
-          (if (???? best) best (recur min-reward))))))
-
-(defn make-flat-incremental-dijkstra [root-node]
-  (FlatIncrementalDijkstra root-node (doto (queues/make-graph-search-pq) (pq-add-node root-node))))
+(defn make-flat-incremental-dijkstra [roots]
+  (let [queue (doto (queues/make-graph-search-pq) (doseq [root roots] (pq-add-node root)))]
+    (reify :as this FlatIncrementalDijkstra 
+      IncrementalSearch
+       (root-node       [] root)
+       (current-summary [] (nth (queues/pq-peek-min queue) 1))
+       (next-goal-node  [min-reward]
+         (when (viable? this min-reward)
+           (let [best (nth (queues/pq-remove-min-with-cost! queue) 1)]
+             (doseq [n (expand best)] (pq-add-node queue n))
+             (if (solution best) best (recur min-reward))))))))
 
 
 ;;;;;;;;;;;;;;;;;;;;;;;; Recursive Dijkstra over Searches ;;;;;;;;;;;;;;;;;;;;;;
@@ -118,7 +128,27 @@
     (next-goal-node  [min-reward]
       ...))
 
-(defn make-recursive-incremental-dijkstra [root-node child-searches])
+(defn make-recursive-incremental-dijkstra 
+  "Keep graph queue of nodes and tree queue of searches.
+   Non-goal nodes are passed to searchify-fn, which should return a [search, lift-fn] pair.
+   Goals from searches are passed to corresponding lift-fn, which should return a new node.
+   Never calls expand, so in theory that can be perverted to pass info between lift and searchify."
+  [root init-nodes searchify-fn]
+  (let [queue (doto (queues/make-graph-search-pq) (pq-add-node root-node))]
+    (reify :as this FlatIncrementalDijkstra 
+      IncrementalSearch
+       (root-node       [] root)
+       (current-summary [] (nth (queues/pq-peek-min queue) 1))
+       (next-goal-node  [min-reward]
+         (when (viable? this min-reward)
+           (let [best (nth (queues/pq-remove-min-with-cost! queue) 1)]
+             (doseq [n (expand best)] (pq-add-node queue n))
+             (if (solution best) best (recur min-reward))))))))
+
+(defn make-recursive-incremental-dijkstra [root init-node searchify-fn]
+  
+  
+  )
 
 
 

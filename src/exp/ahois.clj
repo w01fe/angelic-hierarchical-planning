@@ -8,6 +8,8 @@
 
 ; Angelic hierarchy of optimal incremental searches
 
+;; TODO: fix paredit key bindings.
+
 ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;; Forward Search Node ;;;;;;;;;;;;;;;;;;;;;;;;;;;;
 
 (defn make-forward-search-node [actions-fn goal-fn state reward opt-sol]
@@ -25,81 +27,120 @@
 
 ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;; Utilities ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
 
+
+(deftype HierarchicalForwardState [state reward opt-sol remaining-actions])
+
+(defn hfs-name [hfs]
+  [(:state hfs) (map env/action-name (:remaining-actions hfs))])
+
+(defn make-root-hfs [state action]
+  (HierarchicalForwardState state 0 [] [actions]))
+
+(defn next-hfs-prim [state reward opt-sol prim-action more-actions]
+  (when-let [[ss sr] (and (env/applicable? prim-action state) 
+                          (env/successor prim-action state))]
+    [(HierarchicalForwardState state (+ reward sr) (conj opt-sol action) more-actions)]))
+
+(defn next-hfs-expand [state reward opt-sol hla more-actions]
+  (for [ref (hierarchy/immediate-refinements hla state)]
+    (HierarchicalForwardState state reward opt-sol (concat ref more-actions ))))
+
+(defn next-hfs-flat [hfs]
+  (let [{:keys [state reward opt-sol remaining-actions]} hfs
+        [f & r] remaining-actions]      
+    ((if (env/primitive? action) next-hfs-prim next-hfs-expand)
+     state reward opt-sol f r)))
+
+(defn hfs->simple-node [hfs]
+  (if (empty? (:remaining-actions hfs))
+    (SimpleNode (hfs-name hfs) (:reward hfs) (:opt-sol hfs) nil hfs)
+    (SimpleNode (hfs-name hfs) (:reward hfs) nil (lazy-seq (map hfs->simple-node (next-hfs-flat hfs))) hfs)))
+
+(defn lift-hfs 
+  "Lift child-solution into the context of parent-node."
+  [parent child-solution]
+    (assert (is/solution child-solution))
+    (HierarchicalForwardState
+     (env/apply-effects (:state parent)   (env/extract-effects (:state child-solution)))
+     (+                 (:reward parent)  (:reward child-solution))
+     (concat            (:opt-sol parent) (:opt-sol child-solution))
+     (next (:remaining-actions parent))))
+
+
 (defn sa-node-name 
   ([state action] (sa-node-name state action (env/precondition-context action state)))
   ([state action context] [(env/extract-context state context) (env/action-name action)]))
 
-(defn sp-node-name [state actions]
-  [state (map env/action-name actions)])
+(defn drop-hfs
+  "Construct first abstracted name & fn returning hfs subproblem, counterpart to lift."
+  [hfs]
+  (let [{:keys [state reward opt-sol remaining-actions]} hfs
+        [f & r] remaining-actions
+        context (env/precondition-context f state)]      
+    [(sa-node-name state f context)
+     (make-root-hfs (env/get-logger state context) f)]))
+
+(defn onionize)
+
+(defn abstract-hfs [hfs])
 
 
-;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;; Straight search ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
+;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;; Flat search ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
 
-(declare make-hfs-node)
+; Here, solution are solutions, and we break apart the hfs each time.
 
-(deftype HierarchicalForwardSeqNode [name state reward opt-sol remaining-actions]
-  Comparable (compareTo  [x] (- (max-reward x) reward))
-  is/Summary (max-reward [] reward)
-             (solution   [] (if (empty? remaining-actions) opt-sol))   
-  is/Node    (node-name  [] name)
-             (expand     []
-              (when-let [[f & r] (seq remaining-actions)]
-                (if (env/primitive? f)
-                  (when-let [[ss sr] (and (env/applicable? f state) (env/successor f state))]
-                    (make-hfs-node ss (+ reward sr) (conj opt-sol f) r))
-                  (for [ref (hierarchy/immediate-refinements f state)]
-                    (make-hfs-node state reward opt-sol (concat ref r)))))))
 
-(defn make-hfs-node [state reward opt-sol remaining-actions]
-  (HierarchicalForwardSeqNode (sp-node-name state remaining-actions) 
-                              state reward opt-sol remaining-actions))
+(defn make-simple-flat-search [state action]
+  (make-flat-incremental-dijkstra [(hfs->simple-node (make-root-hfs state action))]))
 
-(defn make-hfs-root-node [state action]
-  (make-fs-node state 0 [] [action]))
+
+;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;; Flat search2 ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
+
+; slower, using recursive search doodad.  If we allowed searchify to return list of nodes,
+; could avoid nonsense here.
+
+; Nonsense is: to expand node, we create a search whose goals are its flat refinements.
+; To lift these, we just extract the goals.
+
+(defn make-flat-search  [state action]
+  (make-recursive-incremental-dijkstra
+   ??? (hfs->simple-node (make-root-hfs state action)) 
+   (fn [n] [(make-flat-incremental-dijkstra (map make-meta-goal-node (expand n))) solution])))
+
 
 ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;; Recursive search ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
 
 (declare make-rhs-node)
 
-(deftype HierarchicalRecursiveSeqNode [name state reward opt-sol remaining-actions]
-  Comparable (compareTo  [x] (- (max-reward x) reward))
-  is/Summary (max-reward [] reward)
-             (solution   [] (if (empty? remaining-actions) opt-sol))   
-  is/Node    (node-name  [] name)
-             (expand     []
-              (when-let [[f & r] (seq remaining-actions)]
-                (if (env/primitive? f)
-                  (when-let [[ss sr] (and (env/applicable? f state) (env/successor f state))]
-                    (make-hfs-node ss (+ reward sr) (conj opt-sol f) r))
-                  (for [ref (hierarchy/immediate-refinements f state)]
-                    (make-hfs-node state reward opt-sol (concat ref r)))))))
+; wasteful?
 
-(defn lift-node [parent-node child-node]
-  
-  )
 
-(defn search-wrapper [root]
-  (fn [child]
-    (let [lifted (lift-node root child)]
-      (if (is/solution lifted)
-          lifted
-        (is/get-cached-search *problem-cache* in-name
-         (make-incremental-dijkstra-sa-search in-name (env/get-logger state context) f))
-         
-         
-        )
-      )
-    )
-  )
+; Almost - how do we get context of solution node to lift it?
+ ; Either need yet another abstraction (like search, but can return non-goal);
+ ; Or child keeps track of context (breaks state abstraction)
+ ; Or RID keeps track of search, lift-fn pairs -- Fine, have to 
 
-(defn make-rhs-node [state reward opt-sol remaining-actions]
-  (if-let [[f & r] (seq remaining-actions)]
-      ()
-    goal-node)
-  )
 
-(defn make-rhs-root-node [state action]
-  (make-rhs-node state 0 [] [action]))
+
+(defn lift-solution-node [parent-hfs child-node]
+  (make-recursive-node (lift-hfs parent-hfs (is/solution child-node)))) 
+
+;; TODO: is data safe across state abstraction ?
+;; TODO: recursive recursively is where polymorphism fits in.
+(defn recursively-searchify-hfs [hfs]
+  (let [[name abstract-hfs-fn] (drop-hfs hfs)]
+    [(is/get-cached-search *problem-cache* name
+       (let [child-hfs (abstract-hfs-fn)]
+         (make-recursive-incremental-dijkstra
+          ???-root (hfs->simple-node (next-hfs-flat hfs)) (comp recursively-searchify-hfs :data))))
+     #(lift-solution-node hfs %)]))
+
+(defn make-recursive-search [state action]
+  (first (recursively-searchify-hfs (make-root-hfs state action))))
+
+
+
+;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;; SAHA ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
 
 
 
@@ -125,7 +166,7 @@
 
 
 (defn sahucs-flat [henv]
-  (hierarchical-search henv nil (comp make-flat-incremental-dijkstra make-hfs-root-node)))
+  (hierarchical-search henv nil (comp  make-hfs-root-node)))
 
 (defn sahucs-simple [henv]
   (hierarchical-search henv nil
@@ -144,7 +185,20 @@
 
 
 
+(comment 
 
+  (deftype HierarchicalRecursiveSeqNode [name state reward opt-sol remaining-actions]
+    Comparable (compareTo  [x] (- (max-reward x) reward))
+    is/Summary (max-reward [] reward)
+    (solution   [] (if (empty? remaining-actions) opt-sol))   
+    is/Node    (node-name  [] name)
+    (expand     []
+                (when-let [[f & r] (seq remaining-actions)]
+                  (if (env/primitive? f)
+                    (when-let [[ss sr] (and (env/applicable? f state) (env/successor f state))]
+                      (make-hfs-node ss (+ reward sr) (conj opt-sol f) r))
+                    (for [ref (hierarchy/immediate-refinements f state)]
+                      (make-hfs-node state reward opt-sol (concat ref r))))))))
 
 
 
