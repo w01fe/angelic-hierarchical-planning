@@ -56,12 +56,14 @@
     (SimpleNode (hfs-name hfs) (:reward hfs) (:opt-sol hfs) nil hfs)
     (SimpleNode (hfs-name hfs) (:reward hfs) nil (lazy-seq (map hfs->simple-node (next-hfs-flat hfs))) hfs)))
 
+(defn lift-state [parent child] (env/apply-effects parent (env/extract-effects child)))
+
 (defn lift-hfs 
   "Lift child-solution into the context of parent-node."
   [parent child-solution]
     (assert (is/solution child-solution))
     (HierarchicalForwardState
-     (env/apply-effects (:state parent)   (env/extract-effects (:state child-solution)))
+     (lift-state        (:state parent)   (:state child-solution))
      (+                 (:reward parent)  (:reward child-solution))
      (concat            (:opt-sol parent) (:opt-sol child-solution))
      (next (:remaining-actions parent))))
@@ -78,11 +80,16 @@
         [f & r] remaining-actions
         context (env/precondition-context f state)]      
     [(sa-node-name state f context)
-     (make-root-hfs (env/get-logger state context) f)]))
+     #(make-root-hfs (env/get-logger state context) f)]))
 
-(defn onionize)
+(defn split-hfs "Split into hfs for first action, hfs for Drop first action" [hfs mid-state]
+  (let [{:keys [state reward opt-sol remaining-actions]} hfs
+        [f & r] remaining-actions
+        context (env/precondition-context f state)]
+    (assert (seq r)) (assert (zero? reward)) (assert (empty? opt-sol))
+    [(HierarchcialForwardState state reward opt-sol [f])
+     (HierarchicalForwardState mid-state 0 nil r)]))
 
-(defn abstract-hfs [hfs])
 
 
 ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;; Flat search ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
@@ -123,7 +130,7 @@
 
 
 (defn lift-solution-node [parent-hfs child-node]
-  (make-recursive-node (lift-hfs parent-hfs (is/solution child-node)))) 
+  (hfs->simple-node (lift-hfs parent-hfs (is/solution child-node)))) 
 
 ;; TODO: is data safe across state abstraction ?
 ;; TODO: recursive recursively is where polymorphism fits in.
@@ -142,6 +149,158 @@
 
 ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;; SAHA ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
 
+;; Here, subsearches should only generate goal nodes. So, we only have to deal with 
+; expanding the initial nodes we populate the search with.  These can be dummies. 
+
+; Worry about refactoring later.
+
+
+;; TODO: these should all be single-solution .
+;; These caches cache erfinements, optimsitic descriptions, and solve final-state connection probelm
+; Refinements and valuation for abstracted SA
+(deftype InnerSACache [hfs opt-val refs])
+
+(defn get-inner-sa-cache [hfs]
+  (let [[name abstract-hfs-fn] (drop-hfs hfs)]
+    (util/cache-with *problem-cache* name
+      (let [child-hfs (abstract-hfs-fn), 
+            {:keys [state remaining-actions]} child-hfs, 
+            a   (util/safe-singleton remaining-actions)]
+        (SACache child-hfs (env/optimistic-map a state) (lazy-seq (hierarchy/immediate-refinements a state)))))))
+
+; Mapping from unabstracted states to abstracted states
+(deftype OuterSACache [inner-cache final-state-map])
+
+(defn get-outer-sa-cache [hfs]
+  (util/cache-with *problem-cache* (hfs-name hfs)
+    (let [inner (get-inner-sa-cache hfs)]
+      (OuterSACache inner (into {} (for [s (keys (:opt-val inner))] [(lift-state (:state hfs) s) s]))))))
+
+
+
+(defn get-saha-sas-search [outer-cache final-outer-state]
+  (let [inner])
+  )
+
+(defn get-saha-sps-search [hfs final-state]
+  (let [r-a (:remaining-actions hfs)]
+    (condp (zero? rc) (make-flat-incremental-dijkstra [(hfs->simple-node hfs)])
+           (= rc 1)   (get-saha-sas-search hfs final-state ????reward???)
+           :else 
+             (is/get-cached-search *problem-cache* (conj (hfs-name hfs) final-state)
+               (let [])
+               (make-recursive-incremental-dijkstra ???
+                 (for [[ss sr] (env/optimistic-map next-action state)]
+                   (SimpleNode (gensym) (+ (:reward hfs) sr) nil nil [ss sr]))
+                 #(make-saha-sasps-search hfs (:data %) final-state))))))
+
+(defn make-saha-sasps-search [hfs [med-ss med-sr] final-state]
+  (let [[f-hfs s-hfs] (split-hfs hfs med-ss)]
+    (make-closed-sequence-search
+     (conj (hfs-name hfs) med-ss final-state)
+     (make-saha-sas-search f-hfs med-ss med-sr)
+     (make-saha-sps-search s-hfs final-state))))
+
+;; How do I name this ??? In particular, how do I abstract final-state? 
+ ; Seems this is use for sa-node . ?
+(defn make-saha-sas-search [hfs mid-state mid-rew])
+
+
+
+(defn make-saha-sas-node 
+  ([start-node action final-state]
+     (make-saha-sas-node start-node action final-state ref-seq)
+     )
+  ([start-node action final-state opt-reward next-children]
+     (let [state   (is/goal-state start-node)
+           context (env/precondition-context action state)
+           log-state (env/get-logger state context)
+           in-name (sa-node-name state f context)]
+       (is/make-transformed-search (gensym)
+         (is/get-cached-search *problem-cache* in-name
+           (make-incremental-dijkstra-search in-name 
+             (for [[n ref] ref-seq] )
+             (lazy-seq
+              (if (env/primitive? f)
+                (when-let [[ss sr] (and (env/applicable? f state) (env/successor f state))]
+                  [(make-node-descendant root 
+                     (is/make-goal-search ss (+ (is/max-reward goal-node) sr) 
+                                          (conj (is/optimal-solution goal-node)  f)) r)])
+                (for [ref (hierarchy/immediate-refinements f state)]
+                  (make-node-descendant root goal-node (concat ref r)))))
+             final-state))
+         #(make-node-descendant root (contextualize-goal goal-node %) r) ;; TODO...
+         (is/max-reward goal-node)
+         nil)))
+   
+  (is/make-transformed-search 
+     (sa-node-name state actions)
+     (is/get-cached-search *problem-cache* in-name
+       (make-incremental-dijkstra-sa-search in-name (env/get-logger state context) f))
+     #(make-node-descendant root (contextualize-goal goal-node %) r)
+     (is/max-reward goal-node)
+     nil))
+
+(defn make-saha-sasps-node [start-node action med-state med-reward remaining-actions final-state refs]
+  (let [sas      (make-saha-sas-node start-node action med-state med-reward refs)
+        med-node (is/make-goal-search med-state med-reward nil) ])
+  (if (empty? remaining-actions) sas  ;; just for efficiency, could be removed.
+    (is/make-closed-sequence-search 
+     (gensym) sas 
+     (make-saha-sps-node med-node remaining-actions final-state)
+     (fn [a b] a))))
+
+(defn make-saha-sas-node 
+  ([start-node action final-state]
+     (make-saha-sas-node start-node action final-state ref-seq)
+     )
+  (let [state   (is/goal-state start-node)
+        context (env/precondition-context action state)
+        log-state (env/get-logger state context)
+        in-name (sa-node-name state f context)]
+    (is/make-transformed-search (gensym)
+     (is/get-cached-search *problem-cache* in-name
+       (make-incremental-dijkstra-search in-name 
+         (lazy-seq
+          (if (env/primitive? f)
+            (when-let [[ss sr] (and (env/applicable? f state) (env/successor f state))]
+              [(make-node-descendant root (is/make-goal-search ss (+ (is/max-reward goal-node) sr) 
+                                                               (conj (is/optimal-solution goal-node)  f)) r)])
+            (for [ref (hierarchy/immediate-refinements f state)]
+              (make-node-descendant root goal-node (concat ref r)))))
+         final-state))
+     #(make-node-descendant root (contextualize-goal goal-node %) r) ;; TODO...
+     (is/max-reward goal-node)
+     nil))
+   
+  (is/make-transformed-search 
+     (sa-node-name state actions)
+     (is/get-cached-search *problem-cache* in-name
+       (make-incremental-dijkstra-sa-search in-name (env/get-logger state context) f))
+     #(make-node-descendant root (contextualize-goal goal-node %) r)
+     (is/max-reward goal-node)
+     nil))
+
+(defn make-saha-sa-node [root goal-node remaining-actions outcome-state opt-rew]
+  (if-let [[f & r] (seq remaining-actions)]
+    ((*node-type-policy* root [goal-node f]) root goal-node remaining-actions)
+    goal-node)
+
+  )
+
+(defn make-saha-sa-node [root goal-node next-action]
+  (let [state (is/goal-state goal-node)]
+    (is/make-expanding-search (sa-node-name state next-action) nil (is/max-reward goal-node)
+      (lazy-seq 
+       (for [[s r] (env/optimistic-map next-action state)]
+         (make-saha-refinement-node root goal-node next-action s r))))))
+
+
+
+
+(defn make-saha-search [state action]
+  
+  )
 
 
 ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
