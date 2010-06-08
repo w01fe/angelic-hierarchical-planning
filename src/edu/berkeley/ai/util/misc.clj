@@ -1,5 +1,12 @@
 (in-ns 'edu.berkeley.ai.util)
 
+(defn min-comparable [& args]
+  (assert (seq args))
+  (loop [best (first args) rest (next args)]
+    (if-let [[f & r] rest]
+        (if (neg? (compare f best)) (recur f r) (recur best r))
+        best)))
+
 (defn git-commit-id []
   (aget (.split #^String (sh "git" "log" "-1" :dir (root-local "")) "\n") 0))
 
