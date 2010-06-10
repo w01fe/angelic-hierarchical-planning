@@ -6,6 +6,8 @@
 ;; Generic incremental search definitions and implementations
 ; This time captures distinction between *problem* and *solution method*
 
+;Note: possible connection with prolog inference.
+
 ;; TODO: fancier info going up
 ;; TODO: fancier goals, etc. ?
 
@@ -20,8 +22,7 @@
 ; Possible: goal criteria: must affect both rewards, solution status, etc.  ?
 
 (defprotocol Summary
-  (max-reward [s])
-  (solution   [s]))
+  (max-reward [s]))
 
 ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;; Node ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
 
@@ -32,8 +33,9 @@
 ; embedded in the top-level node.  Not sure if this is desirable.
 
 (defprotocol Node
-  (node-name    [node])
-  (expand       [node]))
+  (node-name [node])
+  (solution  [s])  
+  (expand    [node]))
 
 ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;; IncrementalSearch ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
 
@@ -57,46 +59,44 @@
 
 (defn viable-search? [search min-reward] (viable? (current-summary search) min-reward))
 
-(deftype SimpleSummary [reward solution]
-  Summary
-   (max-reward       [] reward)
-   (solution         [] solution))
+(deftype SimpleSummary [reward]
+  Comparable (compareTo  [x] (- (max-reward x) reward))
+  Summary    (max-reward       [] reward))
 
 (defn offset-summary [summary reward-offset]
-  (assert (not (solution summary)))
-  (SimpleSummary (+ (:reward summary) reward-offset) nil))
+  (SimpleSummary (+ (:reward summary) reward-offset)))
 
+(defn sequence-summaries [s1 s2]
+  (SimpleSummary (+ (max-reward s1) (max-reward s2))))
 
+(def worst-summary (SimpleSummary neg-inf))
 
-
-(def worst-summary (SimpleSummary neg-inf nil))
-
-(def worst-search
-  (reify IncrementalSearch
-    (root-node       [] (throw (RuntimeException.)))
-    (current-summary [] worst-summary)
-    (next-goal-node  [min-reward] (throw (RuntimeException.)))))
+;(def worst-search
+;  (reify IncrementalSearch
+;    (root-node       [] (throw (RuntimeException.)))
+;    (current-summary [] worst-summary)
+;    (next-goal-node  [min-reward] (throw (RuntimeException.)))))
 
 
 
 (deftype SimpleNode [name reward solution children data]
   Comparable (compareTo  [x] (- (max-reward x) reward))
-  Summary (max-reward [] reward)
-          (solution   [] solution)   
+  Summary (max-reward [] reward)   
   Node    (node-name  [] name)
+          (solution   [] solution)
           (expand     [] children))
 
 (defn make-meta-goal-node [node]
   (SimpleNode (node-name node) (max-reward node) node nil nil))
 
-(defn sequence-summaries [s1 s2]
-  (let [r (+ (max-reward s1) (max-reward s2))
-        sol1 (solution s1), sol2 (solution s2)]
-    (if (and sol1 sol2)
-        (let [fsol (into sol1 sol2)] (SimpleNode fsol r fsol nil nil))
-      (SimpleSummary r nil))))
+(defn sequence-goal-nodes [n1 n2]
+  (SimpleNode (gensym) (+ (max-reward n1) (max-reward n2)) (into (solution n1) (solution n2)) nil nil))
 
-(defn all-results [incremental-search]
+(defn first-solution-reward-pair [incremental-search]
+  (when-let [x (next-goal-node incremental-search neg-inf)]
+    [(solution x) (max-reward x)]))
+
+(defn all-goal-nodes [incremental-search]
   (loop [results []]
     (if (not (viable? (current-summary incremental-search) neg-inf)) results
         (recur (util/cons-when (next-goal-node incremental-search neg-inf) results)))))
@@ -113,7 +113,7 @@
 ;  (doto (queues/make-graph-search-pq) 
 ;    (queue-add-all!  (cons failed-search initial-nodes))))
 
-(defn pq-add-node  [pq node] (assert (not= :re-added (queues/pq-add! (node-name root-node) root-node))))
+(defn pq-add-node  [pq node] (assert (not= :re-added (queues/pq-add! pq (node-name node) node))))
 (defn pq-add-nodes [pq nodes] (doseq [node nodes] (pq-add-node pq node)))
 (defn pq-summary   [pq] (if (queues/pq-empty? pq) worst-summary (nth (queues/pq-peek-min pq) 1)))
 
@@ -129,6 +129,7 @@
        (next-goal-node  [min-reward]
          (when (viable-search? this min-reward)
            (let [best (nth (queues/pq-remove-min-with-cost! queue) 1)]
+;             (println (node-name best))
              (doseq [n (expand best)] (pq-add-node queue n))
              (if (solution best) best (recur min-reward))))))))
 
@@ -136,8 +137,8 @@
 ;;;;;;;;;;;;;;;;;;;;;;;; Recursive Dijkstra over Searches ;;;;;;;;;;;;;;;;;;;;;;
 
 
-;; TODO: think about if we can do better for recursive call.
 
+;; TODO: think about allowing option to expand. 
 ; Node queue maps node-name --> node.  Search-queue maps [search lift-fn] --> summary.
 (defn make-recursive-incremental-dijkstra 
   "Keep graph queue of nodes and tree queue of searches.
@@ -146,19 +147,23 @@
      Lift should also work on summaries from this search.
    Never calls expand, *except* on root to get initial nodes. ??
    You could think of the [search, reward-offset, lift-fn] pair as comprising a new type of search, which
-   is like an ordinary search but may return nodes that are not goals."
+   is like an ordinary search but may return nodes that are not goals.
+"
   [root searchify-fn]
   (let [search-queue (doto (queues/make-graph-search-pq))
-        node-queue   (doto (queues/make-graph-search-pq) (pq-add-nodes (expand root-node)))
+        node-queue   (doto (queues/make-graph-search-pq) (pq-add-nodes (expand root)))
         union-queue  (queues/make-union-pq search-queue node-queue)]
+;    (println "MR" root)
     (reify :as this IncrementalSearch 
       IncrementalSearch
        (root-node       [] root)
        (current-summary [] (pq-summary union-queue))
        (next-goal-node  [min-reward]
-         (when (viable? this min-reward)
+;         (println (current-summary this) min-reward)
+         (when (viable-search? this min-reward)
            (if (neg? (compare (pq-summary search-queue) (pq-summary node-queue)))
-             (let [[[best-search ro lift-fn :as best-pair] summary] (queues/pq-remove-min! search-queue)
+             (let [[[best-search ro lift-fn :as best-pair] summary] 
+                     (queues/pq-remove-min-with-cost! search-queue)
                    next-min-reward (max min-reward (max-reward (pq-summary union-queue)))]
                (queues/pq-replace! search-queue best-pair summary) ;; Add back for recursive call
                (when-let [result (next-goal-node best-search (- next-min-reward ro))]
@@ -173,7 +178,7 @@
                  best-node
                  (let [[search reward-offset lift-fn :as pair] (searchify-fn best-node)]
                    (queues/pq-add! search-queue pair 
-                     (SimpleSummary (offset-summary (current-summary search) reward-offset)))
+                    (offset-summary (current-summary search) reward-offset))
                    (recur min-reward))))))))))
 
 
@@ -187,14 +192,15 @@
         root         (root-node backing-search)]
     (fn cache-factory []
       (let [index-atom   (atom 0)]
-        (reify IncrementalSearch 
+        (reify :as this IncrementalSearch 
          (root-node       [] root)
          (current-summary [] (util/min-comparable (nth @results-atom @index-atom worst-summary) 
                                                   (current-summary backing-search)))
          (next-goal-node  [min-reward]
+;           (println (current-summary this) (current-summary backing-search) min-reward)
            (if-let [nxt (nth @results-atom  @index-atom nil)]
              (when (viable? nxt min-reward) (swap! index-atom inc) nxt)
-             (when (viable? backing-search min-reward)
+             (when (viable-search? backing-search min-reward)
                (do (when-let [r (next-goal-node backing-search min-reward)] 
                      (swap! results-atom conj r))
                    (recur min-reward))))))))))
@@ -216,7 +222,7 @@
    Useless except for testing, or to emulate other exhaustive algorithms (e.g., SAHTN)."
   [is]
   (let [c (cache-incremental-search is)]
-    (all-results (c))
+    (all-goal-nodes (c))
     (c)))
 
 
@@ -228,22 +234,24 @@
   "Sequence two searches. Choice-fn takes the searches, and returns the one to refine 
    (only when both non-goal)."
   [root s1 s2 choice-fn]
-  (let [s1s-atom (atom (current-summary s1)), s2s-atom (atom (current-summary s2))]
+  (let [s1-goal (atom nil), s2-goal (atom nil)]
     (reify :as this IncrementalSearch 
       (root-node        [] root)      
-      (current-summary  [] (sequence-summaries @s1s-atom @s2s-atom))
+      (current-summary  [] (sequence-summaries (or @s1-goal (current-summary s1)) 
+                                               (or @s2-goal (current-summary s2))))
       (next-goal-node   [min-reward]
-        (let [summary (current-summary this)]
-          (when (viable? summary min-reward)
-            (if (solution summary) 
-              (do (reset! s1s-atom failed-search)
-                  summary)
-              (let [choice (cond (solution @s1s-atom) s1 (solution @s2s-atom) s2 :else (choice-fn s1 s2))
-                    [choice-atom other-atom] (cond (identical? choice s1) [s1s-atom s2s-atom]
-                                                   (identical? choice s2) [s2s-atom s1s-atom])]
-                (let [nxt (next-goal-node choice (- min-reward (max-reward @other-atom)))]
+        (when (viable-search? this min-reward)
+          (let [g1 @s1-goal, g2 @s2-goal]
+            (if (and g1 g2)
+                (do (reset! s1-goal worst-summary)
+                    (sequence-goal-nodes g1 g2))
+              (let [choice (cond g1 s2 g2 s1 :else (choice-fn s1 s2))
+                    [choice-atom other] (cond (identical? choice s1) [s1-goal s2]
+                                              (identical? choice s2) [s2-goal s1])]
+                (let [nxt (next-goal-node choice (- min-reward (max-reward other)))]
                   (when nxt (reset! choice-atom nxt))
                   (recur min-reward))))))))))
+
 
    
 

@@ -10,7 +10,11 @@
 
 ;; TODO: fix paredit key bindings.
 
+
+
 ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;; Forward Search Node ;;;;;;;;;;;;;;;;;;;;;;;;;;;;
+
+;; This should probably live in another file -- just here as an example.
 
 (defn make-forward-search-node [actions-fn goal-fn state reward opt-sol]
   (is/SimpleNode state reward (if (goal-fn state) opt-sol)       
@@ -18,12 +22,20 @@
      (for [a (actions-fn state)
            :when (env/applicable? a state)
            :let  [[ss r] (env/successor a state)]]
-       (make-forward-search-node actions-fn goal-fn ss (+ reward r) (conj opt-sol a))))))
+       (make-forward-search-node actions-fn goal-fn ss (+ reward r) (conj opt-sol a))))
+    nil))
 
 (defn make-forward-search-root-node [env]
-  (make-forward-search-node (env/actions-fn env) (env/goal-fn env) (env/initial-state env) [] 0))
+  (make-forward-search-node (env/actions-fn env) (env/goal-fn env) (env/initial-state env) 0 []))
+
+(defn make-forward-search [env] (is/make-flat-incremental-dijkstra (make-forward-search-root-node env)))
+
+(defn uniform-cost-search [env] (is/first-solution-reward-pair (make-forward-search env)))
 
 
+;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
+;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;; Hierarchical ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
+;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
 
 ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;; Utilities ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
 
@@ -34,12 +46,12 @@
   [(:state hfs) (map env/action-name (:remaining-actions hfs))])
 
 (defn make-root-hfs [state action]
-  (HierarchicalForwardState state 0 [] [actions]))
+  (HierarchicalForwardState state 0 [] [action]))
 
 (defn next-hfs-prim [state reward opt-sol prim-action more-actions]
   (when-let [[ss sr] (and (env/applicable? prim-action state) 
                           (env/successor prim-action state))]
-    [(HierarchicalForwardState state (+ reward sr) (conj opt-sol action) more-actions)]))
+    [(HierarchicalForwardState ss (+ reward sr) (conj opt-sol prim-action) more-actions)]))
 
 (defn next-hfs-expand [state reward opt-sol hla more-actions]
   (for [ref (hierarchy/immediate-refinements hla state)]
@@ -48,13 +60,13 @@
 (defn next-hfs-flat [hfs]
   (let [{:keys [state reward opt-sol remaining-actions]} hfs
         [f & r] remaining-actions]      
-    ((if (env/primitive? action) next-hfs-prim next-hfs-expand)
-     state reward opt-sol f r)))
+    ((if (env/primitive? f) next-hfs-prim next-hfs-expand) state reward opt-sol f r)))
 
 (defn hfs->simple-node [hfs]
   (if (empty? (:remaining-actions hfs))
-    (SimpleNode (hfs-name hfs) (:reward hfs) (:opt-sol hfs) nil hfs)
-    (SimpleNode (hfs-name hfs) (:reward hfs) nil (lazy-seq (map hfs->simple-node (next-hfs-flat hfs))) hfs)))
+    (is/SimpleNode (hfs-name hfs) (:reward hfs) (:opt-sol hfs) nil hfs)
+    (is/SimpleNode (hfs-name hfs) (:reward hfs) nil 
+                   (lazy-seq (map hfs->simple-node (next-hfs-flat hfs))) hfs)))
 
 (defn lift-state [parent child] (env/apply-effects parent (env/extract-effects child)))
 
@@ -87,7 +99,7 @@
         [f & r] remaining-actions
         context (env/precondition-context f state)]
     (assert (seq r)) (assert (zero? reward)) (assert (empty? opt-sol))
-    [(HierarchcialForwardState state reward opt-sol [f])
+    [(HierarchicalForwardState state reward opt-sol [f])
      (HierarchicalForwardState mid-state 0 nil r)]))
 
 
@@ -98,7 +110,7 @@
 
 
 (defn make-simple-flat-search [state action]
-  (make-flat-incremental-dijkstra [(hfs->simple-node (make-root-hfs state action))]))
+  (is/make-flat-incremental-dijkstra (hfs->simple-node (make-root-hfs state action))))
 
 
 ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;; Flat search2 ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
@@ -110,37 +122,32 @@
 ; To lift these, we just extract the goals.
 
 (defn make-flat-search  [state action]
-  (make-recursive-incremental-dijkstra
-   ??? (hfs->simple-node (make-root-hfs state action)) 
-   (fn [n] [(make-flat-incremental-dijkstra (map make-meta-goal-node (expand n))) solution])))
+  (is/make-recursive-incremental-dijkstra
+   (hfs->simple-node (make-root-hfs state action)) 
+   (fn [n] [(is/make-flat-incremental-dijkstra 
+             (is/SimpleNode (gensym) 0 nil (map is/make-meta-goal-node (is/expand n)) nil))
+            0
+            is/solution])))
 
 
 ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;; Recursive search ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
 
-(declare make-rhs-node)
 
-; wasteful?
-
-
-; Almost - how do we get context of solution node to lift it?
- ; Either need yet another abstraction (like search, but can return non-goal);
- ; Or child keeps track of context (breaks state abstraction)
- ; Or RID keeps track of search, lift-fn pairs -- Fine, have to 
-
-
-
-(defn lift-solution-node [parent-hfs child-node]
-  (hfs->simple-node (lift-hfs parent-hfs (is/solution child-node)))) 
-
-;; TODO: is data safe across state abstraction ?
 ;; TODO: recursive recursively is where polymorphism fits in.
+
+ 
+
 (defn recursively-searchify-hfs [hfs]
+;  (Thread/sleep 100)
   (let [[name abstract-hfs-fn] (drop-hfs hfs)]
     [(is/get-cached-search *problem-cache* name
        (let [child-hfs (abstract-hfs-fn)]
-         (make-recursive-incremental-dijkstra
-          ???-root (hfs->simple-node (next-hfs-flat hfs)) (comp recursively-searchify-hfs :data))))
-     #(lift-solution-node hfs %)]))
+;         (println child-hfs)
+         (is/make-recursive-incremental-dijkstra
+          (hfs->simple-node child-hfs) 
+          (comp recursively-searchify-hfs :data))))
+     (:reward hfs)
+     #(hfs->simple-node (lift-hfs hfs (:data %)))]))
 
 (defn make-recursive-search [state action]
   (first (recursively-searchify-hfs (make-root-hfs state action))))
@@ -316,20 +323,21 @@
           init (env/initial-logging-state e)
           tla  (hierarchy/TopLevelAction e [(hierarchy/initial-plan henv)])
           top  (search-maker init tla)]
-      (when-let [sol (is/next-goal-node top Double/NEGATIVE_INFINITY)]
-        (assert (is/solution sol))
-        [(map identity #_env/action-name (is/solution sol)) (is/max-reward sol) ]))))
+      (is/first-solution-reward-pair top))))
 
 
 ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;   Drivers   ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
 
 
+(defn sahucs-simple-flat [henv]
+  (hierarchical-search henv nil make-simple-flat-search))
+
+;; Equivalent to above but slower.
 (defn sahucs-flat [henv]
-  (hierarchical-search henv nil (comp  make-hfs-root-node)))
+  (hierarchical-search henv nil make-flat-search))
 
 (defn sahucs-simple [henv]
-  (hierarchical-search henv nil
-    #(make-flat-incremental-dijkstra (make-hfs-node %1 0 [] [%2]))))
+  (hierarchical-search henv nil make-recursive-search))
 
 
 
