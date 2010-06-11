@@ -142,7 +142,7 @@
 ; Node queue maps node-name --> node.  Search-queue maps [search lift-fn] --> summary.
 (defn make-recursive-incremental-dijkstra 
   "Keep graph queue of nodes and tree queue of searches.
-   Non-goal nodes are passed to searchify-fn, which should return a [search, lift-fn] pair.
+   Non-goal nodes are passed to searchify-fn, which should return a [search, ro, lift-fn] pair.
    Goals from searches are passed to corresponding lift-fn, which should return a new node.
      Lift should also work on summaries from this search.
    Never calls expand, *except* on root to get initial nodes. ??
