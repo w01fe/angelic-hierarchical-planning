@@ -1,7 +1,7 @@
 (ns exp.taxi-infinite
   (:use clojure.test)
   (:require [edu.berkeley.ai.util :as util]
-            [exp [env :as env] [sas :as sas]])
+            [exp [env :as env] [sas :as sas] [hierarchy :as hierarchy]])
   (:import [java.util Random]))
 
 
@@ -91,6 +91,62 @@
 (require 'exp.ucs)
 (deftest infinite-taxi
   (is (= -15 (second (exp.ucs/uniform-cost-search (InfiniteTaxiEnv 5 5 [[:red [2 1] [5 4]] [:green [1 4] [3 3]]]))))))
+
+
+
+;;;;;;;;;;;;;;;;;;;;;;;; Hierarchy ;;;;;;;;;;;;;;;;;;;;;
+; Mostly copied from taxi. 
+
+(deftype NavHLA [env dx dy] :as this
+  env/Action                (action-name [] ['nav dx dy])
+                            (primitive? [] false)
+  env/ContextualAction      (precondition-context [s] #{['atx] ['aty]})
+  hierarchy/HighLevelAction (immediate-refinements- [s]
+                             (if (and (= dx (env/get-var s ['atx])) 
+                                      (= dy (env/get-var s ['aty])))
+                               [[]]
+                               (for [af [make-left make-right make-up make-down]
+                                     :let [a (af s)]
+                                     :when a]
+                                 [a this])))
+                            (cycle-level- [s] 1)
+  env/AngelicAction         (optimistic-map [s]
+                              (let [cx (env/get-var s ['atx])
+                                    cy (env/get-var s ['aty])]
+                                {(env/set-var (env/set-var s ['atx] dx) ['aty] dy)
+                                 (- 0 (util/abs (- dx cx)) (util/abs (- dy cy)))}))
+                            (pessimistic-map [s] 
+                              (env/optimistic-map this s)))
+
+(deftype InfiniteTaxiTLA [env context]      :as this
+  env/Action                (action-name [] ['top])
+                            (primitive? [] false)  
+  env/ContextualAction      (precondition-context [s] context)
+  hierarchy/HighLevelAction 
+  (immediate-refinements- [s]
+    (let [held-p (set (filter #(= :taxi (env/get-var s ['passx (first %)])) (:passengers env)))
+          src-p  (remove #(or (held-p %) (env/get-var s ['pass-served? (first %)])) (:passengers env))
+          all-nxt (concat (for [[n _ [dx dy]] held-p] [(NavHLA env dx dy) (make-dropoff :dummy n [dx dy])])
+                          (for [[n [sx sy] _]  src-p] [(NavHLA env sx sy) (make-pickup  :dummy n [sx sy])]))]
+      (if (empty? all-nxt)
+        (let [{:keys [width height]} env]
+          [[(NavHLA env width height) (env/make-finish-action env)]])
+        (map #(conj (vec %1) this) all-nxt))))
+   (cycle-level- [s] nil)
+  env/AngelicAction         (optimistic-map [s]
+                              {(env/set-vars s (env/make-finish-goal-state env))})
+                            (pessimistic-map [s] {}))
+
+(defn make-infinite-taxi-tla [env]
+  (InfiniteTaxiTLA env (util/keyset (dissoc (env/initial-state env) :const))))
+
+(defn simple-taxi-hierarchy [#^InfTaxiEnv env]
+  (hierarchy/SimpleHierarchicalEnv
+   env
+   [(make-infinite-taxi-tla env)]))
+
+
+
 
 ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;; STRIPS version 1 ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
 

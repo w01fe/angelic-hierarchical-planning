@@ -167,31 +167,32 @@
 
 (declare get-saha-sps-search)
 
+;; TODO: smarter about failed searches...
 (defn get-inner-sa-cache "Get a map from inner final states to SAS nodes."[hfs]
   (let [[name abstract-hfs-fn] (drop-hfs hfs)]
     (util/cache-with *problem-cache* name
       (let [inner-hfs (abstract-hfs-fn)
             inner-name (hfs-name inner-hfs)
             {:keys [state remaining-actions]} inner-hfs
-            next-hfs  (next-hfs-flat inner-hfs)]
+            next-hfs  (lazy-seq (next-hfs-flat inner-hfs))]
         (into {}
-          (for [[ss sr] (env/optimistic-map (util/safe-singleton remaining-actions) state)
-                :let [children (seq (remove #(and (empty? (:remaining-actions %))
-                                                  (not (= (:state %) ss)))
-                                            next-hfs))]
-                :when (seq children)]
+          (for [[ss sr] (env/optimistic-map (util/safe-singleton remaining-actions) state)]
             [ss 
              (is/cache-incremental-search
-              (is/make-recursive-incremental-dijkstra
-               (is/SimpleNode (conj inner-name ss) sr nil
-                              (map hfs->simple-node children) nil)
-               (fn [n] [(get-saha-sps-search (:data n) ss) 0 identity])))]))))))
+              (is/make-delayed-search :dummy (is/SimpleSummary sr)
+                (delay                      
+                 (is/make-recursive-incremental-dijkstra
+                  (is/SimpleNode (conj inner-name ss) sr nil
+                                 (map hfs->simple-node (remove #(and (empty? (:remaining-actions %))
+                                                                     (not (= (:state %) ss)))
+                                                               next-hfs)) nil)
+                  (fn [n] [(get-saha-sps-search (:data n) ss) 0 identity])))))]))))))
 
 (defn get-outer-sa-cache "Get a map from outer final states to SAS nodes/" [hfs]
   (util/cache-with *problem-cache* (hfs-name hfs)
-    (into {} (for [[s sas] (get-inner-sa-cache hfs)] [(lift-state (:state hfs) s) sas]))))
+    (util/map-keys #(lift-state (:state hfs) %) (get-inner-sa-cache hfs))))
 
-(defn get-saha-sas-search [hfs final-state] (((get-outer-sa-cache hfs) final-state)))
+(defn get-saha-sas-search [hfs final-state] ((force ((get-outer-sa-cache hfs) final-state))))
 
 ;; TODO: remove expensive names.
 (defn get-saha-sps-search [hfs final-state]
@@ -204,7 +205,7 @@
         (is/make-recursive-incremental-dijkstra 
          (is/SimpleNode (conj (hfs-name hfs) final-state) (:reward hfs) nil
            (for [[ss sas-maker] (get-outer-sa-cache (first-action-hfs hfs))]
-             (is/SimpleNode (conj (hfs-name hfs) ss final-state) 0 nil nil [ss (sas-maker)])) nil)
+             (is/SimpleNode (conj (hfs-name hfs) ss final-state) 0 nil nil [ss ((force sas-maker))])) nil)
          (fn [n]
            (let [[ss sas] (:data n)
                  next-sps (get-saha-sps-search (rest-actions-hfs hfs ss) final-state)]

@@ -79,22 +79,24 @@
 
 
 
-(deftype SimpleNode [name reward solution children data]
-  Comparable (compareTo  [x] (- (max-reward x) reward))
+(deftype SimpleNode [name reward soln children data]
+  Comparable (compareTo  [x] 
+               (let [c  (- (max-reward x) reward)]
+                 (if (not (zero? c)) c
+                   (cond soln -1 
+                         (and (instance? exp.incremental_search.Node x) (solution x)) 1
+                         :else 0))))
   Summary (max-reward [] reward)   
   Node    (node-name  [] name)
-          (solution   [] solution)
+          (solution   [] soln)
           (expand     [] children))
 
 (defn name-str [x]
   (let [n (:name x)]
 ;    (println n)
-    (update-in
-     (update-in n 
-                [0]
-                #(dissoc (exp.env/as-map %) :const))
-     [(dec (count n))]
-                #(dissoc (exp.env/as-map %) :const))))
+    (if (symbol? n) n
+        (vec (map #(if (instance? exp.env.FactoredState %) (dissoc (exp.env/as-map %) :const) %) n)))))
+
 (defmethod print-method ::SimpleNode [x s]
   (print-method (str "Nd<" (name-str x) "," (:reward x) "," (:solution x) ">") s))
 
@@ -176,7 +178,9 @@
                      (queues/pq-remove-min-with-cost! search-queue)
                    next-min-reward (max min-reward (max-reward (pq-summary union-queue)))]
                (queues/pq-replace! search-queue best-pair summary) ;; Add back for recursive call
+;               (println "Hoping for result...")
                (when-let [result (next-goal-node best-search (- next-min-reward ro))]
+;                 (println "Got result " result)
                  (pq-add-node node-queue (lift-fn result)))
                (let [new-summary (current-summary best-search)]
                  (if (viable? new-summary neg-inf)
@@ -236,6 +240,22 @@
     (c)))
 
 
+;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;; Delayed Search ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
+
+(defn make-delayed-search
+  "Report back the given summary at first, then delegate to provided search thereafter."
+  [root init-summary backing-search]
+  (let [a (atom init-summary)]
+    (reify :as this IncrementalSearch
+           (root-node [] root)
+           (current-summary [] @a)
+           (next-goal-node [min-reward] 
+                           (let [b-s (force backing-search)
+                                 result (next-goal-node b-s min-reward)]
+                             (reset! a (current-summary b-s))
+                             result)))))
+; Delayed search reports back 
+
 ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;; Sequencing ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
 
 ;; Sequence two closed searches (with concrete goal states).
@@ -250,7 +270,8 @@
       (current-summary  [] (sequence-summaries (or @s1-goal (current-summary s1)) 
                                                (or @s2-goal (current-summary s2))))
       (next-goal-node   [min-reward]
-        (println "\n Seq-rec" root (max-reward (current-summary this)) min-reward) (Thread/sleep 100)              (when (viable-search? this min-reward)
+;        (println "\n Seq-rec" root (max-reward (current-summary this)) min-reward) (Thread/sleep 100)
+        (when (viable-search? this min-reward)
           (let [g1 @s1-goal, g2 @s2-goal]
             (if (and g1 g2)
                 (do (reset! s1-goal worst-summary)
@@ -261,7 +282,7 @@
                             (identical? choice s2) [s2-goal (or @s1-goal (current-summary s1))])]
                 (let [nxt (next-goal-node choice (- min-reward (max-reward other-sum)))]
                   (when nxt (reset! choice-atom nxt))
-                  (recur min-reward)))))))))
+                  (recur min-reward))))))))))
 
 
    
