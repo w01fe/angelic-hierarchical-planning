@@ -86,6 +86,18 @@
           (solution   [] solution)
           (expand     [] children))
 
+(defn name-str [x]
+  (let [n (:name x)]
+;    (println n)
+    (update-in
+     (update-in n 
+                [0]
+                #(dissoc (exp.env/as-map %) :const))
+     [(dec (count n))]
+                #(dissoc (exp.env/as-map %) :const))))
+(defmethod print-method ::SimpleNode [x s]
+  (print-method (str "Nd<" (name-str x) "," (:reward x) "," (:solution x) ">") s))
+
 (defn make-meta-goal-node [node]
   (SimpleNode (node-name node) (max-reward node) node nil nil))
 
@@ -136,8 +148,6 @@
 
 ;;;;;;;;;;;;;;;;;;;;;;;; Recursive Dijkstra over Searches ;;;;;;;;;;;;;;;;;;;;;;
 
-
-
 ;; TODO: think about allowing option to expand. 
 ; Node queue maps node-name --> node.  Search-queue maps [search lift-fn] --> summary.
 (defn make-recursive-incremental-dijkstra 
@@ -153,13 +163,13 @@
   (let [search-queue (doto (queues/make-graph-search-pq))
         node-queue   (doto (queues/make-graph-search-pq) (pq-add-nodes (expand root)))
         union-queue  (queues/make-union-pq search-queue node-queue)]
-;    (println "MR" root)
+;    (println "Creating RD" root)
     (reify :as this IncrementalSearch 
       IncrementalSearch
        (root-node       [] root)
        (current-summary [] (pq-summary union-queue))
        (next-goal-node  [min-reward]
-;         (println (current-summary this) min-reward)
+;         (println "\n Ref-rec" root (max-reward (current-summary this)) min-reward) (Thread/sleep 100)
          (when (viable-search? this min-reward)
            (if (neg? (compare (pq-summary search-queue) (pq-summary node-queue)))
              (let [[[best-search ro lift-fn :as best-pair] summary] 
@@ -188,10 +198,10 @@
   "Take a *fresh* incremental-search, and return a function of no arguments that returns 
    independent incremental-search objects backed by it.  Not thread-safe."
   [backing-search]
-  (let [results-atom (atom [])
-        root         (root-node backing-search)]
+  (let [results-atom (atom [])]
     (fn cache-factory []
-      (let [index-atom   (atom 0)]
+      (let [root         (root-node backing-search)
+            index-atom   (atom 0)]
         (reify :as this IncrementalSearch 
          (root-node       [] root)
          (current-summary [] (util/min-comparable (nth @results-atom @index-atom worst-summary) 
@@ -240,17 +250,18 @@
       (current-summary  [] (sequence-summaries (or @s1-goal (current-summary s1)) 
                                                (or @s2-goal (current-summary s2))))
       (next-goal-node   [min-reward]
-        (when (viable-search? this min-reward)
+        (println "\n Seq-rec" root (max-reward (current-summary this)) min-reward) (Thread/sleep 100)              (when (viable-search? this min-reward)
           (let [g1 @s1-goal, g2 @s2-goal]
             (if (and g1 g2)
                 (do (reset! s1-goal worst-summary)
                     (sequence-goal-nodes g1 g2))
               (let [choice (cond g1 s2 g2 s1 :else (choice-fn s1 s2))
-                    [choice-atom other] (cond (identical? choice s1) [s1-goal s2]
-                                              (identical? choice s2) [s2-goal s1])]
-                (let [nxt (next-goal-node choice (- min-reward (max-reward other)))]
+                    [choice-atom other-sum] 
+                      (cond (identical? choice s1) [s1-goal (or @s2-goal (current-summary s2))]
+                            (identical? choice s2) [s2-goal (or @s1-goal (current-summary s1))])]
+                (let [nxt (next-goal-node choice (- min-reward (max-reward other-sum)))]
                   (when nxt (reset! choice-atom nxt))
-                  (recur min-reward))))))))))
+                  (recur min-reward)))))))))
 
 
    

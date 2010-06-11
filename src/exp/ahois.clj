@@ -175,36 +175,40 @@
             {:keys [state remaining-actions]} inner-hfs
             next-hfs  (next-hfs-flat inner-hfs)]
         (into {}
-          (for [[ss sr] (env/optimistic-map (util/safe-singleton remaining-actions) state)]
-            [ss (delay
-                 (when-let [children (seq (remove #(and (empty? (:remaining-actions %))
-                                                        (not (= (:state %) ss)))
-                                                  next-hfs))]
-                   (is/make-recursive-incremental-dijkstra
-                    (is/SimpleNode (conj inner-name ss) sr nil
-                                   (map hfs->simple-node children) nil)
-                    (fn [n] [(get-saha-sps-search (:data n) ss) 0 identity]))))]))))))
+          (for [[ss sr] (env/optimistic-map (util/safe-singleton remaining-actions) state)
+                :let [children (seq (remove #(and (empty? (:remaining-actions %))
+                                                  (not (= (:state %) ss)))
+                                            next-hfs))]
+                :when (seq children)]
+            [ss 
+             (is/cache-incremental-search
+              (is/make-recursive-incremental-dijkstra
+               (is/SimpleNode (conj inner-name ss) sr nil
+                              (map hfs->simple-node children) nil)
+               (fn [n] [(get-saha-sps-search (:data n) ss) 0 identity])))]))))))
 
 (defn get-outer-sa-cache "Get a map from outer final states to SAS nodes/" [hfs]
   (util/cache-with *problem-cache* (hfs-name hfs)
     (into {} (for [[s sas] (get-inner-sa-cache hfs)] [(lift-state (:state hfs) s) sas]))))
 
-(defn get-saha-sas-search [hfs final-state] ((outer-cache final-state) final-state))
+(defn get-saha-sas-search [hfs final-state] (((get-outer-sa-cache hfs) final-state)))
 
+;; TODO: remove expensive names.
 (defn get-saha-sps-search [hfs final-state]
+;  (println "\nget-sps" hfs final-state) (Thread/sleep 100)
   (let [r-a (:remaining-actions hfs)]
     (assert (seq r-a))
     (if (util/singleton? r-a)
         (get-saha-sas-search hfs final-state)
       (is/get-cached-search *problem-cache* (conj (hfs-name hfs) final-state)                    
         (is/make-recursive-incremental-dijkstra 
-         (is/SimpleNode (hfs-name hfs) (:reward hfs) nil
-           (for [[ss sas] (get-outer-sa-cache (first-action-hfs hfs))]
-             (is/SimpleNode (gensym) (is/max-reward sas) nil nil [ss sas])) nil)
+         (is/SimpleNode (conj (hfs-name hfs) final-state) (:reward hfs) nil
+           (for [[ss sas-maker] (get-outer-sa-cache (first-action-hfs hfs))]
+             (is/SimpleNode (conj (hfs-name hfs) ss final-state) 0 nil nil [ss (sas-maker)])) nil)
          (fn [n]
            (let [[ss sas] (:data n)
                  next-sps (get-saha-sps-search (rest-actions-hfs hfs ss) final-state)]
-             [(is/make-closed-sequence-search n sas next-sps (fn [x y] x))
+             [(is/make-closed-sequence-search n (force sas) next-sps (fn [x y] x))
               0 identity])))))))
 
 ;(is/make-flat-incremental-dijkstra (hfs->simple-node hfs))
@@ -212,7 +216,7 @@
 
 (defn make-saha-search [state action]
   (get-saha-sas-search (make-root-hfs state action) 
-                        (util/safe-singleton (first (keys (env/optimistic-map action state))))))
+                       (util/safe-singleton (keys (env/optimistic-map action state)))))
 
 
 ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
