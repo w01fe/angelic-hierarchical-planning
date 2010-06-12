@@ -74,13 +74,15 @@
 (defn lift-hfs 
   "Lift child-solution into the context of parent-node."
   [parent child-solution]
-    (assert (:opt-sol child-solution))
-    (HierarchicalForwardState
-     (lift-state        (:state parent)   (:state child-solution))
-     (+                 (:reward parent)  (:reward child-solution))
-     (concat            (:opt-sol parent) (:opt-sol child-solution))
-     (next (:remaining-actions parent))))
+  (assert (:opt-sol child-solution))
+  (HierarchicalForwardState
+   (lift-state        (:state parent)   (:state child-solution))
+   (+                 (:reward parent)  (:reward child-solution))
+   (concat            (:opt-sol parent) (:opt-sol child-solution))
+   (next (:remaining-actions parent))))
 
+(defn adjust-hfs-reward [h r]
+  (HierarchicalForwardState (:state h) (+ r (:reward h)) (:opt-sol h) (:remaining-actions h)))
 
 (defn sa-node-name 
   ([state action] (sa-node-name state action (env/precondition-context action state)))
@@ -152,22 +154,73 @@
   (first (recursively-searchify-hfs (make-root-hfs state action))))
 
 
+;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;; Inverted ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
+
+;; Note: Rewards passed around are all global-best.
+
+;; TODO: 
+
+;; Note: can we cache results across calls? 
+;; We need same initial state, at least. 
+;;  Different goal is possible, but might as well integrate this above as well. 
+
+;; TODO: think about IDA* 
+
+
+;; TODO: partial expansions for goals ? 
+
+; base-reward is reward of first parent.  
+;; TODO: this implementation may notify really bad parnets unnecessarily...
+
+(declare make-upward-node make-inverted-node)
+
+; parents are [parent-hfs parent-ic] pairs.
+(deftype InvertedCache [results-atom parents-atom base-reward])
+
+(defn add-cache-result [cc [hfs ic :as hfs-ic-pair]]
+  (let [{:keys [results-atom parents-atom base-reward]} ic]
+;    (when-let [o (peek @results-atom)] (util/assert-is (<= (:reward hfs) (:reward o))))
+    (swap! results-atom conj hfs)
+    (map #(make-upward-node cc % hfs base-reward) @parents-atom)))
+
+(defn add-cache-parent [#^HashMap cc [parent-hfs parent-ic :as parent-pair]]
+  (let [[name abstract-hfs-fn] (drop-hfs parent-hfs)
+        ic (util/cache-with cc name (InvertedCache (atom []) (atom []) (:reward parent-hfs)))
+        {:keys [results-atom parents-atom base-reward]} ic]
+;    (when-let [o (last @parents-atom)] (util/assert-is (<= (:reward parent-hfs) (:reward (first o)))))
+    (swap! parents-atom conj parent-pair)
+    (if (= (count @parents-atom) 1)
+        (map #(make-inverted-node cc [% ic]) 
+             (next-hfs-flat (adjust-hfs-reward (abstract-hfs-fn) base-reward)))
+      (map #(make-upward-node cc parent-pair % base-reward) @results-atom))))
+
+(defn make-inverted-node [cc [hfs parent-ic :as hfs-ic-pair]]
+  (is/SimpleNode 
+   (conj (hfs-name hfs) parent-ic) (:reward hfs) nil 
+   (lazy-seq ((if (seq (:remaining-actions hfs)) add-cache-parent add-cache-result) cc hfs-ic-pair))
+   nil))
+
+(defn make-upward-node [cc [hfs ic] child-hfs base-reward]
+  (let [lifted (lift-hfs hfs child-hfs base-reward)]
+    (if ic (make-inverted-node cc [lifted ic]) (hfs->simple-node lifted))))
+
+(defn make-inverted-search [state action]
+  (is/make-flat-incremental-dijkstra 
+   (make-inverted-node (HashMap.) [(make-root-hfs state action) nil])))
+
 
 ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;; SAHA ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
 
 ;; Here, subsearches should only generate goal nodes. So, we only have to deal with 
 ; expanding the initial nodes we populate the search with.  These can be dummies. 
 
-; Worry about refactoring later.
-
-
-;; TODO: these should all be single-solution .
+;; TODO: these should all be single-solution . Note: sequence enforces this ? 
 ;; These caches cache erfinements, optimsitic descriptions, and solve final-state connection probelm
 ; Refinements and valuation for abstracted SA
 
 (declare get-saha-sps-search)
 
-;; TODO: smarter about failed searches...
+;; TODO: smarter about failed searches... ?
 (defn get-inner-sa-cache "Get a map from inner final states to SAS nodes."[hfs]
   (let [[name abstract-hfs-fn] (drop-hfs hfs)]
     (util/cache-with *problem-cache* name
@@ -248,6 +301,9 @@
 
 (defn sahucs-simple [henv]
   (hierarchical-search henv nil make-recursive-search))
+
+(defn sahucs-inverted [henv]
+  (hierarchical-search henv nil make-inverted-search))
 
 (defn saha-simple [henv]
   (hierarchical-search henv nil make-saha-search))
