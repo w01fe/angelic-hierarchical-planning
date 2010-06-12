@@ -228,6 +228,41 @@
   `((util/cache-with ~cache-map ~name (cache-incremental-search ~factory-expr))))
 
 
+
+
+;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;; Goal-Filtered Search ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
+
+; This allows a single forward saerch to be shared in contexts with same start but different
+; goals. Like cached search, but indexes results by goal values.
+
+(defn generalize-incremental-search
+  [backing-search goal-val-fn]
+  (let [results-atom (atom {})]
+    (fn cache-factory [goal-val]
+      (let [root         (root-node backing-search)
+            index-atom   (atom 0)]
+        (reify :as this IncrementalSearch 
+         (root-node       [] root)
+         (current-summary [] (util/min-comparable (get-in @results-atom [goal-val @index-atom] worst-summary) 
+                                                  (current-summary backing-search)))
+         (next-goal-node  [min-reward]
+           (if-let [nxt (get-in @results-atom [goal-val @index-atom] nil)]
+             (when (viable? nxt min-reward) (swap! index-atom inc) nxt)
+             (when (viable-search? backing-search min-reward)
+               (do (when-let [r (next-goal-node backing-search min-reward)] 
+                     (swap! results-atom update-in [(goal-val-fn r)] #(conj (or % []) r)))
+                   (recur min-reward))))))))))
+
+(defmacro get-generalized-search
+  "Take a Map, name, and expression that constructs a fresh IncrementalSearch.  If this is the first
+   call to this function with this name, execute factory-expr, wrap the result in a cache, and return it.
+   Subsequent calls with the same name will return a new cached view on the same search, without 
+   executing factory-expr."
+  [cache-map name goal-val-fn goal-val factory-expr]
+  `((util/cache-with ~cache-map ~name (generalize-incremental-search ~factory-expr ~goal-val-fn)) ~goal-val))
+
+
+
 ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;; Exhaustive Search ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
 
 ;; No reason to use this except to emulate SAHTN.
