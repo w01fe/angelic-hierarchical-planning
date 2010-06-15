@@ -14,6 +14,8 @@
   (apply-effects   [s e])
   (get-logger      [s c-set]))
 
+(defn transfer-effects [target-state child] (apply-effects target-state (extract-effects child)))
+
 (defprotocol LoggingState
   (ooc-effects     [s])  ; Return just out-of-context effects.
   (extract-effects [s]))
