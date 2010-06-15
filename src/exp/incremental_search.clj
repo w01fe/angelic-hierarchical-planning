@@ -134,7 +134,7 @@
   (sub-next-node       [ss min-reward]))
 
 (extend exp.incremental_search.IncrementalSearch
-   SubSearch #{:sub-current-summary sub-current-summary :next-goal sub-next-node})
+   SubSearch {:sub-current-summary current-summary :sub-next-node next-goal})
 
 (deftype WrappedSubSearch [search reward-offset summary-lift-fn goal-lift-fn]
   SubSearch (sub-current-summary [] (summary-lift-fn (current-summary search)))

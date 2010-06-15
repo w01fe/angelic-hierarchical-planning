@@ -91,8 +91,11 @@
 
 (defn hfs->simple-node 
   ([hfs] (is/SimpleNode (hfs-name hfs) (:reward hfs) (empty? (:remaining-actions hfs)) hfs))
-  ([hfs extra-data] (is/SimpleNode (conj (hfs-name hfs) extra-data) (:reward hfs) 
-                                   (empty? (:remaining-actions hfs)) [hfs extra-data])))
+  ([hfs extra-data] (hfs->simple-node hfs extra-data (empty? (:remaining-actions hfs))))
+  ([hfs extra-data goal?] ; for inverted, needs non-goal goal-looking nodes.
+     (is/SimpleNode (conj (hfs-name hfs) extra-data) (:reward hfs) goal? [hfs extra-data]))
+  ([hfs extra-data goal? rew] ; for saha, needs estimated reward.
+     (is/SimpleNode (conj (hfs-name hfs) extra-data) rew goal? [hfs extra-data])))
 
 
 ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
@@ -104,10 +107,10 @@
 (defn hfs-simple-children [hfs] (map hfs->simple-node (hfs-children hfs)))
 
 (defn make-fast-flat-search [root-hfs]
-  (is/make-flat-incremental-dijkstra (hfs->simple-node root-hfs) hfs-simple-children))
+  (is/make-flat-incremental-dijkstra (hfs->simple-node root-hfs) (comp hfs-simple-children :data)))
 
 (defn make-flat-search  [root-hfs]
-  (is/make-recursive-incremental-dijkstra (hfs->simple-node root-hfs) hfs-simple-children))
+  (is/make-recursive-incremental-dijkstra (hfs->simple-node root-hfs) (comp hfs-simple-children :data)))
 
 ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;; Recursive search ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
 
@@ -163,7 +166,7 @@
       (map #(make-inverted-node % ic) (hfs-children (adjust-hfs-reward (abstract-hfs-fn) base-reward)))
       (map #(make-upward-node parent-pair % base-reward) @results-atom))))
 
-(defn make-inverted-node [hfs parent-ic] (hfs->simple-node hfs parent-ic))
+(defn make-inverted-node [hfs parent-ic] (hfs->simple-node hfs parent-ic false))
 
 (defn make-upward-node [[hfs ic] child-hfs base-reward]
   (let [lifted (adjust-hfs-reward (lift-hfs hfs child-hfs) (- base-reward))]
@@ -185,45 +188,47 @@
 
 (declare get-saha-sps-search)
 
-;; TODO: smarter about failed searches... ?
-(defn get-inner-sa-cache "Get a map from inner final states to SAS nodes."[hfs]
-  (let [[name abstract-hfs-fn] (drop-hfs hfs)]
-    (util/cache-with *problem-cache* name
-      (let [inner-hfs (abstract-hfs-fn)
-            next-hfs (lazy-seq (hfs-children inner-hfs))]
-        (into {}
-          (for [[ss sr] (hfs-optimistic-map inner-hfs)]
-            [ss (is/cache-incremental-search
-                 (make-recursive-ef-search 
-                  (hfs->simple-node inner-hfs ss)
-                  (lazy-seq (for [n next-hfs :when (hfs-can-reach? n ss)] (hfs->simple-node n ss)))
-                  #(get-saha-sps-search (:data %) ss)))]))))))
 
-(defn get-outer-sa-cache "Get a map from outer final states to SAS nodes/" [hfs]
+(defn get-sas-map "Get a map from outer final states to SAS nodes/" [hfs]
   (util/cache-with *problem-cache* (hfs-name hfs)
-    (util/map-keys #(env/transfer-effects (:state hfs) %) (get-inner-sa-cache hfs))))
+    (util/map-keys #(env/transfer-effects (:state hfs) %)
+      (let [[name abstract-hfs-fn] (drop-hfs hfs)]
+        (util/cache-with *problem-cache* name
+          (let [inner-hfs (abstract-hfs-fn)
+                next-hfs (lazy-seq (hfs-children inner-hfs))]
+            (into {}
+              (for [[ss sr] (hfs-optimistic-map inner-hfs)]
+                [ss  (is/cache-incremental-search
+                      (make-recursive-ef-search 
+                       (hfs->simple-node inner-hfs ss false sr)
+                       (lazy-seq (for [n next-hfs :when (hfs-can-reach? n ss)] 
+                                   (hfs->simple-node n ss)))
+                       #(apply get-saha-sps-search (:data %))))]))))))))
 
 (defn get-saha-sas-search [hfs final-state] 
-  ((force ((get-outer-sa-cache hfs) final-state))))
+  (((get-sas-map hfs) final-state)))
 
 
 ;; TODO: remove expensive names.
 (defn get-saha-sps-search [hfs final-state]
 ;  (println "\nget-sps" hfs final-state) (Thread/sleep 100)
-  (let [r-a (:remaining-actions hfs)]
-    (assert (seq r-a))
+  (let [r-a (util/make-safe (seq (:remaining-actions hfs)))]
     (if (util/singleton? r-a)
       (get-saha-sas-search hfs final-state)
       (is/get-cached-search *problem-cache* (hfs-name hfs final-state)
-        (let [outer-cache (get-outer-sa-cache (first-action-hfs hfs))]
+        (let [outer-cache (get-sas-map (first-action-hfs hfs))]
           (make-recursive-ef-search (hfs->simple-node hfs [::F final-state])
            (map #(hfs->simple-node hfs %) (keys outer-cache))
-           (fn [n] (is/make-and-search n
-                    ((outer-cache (:data n))) 
-                    (get-saha-sps-search (rest-actions-hfs hfs (:data n)) final-state)                
-                    (fn [x y] x)
-                    is/add-simple-summaries 
-                    #(hfs->simple-node (join-hfs (:data %1) (:data %2) final-state))))))))))
+           (fn [n] 
+             (let [ss (second (:data n))]
+               (is/make-and-search n
+                 ((outer-cache ss)) 
+                 (get-saha-sps-search (rest-actions-hfs hfs ss) final-state)                
+                 (fn [x y] x)
+                 is/add-simple-summaries 
+                 (fn [g1 g2] 
+                   (hfs->simple-node (join-hfs (first (:data g1)) (first (:data g2)) final-state) 
+                                     :goal)))))))))))
 
 
 (defn make-saha-search [root-hfs]
@@ -237,15 +242,18 @@
 
 (def *node-type-policy*)
 
-(defn hierarchical-search [henv policy search-maker]
-  (binding [*node-type-policy* policy
-            *problem-cache*    (HashMap.)]
-    (let [e    (hierarchy/env henv)
-          init (env/initial-logging-state e)
-          tla  (hierarchy/TopLevelAction e [(hierarchy/initial-plan henv)])
-          top  (search-maker (make-root-hfs init tla))]
-      (when-let [sol (is/first-goal-node top)]
-        [(:opt-sol (:data sol)) (:reward (:data sol))]))))
+(defn hierarchical-search 
+  ([henv policy search-maker] (hierarchical-search henv policy search-maker identity))
+  ([henv policy search-maker hfs-sol-extractor]
+     (binding [*node-type-policy* policy
+               *problem-cache*    (HashMap.)]
+       (let [e    (hierarchy/env henv)
+             init (env/initial-logging-state e)
+             tla  (hierarchy/TopLevelAction e [(hierarchy/initial-plan henv)])
+             top  (search-maker (make-root-hfs init tla))]
+         (when-let [sol (is/first-goal-node top)]
+           (let [sol-hfs (hfs-sol-extractor (:data sol))]
+             [(:opt-sol sol-hfs) (:reward sol-hfs)]))))))
 
 
 
@@ -262,7 +270,12 @@
   (hierarchical-search henv nil make-inverted-search))
 
 (defn saha-simple [henv]
-  (hierarchical-search henv nil make-saha-search))
+  (hierarchical-search henv nil make-saha-search first))
 
 
 
+(comment
+  (let [e (make-random-taxi-env 5 5 5 3) _ (println e) h (simple-taxi-hierarchy e)]  
+    (time (println "ucs" (run-counted #(second (uniform-cost-search e)))))
+    (doseq [alg `[sahucs-flat sahucs-fast-flat exp.sahucs-simple/sahucs-simple sahucs-simple exp.sahucs-inverted/sahucs-inverted sahucs-inverted exp.saha-simple/saha-simple saha-simple ]]
+      (time (println alg (run-counted #(debug 0 (second ((resolve alg) h)))))))))
