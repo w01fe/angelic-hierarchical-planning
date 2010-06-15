@@ -139,6 +139,7 @@
 (deftype WrappedSubSearch [search reward-offset summary-lift-fn goal-lift-fn]
   SubSearch (sub-current-summary [] (summary-lift-fn (current-summary search)))
             (sub-next-node [min-reward] 
+;              (println "wss"  min-reward reward-offset) (Thread/sleep 100)
               (util/aand (next-goal search (- min-reward reward-offset)) (goal-lift-fn it))))
 
 
@@ -161,8 +162,9 @@
            (if (neg? (compare (pq-summary search-queue) (pq-summary node-queue)))
              (let [[best-sgs summary] (queues/pq-remove-min-with-cost! search-queue)
                    next-min-reward    (max min-reward (max-reward (pq-summary union-queue)))]
-               (queues/pq-replace! search-queue best-sgs summary) ;; Add back for recursive call
-               (when-let [result (sub-next-node best-sgs min-reward)]
+;               (println next-min-reward "\n") (Thread/sleep 100)
+               (queues/pq-replace! search-queue best-sgs summary) ; Add back for recursive call
+               (when-let [result (sub-next-node best-sgs next-min-reward)]
                  (pq-add-node node-queue result))
                (let [new-summary (sub-current-summary best-sgs)]
                  (if (viable? new-summary neg-inf)

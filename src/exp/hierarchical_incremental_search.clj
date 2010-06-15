@@ -1,4 +1,4 @@
-(ns exp.hierarchical-incremental-saerch
+(ns exp.hierarchical-incremental-search
   (:require [edu.berkeley.ai.util :as util]
             [exp.env :as env] 
             [exp.hierarchy :as hierarchy]
@@ -57,7 +57,7 @@
 (defn lift-hfs "Lift child-solution into the context of parent-node, counterpart to drop."
   [parent child] 
   (combine-hfs parent child env/transfer-effects
-               (fn [r1 r2] (assert (= r2 (take 1 r1))) (next r1))))
+               (fn [r1 r2] (util/assert-is (empty? r2)) (next r1))))
 
 
 ;; Used for inverted only
@@ -115,27 +115,22 @@
 
 (declare make-recursive-search)
 
-(defn make-abstracted-subgoal-search [hfs]
-  (is/SubgoalSearch 
-   (make-recursive-search hfs) 
+(defn make-abstracted-subgoal-search [hfs]    
+  (is/WrappedSubSearch 
+   (let [[name abstract-hfs-fn] (drop-hfs hfs)]
+     (is/get-cached-search *problem-cache* name
+       (let [dropped (abstract-hfs-fn)]
+         (make-recursive-ef-search (hfs->simple-node dropped) (hfs-simple-children dropped)
+                                   #(make-abstracted-subgoal-search (:data %)))))) 
    (:reward hfs) 
    #(is/offset-simple-summary % (:reward hfs))
    #(->> % :data (lift-hfs hfs) hfs->simple-node)))
 
-(defn make-recursive-ef-search 
-  "Make recursive node that expands first, then calls other searchify-fn."
-  [root-node first-children searchify-fn]
+(defn make-recursive-ef-search "Expand once, then searchify." [root-node first-children searchify-fn]
   (is/make-recursive-incremental-dijkstra root-node 
     #(if (identical? root-node %) first-children (searchify-fn %))))
 
-(defn make-recursive-search [root-hfs]
-  (assert (util/singleton? (:remaining-actions root-hfs)))
-  (let [[name abstract-hfs-fn] (drop-hfs root-hfs)]
-    (is/get-cached-search *problem-cache* name
-      (make-recursive-ef-search 
-       (hfs->simple-node (abstract-hfs-fn))
-       (hfs-simple-children root-hfs)
-       (comp make-abstracted-subgoal-search :data)))))
+(defn make-recursive-search [root-hfs] (:search (make-abstracted-subgoal-search root-hfs)))
 
 
 ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;; Inverted ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
@@ -152,11 +147,11 @@
 ; parents are [parent-hfs parent-ic] pairs. base-reward is that of first parent.
 (deftype InvertedCache [results-atom parents-atom base-reward])
 
-(defn add-cache-result [cc [hfs ic :as hfs-ic-pair]]
+(defn add-cache-result [_ [hfs ic :as hfs-ic-pair]]
   (let [{:keys [results-atom parents-atom base-reward]} ic]
     (when-let [o (peek @results-atom)] (util/assert-is (<= (:reward hfs) (:reward o))))
     (swap! results-atom conj hfs)
-    (map #(make-upward-node cc % hfs base-reward) @parents-atom)))
+    (map #(make-upward-node % hfs base-reward) @parents-atom)))
 
 (defn add-cache-parent [#^HashMap cc [parent-hfs parent-ic :as parent-pair]]
   (let [[name abstract-hfs-fn] (drop-hfs parent-hfs)
@@ -165,15 +160,14 @@
     (when-let [o (last @parents-atom)] (util/assert-is (<= (:reward parent-hfs) (:reward (first o)))))
     (swap! parents-atom conj parent-pair)
     (if (= (count @parents-atom) 1)
-        (map #(make-inverted-node cc [% ic]) 
-             (hfs-children (adjust-hfs-reward (abstract-hfs-fn) base-reward)))
-      (map #(make-upward-node cc parent-pair % base-reward) @results-atom))))
+      (map #(make-inverted-node % ic) (hfs-children (adjust-hfs-reward (abstract-hfs-fn) base-reward)))
+      (map #(make-upward-node parent-pair % base-reward) @results-atom))))
 
-(defn make-inverted-node [[hfs parent-ic]] (hfs->simple-node hfs parent-ic))
+(defn make-inverted-node [hfs parent-ic] (hfs->simple-node hfs parent-ic))
 
-(defn make-upward-node [cc [hfs ic] child-hfs base-reward]
+(defn make-upward-node [[hfs ic] child-hfs base-reward]
   (let [lifted (adjust-hfs-reward (lift-hfs hfs child-hfs) (- base-reward))]
-    (if ic (make-inverted-node cc [lifted ic]) (hfs->simple-node lifted))))
+    (if ic (make-inverted-node lifted ic) (hfs->simple-node lifted))))
 
 (defn make-inverted-expand-fn [cc]
   (fn [{hfs-ic-pair :data}] 
@@ -182,7 +176,7 @@
 
 (defn make-inverted-search [root-hfs]
   (is/make-flat-incremental-dijkstra 
-   (make-inverted-node [root-hfs nil]) 
+   (make-inverted-node root-hfs nil) 
    (make-inverted-expand-fn (HashMap.))))
 
 
@@ -255,10 +249,9 @@
 
 
 
-(defn sahucs-simple-flat [henv]
-  (hierarchical-search henv nil make-simple-flat-search))
+(defn sahucs-fast-flat [henv]
+  (hierarchical-search henv nil make-fast-flat-search))
 
-;; Equivalent to above but slower.
 (defn sahucs-flat [henv]
   (hierarchical-search henv nil make-flat-search))
 
