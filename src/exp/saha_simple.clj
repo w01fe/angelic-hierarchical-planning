@@ -9,6 +9,8 @@
 ;; Assumes atomic-state angelic descriptions, always refines first 
 ;; action, no pessimistic descriptions.
 
+;; NOTE: this is not properly lazy about something or other.  We can do 3x better, see hierarhcical_incremental_search.
+
 ; Node has fixed set of result states;
 ; what changes is cost estimate for these.
 ; Want to keep track of where best val for each came from.

@@ -104,9 +104,9 @@
 
 ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;; Queue Utils ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
 
-(defn pq-add-node  [pq node] (assert (not= :re-added (queues/pq-add! pq (node-name node) node))))
+(defn pq-add-node  [pq node] (assert (not= :re-added (queues/g-pq-add! pq (node-name node) node))))
 (defn pq-add-nodes [pq nodes] (doseq [node nodes] (pq-add-node pq node)))
-(defn pq-summary   [pq] (if (queues/pq-empty? pq) worst-summary (nth (queues/pq-peek-min pq) 1)))
+(defn pq-summary   [pq] (if (queues/g-pq-empty? pq) worst-summary (nth (queues/g-pq-peek-min pq) 1)))
 
 ;;;;;;;;;;;;;;;;;;;;;;;;;;;; Flat Dijkstra over Nodes ;;;;;;;;;;;;;;;;;;;;;;;;;;
 
@@ -150,18 +150,18 @@
      SubgoalSearch (or list of nodes, to shortcut.)"
   [root searchify-fn]
   (let [search-queue (doto (queues/make-graph-search-pq))
-        node-queue   (doto (queues/make-graph-search-pq) (pq-add-node root))
-        union-queue  (queues/make-union-pq search-queue node-queue)]
+        node-queue   (doto (queues/make-graph-search-pq) (pq-add-node root))]
     (reify :as this IncrementalSearch 
       IncrementalSearch
        (root-node       [] root)
-       (current-summary [] (pq-summary union-queue))
+       (current-summary [] (let [s1 (pq-summary search-queue) s2 (pq-summary node-queue)]
+                             (if (neg? (compare s1 s2)) s1 s2)))
        (next-goal  [min-reward]
 ;         (println "\n Ref-rec" root (max-reward (current-summary this)) min-reward) (Thread/sleep 100)
          (when (viable-search? this min-reward)
            (if (neg? (compare (pq-summary search-queue) (pq-summary node-queue)))
              (let [[best-sgs summary] (queues/pq-remove-min-with-cost! search-queue)
-                   next-min-reward    (max min-reward (max-reward (pq-summary union-queue)))]
+                   next-min-reward    (max min-reward (max-reward (current-summary this)))]
 ;               (println next-min-reward "\n") (Thread/sleep 100)
                (queues/pq-replace! search-queue best-sgs summary) ; Add back for recursive call
                (when-let [result (sub-next-node best-sgs next-min-reward)]
