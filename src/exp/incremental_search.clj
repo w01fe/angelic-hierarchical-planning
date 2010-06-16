@@ -106,7 +106,7 @@
 
 (defn pq-add-node  [pq node] (assert (not= :re-added (queues/g-pq-add! pq (node-name node) node))))
 (defn pq-add-nodes [pq nodes] (doseq [node nodes] (pq-add-node pq node)))
-(defn pq-summary   [pq] (if (queues/g-pq-empty? pq) worst-summary (nth (queues/g-pq-peek-min pq) 1)))
+(defn pq-summary   [pq] (if (queues/g-pq-empty? pq) worst-simple-summary (nth (queues/g-pq-peek-min pq) 1)))
 
 ;;;;;;;;;;;;;;;;;;;;;;;;;;;; Flat Dijkstra over Nodes ;;;;;;;;;;;;;;;;;;;;;;;;;;
 
@@ -180,6 +180,10 @@
                      (queues/pq-add! search-queue sgs-or-nodes (sub-current-summary sgs-or-nodes)))
                    (recur min-reward))))))))))
 
+(defn make-recursive-ef-search "Expand once, then searchify." 
+  [root-node first-children searchify-fn]
+  (make-recursive-incremental-dijkstra root-node 
+    #(if (identical? root-node %) first-children (searchify-fn %))))
 
 ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;; Cached Incremental Search ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
 
@@ -193,7 +197,7 @@
             index-atom   (atom 0)]
         (reify :as this IncrementalSearch 
          (root-node       [] root)
-         (current-summary [] (util/min-comparable (nth @results-atom @index-atom worst-summary) 
+         (current-summary [] (util/min-comparable (nth @results-atom @index-atom worst-simple-summary) 
                                                   (current-summary backing-search)))
          (next-goal  [min-reward]
 ;           (println (current-summary this) (current-summary backing-search) min-reward)
@@ -228,7 +232,7 @@
             index-atom   (atom 0)]
         (reify :as this IncrementalSearch 
          (root-node       [] root)
-         (current-summary [] (util/min-comparable (get-in @results-atom [goal-val @index-atom] worst-summary) 
+         (current-summary [] (util/min-comparable (get-in @results-atom [goal-val @index-atom] worst-simple-summary) 
                                                   (current-summary backing-search)))
          (next-goal  [min-reward]
            (if-let [nxt (get-in @results-atom [goal-val @index-atom] nil)]
@@ -294,7 +298,7 @@
         (when (viable-search? this min-reward)
           (let [g1 @s1-goal, g2 @s2-goal]
             (if (and g1 g2)
-                (do (reset! s1-goal worst-summary)
+                (do (reset! s1-goal worst-simple-summary)
                     (and-goal-fn g1 g2))
               (let [choice (cond g1 s2 g2 s1 :else (choice-fn s1 s2))
                     [choice-atom other-sum] 

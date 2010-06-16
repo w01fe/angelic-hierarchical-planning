@@ -118,22 +118,22 @@
 
 (declare make-recursive-search)
 
+
 (defn make-abstracted-subgoal-search [hfs]    
   (is/WrappedSubSearch 
    (let [[name abstract-hfs-fn] (drop-hfs hfs)]
      (is/get-cached-search *problem-cache* name
        (let [dropped (abstract-hfs-fn)]
-         (make-recursive-ef-search (hfs->simple-node dropped) (hfs-simple-children dropped)
-                                   #(make-abstracted-subgoal-search (:data %)))))) 
+         (is/make-recursive-ef-search 
+          (hfs->simple-node dropped) (hfs-simple-children dropped)
+          #(make-abstracted-subgoal-search (:data %)))))) 
    (:reward hfs) 
    #(is/offset-simple-summary % (:reward hfs))
    #(->> % :data (lift-hfs hfs) hfs->simple-node)))
 
-(defn make-recursive-ef-search "Expand once, then searchify." [root-node first-children searchify-fn]
-  (is/make-recursive-incremental-dijkstra root-node 
-    #(if (identical? root-node %) first-children (searchify-fn %))))
 
-(defn make-recursive-search [root-hfs] (:search (make-abstracted-subgoal-search root-hfs)))
+(defn make-recursive-search [root-hfs] 
+  (:search (make-abstracted-subgoal-search root-hfs)))
 
 
 ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;; Inverted ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
@@ -190,16 +190,16 @@
 
 
 (defn get-sas-map "Get a map from outer final states to SAS nodes/" [hfs]
-  (util/cache-with *problem-cache* (hfs-name hfs)
+  (util/cache-with *problem-cache* (hfs-name hfs) ; unabstracted state SA cache
     (util/map-keys #(env/transfer-effects (:state hfs) %)
-      (let [[name abstract-hfs-fn] (drop-hfs hfs)]
-        (util/cache-with *problem-cache* name
+      (let [[name abstract-hfs-fn] (drop-hfs hfs)] 
+        (util/cache-with *problem-cache* name ; abstracted state SA cache
           (let [inner-hfs (abstract-hfs-fn)
                 next-hfs (lazy-seq (hfs-children inner-hfs))]
             (into {}
               (for [[ss sr] (hfs-optimistic-map inner-hfs)]
                 [ss  (is/cache-incremental-search
-                      (make-recursive-ef-search 
+                      (is/make-recursive-ef-search 
                        (hfs->simple-node inner-hfs ss false sr)
                        (lazy-seq (for [n next-hfs :when (hfs-can-reach? n ss)] 
                                    (hfs->simple-node n ss)))
@@ -217,7 +217,7 @@
       (get-saha-sas-search hfs final-state)
       (is/get-cached-search *problem-cache* (hfs-name hfs final-state)
         (let [outer-cache (get-sas-map (first-action-hfs hfs))]
-          (make-recursive-ef-search (hfs->simple-node hfs [::F final-state])
+          (is/make-recursive-ef-search (hfs->simple-node hfs [::F final-state])
            (map #(hfs->simple-node hfs %) (keys outer-cache))
            (fn [n] 
              (let [ss (second (:data n))]
@@ -275,6 +275,7 @@
 
 
 (comment
+  (do (use '[exp env hierarchy taxi ucs] 'edu.berkeley.ai.util) (require '[exp sahucs-simple sahucs-inverted saha-simple] '[exp.old ahois]))
   (let [e (make-random-taxi-env 5 5 5 3) _ (println e) h (simple-taxi-hierarchy e)]  
     (time (println "ucs" (run-counted #(second (uniform-cost-search e)))))
     (doseq [alg `[sahucs-flat sahucs-fast-flat exp.sahucs-simple/sahucs-simple sahucs-simple exp.sahucs-inverted/sahucs-inverted sahucs-inverted exp.saha-simple/saha-simple saha-simple ]]
