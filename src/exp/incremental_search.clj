@@ -180,10 +180,10 @@
                      (queues/pq-add! search-queue sgs-or-nodes (sub-current-summary sgs-or-nodes)))
                    (recur min-reward))))))))))
 
-(defn make-recursive-ef-search "Expand once, then searchify." 
-  [root-node first-children searchify-fn]
+(defn make-recursive-sr-search "Call searchify1 on root, otherwise searchify2" 
+  [root-node searchify1 searchify2]
   (make-recursive-incremental-dijkstra root-node 
-    #(if (identical? root-node %) first-children (searchify-fn %))))
+    #(if (identical? root-node %) (searchify1 %) (searchify2 %))))
 
 ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;; Cached Incremental Search ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
 
@@ -227,17 +227,21 @@
 (defn generalize-incremental-search
   [backing-search goal-val-fn]
   (let [results-atom (atom {})]
-    (fn cache-factory [goal-val]
+    (fn cache-factory [goal-val single-goal?]
       (let [root         (root-node backing-search)
             index-atom   (atom 0)]
         (reify :as this IncrementalSearch 
          (root-node       [] root)
-         (current-summary [] (util/min-comparable (get-in @results-atom [goal-val @index-atom] worst-simple-summary) 
-                                                  (current-summary backing-search)))
+         (current-summary [] 
+           (util/min-comparable 
+            (or (get-in @results-atom [goal-val @index-atom]) worst-simple-summary) 
+            (if (and single-goal? (pos? @index-atom)) worst-simple-summary 
+                (current-summary backing-search))))
          (next-goal  [min-reward]
-           (if-let [nxt (get-in @results-atom [goal-val @index-atom] nil)]
+           (if-let [nxt (get-in @results-atom [goal-val @index-atom])]
              (when (viable? nxt min-reward) (swap! index-atom inc) nxt)
-             (when (viable-search? backing-search min-reward)
+             (when (and (viable-search? backing-search min-reward)
+                        (or (not single-goal?) (zero? @index-atom)))
                (do (when-let [r (next-goal backing-search min-reward)] 
                      (swap! results-atom update-in [(goal-val-fn r)] #(conj (or % []) r)))
                    (recur min-reward))))))))))
@@ -247,8 +251,10 @@
    call to this function with this name, execute factory-expr, wrap the result in a cache, and return it.
    Subsequent calls with the same name will return a new cached view on the same search, without 
    executing factory-expr."
-  [cache-map name goal-val-fn goal-val factory-expr]
-  `((util/cache-with ~cache-map ~name (generalize-incremental-search ~factory-expr ~goal-val-fn)) ~goal-val))
+  [cache-map name goal-val-fn goal-val single-goal? factory-expr]
+  `((util/cache-with ~cache-map ~name 
+     (generalize-incremental-search ~factory-expr ~goal-val-fn)) 
+    ~goal-val ~single-goal?))
 
 
 

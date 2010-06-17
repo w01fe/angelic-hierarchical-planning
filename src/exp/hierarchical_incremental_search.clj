@@ -44,17 +44,16 @@
    (into                 (:opt-sol n1) (:opt-sol n2))
    (action-combiner      (:remaining-actions n1) (:remaining-actions n2))))
 
-;; Drop and lift -- used by recursive, inverted, saha (drop only)
-(defn drop-hfs
-  "Construct first abstracted name & fn returning hfs subproblem, counterpart to lift."
-  [hfs]
-  (let [{:keys [state reward opt-sol remaining-actions]} hfs
-        [f & r] remaining-actions
-        context (env/precondition-context f state)]      
-    [[(env/extract-context state context) (env/action-name f)]
-     #(make-root-hfs (env/get-logger state context) f)]))
+;; Sub and lift -- used by recursive, inverted, saha (drop only)
+(defn hfs-first-sub-name "Name for first abstracted subproblem of hfs" [hfs]
+  (let [{[f] :remaining-actions state :state} hfs]      
+    [(env/extract-context state (env/precondition-context f state)) (env/action-name f)]))
 
-(defn lift-hfs "Lift child-solution into the context of parent-node, counterpart to drop."
+(defn hfs-first-sub "First abstracted subproblem of hfs" [hfs]
+  (let [{[f] :remaining-actions state :state} hfs]
+    (make-root-hfs (env/get-logger state (env/precondition-context f state)) f)))
+
+(defn lift-hfs "Lift child-solution into the context of parent-node, counterpart to sub."
   [parent child] 
   (combine-hfs parent child env/transfer-effects
                (fn [r1 r2] (util/assert-is (empty? r2)) (next r1))))
@@ -78,11 +77,20 @@
 (defn join-hfs [first-result rest-result final-state]
   (combine-hfs first-result rest-result (constantly final-state) (constantly nil)))
 
+
+
 (defn hfs-can-reach? [hfs s]
   (or (seq (:remaining-actions hfs)) (= s (:state hfs))))
 
 (defn hfs-cycle-level [hfs]
   (when-let [a (first (:remaining-actions hfs))] (hierarchy/cycle-level a (:state hfs))))
+
+(defn hfs-gg "Return gg-hfs and goal-map, or nil if not gg." [hfs]
+  (let [a (util/safe-singleton (:remaining-actions hfs))]
+    (when-let [[gga goal-map] (hierarchy/gg-action a)]
+      [(HierarchicalForwardState (:state hfs) (:reward hfs) (:opt-sol hfs) [gga])
+       goal-map
+       (every? (env/precondition-context a (:state hfs)) (keys goal-map))])))
 
 (defn hfs-optimistic-map [hfs]
   (let [{:keys [state remaining-actions]} hfs]
@@ -121,22 +129,24 @@
 
 ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;; Recursive search ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
 
-
-(defn abstract-subsearch [hfs searchify-fn]    
+(defn make-abstract-subsearch [hfs search-factory]    
   (is/WrappedSubSearch 
-   (let [[name abstract-hfs-fn] (drop-hfs hfs)]
-     (is/get-cached-search *problem-cache* name
-       (let [dropped (abstract-hfs-fn)]
-         (is/make-recursive-ef-search 
-          (hfs->simple-node dropped) (expand-hfs dropped)
-          #(searchify-fn (:data %)))))) 
+   (is/get-cached-search *problem-cache* (hfs-first-sub-name hfs)
+     (search-factory (hfs-first-sub hfs))) 
    (:reward hfs) 
    #(is/offset-simple-summary % (:reward hfs))
    #(->> % :data (lift-hfs hfs) hfs->simple-node)))
 
-(def recursive-subsearch (fn [hfs] (abstract-subsearch hfs recursive-subsearch)))
+(defn make-recursive-ef-search [hfs searchify-hfs-fn]
+  (is/make-recursive-sr-search (hfs->simple-node hfs) 
+      #(expand-hfs (:data %)) #(searchify-hfs-fn (:data %))))
 
-(defn make-recursive-search [root-hfs] (:search (recursive-subsearch root-hfs)))
+(defn recursive-abstract-subsearch 
+  ([hfs] (recursive-abstract-subsearch hfs recursive-abstract-subsearch))
+  ([hfs searchify-fn] 
+     (make-abstract-subsearch hfs #(make-recursive-ef-search % searchify-fn))))
+
+(defn make-recursive-search [root-hfs] (:search (recursive-abstract-subsearch root-hfs)))
 
 ;;;;;;;;;;;;;;;;;;;;;;;;;;;;; Hybrid flat/rec search ;;;;;;;;;;;;;;;;;;;;;;;;;;;
 
@@ -144,10 +154,33 @@
   (let [root-cycle-level (hfs-cycle-level root-hfs)]
     #(if (and root-cycle-level (= (hfs-cycle-level %) root-cycle-level))
         (expand-hfs %)
-      (abstract-subsearch % (make-acyclic-searchify %)))))
+      (recursive-abstract-subsearch % (make-acyclic-searchify %)))))
 
 (defn make-acyclic-recursive-search [root-hfs] 
-  (:search (abstract-subsearch root-hfs (make-acyclic-searchify root-hfs))))
+  (:search (recursive-abstract-subsearch root-hfs (make-acyclic-searchify root-hfs))))
+
+;;;;;;;;;;;;;;;;;;;;;;;;;;;;;; Hybrid gg/rec search ;;;;;;;;;;;;;;;;;;;;;;;;;;;;
+
+; Search that takes advantage of generalized-goal HLAs as defined by the "hierarchy/gg-*" iface.
+; Assume top-level action is never GG .  ?
+;; In a sense, a counterpart to simple, which shares across init states but not goals.
+
+;; TODO: definitely want to be able to switch out of gg mode?
+(declare abstract-gg-search)
+(defn gg-search [hfs]   
+;  (println hfs (hfs->simple-node hfs))
+  (if-let [[gg-hfs goal-map single-goal?] (hfs-gg hfs)]
+    (let [goal-vars (keys goal-map)]
+      (is/get-generalized-search *problem-cache* (hfs-first-sub-name gg-hfs)     
+        (fn [n] (let [s (:state (:data n))] (map #(env/get-var s %) goal-vars)))
+        (map goal-map goal-vars) single-goal?
+        (make-fast-flat-search gg-hfs)))
+    (make-recursive-ef-search hfs abstract-gg-search)))
+
+(defn abstract-gg-search [hfs] (make-abstract-subsearch hfs gg-search))
+
+(defn make-gg-search [root-hfs] (:search (abstract-gg-search root-hfs)))
+
 
 ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;; Inverted ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
 
@@ -170,13 +203,15 @@
     (map #(make-upward-node % hfs base-reward) @parents-atom)))
 
 (defn add-cache-parent [#^HashMap cc [parent-hfs parent-ic :as parent-pair]]
-  (let [[name abstract-hfs-fn] (drop-hfs parent-hfs)
-        ic (util/cache-with cc name (InvertedCache (atom []) (atom []) (:reward parent-hfs)))
+  (let [ic (util/cache-with cc (hfs-first-sub-name parent-hfs) 
+             (InvertedCache (atom []) (atom []) (:reward parent-hfs)))
         {:keys [results-atom parents-atom base-reward]} ic]
-    (when-let [o (last @parents-atom)] (util/assert-is (<= (:reward parent-hfs) (:reward (first o)))))
+    (when-let [o (last @parents-atom)] 
+      (util/assert-is (<= (:reward parent-hfs) (:reward (first o)))))
     (swap! parents-atom conj parent-pair)
     (if (= (count @parents-atom) 1)
-      (map #(make-inverted-node % ic) (hfs-children (adjust-hfs-reward (abstract-hfs-fn) base-reward)))
+      (map #(make-inverted-node % ic) 
+           (hfs-children (adjust-hfs-reward (hfs-first-sub parent-hfs) base-reward)))
       (map #(make-upward-node parent-pair % base-reward) @results-atom))))
 
 (defn make-inverted-node [hfs parent-ic] (hfs->simple-node hfs parent-ic false))
@@ -205,18 +240,17 @@
 (defn get-sas-map "Get a map from outer final states to SAS nodes/" [hfs]
   (util/cache-with *problem-cache* (hfs-name hfs) ; unabstracted state SA cache
     (util/map-keys #(env/transfer-effects (:state hfs) %)
-      (let [[name abstract-hfs-fn] (drop-hfs hfs)] 
-        (util/cache-with *problem-cache* name ; abstracted state SA cache
-          (let [inner-hfs (abstract-hfs-fn)
-                next-hfs (lazy-seq (hfs-children inner-hfs))]
-            (into {}
-              (for [[ss sr] (hfs-optimistic-map inner-hfs)]
-                [ss  (is/cache-incremental-search
-                      (is/make-recursive-ef-search 
-                       (hfs->simple-node inner-hfs ss false sr)
-                       (lazy-seq (for [n next-hfs :when (hfs-can-reach? n ss)] 
+      (util/cache-with *problem-cache* (hfs-first-sub-name hfs) ; abstracted state SA cache
+        (let [inner-hfs (hfs-first-sub hfs)
+              next-hfs (lazy-seq (hfs-children inner-hfs))]
+          (into {}
+                (for [[ss sr] (hfs-optimistic-map inner-hfs)]
+                  [ss  (is/cache-incremental-search
+                        (is/make-recursive-sr-search 
+                         (hfs->simple-node inner-hfs ss false sr)
+                         (fn [_] (for [n next-hfs :when (hfs-can-reach? n ss)] 
                                    (hfs->simple-node n ss)))
-                       #(apply get-saha-sps-search (:data %))))]))))))))
+                         #(apply get-saha-sps-search (:data %))))])))))))
 
 (defn get-saha-sas-search [hfs final-state] 
   (((get-sas-map hfs) final-state)))
@@ -230,8 +264,8 @@
       (get-saha-sas-search hfs final-state)
       (is/get-cached-search *problem-cache* (hfs-name hfs final-state)
         (let [outer-cache (get-sas-map (first-action-hfs hfs))]
-          (is/make-recursive-ef-search (hfs->simple-node hfs [::F final-state])
-           (map #(hfs->simple-node hfs %) (keys outer-cache))
+          (is/make-recursive-sr-search (hfs->simple-node hfs [::F final-state])
+           (fn [_] (map #(hfs->simple-node hfs %) (keys outer-cache)))
            (fn [n] 
              (let [ss (second (:data n))]
                (is/make-and-search n
@@ -281,6 +315,9 @@
 
 (defn sahucs-dijkstra [henv]
   (hierarchical-search henv nil make-acyclic-recursive-search))
+
+(defn sahucs-gg [henv]
+  (hierarchical-search henv nil make-gg-search))
 
 (defn sahucs-inverted [henv]
   (hierarchical-search henv nil make-inverted-search))

@@ -114,6 +114,21 @@
                             (pessimistic-map [s] 
                               (env/optimistic-map this s)))
 
+(deftype GGNavHLA [env] :as this
+  env/Action                (action-name [] '[nav])
+                            (primitive? [] false)
+  env/ContextualAction      (precondition-context [s] #{['atx] ['aty]})
+  hierarchy/HighLevelAction (immediate-refinements- [s]
+                             (cons []
+                               (for [af [make-left make-right make-up make-down]
+                                     :let [a (af s)]
+                                     :when a]
+                                 [a this])))
+                            (cycle-level- [s] 1))
+
+(defmethod hierarchy/gg-action :exp.taxi/NavHLA [a] [(GGNavHLA (:env a)) {'[atx] (:dx a) '[aty] (:dy a)}])
+
+
 (deftype ServeHLA [env pass] :as this
   env/Action                (action-name [] ['serve pass])
                             (primitive? [] false)
@@ -199,7 +214,7 @@
                             (primitive? [] false)
   env/ContextualAction      (precondition-context [s] #{ ['atx]})
   hierarchy/HighLevelAction (immediate-refinements- [s]
-                              (if (= dx (env/get-var s ['atx]))                                                                    [[]]
+                              (if (= dx (env/get-var s ['atx]))                                                                                                 [[]]
                                 (for [af [make-left make-right]
                                      :let [a (af s)]
                                      :when a]
@@ -211,7 +226,7 @@
                             (primitive? [] false)
   env/ContextualAction      (precondition-context [s] #{ ['aty]})
   hierarchy/HighLevelAction (immediate-refinements- [s]
-                              (if (= dy (env/get-var s ['aty]))                                                                    [[]]
+                              (if (= dy (env/get-var s ['aty]))                                                                                                [[]]
                                 (for [af [make-up make-down]
                                      :let [a (af s)]
                                      :when a]
