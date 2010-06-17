@@ -81,6 +81,9 @@
 (defn hfs-can-reach? [hfs s]
   (or (seq (:remaining-actions hfs)) (= s (:state hfs))))
 
+(defn hfs-cycle-level [hfs]
+  (when-let [a (first (:remaining-actions hfs))] (hierarchy/cycle-level a (:state hfs))))
+
 (defn hfs-optimistic-map [hfs]
   (let [{:keys [state remaining-actions]} hfs]
     (assert (util/singleton? remaining-actions))
@@ -102,39 +105,49 @@
 ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;; Searches ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
 ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
 
+; Basic idea behind heterogenous search: 
+;   We can generate expansions for nodes in different ways.
+;   Always assume we have an HFS within a recursive ID.  
+
 ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;; Flat search ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
 
-(defn hfs-simple-children [hfs] (map hfs->simple-node (hfs-children hfs)))
+(defn expand-hfs [hfs] (map hfs->simple-node (hfs-children hfs)))
 
 (defn make-fast-flat-search [root-hfs]
-  (is/make-flat-incremental-dijkstra (hfs->simple-node root-hfs) (comp hfs-simple-children :data)))
+  (is/make-flat-incremental-dijkstra (hfs->simple-node root-hfs) (comp expand-hfs :data)))
 
 (defn make-flat-search  [root-hfs]
-  (is/make-recursive-incremental-dijkstra (hfs->simple-node root-hfs) (comp hfs-simple-children :data)))
+  (is/make-recursive-incremental-dijkstra (hfs->simple-node root-hfs) (comp expand-hfs :data)))
 
 ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;; Recursive search ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
 
-;; TODO: recursive recursively is where polymorphism fits in.
 
-(declare make-recursive-search)
-
-
-(defn make-abstracted-subgoal-search [hfs]    
+(defn abstract-subsearch [hfs searchify-fn]    
   (is/WrappedSubSearch 
    (let [[name abstract-hfs-fn] (drop-hfs hfs)]
      (is/get-cached-search *problem-cache* name
        (let [dropped (abstract-hfs-fn)]
          (is/make-recursive-ef-search 
-          (hfs->simple-node dropped) (hfs-simple-children dropped)
-          #(make-abstracted-subgoal-search (:data %)))))) 
+          (hfs->simple-node dropped) (expand-hfs dropped)
+          #(searchify-fn (:data %)))))) 
    (:reward hfs) 
    #(is/offset-simple-summary % (:reward hfs))
    #(->> % :data (lift-hfs hfs) hfs->simple-node)))
 
+(def recursive-subsearch (fn [hfs] (abstract-subsearch hfs recursive-subsearch)))
 
-(defn make-recursive-search [root-hfs] 
-  (:search (make-abstracted-subgoal-search root-hfs)))
+(defn make-recursive-search [root-hfs] (:search (recursive-subsearch root-hfs)))
 
+;;;;;;;;;;;;;;;;;;;;;;;;;;;;; Hybrid flat/rec search ;;;;;;;;;;;;;;;;;;;;;;;;;;;
+
+(defn make-acyclic-searchify [root-hfs]
+  (let [root-cycle-level (hfs-cycle-level root-hfs)]
+    #(if (and root-cycle-level (= (hfs-cycle-level %) root-cycle-level))
+        (expand-hfs %)
+      (abstract-subsearch % (make-acyclic-searchify %)))))
+
+(defn make-acyclic-recursive-search [root-hfs] 
+  (:search (abstract-subsearch root-hfs (make-acyclic-searchify root-hfs))))
 
 ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;; Inverted ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
 
@@ -266,6 +279,9 @@
 (defn sahucs-simple [henv]
   (hierarchical-search henv nil make-recursive-search))
 
+(defn sahucs-dijkstra [henv]
+  (hierarchical-search henv nil make-acyclic-recursive-search))
+
 (defn sahucs-inverted [henv]
   (hierarchical-search henv nil make-inverted-search))
 
@@ -275,8 +291,8 @@
 
 
 (comment
-  (do (use '[exp env hierarchy taxi ucs] 'edu.berkeley.ai.util) (require '[exp sahucs-simple sahucs-inverted saha-simple] '[exp.old ahois]))
-  (let [e (make-random-taxi-env 5 5 5 3) _ (println e) h (simple-taxi-hierarchy e)]  
+  (do (use '[exp env hierarchy taxi ucs hierarchical-incremental-search] 'edu.berkeley.ai.util) (require '[exp sahucs-simple sahucs-simple-dijkstra sahucs-inverted saha-simple] '[exp.old ahois]))
+   (let [e (make-random-taxi-env 5 5 5 3) _ (println e) h (simple-taxi-hierarchy e)]  
     (time (println "ucs" (run-counted #(second (uniform-cost-search e)))))
-    (doseq [alg `[sahucs-flat sahucs-fast-flat exp.sahucs-simple/sahucs-simple sahucs-simple exp.sahucs-inverted/sahucs-inverted sahucs-inverted exp.saha-simple/saha-simple saha-simple ]]
+    (doseq [alg `[sahucs-flat sahucs-fast-flat exp.sahucs-simple/sahucs-simple sahucs-simple exp.sahucs-simple-dijkstra/sahucs-simple-dijkstra sahucs-dijkstra exp.sahucs-inverted/sahucs-inverted sahucs-inverted exp.saha-simple/saha-simple saha-simple ]]
       (time (println alg (run-counted #(debug 0 (second ((resolve alg) h)))))))))
