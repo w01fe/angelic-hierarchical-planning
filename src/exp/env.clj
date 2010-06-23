@@ -28,6 +28,9 @@
   (list-vars [state])
   (as-map    [state]))
 
+(defn get-vars [state vars]
+  (into {} (for [v vars] [v (get-var state v)])))
+
 ;; TODO: use dissoc in some cases?
 (defn fast-select-keys [map key-set]
   (let [mc (count map) kc (count key-set)]
@@ -163,6 +166,15 @@
 
 (defmethod print-method ::FactoredPrimitive [a o] (print-method (action-name a) o))
 
+(defn compose-factored-primitives [fp1 fp2]
+  (let [e1 (:effect-map fp1), p2 (:precond-map fp2)
+        common-keys (clojure.set/intersection (util/keyset e1) (util/keyset p2))]   
+    (assert (= (select-keys e1 common-keys) (select-keys p2 common-keys)))
+    (FactoredPrimitive 
+     [::Composed (:name fp1) (:name fp2)]
+     (util/merge-agree (:precond-map fp1) (apply dissoc p2 common-keys))
+     (merge e1 (:effect-map fp2))
+     (+ (:reward fp1) (:reward fp2)))))
 
 (def *next-counter* (util/sref 0))
 
@@ -182,7 +194,7 @@
 ;  (prn "next" (:name action))
   (util/timeout)
   (assert (applicable? action state))
-;  (println "Progressing" action state)
+  (util/print-debug 4 "Progressing" action #_ state)
   (util/sref-set! *next-counter* (inc (util/sref-get *next-counter*)))
  ; (.put #^HashMap *next-ba* (action-name action) (inc (get *next-ba* (action-name action) 0)))
   (let [[next reward] (next-state-and-reward action state)

@@ -101,8 +101,8 @@
 (defn make-sas-problem-from-pddl 
   ([stem] (make-sas-problem-from-pddl  (str stem "-domain.pddl") (str stem ".pddl")))
   ([domain-file inst-file]
-     (lama-translate domain-file inst-file)
-     ;(println (lama-translate domain-file inst-file))
+     (let [lto  (lama-translate domain-file inst-file)]
+       (util/print-debug 1 lto))
      (let [var-map (assoc (read-groups-file (str *working-dir* "test.groups"))
                      goal-var-name [goal-false-val goal-true-val])
            sas-q   (LinkedList. (seq (.split #^String (slurp (str *working-dir* "output.sas")) "\n")))

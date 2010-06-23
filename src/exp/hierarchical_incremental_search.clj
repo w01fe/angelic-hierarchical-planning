@@ -281,6 +281,7 @@
 (defn make-saha-search [root-hfs]
   (get-saha-sas-search root-hfs (util/safe-singleton (keys (hfs-optimistic-map root-hfs)))))
 
+;; TODO: version with better meta-level control, PN-style. 
 
 
 ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;

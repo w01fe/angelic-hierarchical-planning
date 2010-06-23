@@ -238,10 +238,14 @@
      (write-infinite-taxi-strips-instance tenv (str prefix ".pddl"))
      prefix))
 
+(defn make-random-infinite-taxi-sas [& args]
+  (sas/make-sas-problem-from-pddl (write-infinite-taxi-strips (apply make-random-infinite-taxi-env args)))
+  )
+
 (deftest infinite-taxi-generic
   (is (= -15 (second (exp.ucs/uniform-cost-search (sas/make-sas-problem-from-pddl (write-infinite-taxi-strips (InfiniteTaxiEnv 5 5 [['red [2 1] [5 4]] ['green [1 4] [3 3]]]))))))))
 
-
+;; TODO: this is buggy.
 
 
 
@@ -327,8 +331,12 @@
      (write-infinite-taxi-strips2-instance tenv (str prefix ".pddl"))
      prefix))
 
+(defn make-random-infinite-taxi-sas2 [& args]
+  (sas/make-sas-problem-from-pddl (write-infinite-taxi-strips2 (apply make-random-infinite-taxi-env args)))
+  )
+
 (deftest infinite-taxi-generic2
-  (is (= -15 (second (exp.ucs/uniform-cost-search (sas/make-sas-problem-from-pddl (write-infinite-taxi-strips2 (InfiniteTaxiEnv 5 5 [['red [2 1] [5 4]] ['green [1 4] [3 3]]]))))))))
+  (is (= -16 (second (exp.ucs/uniform-cost-search (sas/make-sas-problem-from-pddl (write-infinite-taxi-strips2 (InfiniteTaxiEnv 5 5 [['red [2 1] [5 4]] ['green [1 4] [3 3]]]))))))))
 
 
 

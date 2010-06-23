@@ -119,7 +119,8 @@
        (current-summary [] (pq-summary queue))
        (next-goal  [min-reward]
          (when (viable-search? this min-reward)
-           (let [best (nth (queues/pq-remove-min-with-cost! queue) 1)]             
+           (let [best (nth (queues/pq-remove-min-with-cost! queue) 1)]       
+             (util/print-debug 2 "\n\nGot" best)
              (if (node-goal? best) 
                  best 
                (do (doseq [n (expand-fn best)] (pq-add-node queue n)) (recur min-reward)))))))))
