@@ -319,16 +319,21 @@
         outgoing-map (edge-list->outgoing-map edge-list)
         node-vals    (HashMap. #^Map (into {} (for [[g [_ v]] named-srcs] [g v])))
         node-val     #(lazy-get node-vals % (init-fn %))
-        queue        (LinkedList. (map first src-vals))]
+        queue        (LinkedList. (map first src-vals))
+        queue-count  (HashMap. (into {} (for [x (map first src-vals)] [x 1])))]
 
     (while (not (.isEmpty queue))
       (let [node (.removeFirst queue)
-            old-val (node-val node)
-            new-val (apply update-fn node old-val (map node-val (incoming-map node)))]
-;        (println node old-val new-val)
-        (when-not (= new-val old-val)
-          (.put node-vals node new-val)
-          (doseq [succ (outgoing-map node)] (.addFirst queue succ)))))
+            rem-count (dec (.get queue-count node))]
+        (.put queue-count node rem-count)
+        (when (zero? rem-count)
+          (let [old-val (node-val node)
+                new-val (apply update-fn node old-val (map node-val (incoming-map node)))]
+            (when-not (= new-val old-val)
+              (.put node-vals node new-val)
+              (doseq [succ (outgoing-map node)] 
+                (.addFirst queue succ)
+                (.put queue-count succ (inc (get queue-count node 0)))))))))
     
     (apply dissoc (into {} node-vals) (map first named-srcs))))
 
