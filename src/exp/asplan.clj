@@ -6,34 +6,10 @@
 
 
 
-; TODO: define as HLA or not?  Can define
-
-; Greedy: if all preconds met, ...
-; Questions about what must go in HLA name. 
-
-; Would like to avoid cycles, somehow ...
-
-; Also should not include "buried" actions in name.
-
-; How can we abstract?
- ; Goal at each point is to fire at least one of existing actions.  
-   ; All actions that cannot fire first can be ignored, as can 
-   ; values of locked non-precond vars, and irrelevant vars. 
- ; If set of such vars are disjoint across actions, decompose. 
-; Problem with this: can decompose to "first then rest", but how does rest know which fired?
- ; Can just look at state?  This seems, mmm, awkward, but maybe OK.
-   ; Except: we can also end up adding unfired actions ?
-   ; Can certainly just ignore these commitments... but this can multiply states  
-   ; Can try to require that all such actions fire 
-     ; correct?
-   ; Also, would like to assert that all actions were *relevant* to fired action.
-   ; Problem: fire A, generate floating B, needed.
-   ; Sol: put stuff into state ? 
- ; Alternative is to use generalized-goal search.
-
 ; For now, pretend analysis is free, just brute-force it. 
 
-; OK, so we put stuff in state.  
+; Put stuff previous in HLAs into state, so we can keep track of, e.g.,
+; actions added while accomplishing some other action. 
 ; For each var, a second var pointing to: pending action, :frozen, or :open
 ;  This doesn't play with usual state abstraction.
 ;  Instead, can have var-in-use, var-action, latter always nil if not in-use.
@@ -42,20 +18,6 @@
 ;  Except, we also need to keep track of *user* of frozen far w/o action.
 
 
-;; Attempt at concrete outline:
-
-; Start with only "goal" action active.  
-; Do "fire any action" search.
-
-; "Fire any action" search:
- ; If any action can fire greedily (with free or self-reserved preconds), fire, goal.
- ; Otherwise, pick an ("unblocked"?) action,
-  ; and a free precond for that action
-    ; and set var to "active".
-
-; If a var is "active", either
- ; Add an action applicable iwth current value that changes it.
- ; "Freeze" it in service of some other var, which has this val as possible next.  
 
 ; Question: do we additionally need to keep token to guide refs?
 
@@ -64,8 +26,11 @@
 ; Can refine until *particular* action resolved, or *any* current action resolved. 
 ;   (not just any action, steps are too small).
 
+;; TODO TODO TODO: current scheme won't properly handle when other action wants current var value in future. 
+
 ;; TODO: should we allow action to fire even when there is already action scheduled on precond ?
 
+;; TODO: think about variable orderings more.  i.e., in infinite taxi, DAG order is perfect.
 
 
 ;; TODO: also look at using landmarks to structure search ? 
@@ -164,11 +129,10 @@
                     (if-let [p (env/get-var s (parent-var v))] [p])))
           (util/safe-get hierarchy :vars)))
 
-;; Also, Start actions on a var.  Assumption: doing it for a parent that wants a diff. val
-; from this var. 
-(deftype AddActionHLA [hierarchy effect-var]
+
+(deftype AddSomeActionHLA [hierarchy effect-var]
   env/Action
-   (action-name [] [::AddAction effect-var])
+   (action-name [] [::AddSomeAction effect-var])
    (primitive?  [] false)
   env/ContextualAction 
    (precondition-context [s]
@@ -214,7 +178,7 @@
   hierarchy/HighLevelAction
    (immediate-refinements- [s]
      (if (= effect-var sas/goal-var-name) [[]]
-      (cons [(AddActionHLA hierarchy effect-var)]
+      (cons [(AddSomeActionHLA hierarchy effect-var)]
             (for [p (possible-parents hierarchy s effect-var)]
               [(make-set-parent-var-action effect-var p)]))))
    (cycle-level-           [s] nil))
@@ -245,7 +209,7 @@
        (if-let [greedy (some #(make-greedy-fire-plan hierarchy s %) actives)]
          [(conj (vec greedy) this)]
          (when-let [open (choose-open-var hierarchy s)]
-           [[(AddActionHLA hierarchy open) this]]))
+           [[(AddSomeActionHLA hierarchy open) this]]))
        [[]]))
    (cycle-level-           [s] nil))
 

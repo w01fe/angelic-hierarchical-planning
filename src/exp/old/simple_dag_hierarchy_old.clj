@@ -32,24 +32,8 @@
 
 
 
-;; !!!!!!!!!!!!!!!!!!!!!!!!!!!
+
 ;; TODO: this is fundamentlaly broken, since it doesn't do "lookahead".
-
-;Idea: just take current algorithm, add phantom preconditions?
-;How much do we have to lose by not doing the fancy bookkeeping ? 
-
-;; Still not good in logistics, despite different paths not having common ancestors,
-;; since we make choices when not all things present. 
-
-;;;;;;;;; Basic idea to lift homog/whatever requirements, work on general DAGs.  
-
-;; Basic idea: precond nodes (all? which?) can contribute phantom leaf nodes.
-; shadowed by leaves or actives occuring before.  But not by each-other.
-; In fancier graphs, may need to 'pass along' to children. 
-
-; Note, two sorts of cases.  Logistics-type is easier, this will work. (no self-interleaving, just delaying / variable choice.)
-
-; Other examples where true self-interleaving is needed would deadlock in such cases.
 
 
 (declare make-action-hla)
@@ -125,10 +109,8 @@
 (defprotocol SDH-HLA
   (active-var-set  [a])
   (leaf-var-set    [a])
-  (needs-expand?   [a])
-  (expand          [a lv])           ; returns [[action-seq new-hla]]
-  (greedy-select?  [a s v av])    ; Has a descendent that can be done greedily.
-  (select-leaf     [a s v av]) ; returns new-hlas. av is active-var set, lv is leaf-var set
+  (greedy?         [a s v av])    ; Has a descendent that can be done greedily.
+  (do-refinement   [a s v av lv]) ;returns [action-seq new-hla]. av is active-var set, lv is leaf-var set
   ) 
 
 
@@ -144,6 +126,8 @@
 
 ; first-action can be null, iff we're done.
 
+;; Which function to calal for recursive i-r.  Should probably be hierarchy/immediate-refs.
+
 ;; Note: can get primitives 
 
 (defn rec-immediate-refinements [a s]
@@ -156,83 +140,51 @@
 
 (deftype SDH-Active-Precond-HLA  [hierarchy name first-action leaf-precond active-var-set leaf-var-set] :as this
   SDH-HLA
-    (active-var-set  []  active-var-set)
+    (active-var-set  []  (conj active-var-set (:var leaf-precond)))
     (leaf-var-set    []  leaf-var-set)
-    (needs-expand?   []  (needs-expand? first-action))
-    (expand          [lv] 
-      (for [[prefix new-fa] (expand first-action lv)]
-        [prefix (if new-fa (make-active-precond-hla hierarchy new-fa leaf-precond) leaf-precond)]))
-    (greedy-select?  [s v av] (greedy-select? first-action s v av))
-    (select-leaf      [s v av] 
-      (for [new-fa (select-leaf first-action s v av)] 
-        (make-active-precond-hla hierarchy new-fa leaf-precond)))
+    (greedy?         [s v av] 
+       (and first-action (or (env/primitive? first-action) (greedy? first-action s v av))))
+    (do-refinement   [s v av lv]
+       (if (empty? (clojure.set/intersection lv ((:interfering-set hierarchy) (:var leaf-precond))))
+           [[[leaf-precond] (make-active-precond-hla hierarchy nil leaf-precond)]]                   
+         (for [[prefix new-fa] (if (env/primitive? first-action) 
+                                   [[first-action] nil]
+                                 (do-refinement first-action s v av lv))
+               new-fa          (if new-fa [new-fa] (map first (rec-immediate-refinements leaf-precond (env/set-var s (:var leaf-precond) (effect-val first-action)))))]
+           [prefix (make-active-precond-hla hierarchy new-fa leaf-precond)])))
   SDH-Precond-HLA  
     (active?     []  true)
-    (satisfied?  [s] false)    
+    (satisfied?  [s]
+      (assert (= (not first-action) (satisfied? leaf-precond s)))
+      (not first-action))    
   env/Action
     (action-name [] name)
     (primitive?  [] false)
- ; env/ContextualAction 
- ;   (precondition-context [s] (env/precondition-context leaf-precond s))   
-    )
+  env/ContextualAction 
+    (precondition-context [s] (env/precondition-context leaf-precond s)))
 
 (defn- make-active-precond-hla [hierarchy first-action leaf-precond]
   (SDH-Active-Precond-HLA hierarchy 
-    [:!P+ (env/action-name first-action) (env/action-name leaf-precond)]
+    [:!P* (when first-action (env/action-name first-action)) (env/action-name leaf-precond)]
     first-action leaf-precond
-    (clojure.set/union (active-var-set first-action) (active-var-set leaf-precond))
-    (leaf-var-set first-action)))
+    (conj (if first-action (active-var-set first-action) #{}) (:var leaf-precond))
+    (if first-action (leaf-var-set first-action) #{})))
 
 
 
 ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;; Leaf Precond HLAs ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
 
-(declare advance-active-leaf-precond-hla)
-
-(deftype SDH-Active-Leaf-Precond-HLA  [name inactive-leaf cur-val] :as this
-  SDH-HLA
-    (active-var-set  []  (leaf-var-set inactive-leaf))
-    (leaf-var-set    []  (active-var-set inactive-leaf))
-    (needs-expand?   []  (not (satisfied? this :dummy)))
-    (expand          [lv] 
-      (let [{:keys [hierarchy var dst-val dtg]} inactive-leaf]               
-;        (println cur-val dst-val)
-       (cond (empty? (clojure.set/intersection lv ((:interfering-set hierarchy) var)))
-               [[[inactive-leaf] (advance-active-leaf-precond-hla this dst-val)]]
-             (= cur-val dst-val)
-               [[[]     this]]
-             :else  
-               (for [[nv as] (get dtg cur-val), 
-                     :let [np (advance-active-leaf-precond-hla this nv)]
-                     action as
-                     :let [ahla (make-action-hla hierarchy action)]]
-                 (if (env/primitive? ahla)
-                     [[ahla] np]
-                   [[] (make-active-precond-hla hierarchy ahla np)])))))
-    (greedy-select?  [s v av] false)
-    (select-leaf     [s v av] (throw (UnsupportedOperationException.)))
-  SDH-Precond-HLA 
-    (active?     []  true)
-    (satisfied?  [s] (= cur-val (:dst-val inactive-leaf)))    
-  env/Action
-    (action-name [] name)
-    (primitive?  [] false))
-
-(defn- advance-active-leaf-precond-hla [prev new-val]
-  (SDH-Active-Leaf-Precond-HLA (:name prev) (:inactive-leaf prev) new-val))
-
-(defn- make-active-leaf-precond-hla [inactive-leaf cur-val]
-  (SDH-Active-Leaf-Precond-HLA (assoc (:name inactive-leaf) 0 :!P*) inactive-leaf cur-val))
-
-
-(deftype SDH-Inactive-Leaf-Precond-HLA  [hierarchy name var dst-val dtg precond-var-set] :as this
+(deftype SDH-Leaf-Precond-HLA  [hierarchy name var dst-val dtg precond-var-set] :as this
   SDH-HLA
     (active-var-set  []  #{})
     (leaf-var-set    []  #{var})
-    (needs-expand?   []  false)
-    (expand          [lv] (throw (UnsupportedOperationException.)))
-    (greedy-select?  [s v av] false)
-    (select-leaf     [s v av] (assert (= v var)) [(make-active-leaf-precond-hla this (env/get-var s v))])
+    (greedy?         [s v av] false)
+    (do-refinement   [s v av lv]
+      (assert (= v var))
+      (if (empty? (clojure.set/intersection lv ((:interfering-set hierarchy) var)))
+           [[[this] (make-active-precond-hla hierarchy nil this)]] 
+         (for [[a _] (rec-immediate-refinements this s)]
+           [[] (make-active-precond-hla hierarchy a this)])))
   SDH-Precond-HLA 
     (active?     []  false)
     (satisfied?  [s] (= (env/get-var s var) dst-val))    
@@ -244,6 +196,7 @@
   hierarchy/HighLevelAction
     (immediate-refinements- [s] 
       (let [cur-val (env/get-var s var)]
+;        (println cur-val dst-val)
         (if (= cur-val dst-val)
             [[]]
           (for [as (vals (get dtg cur-val)), action as]
@@ -252,10 +205,10 @@
       (when ((:cycle-to hierarchy) var dst-val)
         ((:var-levels hierarchy) var))))
 
-(defn- make-inactive-leaf-precond-hla [hierarchy var dst-val]
-  (SDH-Inactive-Leaf-Precond-HLA hierarchy [:!P var dst-val] var dst-val 
-    ((:dtg-to           hierarchy) var dst-val)
-    ((:ancestor-var-set hierarchy) var)))
+(defn- make-leaf-precond-hla [hierarchy var dst-val]
+  (SDH-Leaf-Precond-HLA hierarchy [:!P var dst-val] var dst-val 
+                   ((:dtg-to           hierarchy) var dst-val)
+                   ((:ancestor-var-set hierarchy) var)))
 
 ;; TODO: when can greedy sat arise?  After creation, other-sat, or finish
 
@@ -266,44 +219,39 @@
 ;; TODO: fire more than one greedy action at once ...
 ; ;TODO: how do we keep track of preconditions moved up front ?
 
-
+; Am I greedy, or do I have a 
 (declare make-action-hla)
 
-;; NOTE: precond always needs expand after selection, even though it won't say so if satisfied.
-;; this override is handled below.
-
-(deftype SDH-Action-HLA [hierarchy name action precond-var-set precond-hlas expand-index] :as this
+(deftype SDH-Action-HLA [hierarchy name action precond-var-set precond-hlas] :as this
   SDH-HLA
     (active-var-set []  (apply clojure.set/union (map active-var-set precond-hlas)))
     (leaf-var-set   []  (apply clojure.set/union (map leaf-var-set precond-hlas)))
-    (needs-expand?  []  expand-index)
-    (expand         [lv]
-      (assert expand-index)
-      (for [[prefix new-precond] (expand (precond-hlas expand-index) lv)
-            :let [next-hlas (assoc precond-hlas expand-index new-precond)]]        
-        (do ; (println (map env/action-name next-hlas) (env/action-name new-precond))
-         (if (and (satisfied? new-precond :dummy) (every? #(and (active? %) (satisfied? % :dummy)) next-hlas))
-            [(conj prefix action) nil]
-            [prefix (SDH-Action-HLA. hierarchy [:!A* (env/action-name action) (map env/action-name next-hlas)] 
-                                     action precond-var-set next-hlas                              
-                                     (when (needs-expand? new-precond) expand-index))]))))
-    (greedy-select? [s v av] 
+    (greedy?        [s v av] 
       (or (every? #(and (satisfied? % s) (or (active? %) (not (av (:var %))))) precond-hlas)
-          (some #(greedy-select? % s v av) (util/make-safe (seq (filter #(contains? (leaf-var-set %) v) precond-hlas))))))
-    (select-leaf    [s v av]
-      (let [possible-vals  (filter #(contains? (leaf-var-set (precond-hlas %)) v) (range (count precond-hlas)))
-            [deep shallow] (util/separate (comp active? precond-hlas) possible-vals)
-            val-options    (or (and (:greedy-optimization? hierarchy) 
-                                    (when-first [x (filter #(greedy-select? (precond-hlas %) s v av) deep)] [x])) 
-                               (seq deep) 
-                               (seq shallow))]
-        (assert (seq val-options))
-        (assert (<= (count shallow) 1))
-        (doall (for [idx         val-options,
-               next        (select-leaf (precond-hlas idx) s v av)
-               :let [new-precond-hlas (assoc precond-hlas idx next)]]
-           (SDH-Action-HLA. hierarchy [:!A* (env/action-name action) (map env/action-name new-precond-hlas)]
-                            action precond-var-set new-precond-hlas idx)))))
+          (some #(greedy? % s v av) (util/make-safe (seq (filter #(contains? (leaf-var-set %) v) precond-hlas))))
+          ))
+    (do-refinement  [s v av lv]
+      (if (every? #(and (satisfied? % s) (or (active? %) (not (av (:var %))))) precond-hlas) 
+          (do (println "GREED2") [[[action] nil]])
+        (let [possible-vals  (filter #(contains? (leaf-var-set %) v) precond-hlas)
+              [deep shallow] (util/separate active? possible-vals)
+              val-options    (or (and (:greedy-optimization? hierarchy) 
+                                      (when-first [x (filter #(greedy? % s v av) deep)] [x])) 
+                                 (seq deep) 
+                                 (seq shallow))]
+;          (println "refining at " v "with options" val-options)
+            (assert (seq val-options))
+            (assert (<= (count shallow) 1))
+        
+            (for [precond-hla val-options
+                  [prefix remaining] (do-refinement precond-hla s v av lv)]
+              [prefix 
+               (let [new-precond-hlas
+                      (for [hla precond-hlas]
+                        (if (identical? hla precond-hla) remaining hla))]
+                 (SDH-Action-HLA. hierarchy
+                   [:!A* (env/action-name action) (map env/action-name new-precond-hlas)]
+                   action precond-var-set new-precond-hlas))]))))
   env/Action
     (action-name     [] name)
     (primitive?      [] false)
@@ -311,18 +259,16 @@
     (precondition-context [s] precond-var-set)
   hierarchy/HighLevelAction
     (immediate-refinements- [s]
-     (let [var-leaves  (leaf-var-set this)]
-       (if (needs-expand? this)  ; Prevent loop where new trivial-sat prec.
-           (let [nexts  (for [[prefix nxt] (expand this var-leaves)] (if nxt (conj prefix nxt) prefix))]
-             (if-let [a (util/singleton (util/singleton nexts))]
-                 (hierarchy/immediate-refinements- a s)
-               nexts))
-         (let [var-actives (active-var-set this)
-               var-options (clojure.set/difference var-leaves var-actives)]
-;           (println "selecting...")
-           (if (empty? var-options)
-               (println "Dead end!")
-             (map vector (select-leaf this s (util/first-maximal-element (:var-levels hierarchy) var-options) var-actives)))))))
+      (if (every? #(satisfied? % s) precond-hlas) (do (println "gREED!") [[action]])
+        (let [var-actives (active-var-set this)
+              var-leaves  (leaf-var-set this)
+              var-options (clojure.set/difference var-leaves var-actives)]
+          (if (empty? var-options)
+              (println "Dead end!")
+            (for [[prefix remaining]
+                  (do-refinement this s (util/first-maximal-element (:var-levels hierarchy) var-options)
+                                 var-actives var-leaves)]
+              (if remaining (concat prefix [remaining]) prefix))))))
     (cycle-level-           [s] nil))
 
 (defn- make-action-hla [hierarchy action]
@@ -332,7 +278,8 @@
         action
       (SDH-Action-HLA hierarchy [:!A (env/action-name action)] action
                       ((:ancestor-var-set hierarchy) effect-var)
-                      (vec (for [[pvar pval] reduced-em] (make-inactive-leaf-precond-hla hierarchy pvar pval))) nil))))
+                      (for [[pvar pval] reduced-em]
+                        (make-leaf-precond-hla hierarchy pvar pval))))))
 
 ;; TODO: 
 
@@ -357,7 +304,6 @@
 
 ; (run-counted #(sahucs-inverted (make-simple-dag-hierarchy (make-sas-problem-from-pddl (prln (write-infinite-taxi-strips2 (make-random-infinite-taxi-env 2 2 1 6)))))))
 
-; (let [p (make-sas-problem-from-pddl (write-infinite-taxi-strips2 (make-random-infinite-taxi-env 3 3 3 0)))] (println (time (run-counted #(second (uniform-cost-search p))))) (println (time (run-counted #(second (sahucs-inverted (make-simple-dag-hierarchy p)))))))
 
 
 
