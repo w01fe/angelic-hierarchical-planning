@@ -233,6 +233,8 @@
 
 ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;; SAHA ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
 
+;; TODO: version that includes pessimistic costs
+;; TODO: version that does smarter search based on optimistic counts.
 
 (declare get-saha-sps-search)
 
