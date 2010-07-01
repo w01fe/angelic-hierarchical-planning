@@ -290,6 +290,8 @@
 ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;; Sequencing ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
 
 ;; Sequence two closed searches (with concrete goal states).
+; Assumes single goals for each search
+; With some testing, this should be subsumed by below.
 
 (defn make-and-search
   "Sequence two searches. Choice-fn takes the searches, and returns the one to refine 
@@ -314,6 +316,33 @@
                 (let [nxt (next-goal choice (- min-reward (max-reward other-sum)))]
                   (when nxt (reset! choice-atom nxt))
                   (recur min-reward))))))))))
+(comment 
+
+;; More general way to sequence two searches, which can have multiple goal states
+; Implements SubSearch so it can be used with various kinds of and-fn
+
+  (defn make-and-sub-search
+    "Sequence two searches. Choice-fn takes the searches, and returns the one to refine 
+   (only when both non-goal). other fns tell how to combine summaries and goals."
+    [s1 s2 choice-fn and-summary-fn and-goal-fn]
+    (let [s1-goal (atom nil), s2-goal (atom nil)]
+      (reify :as this SubSearch 
+             (root-node        [] root)      
+             (sub-current-summary  [] (and-summary-fn (or @s1-goal (current-summary s1)) 
+                                                      (or @s2-goal (current-summary s2))))
+             (sub-next-node   [min-reward]
+                              (when (viable-search? this min-reward)
+                                (let [g1 @s1-goal, g2 @s2-goal]
+                                  (if (and g1 g2)
+                                    (do (reset! s1-goal worst-simple-summary)
+                                        (and-goal-fn g1 g2))
+                                    (let [choice (cond g1 s2 g2 s1 :else (choice-fn s1 s2))
+                                          [choice-atom other-sum] 
+                                          (cond (identical? choice s1) [s1-goal (or @s2-goal (current-summary s2))]
+                                                (identical? choice s2) [s2-goal (or @s1-goal (current-summary s1))])]
+                                      (let [nxt (next-goal choice (- min-reward (max-reward other-sum)))]
+                                        (when nxt (reset! choice-atom nxt))
+                                        (recur min-reward)))))))))))
 
 
    

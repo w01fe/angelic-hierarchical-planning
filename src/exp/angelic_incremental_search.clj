@@ -28,78 +28,8 @@
 
 (def #^HashMap *problem-cache* nil)
 
-;;;;;;;;;;;;;;;;;;;;;;;;;;; Angelic Hierarchical State ;;;;;;;;;;;;;;;;;;;;;;;;;
 
-(deftype AngelicHierarchicalState [in-clause plan primitive? reward-bounds out-clause])
-
-(defn make-ahs [in-clause plan reward-bounds out-clause]
-  (AngelicHierarchicalState in-clause plan (every? env/primitive plan) reward-bounds out-clause))
-
-(defn ahs-name [ahs] [(:in-clause ahs) (map env/action-name (:plan ahs))])
-
-(defn make-root-ahs [in-clause action]
-  (let [[out-clause reward-bounds] (hierarchy/next-clause-and-rewards action in-clause)]
-    (make-ahs in-clause [action] reward-bounds out-clause)))
-
-(defn ahs-refinements [ahs]
-  (let [{:keys [in-clause plan primitive? reward-bounds out-clause]} ahs
-        a      (util/safe-singleton plan)]
-    (assert (not (env/primitive? a)))
-    (for [[constraint ref] (hierarchy/immediate-refinements-clause in-clause a)
-          :let             [constrained-clause (hierarchy/restrict-clause in-clause constraint)]
-          :when            constrained-clause]
-      [constraint (make-ahs constrained-clause ref [is/ninf (second reward-bounds)] out-clause)])))
-
-(defn ahs-goal? [ahs] (empty? (:plan ahs)))
-
-(defn split-ahs [ahs]
-  (let [{:keys  [in-clause plan primitive? reward-bounds out-clause]} ahs
-        [f & r] (util/make-safe (seq plan))]
-    
-    (for [[constraint ref] (hierarchy/immediate-refinements-clause in-clause a)
-          :let             [constrained-clause (hierarchy/restrict-clause in-clause constraint)]
-          :when            constrained-clause]
-      [constraint (make-ahs constrained-clause ref [is/ninf (second reward-bounds)] out-clause)]))
-  )
-
-
-
-(defn combine-ahs [n1 n2 state-combiner action-combiner]
-  (AngelicHierarchicalState
-   (state-combiner       (:state n1)   (:state n2))
-   (+                    (:reward n1)  (:reward n2))
-   (into                 (:opt-sol n1) (:opt-sol n2))
-   (action-combiner      (:remaining-actions n1) (:remaining-actions n2))))
-
-(defn ahs-first-sub-name "Name for first abstracted subproblem of ahs" [ahs]
-  (let [{[f] :remaining-actions state :state} ahs]      
-    [(env/extract-context state (env/precondition-context f state)) (env/action-name f)]))
-
-(defn ahs-first-sub "First abstracted subproblem of ahs" [ahs]
-  (let [{[f] :remaining-actions state :state} ahs]
-    (make-root-ahs (env/get-logger state (env/precondition-context f state)) f)))
-
-
-; used for saha only
-(defn first-action-ahs "Return ahs for just first action." [ahs]
-  (let [{:keys [state reward opt-sol remaining-actions]} ahs]
-    (assert (seq remaining-actions)) (assert (zero? reward)) (assert (empty? opt-sol))
-    (AngelicHierarchicalState state 0 nil (take 1 remaining-actions))))
-
-(defn rest-actions-ahs "Return ahs for just first action." [ahs mid-state]
-  (let [{:keys [state reward opt-sol remaining-actions]} ahs]
-    (assert (seq remaining-actions)) (assert (zero? reward)) (assert (empty? opt-sol))
-    (AngelicHierarchicalState mid-state 0 nil (drop 1 remaining-actions))))
-
-(defn join-ahs [first-result rest-result final-state]
-  (combine-ahs first-result rest-result (constantly final-state) (constantly nil)))
-
-(defn ahs-optimistic-map [ahs]
-  (let [{:keys [state remaining-actions]} ahs]
-    (assert (util/singleton? remaining-actions))
-    (env/optimistic-map (first remaining-actions) state)))
-
-;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;; Fancier Nodes ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
+;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;; Angelic Summary ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
 
 (defprotocol PSAHA-Summary
   (min-reward [s])
@@ -121,59 +51,273 @@
    (+ (max-reward s1) (max-reward s2)) 
    (max (max-gap s1) (max-gap s2))))
 
-(deftype SAHA-Node [name goal? ahs] :as this
-  Comparable (compareTo  [x] 
-               (let [c (compare-saha-summaries this x)]
-                 (if (zero? c) (compare (and (instance? exp.incremental_search.Node x) (is/node-goal? x)) goal?) c)))
-  is/Summary (max-reward [] (nth (:reward-bounds ahs) 1))   
-  is/Node    (node-name  [] name)
-             (node-goal? [] goal?)
-  PSAHA-Summary (min-reward []  (nth (:reward-bounds ahs) 0))
-                (max-gap    []  ????))
 
-(defn name-str [x]
-  (let [n (:name x)]
-    (if (symbol? n) n
-        (vec (map #(if (instance? exp.env.FactoredState %) (dissoc (exp.env/as-map %) :const) %) n)))))
+(defn compare-saha-nodes [x1 x2]
+  (let [c (compare-saha-summaries x1 x2)]
+    (if (zero? c)  
+        (compare (and (instance? exp.incremental_search.Node x2) (is/node-goal? x2))
+                 (and (instance? exp.incremental_search.Node x1) (is/node-goal? x1)))
+        c)))
 
-(defmethod print-method ::SimpleNode [x s]
-  (print-method (str "Nd<" (name-str x) "," (:reward x) "," (:goal? x) ">") s))
+;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;; CAC Node ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
 
-;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;; AHS & Nodes ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
+(comment 
+  (defn name-str [x]
+    (let [n (:name x)]
+      (if (symbol? n) n
+          (vec (map #(if (instance? exp.env.FactoredState %) (dissoc (exp.env/as-map %) :const) %) n)))))
 
-(defn ahs->node 
-  ([ahs] (is/SimpleNode (ahs-name ahs) (:reward ahs) (empty? (:remaining-actions ahs)) ahs))
-  ([ahs extra-data] (ahs->simple-node ahs extra-data (empty? (:remaining-actions ahs))))
-  ([ahs extra-data goal?] ; for inverted, needs non-goal goal-looking nodes.
-     (is/SimpleNode (conj (ahs-name ahs) extra-data) (:reward ahs) goal? [ahs extra-data]))
-  ([ahs extra-data goal? rew] ; for saha, needs estimated reward.
-     (is/SimpleNode (conj (ahs-name ahs) extra-data) rew goal? [ahs extra-data])))
+  (defmethod print-method ::SimpleNode [x s]
+    (print-method (str "Nd<" (name-str x) "," (:reward x) "," (:goal? x) ">") s)))
+
+(declare make-cpc-node)
+
+(deftype CAC-Node [name gap in-clause action out-clause reward-bounds] :as this
+  Comparable    (compareTo  [x] (compare-saha-nodes this x))
+  is/Summary    (max-reward [] (nth reward-bounds 1))   
+  is/Node       (node-name  [] name)
+                (node-goal? [] (neg? gap))
+  PSAHA-Summary (min-reward [] (nth reward-bounds 0))
+                (max-gap    [] gap))
+
+(defn make-cac-node [in-clause action out-clause reward-bounds]
+  (CAC-Node
+   [::CAC in-clause (env/action-name action) out-clause]
+   (if (or (env/primitive? action) (not (hierarchy/can-refine? action in-clause)))
+       is/neg-inf
+       (- (nth reward-bounds 1) (nth reward-bounds 0)))
+   in-clause action out-clause reward-bounds))
+
+(defn make-root-cac-node [in-clause action]
+  (let [[out-clause reward-bounds] (hierarchy/next-clause-and-rewards action in-clause)]
+    (make-cac-node in-clause action out-clause reward-bounds)))
+
+(defn cac-node-refinements [cac]
+  (let [{:keys [in-clause action out-clause reward-bounds gap]} cac]
+    (assert (not (neg? gap)))
+    (for [[constraint ref] (hierarchy/immediate-refinements-clause action in-clause)
+          :let             [constrained-clause (hierarchy/restrict-clause in-clause constraint)]
+          :when            constrained-clause]
+      [constraint (make-cpc-node constrained-clause ref out-clause [is/ninf (nth reward-bounds 1)])])))
+
+
+;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;; CPC Node ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
+
+;; TODO: no summary?
+ ; TODO. ..
+
+(deftype CPC-Node [name gap in-clause plan out-clause reward-bounds] :as this
+  Comparable    (compareTo  [x] (compare-saha-nodes this x))
+  is/Summary    (max-reward [] (nth reward-bounds 1))   
+  is/Node       (node-name  [] name)
+                (node-goal? [] (neg? gap))
+  PSAHA-Summary (min-reward [] (nth reward-bounds 0))
+                (max-gap    [] gap))
+
+(defn make-cpc-node [in-clause plan out-clause reward-bounds]
+  (CAC-Node
+   [::CPC in-clause (map env/action-name plan) out-clause]
+   
+   in-clause action out-clause reward-bounds))
 
 
 ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
 ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;; Searches ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
 ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
 
-
 ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;; SAHA ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
 
 ;; Idea is similar to saha-simple.  Two main differences:
 ; 1.  To support clauses, we have to be able to dynamiaclly split.  Eventually, this 
 ;    should be done by dynamicsally wrapping old nodes.  For now, wej ust use caching.
-; 2.  Wince we're only allowing a single output clause per action, we don't need the weird
+; 2.  Since we're only allowing a single output clause per action, we don't need the weird
 ;    inner/outer cache deal.  
+
+; ;Need to add cacpc node.  Initial one comes deterministically from cpc.  
+; Then, recipe for AND-search:
+ ; Simplest recipe: Whenever we get a goal, make a new cpcpc node and start over.
+  ;  This will give big ugly chains for every primitive solution, however.
+  ;  Fix: when we split cpcpc, if either side is primitive, just make wrapped for other.
+   ;  Problem: what if non-refinable but not primitive, e.g.?  
+  ; Note: once we start getting results for one clause-output side, we probably don't want to 
+    ; refine other side again?
+     ;That, or do explicit cross-product of all goals. 
+     ;  Except, goals from first half can't combine with goals from second-half, unless primitive. 
+  ; Note; for each half of cpcpc, we know in advance if it's clause-output or state-output. 
+
+; A main question: what do we do at CAC node when we get refined output clause.
+ ; We get this as ...
+
+; Step back: this looks like:
+
+; CAC has OR-search
+ ; Initially with angelic bound
+ ; Then over refinements, which are CPC=CACPC
+ ; Can return two types of goals:
+  ; CAC' for refined C
+  ; Primitive plan, iff both ends concrete?
+ ; If it gets 
+  ; primitive goal from below, just passes through.
+  ; refined CAC'PC from below, just researchify (CAC' should not be recreated, ideally C'PC is wrapped).
+  ; refined CACPC' from below, 
+   ; Create and return fresh CAC' node?
+   ; Tension:
+   ;   (1) would like this CAC' to have its own existence, for caching sake.
+   ;        but this means other refs are doubly represented
+   ;   (2) right now, only have info for single refinement.  More will follow, as applicable?
+   ;        (sooner or later, depending on how we end up doing AND below)
+   ;        And in this case, we need to be able to add to it.
+   ; Just return CACPC' ? Simple, no duplication, just lose out on CAC' caching.  Can eventaully add inverted-style?
+
+; TODO !!! We need a concrete example here. 
+
+; CPC has AND-search
+ ; Initially over basic decomposition.
+ ; Can return two types of goals:
+  ; CPC' for refined C
+  ; Primitive plan, iff both ends concrete?
+ ; If it gets:
+  ; Primitive goal from below (1), depends on (2)
+  ; Primitive goal form below (2), act like SAHA-simple.
+  ;   (must get primitive goal from (1), or eventually stall?)
+  ; Refined goal from below (1), 
+  ;   Return CAC'PC upwards, stop refining (2) ?
+  ; Retined goal from below (2),
+  ;   Return CACPC' upwards, stop refining (1) ?
+  ; Issue with these: different stopping for different refs may reduce caching.
+
+; Requirement: only get primitive goals for primitive ends (i.e, minimal state abstraction?)
+
+
+;; Seems this is all overly complicated, by including out-clauses in nodes?
+; Can we improve by doing some caching without out-clauses (although searches are always with)?
+;  Seems like red herring.
+
+
+;  Splitting could be explicit decision, rather than automatic thing?
+
+;; So, perhaps answer is to use inverted-style in some places, i.e., for CAC node.
+
+; Yet another alternative: get rid of CPC, everything is CACACACACACAC.
+;   Lose out on caching things like CAC', where C' is specification, looked up directly -- never happen  ???
+; What you lose is: action used in 2 different context.  Once you lift up results, all further refinement of
+; this subproblem can no longer be shared.  
+; If we can keep same decomposition even after we lift...
+ ; may save caching, saving graphiness/decomposibility is harder? 
+ ; unless we do inverted thing!
+ ; Except not really inverted -- more like top-down, but growing bottom-up.
+  ; Meed some sort of consistency guarantee, and we're good. 
+    ; i.e., as we add results, max-reward never increases.  
+ ; Questino about what exactly this can be shared bwetween (what do we need about clause generalizations?)
+
+
+; Also: lose out on state abstraction as such sequences grow. 
+
+
+
+
+;; Take 2:  
+; TODO: watch out for loss of state abstraction as seqs grow ? 
+
+; CAC has OR-search
+ ; Then over refinements, which are CACAC
+ ; Can return two types of goals:
+  ; CACACACAC', for some refinement of A where C' specifizes C
+  ; Primitive plan, iff both ends concrete?
+ ; If it gets 
+  ; primitive goal from below, just passes through.
+  ; refined C*C from below, just researchify 
+  ; refined C*C' from below, return it 
+
+; CAC...C has AND-search
+ ; split off unrefinable portion, or first action?
+ ; Can return two types of goals:
+  ; CAC...C' for refined C
+  ; Primitive plan, iff both ends concrete?
+ ; If it gets:
+  ; Primitive goal from below (1), wait for (2) and glue
+  ; Primitive goal form below (2), wait for (1) then glue
+  ;   (must get primitive goal from (1), or eventually stall?)
+  ; Refined goal from below (1), 
+  ;   Return CAC'PC upwards, stop refining (2) ?
+  ; Retined goal from below (2),
+  ;   Return CACPC' upwards, stop refining (1) ?
+  ; Issue with these: different stopping for different refs may reduce caching.
+
+;  Need an example here.
+
+
+;; Take 3:  (best take)
+;; TODO: note we can't copy searches.  Everything should go through nodes.  This may present a problem?
+
+; Every node is CACACACACAC.  
+
+; CAC has OR-search
+ ; Can be of two types: 
+  ; top-down:
+   ; Initially with angelic bound
+   ; Then over refinements, which are CPC=CACPC
+  ; bottom-up for CAC' (parent CAC part of identity):
+   ; start with nothing, fill with things as we go (respecting consistency, hopefully)
+   ; max-reward also defers to parent CAC, should make sure we don't get too eager.?
+   ;   Except, we can't actually go to parent through this node.
+   ;    Can set gap to neg-inf when we get val through parent
+   ;     But then how do we get informed when things added bottom-up ??
+   ;    So, we're essentially back at same consistency problem?  
+   ;    Solution: just drive parent (*through different cache* until cost increase).
+   ;              (keep only relevant goal nodes).
+   ;    Not beautiful, but solves problems. 
+ ; Can return two types of goals:
+  ; CAC' for refined C, partially populated bottom-up
+  ; Primitive plan, iff both ends concrete?
+ ; If it gets 
+  ; primitive goal from below, just passes through.
+  ; refined CAC'PC from below, just researchify (CAC' should not be recreated, ideally C'PC is wrapped).
+  ; refined CACPC' from below, 
+   ; Create and return fresh CAC' bottom-up node, or add to it if node already exists.
+
+; CPC has AND-search
+ ; Initially over basic decomposition.
+ ; Can return two types of goals:
+  ; CPC' for refined C
+  ; Primitive plan, iff both ends concrete?
+ ; If it gets:
+  ; Primitive goal from below (1), depends on (2)
+  ; Primitive goal form below (2), act like SAHA-simple.
+  ;   (must get primitive goal from (1), or eventually stall?)
+  ; Refined goal from below (1), 
+  ;   Return CAC'PC upwards, stop refining (2) ?
+  ; Retined goal from below (2),
+  ;   Return CACPC' upwards, stop refining (1) ?
+  ; Issue with these: different stopping for different refs may reduce caching.
+; Can possibly tweak/simplify this slightly by returning new node immediately on primitive sol, sub in sol
+ ; Then, nodes have primitive prefix & suffix as well, handled/removed somehow in CAC searchify.  
+
+; Only issue here: CAC children may multiply over intermediate trajectories.
+; Could try to do something fancy.  Better, just factor hierarchy; nothing lost if all refs <= 2 count.
+
+; i.e., CAC is generalized-goal search!1!!!
+
 
 (declare get-saha-cpc-search)
 
-(defn get-saha-cac-search [cac-ahs]
-  (is/get-cached-search *problem-cache* (ahs-name cac-ahs)
-    (is/make-recursive-sr-search
-     (ahs->simple-node cac-ahs)
-     #(map ahs->simple-node (ahs-refinements (:data %)))
-     #(get-saha-cpc-search (:data %)))))
+;; TODO: where do we use opt desc ??  Should we cache nodes as well as searches ? 
+ ; Or cache searches in nodes, or what ? 
+(defn get-saha-cac-search [cac-node]
+  (is/get-cached-search *problem-cache* (node-name cac-node)
+    (is/make-recursive-sr-search cac-node cac-refinements get-saha-cpc-search)))
 
-(defn get-saha-cpc-search [ahs final-state]
-;  (println "\nget-sps" ahs final-state) (Thread/sleep 100)
+(defn get-saha-cpc-search [cpc-node]
+  (is/get-cached-search *problem-cache* (node-name cpc-node)
+    (let [[cac-node rest-cpc-node] (cpc-split cpc-node)]
+      (is/make-and-search cpc-node
+        (get-saha-cac-search cac-node)
+        (get-saha-cpc-search cpc-node)
+        (fn [s1 s2] (if (>= (max-gap s1) (max-gap s2)) s1 s2))
+        add-saha-summaries
+        (fn goal-fn [g1 g2]
+          .....  ; (two cases: new outcome, actual goal)
+          ))))
   (let [r-a (util/make-safe (seq (:remaining-actions ahs)))]
     (if (util/singleton? r-a)
       (get-saha-sas-search ahs final-state)
