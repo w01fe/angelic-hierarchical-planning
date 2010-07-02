@@ -231,6 +231,14 @@
 (defprotocol FactoredEnv
   (goal-map [env]))
 
+(deftype SimpleFactoredEnv [init a-fn g-map]
+  Env 
+   (initial-state [] init)
+   (actions-fn    [] a-fn)
+   (goal-fn       [] #(when (state-matches-map? % g-map) (solution-and-reward %)))
+  FactoredEnv
+   (goal-map [] g-map))
+
 (defn initial-logging-state [env]
   (let [init (initial-state env)]
     (get-logger init (current-context init))))

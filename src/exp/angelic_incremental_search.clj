@@ -299,6 +299,9 @@
 ; i.e., CAC is generalized-goal search!1!!!
 
 
+;; TODO: need gap in refinement criteria ? Otherwise, may refine stupid thing if thing we wanted already refined.
+
+
 (declare get-saha-cpc-search)
 
 ;; TODO: where do we use opt desc ??  Should we cache nodes as well as searches ? 
