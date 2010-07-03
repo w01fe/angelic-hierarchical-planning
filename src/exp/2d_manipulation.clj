@@ -255,9 +255,10 @@
                               (primitive? [] false)
     env/ContextualAction      (precondition-context [s] (reach-context s))
     hierarchy/HighLevelAction (immediate-refinements- [s]
-                                (if (= dst-go (env/get-var s [:gripper-pos]))
+                                (if (= dst-go (env/get-var s [:gripper-offset]))
                                     [[]]
-                                  (for [dir dirs] [(make-gripper-dir s dir) this])))
+                                  (for [dir dirs :let [a (make-gripper-dir s dir)] :when a] 
+                                    [a this])))
                               (cycle-level- [s] 1)))
 ; manhattan, SLD?  range?
 
@@ -270,11 +271,12 @@
   hierarchy/HighLevelAction (immediate-refinements- [s]
                              (let [base (env/get-var s [:base])
                                    opos (env/get-var s [:pos o])]
-                               (for [[dirname dir] dirs]
-                                 (let [gpos (sub-pos opos dir)
-                                       go   (sub-pos gpos base)]
-                                   [(make-reach-hla env go)
-                                    (make-pickup dirname base go o opos)]))))
+                               (for [[dirname dir] dirs
+                                     :let [gpos (sub-pos opos dir)
+                                           go   (sub-pos gpos base)
+                                           a    (make-reach-hla env go)]
+                                     :when a]
+                                 [a (make-pickup dirname base go o opos)])))
                             (cycle-level- [s] nil)))
 ;manhattan
 ;pess: SLD?  
@@ -287,11 +289,12 @@
                               (conj (reach-context s) [:holding]))
   hierarchy/HighLevelAction (immediate-refinements- [s]
                              (let [base (env/get-var s [:base])]
-                               (for [[dirname dir] dirs]
-                                 (let [gpos (sub-pos dst dir)
-                                       go   (sub-pos gpos base)]
-                                   [(make-reach-hla env go)
-                                    (make-putdown dirname base go o dst)]))))
+                               (for [[dirname dir] dirs
+                                     :let [gpos (sub-pos dst dir)
+                                           go   (sub-pos gpos base)
+                                           a    (make-reach-hla env go)]
+                                     :when a]
+                                 [a (make-putdown dirname base go o dst)])))
                             (cycle-level- [s] nil)))
 ;manhattan
 ;pess: SLD?  
@@ -308,7 +311,8 @@
   hierarchy/HighLevelAction (immediate-refinements- [s]
                              (if (= dst (env/get-var s [:base]))
                                [[]]
-                               (for [dir dirs] [(make-base-dir s dir) this])))
+                               (for [dir dirs :let [a (make-base-dir s dir)] :when a]
+                                 [a this])))
                             (cycle-level- [s] 1)))
 ; manhattan
 ; pess? SLD? (try direct line, if occ then -inf).
@@ -322,14 +326,19 @@
                              (let [base (env/get-var s [:base])]
                                (if (= base dst)
                                   [[]]
-                                 [[(ReachHLA env [0 0]) (make-unpark s) 
-                                   (NavHLA dst) (make-park s)]])))
+                                 [[(make-reach-hla env [0 0]) (make-unpark s) 
+                                   (make-nav-hla env dst) (make-park s)]])))
                             (cycle-level- [s] nil)))
 ; manhattan + park (if appl)
 ; pess? SLD?
 
-;; TODO: check out state abstraction here
+(defn move-to-front [x s]
+  (if (some #{x} s)
+      (cons x (remove #{x} s))
+    s))
 
+;; TODO: check out state abstraction here
+;; Note: since we may not sample current position, have to special case.
 (defn make-go-grasp-hla [env o] 
  (reify :as this
   env/Action                (action-name [] [:go-grasp o])
@@ -339,15 +348,18 @@
                                     [:pos o] [:at-goal? o] [:holding]))
   hierarchy/HighLevelAction (immediate-refinements- [s]
                              (let [const (env/get-var s :const)
+                                   base  (env/get-var s [:base])                                   
                                    free  (get const [:freespace])
                                    opos  (env/get-var s [:pos o])]
                                (for [dst (->> (get const [:base-offsets])
                                               (map #(add-pos % opos))
                                               (filter free)
+                                              (move-to-front base)
                                               (take (get const [:n-base-samples])))]
                                  [(make-move-base-hla env dst) (make-grasp-hla env o)])))
                             (cycle-level- [s] nil)))
 
+;; Note: since we may not sample current position, have to special case.
 (defn make-go-drop-at-hla [env o o-dst] 
  (reify :as this
   env/Action                (action-name [] [:go-drop-at o o-dst])
@@ -356,13 +368,16 @@
                               (conj (reach-context s o-dst) [:holding]))
   hierarchy/HighLevelAction (immediate-refinements- [s]
                              (let [const (env/get-var s :const)
+                                   base  (env/get-var s [:base])
                                    free  (get const [:freespace])]
                                (for [dst (->> (get const [:base-offsets])
                                               (map #(add-pos % o-dst))
                                               (filter free)
+                                              (move-to-front base)
                                               (take (get const [:n-base-samples])))]
                                  [(make-move-base-hla env dst) (make-drop-at-hla env o o-dst)])))
                             (cycle-level- [s] nil)))
+
 
 (defn make-go-drop-hla [env o] 
  (reify :as this
@@ -403,7 +418,7 @@
                               (let [remaining (remove #(env/get-var s [:at-goal? %])
                                                (map first (get (env/get-var s :const) [:objects])))]
                                 (if (empty? remaining)
-                                    [[]]
+                                    [[(make-reach-hla env [0 0])]]
                                   (for [o remaining] [(make-move-to-goal-hla env o) this]))))
                             (cycle-level- [s] 2))))
 
