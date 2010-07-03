@@ -33,6 +33,9 @@
 ; can grasp from any direction (gripper next to obj).
 ; For "fairness", only allow putdown in goal region ? 
 
+;; Note: dynamics require that evenn if object is initially in goal region, 
+; you must pick it up and put it down again. 
+
 ; Actions:
 ; unpark, u/d/l/r, park (for base)
 ; gu/gl/gr/gl
@@ -45,6 +48,9 @@
   ([[x1 y1] [x2 y2]] [(+ x1 x2) (+ y1 y2)])
   ([[x1 y1] [x2 y2] [x3 y3]] [(+ x1 x2 x3) (+ y1 y2 y3)]))
 
+(defn sub-pos
+  ([[x1 y1] [x2 y2]] [(- x1 x2) (- y1 y2)]))
+
 (defn region-contains? [[[minx miny] [maxx maxy]] [x y]]
   (and (<= minx x maxx) (<= miny y maxy)))
 
@@ -54,8 +60,8 @@
 (defn make-random [seed]
   (doto (Random. (long seed)) (.nextDouble) (.nextDouble)))
 
-(defn pseudo-shuffle [#^java.util.Collection coll #^Random r]
-  (seq (java.util.Collections/shuffle (java.util.ArrayList. coll) r)))
+(defn pseudo-shuffle [#^Random r #^java.util.Collection coll]
+  (seq (doto (java.util.ArrayList. coll) (java.util.Collections/shuffle r))))
 
 (defn spiral-to [max-d] 
   (cons [0 0] 
@@ -86,7 +92,7 @@
 (defn make-gripper-dir [s [dirname dir]]
   (let [const (env/get-var s :const)
         base  (env/get-var s [:base])
-        go    (env/get-var s [:gripper-offest])
+        go    (env/get-var s [:gripper-offset])
         ngo   (add-pos go dir)
         npos  (add-pos ngo base)]
     (when (contains? (get const [:legal-go]) ngo)
@@ -94,7 +100,7 @@
        [:gripper dirname]
        {[:base] base [:gripper-offset] go [:parked?] true 
         [:object-at npos] nil}
-       {[:gripper-offest] ngo}
+       {[:gripper-offset] ngo}
        -1))))
 
 (defn make-pickup [dirname base go o opos]
@@ -113,6 +119,13 @@
     (when (and o (not (= o :border)))
       (make-pickup dirname base go o opos))))
 
+(defn make-putdown [dirname base go o opos]
+  (env/FactoredPrimitive 
+       [:putdown dirname]
+       {[:base] base [:gripper-offset] go [:parked?] true 
+        [:holding] o [:object-at opos] nil}
+       {[:pos o] opos [:holding] nil [:object-at opos] o [:at-goal? o] true}
+       -1))
 
 (defn make-putdown-dir [s [dirname dir]]
   (let [const (env/get-var s :const)
@@ -121,12 +134,7 @@
         go    (env/get-var s [:gripper-offset])
         opos  (add-pos base go dir)]
     (when (and o (contains? (get const [:goal o]) opos))
-      (env/FactoredPrimitive 
-       [:putdown dirname]
-       {[:base] base [:gripper-offset] go [:parked?] true 
-        [:holding] o [:object-at opos] nil}
-       {[:pos o] opos [:holding] nil [:object-at opos] o [:at-goal? o] true}
-       -1))))
+      (make-putdown dirname base go o opos))))
 
 
 ; obstacles are [[minx miny] [maxx maxy]]
@@ -134,6 +142,7 @@
 ; objects are [name [cx cy] goal-pos-set] -- no goal means static 
 ; g-rad is gripper "radius" -- diamond shaped.
 
+; Note, if you pass unreachable goal positions this will suffer.
 (defn make-2d-manipulation-env 
   ([size base obstacles objects g-rad]
      (make-2d-manipulation-env size base obstacles objects g-rad Integer/MAX_VALUE))
@@ -150,7 +159,7 @@
         legal-go       (set (spiral-to g-rad))]
     (env/SimpleFactoredEnv
      (into {:const (into {[:size] size [:freespace] freespace [:legal-go] legal-go [:objects] objects
-                          [:base-offsets] (pseudo-shuffle (spiral-to (inc g-rad)) random)
+                          [:base-offsets] (pseudo-shuffle random (spiral-to (inc g-rad)) )
                           [:n-base-samples] n-base-samples
                           [:map] (reduce (fn [m [x y]] (assoc-in m [y x] \.))
                                    (reduce (fn [m [x y]] (assoc-in m [y x] \*))
@@ -179,43 +188,38 @@
 ; (print-state (initial-state (make-2d-manipulation-env [10 10] [1 1] [ [ [4 4] [6 6] ] ] [ [:a [5 5] #{ [4 4] } ] ] 2)))
 ; (uniform-cost-search (make-2d-manipulation-env [10 10] [1 1] [ [ [4 4] [6 6] ] ] [ [:a [5 5] #{ [4 4] } ] ] 2))
 
-(comment 
- (defn make-2d-manipulation-env [size start obstacles objects g-rad]
-   (let [[width height] size
-         [bx by]        start
-         border-regions [[[0 0] [0 height]] [[width 0] [width height]]
-                         [[0 0] [width 0]] [[0 height] [width height]]]
-         border-cells   (set (mapcat region-cells border-regions))
-         obstacle-cells (set (mapcat region-cells obstacles))
-         all-cells      (set (region-cells [[0 0] size]))
-         freespace      (clojure.set/difference all-cells border-cells obstacle-cells)
-         legal-go       (set (filter (fn [[x y]] (<= (+ (util/abs x) (util/abs y)) g-rad))
-                                     (region-cells [[(- g-rad) (- g-rad)] [g-rad g-rad]])))]
-     (env/SimpleFactoredEnv
-      (into {:const (into {[:size] size [:freespace] freespace [:legal-go] legal-go [:objects] objects
-                           [:map] (reduce (fn [m [x y]] (assoc-in m [y x] \.))
-                                          (reduce (fn [m [x y]] (assoc-in m [y x] \*))
-                                                  (vec (repeat (inc height) (vec (repeat (inc width) \ ))))
-                                                  border-cells)
-                                          obstacle-cells)}
-                          (for [[o _ goal] objects :when goal] [[:goal o] goal]))
-             [:bx] bx [:by] by [:gxo] 0 [:gyo] 0 [:holding] nil [:parked?] true}
-            (apply concat
-                   (for [[x y] all-cells]     [[:object-at x y] nil])
-                   (for [[x y] border-cells] [[:object-at x y] :border])
-                   (for [[o [ox oy] goal] objects]
-                     [[[:x o] ox] [[:y o] oy] 
-                      [[:at-goal? o] (if goal false true)] 
-                      [[:object-at ox oy] o]])))
-      (fn [s]
-        (filter #(and % (env/applicable? % s))
-                (apply concat
-                       [(make-park s) (make-unpark s)]
-                       (for [dir dirs]
-                         [(make-base-dir s dir) (make-gripper-dir s dir)
-                          (make-pickup-dir s dir) (make-putdown-dir s dir)]))))
-      (into {[:parked?] true [:gxo] 0 [:gyo] 0} 
-            (for [[o _ goal] objects :when goal] [[:at-goal? o] true]))))))
+
+;; Same as above, but objects can have goal regions, we'll sample reachable positions.
+;; TODO: copy pasta is rather verbose, etc.  
+(defn make-2d-manipulation-env-regions 
+  ([size base obstacles objects g-rad n-base-samples n-goal-samples]
+     (make-2d-manipulation-env-regions size base obstacles objects g-rad
+                                       n-base-samples n-goal-samples 1))  
+  ([size base obstacles objects g-rad n-base-samples n-goal-samples seed]
+     (let [[width height] size
+           border-regions [[[0 0] [0 height]] [[width 0] [width height]]
+                           [[0 0] [width 0]] [[0 height] [width height]]]
+           border-cells   (set (mapcat region-cells border-regions))
+           obstacle-cells (set (mapcat region-cells obstacles))
+           all-cells      (set (region-cells [[0 0] size]))
+           freespace      (clojure.set/difference all-cells border-cells obstacle-cells)
+           reach-spiral   (spiral-to (inc g-rad))
+           random         (Random. (long seed))]
+       (make-2d-manipulation-env
+        size base obstacles
+        (for [[oname opos goal] objects]
+          [oname opos
+           (->> goal
+                region-cells
+                (pseudo-shuffle random )
+                (filter (fn [c] (some #(freespace (add-pos c %)) reach-spiral)))
+                (take n-goal-samples)
+                set)])
+        g-rad n-base-samples random))))
+
+; (uniform-cost-search (make-2d-manipulation-env-regions [10 10] [1 1] [ [ [4 4] [6 6] ] ] [ [:a [5 5] [ [4 4] [4 4 ] ] ] ] 2 2 2))
+
+
 
 (defn state-map [s]
   (let [const   (env/get-var s :const)
@@ -238,104 +242,176 @@
 
 
 
-(defn reach-context [s]
-  (into #{[:bx] [:by] [:gxo] [:gyo]}
-        (let [bx (env/get-var s [:bx])
-              by (env/get-var s [:by])]
-          (for [[xo yo] (util/safe-get (env/get-var s :const) [:legal-go])]
-            [:object-at (+ bx xo) (+ by yo)]))))
+(defn reach-context 
+  ([s] (reach-context s (env/get-var s [:base])))
+  ([s base]
+    (into #{[:base] [:gripper-offset]}
+      (for [go (util/safe-get (env/get-var s :const) [:legal-go])]
+        [:object-at (add-pos base go)]))))
 
-(deftype ReachHLA [env dx dy] :as this
-  env/Action                (action-name [] [:reach dx dy])
-                            (primitive? [] false)
-  env/ContextualAction      (precondition-context [s] (reach-context s))
-  hierarchy/HighLevelAction (immediate-refinements- [s]
-                             (if (and (= dx (env/get-var s [:bx])) 
-                                      (= dy (env/get-var s [:by])))
-                               [[]]
-                               (for [dir dirs 
-                                     :let [a (make-gripper-dir s dir)]
-                                     :when (and a (env/applicable? a s))]
-                                 [a this])))
-                            (cycle-level- [s] 1))
+(defn make-reach-hla [env dst-go] 
+  (reify  :as this
+    env/Action                (action-name [] [:reach dst-go])
+                              (primitive? [] false)
+    env/ContextualAction      (precondition-context [s] (reach-context s))
+    hierarchy/HighLevelAction (immediate-refinements- [s]
+                                (if (= dst-go (env/get-var s [:gripper-pos]))
+                                    [[]]
+                                  (for [dir dirs] [(make-gripper-dir s dir) this])))
+                              (cycle-level- [s] 1)))
 ; manhattan, SLD?  range?
 
-(deftype GraspHLA [env o] :as this
+(defn make-grasp-hla [env o] 
+ (reify :as this
   env/Action                (action-name [] [:grasp o])
                             (primitive? [] false)
   env/ContextualAction      (precondition-context [s] 
-                              (conj (reach-context s) [:x o] [:y o] [:at-goal? o] [:holding]))
+                              (conj (reach-context s) [:pos o] [:at-goal? o] [:holding]))
   hierarchy/HighLevelAction (immediate-refinements- [s]
-                             (let [bx (env/get-var s [:bx]), by (env/get-var s [:by])
-                                   ox (env/get-var s [:x o]), oy (env/get-var s [:y o])]
-                               (for [[dirname dx dy] dirs]
-                                 [(ReachHLA env (- ox dx) (- oy dy))
-                                  (make-pickup dirname bx by (- ox dx) (- oy dy) o ox oy)])))
-                            (cycle-level- [s] nil))
+                             (let [base (env/get-var s [:base])
+                                   opos (env/get-var s [:pos o])]
+                               (for [[dirname dir] dirs]
+                                 (let [gpos (sub-pos opos dir)
+                                       go   (sub-pos gpos base)]
+                                   [(make-reach-hla env go)
+                                    (make-pickup dirname base go o opos)]))))
+                            (cycle-level- [s] nil)))
 ;manhattan
 ;pess: SLD?  
 
-
-(deftype DropAtHLA [env o dx dy] :as this
-  env/Action                (action-name [] [:dropat o dx dy])
+(defn make-drop-at-hla [env o dst]
+ (reify :as this
+  env/Action                (action-name [] [:drop-at o dst])
                             (primitive? [] false)
   env/ContextualAction      (precondition-context [s] 
                               (conj (reach-context s) [:holding]))
   hierarchy/HighLevelAction (immediate-refinements- [s]
-                             (let [bx (env/get-var s [:bx]), by (env/get-var s [:by])
-                                   ox (env/get-var s [:x o]), oy (env/get-var s [:y o])]
-                               (for [[dirname dx dy] dirs]
-                                 [(ReachHLA env (- ox dx) (- oy dy))
-                                  (make-pickup dirname bx by (- ox dx) (- oy dy) o ox oy)])))
-                            (cycle-level- [s] nil))
+                             (let [base (env/get-var s [:base])]
+                               (for [[dirname dir] dirs]
+                                 (let [gpos (sub-pos dst dir)
+                                       go   (sub-pos gpos base)]
+                                   [(make-reach-hla env go)
+                                    (make-putdown dirname base go o dst)]))))
+                            (cycle-level- [s] nil)))
 ;manhattan
 ;pess: SLD?  
-
-
-
 
 
 
 
 ;; TODO: should nav be done by external alg, (fairest between angelic/not) or explicit? 
-(deftype NavHLA [env dx dy] :as this
-  env/Action                (action-name [] [:nav dx dy])
+(defn make-nav-hla [env dst] 
+ (reify :as this
+  env/Action                (action-name [] [:nav dst])
                             (primitive? [] false)
-  env/ContextualAction      (precondition-context [s] #{[:bx] [:by]})
+  env/ContextualAction      (precondition-context [s] #{[:base]})
   hierarchy/HighLevelAction (immediate-refinements- [s]
-                             (if (and (= dx (env/get-var s [:bx])) 
-                                      (= dy (env/get-var s [:by])))
+                             (if (= dst (env/get-var s [:base]))
                                [[]]
-                               (for [dir dirs 
-                                     :let [a (make-base-dir s dir)]
-                                     :when (and a (env/applicable? a s))]
-                                 [a this])))
-                            (cycle-level- [s] 1))
+                               (for [dir dirs] [(make-base-dir s dir) this])))
+                            (cycle-level- [s] 1)))
 ; manhattan
 ; pess? SLD? (try direct line, if occ then -inf).
 
-(deftype MoveBaseHLA [env dx dy] :as this
-  env/Action                (action-name [] [:movebase dx dy])
+(defn make-move-base-hla [env dst]
+ (reify  :as this
+  env/Action                (action-name [] [:move-base dst])
                             (primitive? [] false)
-  env/ContextualAction      (precondition-context [s] #{[:bx] [:by] [:parked?] [:gxo] [:gyo]})
+  env/ContextualAction      (precondition-context [s] #{[:base] [:parked?] [:gripper-offset]})
   hierarchy/HighLevelAction (immediate-refinements- [s]
-                             (let [bx (env/get-var s [:bx]), by (env/get-var s [:by])]
-                               (if (and (= dx bx) (= dy by))
+                             (let [base (env/get-var s [:base])]
+                               (if (= base dst)
                                   [[]]
-                                 [[(ReachHLA env bx by) (make-unpark s) 
-                                   (NavHLA dx dy) (make-park s)]])))
-                            (cycle-level- [s] nil))
+                                 [[(ReachHLA env [0 0]) (make-unpark s) 
+                                   (NavHLA dst) (make-park s)]])))
+                            (cycle-level- [s] nil)))
 ; manhattan + park (if appl)
 ; pess? SLD?
 
+;; TODO: check out state abstraction here
+
+(defn make-go-grasp-hla [env o] 
+ (reify :as this
+  env/Action                (action-name [] [:go-grasp o])
+                            (primitive? [] false)
+  env/ContextualAction      (precondition-context [s] 
+                              (conj (reach-context s (env/get-var s [:pos o])) 
+                                    [:pos o] [:at-goal? o] [:holding]))
+  hierarchy/HighLevelAction (immediate-refinements- [s]
+                             (let [const (env/get-var s :const)
+                                   free  (get const [:freespace])
+                                   opos  (env/get-var s [:pos o])]
+                               (for [dst (->> (get const [:base-offsets])
+                                              (map #(add-pos % opos))
+                                              (filter free)
+                                              (take (get const [:n-base-samples])))]
+                                 [(make-move-base-hla env dst) (make-grasp-hla env o)])))
+                            (cycle-level- [s] nil)))
+
+(defn make-go-drop-at-hla [env o o-dst] 
+ (reify :as this
+  env/Action                (action-name [] [:go-drop-at o o-dst])
+                            (primitive? [] false)
+  env/ContextualAction      (precondition-context [s]
+                              (conj (reach-context s o-dst) [:holding]))
+  hierarchy/HighLevelAction (immediate-refinements- [s]
+                             (let [const (env/get-var s :const)
+                                   free  (get const [:freespace])]
+                               (for [dst (->> (get const [:base-offsets])
+                                              (map #(add-pos % o-dst))
+                                              (filter free)
+                                              (take (get const [:n-base-samples])))]
+                                 [(make-move-base-hla env dst) (make-drop-at-hla env o o-dst)])))
+                            (cycle-level- [s] nil)))
+
+(defn make-go-drop-hla [env o] 
+ (reify :as this
+  env/Action                (action-name [] [:go-drop o])
+                            (primitive? [] false)
+  env/ContextualAction      (precondition-context [s] 
+                              (conj (apply clojure.set/union 
+                                     (map #(reach-context s %) 
+                                          (get (env/get-var s :const) [:goal o]))) 
+                                    [:holding]))
+  hierarchy/HighLevelAction (immediate-refinements- [s]
+                             (for [o-dst (get (env/get-var s :const) [:goal o])]
+                               [(make-go-drop-at-hla env o o-dst)]))
+                            (cycle-level- [s] nil)))
+
+(defn make-move-to-goal-hla [env o] 
+ (reify :as this
+  env/Action                (action-name [] [:go-drop o])
+                            (primitive? [] false)
+  env/ContextualAction      (precondition-context [s] 
+                              (conj (apply clojure.set/union 
+                                     (map #(reach-context s %) 
+                                          (cons (env/get-var s [:pos o])
+                                                (get (env/get-var s :const) [:goal o])))) 
+                                    [:holding]))
+  hierarchy/HighLevelAction (immediate-refinements- [s]
+                              [[(make-go-grasp-hla env o) (make-go-drop-hla env o)]])
+                            (cycle-level- [s] nil)))
+
+;; TODO: can do better on context -- probably rarely matters?
+(defn- make-tla [env]
+ (let [context (util/keyset (dissoc (env/initial-state env) :const))]
+ (reify :as this
+  env/Action                (action-name [] [:act])
+                            (primitive? [] false)
+  env/ContextualAction      (precondition-context [s] context)
+  hierarchy/HighLevelAction (immediate-refinements- [s]
+                              (let [remaining (remove #(env/get-var s [:at-goal? %])
+                                               (map first (get (env/get-var s :const) [:objects])))]
+                                (if (empty? remaining)
+                                    [[]]
+                                  (for [o remaining] [(make-move-to-goal-hla env o) this]))))
+                            (cycle-level- [s] 2))))
+
+(defn make-2d-manipulation-hierarchy [env]
+  (hierarchy/SimpleHierarchicalEnv env [(make-tla env)]))
 
 
 
-; DropFrom
-; Drop
-; GoGrasp
-; GoDropAt
-; GoDrop
 ; MoveToGoal
 ; Act
 
