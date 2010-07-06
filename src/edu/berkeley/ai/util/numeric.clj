@@ -26,3 +26,8 @@
 (defn counter-from [x]
   (let [c (sref (dec x))]
      #(sref-up! c inc)))
+
+(defn signum [x]
+  (cond (< x 0) -1
+        (> x 0) 1
+        :else   0))
