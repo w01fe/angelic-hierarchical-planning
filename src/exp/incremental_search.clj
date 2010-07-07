@@ -68,6 +68,12 @@
 
 (def worst-simple-summary (SimpleSummary neg-inf))
 
+(def failed-search
+     (reify IncrementalSearch
+            (root-node [] (throw (RuntimeException.)))
+            (current-summary [] worst-simple-summary)
+            (next-goal [mr] (throw (RuntimeException.)))))
+
 
 (deftype SimpleNode [name reward goal? data]
   Comparable (compareTo  [x] 

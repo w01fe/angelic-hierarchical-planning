@@ -254,8 +254,16 @@
                                    (hfs->simple-node n ss)))
                          #(apply get-saha-sps-search (:data %))))])))))))
 
+;; TODO: put back error.
+;(def *bad-args* nil)
 (defn get-saha-sas-search [hfs final-state] 
-  (((get-sas-map hfs) final-state)))
+#_  (let [f ((get-sas-map hfs) final-state)]
+    (when-not f (def *bad-args* [hfs final-state])
+              (println "Got bad final-state: " hfs final-state))
+    (f))
+  (if-let [f ((get-sas-map hfs) final-state)]
+    (f)
+    is/failed-search))
 
 
 ;; TODO: remove expensive names.
@@ -336,3 +344,9 @@
     (time (println "ucs" (run-counted #(second (uniform-cost-search e)))))
     (doseq [alg `[sahucs-flat sahucs-fast-flat exp.sahucs-simple/sahucs-simple sahucs-simple exp.sahucs-simple-dijkstra/sahucs-simple-dijkstra sahucs-dijkstra exp.sahucs-inverted/sahucs-inverted sahucs-inverted exp.saha-simple/saha-simple saha-simple ]]
       (time (println alg (run-counted #(debug 0 (second ((resolve alg) h)))))))))
+
+(comment
+ (let [e (exp.taxi/make-random-taxi-env 5 5 5 3) _ (println e) h (exp.taxi/simple-taxi-hierarchy e)]  
+   (time (println "ucs" (run-counted #(second (uniform-cost-search e)))))
+   (doseq [alg `[saha-simple ]]
+     (time (println alg (run-counted #(debug 0 (second ((resolve alg) h)))))))))

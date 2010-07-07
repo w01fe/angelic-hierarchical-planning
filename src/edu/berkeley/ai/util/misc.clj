@@ -72,7 +72,7 @@
 	    v  (double v)]
 ;	(assert-is (= (Double/NEGATIVE_INFINITY) (aget arr i1 i2)))
 	(aset-double2 arr i1 i2 v)))
- ;  (println (map seq (seq arr)))
+;    (println (map seq (seq arr)))    
     (maximum-matching arr)
     )))
       

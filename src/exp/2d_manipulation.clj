@@ -243,7 +243,8 @@
             (concat 
              [[(add-pos base go) \G]
               [base              \B]]
-             (for [[o] (get const [:objects])]
+             (for [[o] (get const [:objects])
+                   :when (env/get-var s [:pos o])]
                [(env/get-var s [:pos o]) (first (name o))])))))
 
 (defn state-str [s]
@@ -275,11 +276,11 @@
       (and (can-directly-nav-dir? free-fn l1 [x2 y1] [-1 0])
            (can-directly-nav-dir? free-fn [x2 y1] l2 [0 (util/signum (- y2 y1))]))))
 
-(defn can-reach-from? [const base dst-go]
-  (and (contains? (const [:legal-go]) dst-go)
-       (contains? (const [:freespace]) (add-pos dst-go base))))
+(defn can-reach-from? [const dst-go] (contains? (const [:legal-go]) dst-go))
 
-(defn can-reach? [s dst-go] (can-reach-from? (env/get-var s :const) (env/get-var s [:base]) dst-go))
+(defn can-reach? [s dst-go] 
+  (and (can-reach-from? (env/get-var s :const) dst-go)
+       (not (env/get-var s [:object-at (add-pos (env/get-var s [:base]) dst-go)]))))
 
 (defn can-span? [const l1 l2]
   (<= (manhattan-distance l1 l2)
@@ -315,7 +316,7 @@
 (defn possible-grasp-gos [const base pos]
   (for [[dirname dir] dirs
         :let [go (sub-pos (sub-pos pos dir) base)]
-        :when (can-reach-from? const base go)]
+        :when (can-reach-from? const go)]
       go))
 
 ;; TODO: slack? pess? 
@@ -331,7 +332,7 @@
                                (for [[dirname dir] dirs
                                      :let [gpos (sub-pos opos dir)
                                            go   (sub-pos gpos base)
-                                           a    (make-reach-hla env go)]
+                                           a    (make-reach-hla env s go)]
                                      :when a]
                                  [a (make-pickup dirname base go o opos)])))
                             (cycle-level- [s] nil)
@@ -366,9 +367,9 @@
                                (for [[dirname dir] dirs
                                      :let [gpos (sub-pos dst dir)
                                            go   (sub-pos gpos base)
-                                           a    (make-reach-hla env go)]
+                                           a    (make-reach-hla env s go)]
                                      :when a]
-                                 [a (make-putdown dirname base go o dst) (make-reach-hla env [0 0])])))
+                                 [a (make-putdown dirname base go o dst) (make-reach-hla env s [0 0])])))
                             (cycle-level- [s] nil)
   env/AngelicAction         (optimistic-map [s]
                               {(env/set-vars s [[[:gripper-offset] [0 0]]
@@ -435,11 +436,11 @@
                              (let [base (env/get-var s [:base])]
                                (if (= base dst)
                                   [[]]
-                                 [[(make-reach-hla env [0 0]) (make-unpark s) 
+                                 [[(make-reach-hla env s [0 0]) (make-unpark s) 
                                    (make-nav-hla env dst) (make-park s)]])))
                             (cycle-level- [s] nil)
   env/AngelicAction         (optimistic-map [s]
-                               {(env/set-vars s [[[:base] dst] [[:gripper-offest] [0 0]]])
+                               {(env/set-vars s [[[:base] dst] [[:gripper-offset] [0 0]]])
                                 (move-base-reward (env/get-var s [:base]) dst (env/get-var s [:gripper-offset]))})
                             (pessimistic-map [s] {})))
 
@@ -584,7 +585,7 @@
         [:holding]))
 
 (defn move-to-goal-opt [s o]
-  (assert (= (env/get-var s [:gripper-offest]) [0 0]))
+  (assert (= (env/get-var s [:gripper-offset]) [0 0]))
   (let [const (env/get-var s :const)
         base (env/get-var s [:base])
         o-pos (env/get-var s [:pos o])]
@@ -688,7 +689,7 @@
   hierarchy/HighLevelAction (immediate-refinements- [s]
                               (let [remaining (remaining-objects s)]
                                 (if (empty? remaining)
-                                    [[(make-reach-hla env [0 0]) (env/make-finish-action env)]]
+                                    [[(env/make-finish-action env)]]
                                   (for [o remaining] [(make-move-to-goal-hla env o) this]))))
                             (cycle-level- [s] 2)
  env/AngelicAction         (optimistic-map [s]
@@ -696,9 +697,10 @@
                               (let [objects (remaining-objects s), 
                                     s1 (set (cons :start objects)), 
                                     s2 (set (cons :finish objects))]
-                                (util/maximum-matching s1 s2 
-                                  (concat (for [o objects] [:start o (start-reward s o)])
-                                          (filter (fn [[n1 n2]] (and (s1 n1) (s2 n2))) match-edges))))})
+                                (if (empty? objects ) 0
+                                    (util/maximum-matching s1 s2 
+                                     (concat (for [o objects] [:start o (start-reward s o)])
+                                             (filter (fn [[n1 n2]] (and (s1 n1) (s2 n2))) match-edges)))))})
                            (pessimistic-map [s] {}))))
 
 (defn make-2d-manipulation-hierarchy [env]
@@ -714,3 +716,6 @@
 ; (let [e (make-2d-manipulation-env-regions [10 10] [1 1] [ [ [4 4] [7 7] ] ] [ [:a [5 5] [ [4 4] [4 4 ] ] ] ] 1 2 2 1) h (make-2d-manipulation-hierarchy e)] (println (time (run-counted #(uniform-cost-search e)))) (println (time (run-counted #(sahucs-flat h)))))
 
 ; (let [e (make-2d-manipulation-env-regions [20 20] [1 1] [[[4 4] [7 7]] [[4 14] [7 17]] [[14 4] [17 7]] [[14 14] [17 17]]]  [[:a [5 5] [[14 4] [17 7]]] [:b [15 5] [[14 14] [17 17]]] [:c [15 15] [[4 14] [7 17]]] [:d [5 15] [[4 4] [7 7]]]] 1 2 2 1) h (make-2d-manipulation-hierarchy e)] (println (time (run-counted #(uniform-cost-search e)))) (println (time (run-counted #(sahucs-flat h)))) (println (time (run-counted #(sahucs-inverted h)))))
+
+
+; (let [e (make-2d-manipulation-env-regions [10 10] [1 1] [ [ [4 4] [7 7] ] ] [ [:a [5 5] [ [4 4] [4 4 ] ] ] ] 1 2 2 1) h (make-2d-manipulation-hierarchy e)] (println (time (run-counted #(uniform-cost-search e)))) (println (time (run-counted #(saha-simple h)))))
