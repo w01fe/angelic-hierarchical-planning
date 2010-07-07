@@ -398,13 +398,15 @@
 (defn daha-simple [henv] (hierarchical-search henv make-saha-search false first))
 
 (def aaai-algs
-     [["hu" hu]
-      ["dhu" dhu]
-      ["dshu" dshu]
-      ["dshu-d" dshu-dijkstra]
-      ["aha" aha-simple]
-      ["daha" daha-simple]
-      ["dasha" dasha-simple]])
+     [["HU" hu]
+      ["DHU" dhu]
+      ["DSHU" dshu]
+      ["DSHU-d" dshu-dijkstra]
+      ["AHA" aha-simple]
+      ["DAHA" daha-simple]
+      ["DASHA" dasha-simple]])
+
+(def aaai-alg-map (into {} aaai-algs))
 
 (comment ;old names
  (defn sahucs-fast-flat [henv]
