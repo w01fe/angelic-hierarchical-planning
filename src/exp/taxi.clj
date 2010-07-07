@@ -106,13 +106,13 @@
                                      :when a]
                                  [a this])))
                             (cycle-level- [s] 1)
-  env/AngelicAction         (optimistic-map [s]
+  env/AngelicAction         (optimistic-map- [s]
                               (let [cx (env/get-var s ['atx])
                                     cy (env/get-var s ['aty])]
                                 {(env/set-var (env/set-var s ['atx] dx) ['aty] dy)
                                  (- 0 (util/abs (- dx cx)) (util/abs (- dy cy)))}))
-                            (pessimistic-map [s] 
-                              (env/optimistic-map this s)))
+                            (pessimistic-map-[s] 
+                              (env/optimistic-map- this s)))
 
 (deftype GGNavHLA [env] :as this
   env/Action                (action-name [] '[nav])
@@ -142,7 +142,7 @@
                                (util/assert-is (and pu pd))
                                [[(NavHLA env sx sy) pu (NavHLA env dx dy) pd]]))
                             (cycle-level- [s] nil)
-  env/AngelicAction         (optimistic-map [s]
+  env/AngelicAction         (optimistic-map- [s]
                               (let [const (env/get-var s :const)
                                     [cx cy] (map #(env/get-var s [%]) '[atx aty])
                                     [sx sy dx dy] (map #(get const [% pass]) '[srcx srcy dstx dsty])]
@@ -150,8 +150,8 @@
                                  (- -2 
                                     (util/abs (- sx cx)) (util/abs (- sy cy))
                                     (util/abs (- sx dx)) (util/abs (- sy dy)))}))
-                            (pessimistic-map [s] 
-                              (env/optimistic-map this s)))
+                            (pessimistic-map-[s] 
+                              (env/optimistic-map- this s)))
 
 (defn taxi-hungarian-heuristic [env s] "destination-to-destination."
   (let [[cx cy] (map #(env/get-var s [%]) '[atx aty])
@@ -185,10 +185,10 @@
                                   (for [pass remaining-passengers]
                                     [(ServeHLA env pass) this]))))
                             (cycle-level- [s] nil)
-  env/AngelicAction         (optimistic-map [s]
+  env/AngelicAction         (optimistic-map- [s]
                               {(env/set-vars s (env/make-finish-goal-state env))
                                (taxi-hungarian-heuristic env s)})
-                            (pessimistic-map [s] {}))
+                            (pessimistic-map-[s] {}))
 
 (defn make-taxi-tla [env]
   (TaxiTLA env (util/keyset (dissoc (env/initial-state env) :const))))

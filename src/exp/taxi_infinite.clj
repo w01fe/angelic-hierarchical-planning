@@ -110,13 +110,13 @@
                                      :when a]
                                  [a this])))
                             (cycle-level- [s] 1)
-  env/AngelicAction         (optimistic-map [s]
+  env/AngelicAction         (optimistic-map- [s]
                               (let [cx (env/get-var s ['atx])
                                     cy (env/get-var s ['aty])]
                                 {(env/set-var (env/set-var s ['atx] dx) ['aty] dy)
                                  (- 0 (util/abs (- dx cx)) (util/abs (- dy cy)))}))
-                            (pessimistic-map [s] 
-                              (env/optimistic-map this s)))
+                            (pessimistic-map-[s] 
+                              (env/optimistic-map- this s)))
 
 (deftype InfiniteTaxiTLA [env context]      :as this
   env/Action                (action-name [] ['top])
@@ -133,9 +133,9 @@
           [[(NavHLA env width height) (env/make-finish-action env)]])
         (map #(conj (vec %1) this) all-nxt))))
    (cycle-level- [s] nil)
-  env/AngelicAction         (optimistic-map [s]
+  env/AngelicAction         (optimistic-map- [s]
                               {(env/set-vars s (env/make-finish-goal-state env))})
-                            (pessimistic-map [s] {}))
+                            (pessimistic-map-[s] {}))
 
 (defn make-infinite-taxi-tla [env]
   (InfiniteTaxiTLA env (util/keyset (dissoc (env/initial-state env) :const))))

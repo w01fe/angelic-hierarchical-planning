@@ -142,9 +142,18 @@
   (precondition-context [a s]))
 
 ;; TODO: better to have single map from state to range ?
+(def *optimistic-counter* (util/sref 0))
+(def *pessimistic-counter* (util/sref 0))
 (defprotocol AngelicAction
-  (optimistic-map [a s])
-  (pessimistic-map [a s]))
+  (optimistic-map- [a s])
+  (pessimistic-map- [a s]))
+
+(defn optimistic-map [a s]
+  (util/sref-set! *optimistic-counter* (inc (util/sref-get *optimistic-counter*)))
+  (optimistic-map- a s))
+(defn pessimistic-map [a s]
+  (util/sref-set! *pessimistic-counter* (inc (util/sref-get *pessimistic-counter*)))
+  (pessimistic-map- a s))
 
 (deftype FactoredPrimitive [name precond-map effect-map reward] :as this
   Action 
@@ -159,11 +168,11 @@
     (precondition-context [s]
       (.keySet #^Map precond-map))
   AngelicAction
-    (optimistic-map [s]
+    (optimistic-map- [s]
       (if (applicable? this s) 
         (let [[s r] (next-state-and-reward this s)] {s r}) 
         {}))
-    (pessimistic-map [s]
+    (pessimistic-map- [s]
       (if (applicable? this s) 
         (let [[s r] (next-state-and-reward this s)] {s r}) 
         {})))

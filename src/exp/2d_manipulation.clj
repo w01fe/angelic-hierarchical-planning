@@ -300,10 +300,10 @@
                                   (for [dir dirs :let [a (make-gripper-dir s dir)] :when a] 
                                     [a this])))
                               (cycle-level- [s] 1)
-    env/AngelicAction         (optimistic-map [s]
+    env/AngelicAction         (optimistic-map-[s]
                                 {(env/set-var s [:gripper-offset] dst-go)
                                  (move-gripper-reward (env/get-var s [:gripper-offset]) dst-go)})
-                              (pessimistic-map [s]
+                              (pessimistic-map- [s]
                                 (let [base (env/get-var s [:base])
                                       go   (env/get-var s [:gripper-offset])]
                                   (if (can-directly-nav? 
@@ -336,7 +336,7 @@
                                      :when a]
                                  [a (make-pickup dirname base go o opos)])))
                             (cycle-level- [s] nil)
-  env/AngelicAction         (optimistic-map [s]
+  env/AngelicAction         (optimistic-map-[s]
                               (let [opos (env/get-var s [:pos o])]
                                 (into {}
                                  (for [go (possible-grasp-gos (env/get-var s :const) (env/get-var s [:base]) opos)]
@@ -345,7 +345,7 @@
                                                      [[:object-at opos] nil]])
                                     (+ pickup-reward
                                        (move-gripper-reward (env/get-var s [:gripper-offset]) go))]))))
-                            (pessimistic-map [s] {})))
+                            (pessimistic-map- [s] {})))
 
 (defn drop-reward [base init-go o-dst]
   (let [rel-o-dst (sub-pos o-dst base)]
@@ -371,13 +371,13 @@
                                      :when a]
                                  [a (make-putdown dirname base go o dst) (make-reach-hla env s [0 0])])))
                             (cycle-level- [s] nil)
-  env/AngelicAction         (optimistic-map [s]
+  env/AngelicAction         (optimistic-map-[s]
                               {(env/set-vars s [[[:gripper-offset] [0 0]]
                                                 [[:pos o] dst] [[:holding] nil]
                                                 [[:object-at dst] o] [[:at-goal? o] true]])
                                (drop-reward (env/get-var s [:base])
                                             (env/get-var s [:gripper-offset]) dst )})
-                            (pessimistic-map [s] {})))
+                            (pessimistic-map- [s] {})))
 
 ; Old version -- not forced back to origin.
 ;                                (into {}
@@ -406,10 +406,10 @@
                                (for [dir dirs :let [a (make-base-dir s dir)] :when a]
                                  [a this])))
                             (cycle-level- [s] 1)
-  env/AngelicAction         (optimistic-map [s]
+  env/AngelicAction         (optimistic-map-[s]
                               {(env/set-var s [:base] dst)
                                (nav-reward (env/get-var s [:base]) dst)})
-                            (pessimistic-map [s]
+                            (pessimistic-map- [s]
                               (let [cbase (env/get-var s [:base])]
                                 (if (can-directly-nav?
                                      (let [fs ((env/get-var s :const) [:freespace])]
@@ -439,13 +439,13 @@
                                  [[(make-reach-hla env s [0 0]) (make-unpark s) 
                                    (make-nav-hla env dst) (make-park s)]])))
                             (cycle-level- [s] nil)
-  env/AngelicAction         (optimistic-map [s]
+  env/AngelicAction         (optimistic-map-[s]
                               (let [base (env/get-var s [:base])]
                                 (if (= base dst)
                                     {s 0}
                                   {(env/set-vars s [[[:base] dst] [[:gripper-offset] [0 0]]])
                                 (move-base-reward (env/get-var s [:base]) dst (env/get-var s [:gripper-offset]))})))
-                            (pessimistic-map [s] {})))
+                            (pessimistic-map- [s] {})))
 
 ;                              (let [base (env/get-var s [:base])
 ;                                    fs ((env/get-var s :const) [:freespace])]
@@ -498,7 +498,7 @@
                              (for [dst (possible-grasp-base-pos s (env/get-var s [:pos o]))]
                                [(make-move-base-hla env dst) (make-grasp-hla env o)]))
                             (cycle-level- [s] nil)
-  env/AngelicAction         (optimistic-map [s]
+  env/AngelicAction         (optimistic-map-[s]
                               (let [base (env/get-var s [:base])
                                     opos (env/get-var s [:pos o])]
                                (into {}
@@ -513,7 +513,7 @@
                                        (if (= base dst) (env/get-var s [:gripper-offset]) [0 0])
                                        go)
                                       pickup-reward)]))))
-                            (pessimistic-map [s] {})))
+                            (pessimistic-map- [s] {})))
 
 ; old version -- not forced back to origin after drop.
 ;(defn go-drop-at-opt [s o o-dst]
@@ -556,8 +556,8 @@
                               (for [dst (possible-grasp-base-pos s o-dst)]
                                 [(make-move-base-hla env dst) (make-drop-at-hla env o o-dst)]))
                             (cycle-level- [s] nil)
-  env/AngelicAction         (optimistic-map [s] (go-drop-at-opt s o o-dst))
-                            (pessimistic-map [s] {})))
+  env/AngelicAction         (optimistic-map-[s] (go-drop-at-opt s o o-dst))
+                            (pessimistic-map- [s] {})))
 
 
 (defn make-go-drop-hla [env o] 
@@ -573,11 +573,11 @@
                              (for [o-dst (get (env/get-var s :const) [:goal o])]
                                [(make-go-drop-at-hla env o o-dst)]))
                             (cycle-level- [s] nil)
-  env/AngelicAction         (optimistic-map [s]
+  env/AngelicAction         (optimistic-map-[s]
                               (reduce util/merge-disjoint
                                      (map #(go-drop-at-opt s o %)
                                           (get (env/get-var s :const) [:goal o]))))
-                            (pessimistic-map [s] {})))
+                            (pessimistic-map- [s] {})))
 
 
 (defn move-to-goal-context [s o]
@@ -588,7 +588,7 @@
         [:holding]))
 
 (defn move-to-goal-opt [s o]
-  (println "\n\n")
+;  (println "\n\n")
   (assert (= (env/get-var s [:gripper-offset]) [0 0]))
   (let [const (env/get-var s :const)
         base (env/get-var s [:base])
@@ -600,23 +600,24 @@
                            b-dst (possible-grasp-base-pos const b-med o-dst)
                            :let [rel-src (sub-pos o-pos b-med)
                                  rel-dst (sub-pos o-dst b-dst)
-                                 _ (println o-dst base b-med b-dst rel-src rel-dst)]
+                                        ;_ (println o-dst base b-med b-dst rel-src rel-dst)
+                                 ]
                            ]
                        {(env/set-vars s [[[:base] b-dst] [[:pos o] o-dst] 
                                          [[:object-at o-pos] nil] [[:object-at o-dst] o]
                                          [[:at-goal? o] true]])
-                        (util/prln (+ (move-base-reward base b-med [0 0])
-                                      (move-base-reward b-med b-dst [0 0])
-                                      pickup-reward putdown-reward
-                                      (if (= b-med b-dst)
-                                        (min 0 (+ (move-gripper-reward [0 0] rel-src)
-                                                  (move-gripper-reward rel-src rel-dst)
-                                                  (move-gripper-reward rel-dst [0 0])
-                                                  (* -4 move-gripper-step-reward)))
-                                        (+ (min 0 (+ (* 2 (move-gripper-reward [0 0] rel-src))
-                                                     (* -2 move-gripper-step-reward)))
-                                           (min 0 (+ (* 2 (move-gripper-reward [0 0] rel-dst))
-                                                     (* -2 move-gripper-step-reward)))))))}))))))
+                        (+ (move-base-reward base b-med [0 0])
+                           (move-base-reward b-med b-dst [0 0])
+                           pickup-reward putdown-reward
+                           (if (= b-med b-dst)
+                             (min 0 (+ (move-gripper-reward [0 0] rel-src)
+                                       (move-gripper-reward rel-src rel-dst)
+                                       (move-gripper-reward rel-dst [0 0])
+                                       (* -4 move-gripper-step-reward)))
+                             (+ (min 0 (+ (* 2 (move-gripper-reward [0 0] rel-src))
+                                          (* -2 move-gripper-step-reward)))
+                                (min 0 (+ (* 2 (move-gripper-reward [0 0] rel-dst))
+                                          (* -2 move-gripper-step-reward))))))}))))))
 
 ;; TODO: cache as much as this as we can ?
 (defn make-move-to-goal-hla [env o] 
@@ -627,8 +628,8 @@
   hierarchy/HighLevelAction (immediate-refinements- [s]
                               [[(make-go-grasp-hla env o) (make-go-drop-hla env o)]])
                             (cycle-level- [s] nil)
-  env/AngelicAction         (optimistic-map [s] #_ (println (util/map-keys state-str (move-to-goal-opt s o))) (move-to-goal-opt s o))
-                            (pessimistic-map [s] {})))
+  env/AngelicAction         (optimistic-map-[s] #_ (println (util/map-keys state-str (move-to-goal-opt s o))) (move-to-goal-opt s o))
+                            (pessimistic-map- [s] {})))
 
 (defn remaining-objects [s] 
   (remove #(env/get-var s [:at-goal? %])
@@ -701,7 +702,7 @@
                                     [[(env/make-finish-action env)]]
                                   (for [o remaining] [(make-move-to-goal-hla env o) this]))))
                             (cycle-level- [s] 2)
- env/AngelicAction         (optimistic-map [s]
+ env/AngelicAction         (optimistic-map-[s]
                              {(env/set-vars s finish)
                               (let [objects (remaining-objects s), 
                                     s1 (set (cons :start objects)), 
@@ -710,7 +711,7 @@
                                     (util/maximum-matching s1 s2 
                                       (concat (for [o objects] [:start o (+ (object-rewards o) (start-reward s o))])
                                               (filter (fn [[n1 n2]] (and (s1 n1) (s2 n2))) match-edges)))))})
-                           (pessimistic-map [s] {}))))
+                           (pessimistic-map- [s] {}))))
 
 (defn make-2d-manipulation-hierarchy [env]
   (hierarchy/SimpleHierarchicalEnv env [(make-tla env)]))
@@ -740,6 +741,10 @@
 
 
 
-;; Trying to fix consistency
+
 
 ;  (let [e (make-2d-manipulation-env-regions [7 4] [1 1] [[[2 2] [3 3]] [[5 2] [6 3]] ]  [[:a [2 2] [[5 2] [6 3]]] [:b [5 2] [[2 2] [3 3]]]] 1 2 2 1) h (make-2d-manipulation-hierarchy e)]  (println (time (run-counted #(saha-simple h)))) (println (time (run-counted #(aha-star-simple h)))))
+
+;(let [e (make-2d-manipulation-env-regions [20 20] [1 1] [[[4 4] [7 7]] [[4 14] [7 17]] [[14 4] [17 7]] [[14 14] [17 17]]]  [[:a [5 5] [[14 4] [17 7]]] [:b [15 5] [[14 14] [17 17]]] [:c [15 15] [[4 14] [7 17]]]] 1 2 2 1)  h (make-2d-manipulation-hierarchy e)] (doseq [[an alg] aaai-algs] (println an (time (run-counted #(alg h))))))
+
+; (let [e (make-2d-manipulation-env-regions [20 20] [1 1] [[[4 4] [7 7]] [[4 14] [7 17]] [[14 4] [17 7]] [[14 14] [17 17]]]  [[:a [5 5] [[14 4] [17 7]]] [:b [15 5] [[14 14] [17 17]]] [:c [15 15] [[4 14] [7 17]]]   [:d [5 15] [[4 4] [7 7]]] [:e [6 6] [[14 14] [17 17]]] [:f [15 6] [[4 14] [7 17]]]] 1 2 2 1)  h (make-2d-manipulation-hierarchy e)] (doseq [[an alg] (take-last 3 aaai-algs)] (println an (time (run-counted #(alg h))))))

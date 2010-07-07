@@ -39,10 +39,10 @@
   env/ContextualAction (precondition-context [s] (env/current-context (env/initial-state env)))
   HighLevelAction      (immediate-refinements- [s] initial-plans)
                        (cycle-level- [s] nil)
-  env/AngelicAction    (optimistic-map [s]
+  env/AngelicAction    (optimistic-map- [s]
                          {(env/set-vars s (env/make-finish-goal-state env)) 
                           Double/POSITIVE_INFINITY})
-                       (pessimistic-map [s] {}))
+                       (pessimistic-map- [s] {}))
 
 (deftype SimpleHLA [name pc refs]
   env/Action           (action-name [] name)

@@ -16,6 +16,9 @@
 ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
 
 (def #^HashMap *problem-cache* nil)
+(def *state-abstraction?* true)
+(def *full-context* :dummy)  ; used if state abstraction off.
+
 
 ;;;;;;;;;;;;;;;;;;;;;;;;;;; Hierarchical Forward State ;;;;;;;;;;;;;;;;;;;;;;;;;
 
@@ -46,12 +49,13 @@
 
 ;; Sub and lift -- used by recursive, inverted, saha (drop only)
 (defn hfs-first-sub-name "Name for first abstracted subproblem of hfs" [hfs]
-  (let [{[f] :remaining-actions state :state} hfs]      
-    [(env/extract-context state (env/precondition-context f state)) (env/action-name f)]))
+  (let [{[f] :remaining-actions state :state} hfs]
+    [(if *state-abstraction?* (env/extract-context state (env/precondition-context f state)) state) 
+     (env/action-name f)]))
 
 (defn hfs-first-sub "First abstracted subproblem of hfs" [hfs]
   (let [{[f] :remaining-actions state :state} hfs]
-    (make-root-hfs (env/get-logger state (env/precondition-context f state)) f)))
+    (make-root-hfs (env/get-logger state (if *state-abstraction?* (env/precondition-context f state) *full-context*)) f)))
 
 (defn lift-hfs "Lift child-solution into the context of parent-node, counterpart to sub."
   [parent child] 
@@ -308,15 +312,13 @@
 
 ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;; AHA* ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
 
-;; Simplified version of AHA*.  
-; Simplifications:
- ; only work on concrete states
- ; don't use pessimistic descriptions (or pruning),
- ; except for primitives.  
+;; Simplified version of AHA* that only works on concrete states, and doesn't
+; use pessimistic descriptions (only primitive) for pruning.  
+; Loses forward-caching, Adds tail-caching.
 
 ; or abstract-lookahead-tree.
 ; instead, do caching of tails.
-; Adds to this
+
 
 (defn compute-heuristic [state remaining-actions]
   (if (empty? remaining-actions) 0
@@ -326,15 +328,6 @@
             (for [[ss sr] (env/optimistic-map f state)]
               (+ sr (compute-heuristic ss r))))))))
 
-(defn print-heuristic* [state remaining-actions pad]
-  (if (empty? remaining-actions) 0
-    (let [[f & r] remaining-actions]
-          (apply max is/neg-inf
-            (for [[ss sr] (env/optimistic-map f state)]
-              (do (println pad (select-keys (env/as-map state) [ [:base] [:gripper-offset]]) (env/action-name f) sr)
-               (+ sr (print-heuristic* ss r (str pad "  ")))))))))
-
-(defn print-heuristic [hfs] (print-heuristic* (:state hfs) (:remaining-actions hfs) ""))
 
 (defn hfs->aha-star-node [hfs]
   (is/SimpleNode 
@@ -346,8 +339,20 @@
 (defn make-aha-star-simple-search [root-hfs]
   (is/make-flat-incremental-dijkstra 
    (hfs->aha-star-node root-hfs) 
-   #_ #(->> % :data hfs-children (map hfs->aha-star-node))
-   #(let [children (->> % :data hfs-children (map hfs->aha-star-node))]
+   #(->> % :data hfs-children (map hfs->aha-star-node))))
+
+
+(comment (defn print-heuristic* [state remaining-actions pad]
+   (if (empty? remaining-actions) 0
+       (let [[f & r] remaining-actions]
+         (apply max is/neg-inf
+                (for [[ss sr] (env/optimistic-map f state)]
+                  (do (println pad (select-keys (env/as-map state) [ [:base] [:gripper-offset]]) (env/action-name f) sr)
+                      (+ sr (print-heuristic* ss r (str pad "  ")))))))))
+
+         (defn print-heuristic [hfs] (print-heuristic* (:state hfs) (:remaining-actions hfs) "")))
+(comment ; replace anon with this to test for heuristic inconsistencies.
+  #(let [children (->> % :data hfs-children (map hfs->aha-star-node))]
       (doseq [c children] (util/assert-is (<= (is/max-reward c) (is/max-reward %))
                                           "%s" [ (exp.2d-manipulation/state-str (:state (:data %)))
                                                  (map env/action-name (:remaining-actions (:data %)))
@@ -357,7 +362,7 @@
                                                   (print-heuristic (:data c))
                                                  ]
                                           ))
-      children)))
+      children))
 
 
 
@@ -365,46 +370,66 @@
 ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;; Top-level  ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
 ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
 
-(def *node-type-policy*)
-
 (defn hierarchical-search 
-  ([henv policy search-maker] (hierarchical-search henv policy search-maker identity))
-  ([henv policy search-maker hfs-sol-extractor]
-     (binding [*node-type-policy* policy
-               *problem-cache*    (HashMap.)]
-       (let [e    (hierarchy/env henv)
-             init (env/initial-logging-state e)
-             tla  (hierarchy/TopLevelAction e [(hierarchy/initial-plan henv)])
-             top  (search-maker (make-root-hfs init tla))]
-         (when-let [sol (is/first-goal-node top)]
+  ([henv search-maker] (hierarchical-search henv search-maker true))
+  ([henv search-maker sa?] (hierarchical-search henv search-maker sa? identity))  
+  ([henv search-maker sa? hfs-sol-extractor]
+     (let [e    (hierarchy/env henv)
+           init (env/initial-logging-state e)
+           tla  (hierarchy/TopLevelAction e [(hierarchy/initial-plan henv)])]
+       (binding [*problem-cache*    (HashMap.)
+                 *state-abstraction?* sa?
+                 *full-context*     (if sa? :dummy (env/current-context init))]
+         (when-let [sol (is/first-goal-node (search-maker (make-root-hfs init tla)))]
            (let [sol-hfs (hfs-sol-extractor (:data sol))]
              [(:opt-sol sol-hfs) (:reward sol-hfs)]))))))
 
+; Decomposed Angelic State-abstracted Hierarchical (Uniform-cost/A*)
+(defn hu      [henv] (hierarchical-search henv make-flat-search false))
+(defn hu-fast [henv] (hierarchical-search henv make-fast-flat-search false))
+(defn dhu     [henv] (hierarchical-search henv make-recursive-search false))
+(defn dshu    [henv] (hierarchical-search henv make-recursive-search true))
+(defn dshu-dijkstra [henv] (hierarchical-search henv make-acyclic-recursive-search true))
+(defn dshu-gg [henv] (hierarchical-search henv make-gg-search true))
+(defn dshu-inverted [henv] (hierarchical-search henv make-inverted-search true))
+(defn dasha-simple [henv]   (hierarchical-search henv make-saha-search true first))
 
+(defn aha-simple [henv] (hierarchical-search henv make-aha-star-simple-search false))
+(defn daha-simple [henv] (hierarchical-search henv make-saha-search false first))
 
-(defn sahucs-fast-flat [henv]
-  (hierarchical-search henv nil make-fast-flat-search))
+(def aaai-algs
+     [["hu" hu]
+      ["dhu" dhu]
+      ["dshu" dshu]
+      ["dshu-d" dshu-dijkstra]
+      ["aha" aha-simple]
+      ["daha" daha-simple]
+      ["dasha" dasha-simple]])
 
-(defn sahucs-flat [henv]
-  (hierarchical-search henv nil make-flat-search))
+(comment ;old names
+ (defn sahucs-fast-flat [henv]
+   (hierarchical-search henv make-fast-flat-search))
 
-(defn sahucs-simple [henv]
-  (hierarchical-search henv nil make-recursive-search))
+ (defn sahucs-flat [henv]
+   (hierarchical-search henv make-flat-search))
 
-(defn sahucs-dijkstra [henv]
-  (hierarchical-search henv nil make-acyclic-recursive-search))
+ (defn sahucs-simple [henv]
+   (hierarchical-search henv make-recursive-search))
 
-(defn sahucs-gg [henv]
-  (hierarchical-search henv nil make-gg-search))
+ (defn sahucs-dijkstra [henv]
+   (hierarchical-search henv make-acyclic-recursive-search))
 
-(defn sahucs-inverted [henv]
-  (hierarchical-search henv nil make-inverted-search))
+ (defn sahucs-gg [henv]
+   (hierarchical-search henv make-gg-search))
 
-(defn saha-simple [henv]
-  (hierarchical-search henv nil make-saha-search first))
+ (defn sahucs-inverted [henv]
+   (hierarchical-search henv make-inverted-search))
 
-(defn aha-star-simple [henv]
-  (hierarchical-search henv nil make-aha-star-simple-search))
+ (defn saha-simple [henv]
+   (hierarchical-search henv make-saha-search true first))
+
+ (defn aha-star-simple [henv]
+   (hierarchical-search henv make-aha-star-simple-search)))
 
 
 (comment

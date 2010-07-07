@@ -99,8 +99,8 @@
                                      :let [a (af s)] :when a]
                                  [a this])))
                             (cycle-level- [s] 1)
-  env/AngelicAction         (optimistic-map [s] (exact-nav-map s dx dy))
-                            (pessimistic-map [s] (exact-nav-map s dx dy)))
+  env/AngelicAction         (optimistic-map- [s] (exact-nav-map s dx dy))
+                            (pessimistic-map-[s] (exact-nav-map s dx dy)))
 
 (deftype NavDHLA [h? dest] :as this
   env/Action                (action-name [] [(if h? 'navh 'navv) dest])
@@ -113,13 +113,13 @@
                                      :let [a (af s)] :when a]
                                  [a this])))
                             (cycle-level- [s] 1)
-  env/AngelicAction         (optimistic-map [s]
+  env/AngelicAction         (optimistic-map- [s]
                               (let [dir  (if h? '[x] '[y])
                                     cur  (env/get-var s dir)
                                     cost (if (util/truth= (env/get-var s '[h]) h?) -2 -4)]
                                 {(env/set-var s dir dest)
                                  (* cost (util/abs (- cur dest)))}))
-                            (pessimistic-map [s] (env/optimistic-map this s)))
+                            (pessimistic-map-[s] (env/optimistic-map- this s)))
 
 (deftype SplitNavHLA [dx dy] 
   env/Action                (action-name [] ['split-nav dx dy])
@@ -127,8 +127,8 @@
   env/ContextualAction      (precondition-context [s] '#{[x] [y] [h]})
   hierarchy/HighLevelAction (immediate-refinements- [s] [[(NavDHLA true dx) (NavDHLA false dy)]])
                             (cycle-level- [s] nil)
-  env/AngelicAction         (optimistic-map [s] (exact-nav-map s dx dy))
-                            (pessimistic-map [s] (exact-nav-map s dx dy)))
+  env/AngelicAction         (optimistic-map- [s] (exact-nav-map s dx dy))
+                            (pessimistic-map-[s] (exact-nav-map s dx dy)))
 
 
 
@@ -143,8 +143,8 @@
                                   (make-specific-switch (env/get-var s '[h]) sx sy)
                                   this]))) 
                             (cycle-level- [s] 2)
-  env/AngelicAction         (optimistic-map [s] (nav-outcome-map s gx gy 2 2))
-                            (pessimistic-map [s] (exact-nav-map s gx gy)))
+  env/AngelicAction         (optimistic-map- [s] (nav-outcome-map s gx gy 2 2))
+                            (pessimistic-map-[s] (exact-nav-map s gx gy)))
 
 
 (defn make-nav-switch-tla [env split-nav?]
