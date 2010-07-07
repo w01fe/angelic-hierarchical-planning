@@ -379,7 +379,7 @@
            tla  (hierarchy/TopLevelAction e [(hierarchy/initial-plan henv)])]
        (binding [*problem-cache*    (HashMap.)
                  *state-abstraction?* sa?
-                 *full-context*     (if sa? :dummy (env/current-context init))]
+                 *full-context*      (if sa? :dummy (env/current-context init))]
          (when-let [sol (is/first-goal-node (search-maker (make-root-hfs init tla)))]
            (let [sol-hfs (hfs-sol-extractor (:data sol))]
              [(:opt-sol sol-hfs) (:reward sol-hfs)]))))))

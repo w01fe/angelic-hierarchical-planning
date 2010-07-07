@@ -196,6 +196,8 @@
 
 (defn reset-next-counter [] 
   (util/sref-set! *next-counter* 0)
+    (util/sref-set! *optimistic-counter* 0)
+      (util/sref-set! *pessimistic-counter* 0)
 ;  (def *next-ba* (HashMap.))
   )
 

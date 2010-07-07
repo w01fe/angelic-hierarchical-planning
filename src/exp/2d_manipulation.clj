@@ -232,7 +232,18 @@
 
 ; (uniform-cost-search (make-2d-manipulation-env-regions [10 10] [1 1] [ [ [4 4] [6 6] ] ] [ [:a [5 5] [ [4 4] [4 4 ] ] ] ] 2 2 2))
 
-
+; Make a random env, used in ICAPS'10 poster.
+(defn make-random-2d-manipulation-env [n-objects seed]
+  (let [tables [[[3 3] [6 6]] [[13 3] [16 6]] [[3 13] [6 16]] [[13 13] [16 16]]]
+        table-positions (apply concat (map region-cells tables))
+        random (Random. (long seed))]
+    (make-2d-manipulation-env-regions
+     [20 20]
+     [1 1]
+     tables
+     (for [[i start] (util/indexed (take n-objects (pseudo-shuffle random table-positions)))]
+       [(keyword (str (char (+ (int \a) i)))) start (nth tables (mod (.nextInt random) 4))])
+     1 2 2 (long (+ 17 (* 13 seed))))))
 
 (defn state-map [s]
   (let [const   (env/get-var s :const)
@@ -255,6 +266,8 @@
 (defn print-state [s] (print (state-str s)))
 
 
+
+;;;;;;;;;;;;;;;;;;;;;;;;;;;;; Hierarchy ;;;;;;;;;;;;;;;;;;;;;
 
 (defn reach-context 
   ([s] (reach-context (env/get-var s :const) (env/get-var s [:base])))
@@ -324,8 +337,7 @@
  (reify :as this
   env/Action                (action-name [] [:grasp o])
                             (primitive? [] false)
-  env/ContextualAction      (precondition-context [s] 
-                              (conj (reach-context s) [:pos o] [:at-goal? o] [:holding]))
+  env/ContextualAction      (precondition-context [s] (conj (reach-context s) [:pos o] [:at-goal? o] [:holding]))
   hierarchy/HighLevelAction (immediate-refinements- [s]
                              (let [base (env/get-var s [:base])
                                    opos (env/get-var s [:pos o])]
@@ -360,8 +372,7 @@
  (reify :as this
   env/Action                (action-name [] [:drop-at o dst])
                             (primitive? [] false)
-  env/ContextualAction      (precondition-context [s] 
-                              (conj (reach-context s) [:holding]))
+  env/ContextualAction      (precondition-context [s] (conj (reach-context s) [:holding] [:object-at dst]))
   hierarchy/HighLevelAction (immediate-refinements- [s]
                              (let [base (env/get-var s [:base])]
                                (for [[dirname dir] dirs
@@ -551,8 +562,9 @@
   env/Action                (action-name [] [:go-drop-at o o-dst])
                             (primitive? [] false)
   env/ContextualAction      (precondition-context [s]
-                              (conj (reach-context (env/get-var s :const) o-dst) [:holding]))
+                              (conj (reach-context (env/get-var s :const) o-dst) [:holding] [:object-at o-dst]))
   hierarchy/HighLevelAction (immediate-refinements- [s]
+;                              (when (= o :e) (println o-dst (possible-grasp-base-pos s o-dst)))
                               (for [dst (possible-grasp-base-pos s o-dst)]
                                 [(make-move-base-hla env dst) (make-drop-at-hla env o o-dst)]))
                             (cycle-level- [s] nil)
@@ -566,7 +578,7 @@
                             (primitive? [] false)
   env/ContextualAction      (precondition-context [s] 
                               (conj (apply clojure.set/union 
-                                     (map #(reach-context (env/get-var s :const) %) 
+                                     (map #(conj (reach-context (env/get-var s :const) %) [:object-at %]) 
                                           (get (env/get-var s :const) [:goal o]))) 
                                     [:holding]))
   hierarchy/HighLevelAction (immediate-refinements- [s]
@@ -582,7 +594,7 @@
 
 (defn move-to-goal-context [s o]
   (conj (apply clojure.set/union 
-               (map #(reach-context (env/get-var s :const) %) 
+               (map #(conj (reach-context (env/get-var s :const) %) [:object-at %]) 
                     (cons (env/get-var s [:pos o])
                           (get (env/get-var s :const) [:goal o])))) 
         [:holding]))
@@ -748,3 +760,4 @@
 ;(let [e (make-2d-manipulation-env-regions [20 20] [1 1] [[[4 4] [7 7]] [[4 14] [7 17]] [[14 4] [17 7]] [[14 14] [17 17]]]  [[:a [5 5] [[14 4] [17 7]]] [:b [15 5] [[14 14] [17 17]]] [:c [15 15] [[4 14] [7 17]]]] 1 2 2 1)  h (make-2d-manipulation-hierarchy e)] (doseq [[an alg] aaai-algs] (println an (time (run-counted #(alg h))))))
 
 ; (let [e (make-2d-manipulation-env-regions [20 20] [1 1] [[[4 4] [7 7]] [[4 14] [7 17]] [[14 4] [17 7]] [[14 14] [17 17]]]  [[:a [5 5] [[14 4] [17 7]]] [:b [15 5] [[14 14] [17 17]]] [:c [15 15] [[4 14] [7 17]]]   [:d [5 15] [[4 4] [7 7]]] [:e [6 6] [[14 14] [17 17]]] [:f [15 6] [[4 14] [7 17]]]] 1 2 2 1)  h (make-2d-manipulation-hierarchy e)] (doseq [[an alg] (take-last 3 aaai-algs)] (println an (time (run-counted #(alg h))))))
+

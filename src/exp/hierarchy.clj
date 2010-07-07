@@ -112,7 +112,7 @@
 (defn run-counted [f]
   (env/reset-next-counter)
   (reset-ref-counter)
-  [(f) (util/sref-get env/*next-counter*) (util/sref-get *ref-counter*) (util/sref-get *plan-counter*)])
+  [(f) (util/sref-get env/*next-counter*) (util/sref-get env/*optimistic-counter*) (util/sref-get env/*pessimistic-counter*) (util/sref-get *ref-counter*) (util/sref-get *plan-counter*)])
 
 ;; Stuff for generalized-goal actions.  Perhaps roll into protocol later.
 ; Idea here is:
