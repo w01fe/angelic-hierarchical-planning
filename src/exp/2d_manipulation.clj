@@ -15,7 +15,7 @@
 ; Seems we need all the angelic machinery we had before, in general case.
 
 ;; State variables are (all keyworded, note!):
-; :const {[size] [freespace] [legal-go] [goal o] [base-offsets] [n-base-samples] [map]...}
+; :const {[size] [freespace] [legal-go] [max-go] [goal o] [base-offsets] [n-base-samples] [map]...}
 ;    freespace is set of free [x y] pairs (for base).
 ;    legal-go is set of allowed [gxo gyo] pairs
 ;    goal is now set of allowed positions. Previously: [[minx miny] [maxx maxy]] range -- inclusive.
@@ -170,6 +170,7 @@
         legal-go       (set (spiral-to g-rad))]
     (env/SimpleFactoredEnv
      (into {:const (into {[:size] size [:freespace] freespace [:legal-go] legal-go [:objects] objects
+                          [:max-go] g-rad
                           [:base-offsets] (pseudo-shuffle random (spiral-to (inc g-rad)) )
                           [:n-base-samples] n-base-samples
 ;                          [:nav-slack] 1 ; Intentional error in nav/reach descs. >= 1.
@@ -255,10 +256,10 @@
 
 
 (defn reach-context 
-  ([s] (reach-context s (env/get-var s [:base])))
-  ([s base]
+  ([s] (reach-context (env/get-var s :const) (env/get-var s [:base])))
+  ([const base]
     (into #{[:base] [:gripper-offset]}
-      (for [go (util/safe-get (env/get-var s :const) [:legal-go])]
+      (for [go (util/safe-get const [:legal-go])]
         [:object-at (add-pos base go)]))))
 
 (defn manhattan-distance [[x1 y1] [x2 y2]]
@@ -274,12 +275,15 @@
       (and (can-directly-nav-dir? free-fn l1 [x2 y1] [-1 0])
            (can-directly-nav-dir? free-fn [x2 y1] l2 [0 (util/signum (- y2 y1))]))))
 
-(defn can-reach-from? [s base dst-go]
-  (let [const (env/get-var s :const)]
-    (and (contains? (const [:legal-go]) dst-go)
-         (contains? (const [:freespace]) (add-pos dst-go base)))))
+(defn can-reach-from? [const base dst-go]
+  (and (contains? (const [:legal-go]) dst-go)
+       (contains? (const [:freespace]) (add-pos dst-go base))))
 
-(defn can-reach? [s dst-go] (can-reach-from? s (env/get-var s [:base]) dst-go))
+(defn can-reach? [s dst-go] (can-reach-from? (env/get-var s :const) (env/get-var s [:base]) dst-go))
+
+(defn can-span? [const l1 l2]
+  (<= (manhattan-distance l1 l2)
+      (+ 2 (* 2 (get const [:max-go])))))
 
 (defn move-gripper-reward [src dst] (* move-gripper-step-reward (manhattan-distance src dst)))
 
@@ -308,10 +312,10 @@
                                      (move-gripper-reward go dst-go)}
                                     {}))))))
 
-(defn possible-grasp-gos [s base pos]
+(defn possible-grasp-gos [const base pos]
   (for [[dirname dir] dirs
         :let [go (sub-pos (sub-pos pos dir) base)]
-        :when (can-reach-from? s base go)]
+        :when (can-reach-from? const base go)]
       go))
 
 ;; TODO: slack? pess? 
@@ -334,13 +338,21 @@
   env/AngelicAction         (optimistic-map [s]
                               (let [opos (env/get-var s [:pos o])]
                                 (into {}
-                                 (for [go (possible-grasp-gos s (env/get-var s [:base]) opos)]
+                                 (for [go (possible-grasp-gos (env/get-var s :const) (env/get-var s [:base]) opos)]
                                    [(env/set-vars s [[[:gripper-offset] go]
                                                      [[:pos o] nil] [[:holding] o]
                                                      [[:object-at opos] nil]])
                                     (+ pickup-reward
                                        (move-gripper-reward (env/get-var s [:gripper-offset]) go))]))))
                             (pessimistic-map [s] {})))
+
+(defn drop-reward [base init-go o-dst]
+  (let [rel-o-dst (sub-pos o-dst base)]
+    (+ putdown-reward
+       (min (move-gripper-reward init-go [0 0])
+            (+ (move-gripper-reward init-go rel-o-dst)
+               (move-gripper-reward rel-o-dst [0 0])
+               (* -2 move-gripper-step-reward))))))
 
 ;; TODO: slack, pess ?
 (defn make-drop-at-hla [env o dst]
@@ -356,17 +368,24 @@
                                            go   (sub-pos gpos base)
                                            a    (make-reach-hla env go)]
                                      :when a]
-                                 [a (make-putdown dirname base go o dst)])))
+                                 [a (make-putdown dirname base go o dst) (make-reach-hla env [0 0])])))
                             (cycle-level- [s] nil)
   env/AngelicAction         (optimistic-map [s]
-                                (into {}
-                                 (for [go (possible-grasp-gos s (env/get-var s [:base]) dst)]
-                                   [(env/set-vars s [[[:gripper-offset] go]
-                                                     [[:pos o] dst] [[:holding] nil]
-                                                     [[:object-at dst] o] [[:at-goal? o] true]])
-                                    (+ putdown-reward
-                                       (move-gripper-reward (env/get-var s [:gripper-offset]) go))])))
+                              {(env/set-vars s [[[:gripper-offset] [0 0]]
+                                                [[:pos o] dst] [[:holding] nil]
+                                                [[:object-at dst] o] [[:at-goal? o] true]])
+                               (drop-reward (env/get-var s [:base])
+                                            (env/get-var s [:gripper-offset]) dst )})
                             (pessimistic-map [s] {})))
+
+; Old version -- not forced back to origin.
+;                                (into {}
+;                                 (for [go (possible-grasp-gos (env/get-var s :const) (env/get-var s [:base]) dst)]
+;                                   [(env/set-vars s [[[:gripper-offset] go]
+;                                                     [[:pos o] dst] [[:holding] nil]
+;                                                     [[:object-at dst] o] [[:at-goal? o] true]])
+;                                    (+ putdown-reward
+;                                       (move-gripper-reward (env/get-var s [:gripper-offset]) go))]))                                        
 ;manhattan
 ;pess: SLD?  
 
@@ -421,7 +440,7 @@
                             (cycle-level- [s] nil)
   env/AngelicAction         (optimistic-map [s]
                                {(env/set-vars s [[[:base] dst] [[:gripper-offest] [0 0]]])
-                                (move-base-reward (env/get-var s [:base]) dst)})
+                                (move-base-reward (env/get-var s [:base]) dst (env/get-var s [:gripper-offset]))})
                             (pessimistic-map [s] {})))
 
 ;                              (let [base (env/get-var s [:base])
@@ -432,23 +451,34 @@
 ;                                  {}))
 
 
-(defn move-to-front [x s]
-  (if (some #{x} s)
-      (cons x (remove #{x} s))
-    s))
 
 ;; TODO: check out state abstraction here
 ;; Note: since we may not sample current position, have to special case.
 
-(defn possible-grasp-base-pos [s grasp-pos]
-  (let [const (env/get-var s :const)
-        base  (env/get-var s [:base])                                   
-        free  (get const [:freespace])]
-    (->> (get const [:base-offsets])
-         (map #(add-pos % grasp-pos))
-         (filter free)
-         (move-to-front base)
-         (take (get const [:n-base-samples])))))
+(defn possible-grasp-base-pos 
+  ([s grasp-pos] 
+     (possible-grasp-base-pos (env/get-var s :const) (env/get-var s [:base]) grasp-pos))
+  ([const base grasp-pos]
+     (let [free  (get const [:freespace])
+           candidates (->> (get const [:base-offsets])
+                           (map #(add-pos % grasp-pos))
+                           (filter free))]
+       (if (some #{base} candidates)
+         (cons base (remove #{base} (take (get const [:n-base-samples]) candidates)))
+         (take (get const [:n-base-samples]) candidates)))))
+
+;(defn possible-putdown-base-pos [const init-base init-loc drop-loc]
+;  (let [free  (get const [:freespace])
+;        pickup-candidates (--> (get const [:base-offsets])
+;                               (map #(add-pos % init-loc))
+;                               (filter free))
+;        selected-pickups (util/cons-when (when (some #{init-base} pickup-candidates) init-base)
+;                                         (take (get const [:n-base-samples]) candidates))
+;        candidates (->> (get const [:base-offsets])
+;                        (map #(add-pos % grasp-pos))
+;                        (filter free))
+;        candidate-set (set candidates)]
+;    (distinct (concat (filter candidate-set selected-pickups) (take (get const [:n-base-samples]) candidates)))))
 
 
 ;; TODO: pess
@@ -457,7 +487,7 @@
   env/Action                (action-name [] [:go-grasp o])
                             (primitive? [] false)
   env/ContextualAction      (precondition-context [s] 
-                              (conj (reach-context s (env/get-var s [:pos o])) 
+                              (conj (reach-context (env/get-var s :const) (env/get-var s [:pos o])) 
                                     [:pos o] [:at-goal? o] [:holding]))
   hierarchy/HighLevelAction (immediate-refinements- [s]
                              (for [dst (possible-grasp-base-pos s (env/get-var s [:pos o]))]
@@ -468,32 +498,48 @@
                                     opos (env/get-var s [:pos o])]
                                (into {}
                                 (for [dst (possible-grasp-base-pos s opos),
-                                      go  (possible-grasp-gos s dst opos)]
+                                      go  (possible-grasp-gos (env/get-var s :const) dst opos)]
                                   [(env/set-vars s [[[:base] dst]
                                                     [[:gripper-offset] go]
                                                     [[:pos o] nil] [[:holding] o]
                                                     [[:object-at opos] nil]])
-                                   (+ (move-base-reward base dst)
+                                   (+ (move-base-reward base dst go)
                                       (move-gripper-reward
                                        (if (= base dst) (env/get-var s [:gripper-offset]) [0 0])
                                        go)
                                       pickup-reward)]))))
                             (pessimistic-map [s] {})))
 
+; old version -- not forced back to origin after drop.
+;(defn go-drop-at-opt [s o o-dst]
+;  (let [base (env/get-var s [:base])]
+;    (into {}
+;          (for [dst (possible-grasp-base-pos s o-dst),
+;                go  (possible-grasp-gos (env/get-var s :const) dst o-dst)]
+;            [(env/set-vars s [[[:base] dst]
+;                              [[:gripper-offset] go]
+;                              [[:pos o] o-dst] [[:holding] nil]
+;                              [[:object-at o-dst] o] [[:at-goal? o] true]])
+;             (+ (move-base-reward base dst)
+;                (move-gripper-reward
+;                 (if (= base dst) (env/get-var s [:gripper-offset]) [0 0])
+;                 go)
+;                putdown-reward)]))))
+
 (defn go-drop-at-opt [s o o-dst]
-  (let [base (env/get-var s [:base])]
+  (let [base (env/get-var s [:base])
+        go   (env/get-var s [:gripper-offset])]
     (into {}
-          (for [dst (possible-grasp-base-pos s o-dst),
-                go  (possible-grasp-gos s dst o-dst)]
-            [(env/set-vars s [[[:base] dst]
-                              [[:gripper-offset] go]
-                              [[:pos o] o-dst] [[:holding] nil]
-                              [[:object-at o-dst] o] [[:at-goal? o] true]])
-             (+ (move-base-reward base dst)
-                (move-gripper-reward
-                 (if (= base dst) (env/get-var s [:gripper-offset]) [0 0])
-                 go)
-                putdown-reward)]))))
+        (for [dst (possible-grasp-base-pos s o-dst)]
+          [(env/set-vars s [[[:base] dst]
+                            [[:gripper-offset] [0 0]]
+                            [[:pos o] o-dst] [[:holding] nil]
+                            [[:object-at o-dst] o] [[:at-goal? o] true]])
+             (+ (move-base-reward base dst go)
+                (if (= base dst)
+                   (drop-reward dst go o-dst)
+                   (+ (move-gripper-reward go [0 0])
+                      (drop-reward dst [0 0] o-dst))))]))))
 
 ;; Note: since we may not sample current position, have to special case.
 (defn make-go-drop-at-hla [env o o-dst] 
@@ -501,7 +547,7 @@
   env/Action                (action-name [] [:go-drop-at o o-dst])
                             (primitive? [] false)
   env/ContextualAction      (precondition-context [s]
-                              (conj (reach-context s o-dst) [:holding]))
+                              (conj (reach-context (env/get-var s :const) o-dst) [:holding]))
   hierarchy/HighLevelAction (immediate-refinements- [s]
                               (for [dst (possible-grasp-base-pos s o-dst)]
                                 [(make-move-base-hla env dst) (make-drop-at-hla env o o-dst)]))
@@ -516,7 +562,7 @@
                             (primitive? [] false)
   env/ContextualAction      (precondition-context [s] 
                               (conj (apply clojure.set/union 
-                                     (map #(reach-context s %) 
+                                     (map #(reach-context (env/get-var s :const) %) 
                                           (get (env/get-var s :const) [:goal o]))) 
                                     [:holding]))
   hierarchy/HighLevelAction (immediate-refinements- [s]
@@ -524,42 +570,117 @@
                                [(make-go-drop-at-hla env o o-dst)]))
                             (cycle-level- [s] nil)
   env/AngelicAction         (optimistic-map [s]
-                              (apply merge-with max (map #(go-drop-at-opt s o %)
-                                                         (get (env/get-var s :const) [:goal o]))))
+                              (reduce util/merge-disjoint
+                                     (map #(go-drop-at-opt s o %)
+                                          (get (env/get-var s :const) [:goal o]))))
                             (pessimistic-map [s] {})))
 
+
+(defn move-to-goal-context [s o]
+  (conj (apply clojure.set/union 
+               (map #(reach-context (env/get-var s :const) %) 
+                    (cons (env/get-var s [:pos o])
+                          (get (env/get-var s :const) [:goal o])))) 
+        [:holding]))
+
+(defn move-to-goal-opt [s o]
+  (assert (= (env/get-var s [:gripper-offest]) [0 0]))
+  (let [const (env/get-var s :const)
+        base (env/get-var s [:base])
+        o-pos (env/get-var s [:pos o])]
+    (reduce util/merge-disjoint
+            (for [o-dst (get const [:goal o])]
+              (merge-with max
+                          (into {}
+                                (for [b-med (possible-grasp-base-pos const base o-pos)
+                                      b-dst (possible-grasp-base-pos const b-med o-dst)]
+                                  [(env/set-vars s [[[:base] b-dst] [[:pos o] o-dst] 
+                                                    [[:object-at o-pos] nil] [[:object-at o-dst] o]
+                                                    [[:at-goal? o] true]])
+                                   (+ (move-base-reward base b-med [0 0])
+                                      (move-base-reward b-med b-dst [0 0])
+                                      pickup-reward putdown-reward
+                                      (if (= b-med b-dst)
+                                        (max 0 (+ (move-gripper-reward [0 0] o-pos)
+                                                  (move-gripper-reward o-pos o-dst)
+                                                  (move-gripper-reward o-dst [0 0])
+                                                  (* -4 move-gripper-step-reward)))
+                                        (+ (max 0 (+ (move-gripper-reward [0 0] o-pos)
+                                                     (* -2 move-gripper-step-reward)))
+                                           (max 0 (+ (move-gripper-reward [0 0] o-dst)
+                                                     (* -2 move-gripper-step-reward))))))])))))))
+
+;; TODO: cache as much as this as we can ?
 (defn make-move-to-goal-hla [env o] 
  (reify :as this
   env/Action                (action-name [] [:go-drop o])
                             (primitive? [] false)
-  env/ContextualAction      (precondition-context [s] 
-                              (conj (apply clojure.set/union 
-                                     (map #(reach-context s %) 
-                                          (cons (env/get-var s [:pos o])
-                                                (get (env/get-var s :const) [:goal o])))) 
-                                    [:holding]))
+  env/ContextualAction      (precondition-context [s] (move-to-goal-context s o))
   hierarchy/HighLevelAction (immediate-refinements- [s]
                               [[(make-go-grasp-hla env o) (make-go-drop-hla env o)]])
                             (cycle-level- [s] nil)
-  env/AngelicAction         (optimistic-map [s]
-                               ????????)
-                            (pessimistic-map [s] {})                            
-                            ))
+  env/AngelicAction         (optimistic-map [s] (move-to-goal-opt s o))
+                            (pessimistic-map [s] {})))
 
 (defn remaining-objects [s] 
   (remove #(env/get-var s [:at-goal? %])
           (map first (get (env/get-var s :const) [:objects]))))
 
-;; TODO: shore these up a bit.  
-;
-(defn object-reward [s o])
-(defn start-reward [s o])
-(defn finish-reward [s o] 0)
-(defn linkage-reward [s o1 o2])
+; reward to get from current base position to gripper-in-grasp-position
+(defn start-reward [s o]
+  (let [const (env/get-var s :const)
+        max-go (util/safe-get const [:max-go])
+        base (env/get-var s [:base])
+        o-pos (env/get-var s [:pos o])
+        dist   (dec (manhattan-distance base o-pos))]
+    (if (<= dist max-go)
+        (* move-gripper-step-reward dist)
+      (+ unpark-reward park-reward (* (- dist max-go) move-base-step-reward)
+         (* move-gripper-step-reward max-go)))))
+
+; reward to get from some dropoff base position of o1 to gripper-in-grasp-position for o2.
+(defn linkage-reward [s o1 o2]
+  (let [const    (env/get-var s :const)
+        max-go   (util/safe-get const [:max-go])
+        o1-goals (util/safe-get const [:goal o1])
+        o2-pos   (env/get-var s [:pos o2])        
+        dist     (apply min (map #(manhattan-distance % o2-pos) o1-goals))]
+    (if (<= dist (+ 2 (* 2 max-go)))
+        (* move-gripper-step-reward (max 0 (- dist 2)))
+      (+ unpark-reward park-reward (* (- dist (+ 2 (* 2 max-go))) move-base-step-reward)
+         (* move-gripper-step-reward (* 2 max-go))))))
+
+; reward for gripper-in-grasp-position to object at goal, gripper at home.
+;; TODO: tighten this up?  right now, missing to-home part.
+(defn object-reward [s o]
+  (let [const   (env/get-var s :const)
+        max-go  (util/safe-get const [:max-go])
+        o-pos   (env/get-var s [:pos o])
+        goals   (util/safe-get const [:goal o])
+        dist    (apply min (map #(manhattan-distance % o-pos) goals))]
+    (+ pickup-reward putdown-reward
+     (if (<= dist (+ 2 (* 2 max-go)))
+       (* move-gripper-step-reward (max 0 (- dist 2)))
+       (+ unpark-reward park-reward (* (- dist (+ 2 (* 2 max-go))) move-base-step-reward)
+          (* move-gripper-step-reward (* 2 max-go)))))))
+
+
+(defn compute-match-edges
+  "Compute edges, except for start, for matching.  Each edge represents a bound on the reward to deliver the
+   second object, starting from a state just after the first object has been delivered.  :end represents
+   the reward to get to the final configuration, with the gripper home."
+  [s]
+  (let [objects (remaining-objects s)
+        object-rewards (for [o objects] [o (object-reward s o)])]
+    (concat 
+     (for [o1 objects, [o2 or] object-rewards]
+       [o1 o2 (+ or (linkage-reward s o1 o2))])
+     (for [o objects] [o :finish 0]))))
 
 ;; TODO: can do better on context -- but probably rarely matters?
 (defn- make-tla [env]
- (let [context (util/keyset (dissoc (env/initial-state env) :const))]
+ (let [context (util/keyset (dissoc (env/initial-state env) :const))
+       match-edges (compute-match-edges (env/initial-state env))]
  (reify :as this
   env/Action                (action-name [] [:act])
                             (primitive? [] false)
@@ -572,15 +693,12 @@
                             (cycle-level- [s] 2)
  env/AngelicAction         (optimistic-map [s]
                              {(env/set-vars s (env/make-finish-goal-state env))
-                              (let [objects (remaining-objects s)
-                                    object-rewards (for [o objects] [o (object-reward s o)])]
-                                (util/maximum-matching (cons :start nodes) (cons :end nodes)
-                                  (concat 
-                                   (for [[o or] object-rewards]
-                                     [:start o (+ or (start-reward s o))])
-                                   (for [o1 objects, [o2 or] object-rewards]
-                                     [n1 n2 (+ or (linkage-reward s o1 o2))])
-                                   (for [o objects] [o :finish (finish-reward s o)]))))})
+                              (let [objects (remaining-objects s), 
+                                    s1 (set (cons :start objects)), 
+                                    s2 (set (cons :finish objects))]
+                                (util/maximum-matching s1 s2 
+                                  (concat (for [o objects] [:start o (start-reward s o)])
+                                          (filter (fn [[n1 n2]] (and (s1 n1) (s2 n2))) match-edges))))})
                            (pessimistic-map [s] {}))))
 
 (defn make-2d-manipulation-hierarchy [env]
