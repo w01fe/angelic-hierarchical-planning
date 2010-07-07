@@ -51,20 +51,24 @@
    (get-var [var]
      (get-var init var))
    (set-var [var val]
-     (LoggingFactoredState. (set-var init var val)  ; init
-                            context
-                            {:puts (assoc (:puts (meta state)) var val)}
-                            {}))
+     (let [old-meta (meta state)]
+       (LoggingFactoredState. (set-var init var val) ; init
+                              context
+                              {:puts (assoc (:puts old-meta) var val)
+                               :ooc  (if (.contains context var) (:ooc old-meta) (assoc (:ooc old-meta) var val))}
+                              {})))
    (set-vars [vv-pairs]
-     (LoggingFactoredState. (set-vars init vv-pairs)
-                            context
-                            {:puts (into (:puts (meta state)) vv-pairs)}
-                            {}))
+     (let [old-meta (meta state)]
+       (LoggingFactoredState. (set-vars init vv-pairs)
+                              context
+                              {:puts (into (:puts old-meta) vv-pairs)
+                               :ooc  (into (:ooc old-meta) (remove #(.contains context (first %)) vv-pairs))}
+                              {})))
    (list-vars [] (list-vars init))
    (as-map [] init)
   LoggingState
    (extract-effects []  (util/safe-get (meta state) :puts))
-   (ooc-effects     []  (util/filter-map #(not (.contains context (key %))) (util/safe-get (meta state) :puts)))
+   (ooc-effects     []  (util/safe-get (meta state) :ooc) #_(util/filter-map #(not (.contains context (key %))) (util/safe-get (meta state) :puts)))
   ContextualState 
    (current-context []  context)
    (extract-context [c] (fast-select-keys init c))
@@ -72,7 +76,7 @@
    (get-logger      [c] (make-logging-factored-state (as-map init) c)))
 
 (defn make-logging-factored-state [init-state context] 
-  (LoggingFactoredState init-state context {:puts {}} {}))
+  (LoggingFactoredState init-state context {:puts {} :ooc {}} {}))
 
 (defn enforce-logger [state]
   (assert (= (type state) ::LoggingFactoredState))

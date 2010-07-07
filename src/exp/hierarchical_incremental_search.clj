@@ -306,6 +306,61 @@
 ;; TODO: version with better meta-level control, PN-style. 
 
 
+;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;; AHA* ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
+
+;; Simplified version of AHA*.  
+; Simplifications:
+ ; only work on concrete states
+ ; don't use pessimistic descriptions (or pruning),
+ ; except for primitives.  
+
+; or abstract-lookahead-tree.
+; instead, do caching of tails.
+; Adds to this
+
+(defn compute-heuristic [state remaining-actions]
+  (if (empty? remaining-actions) 0
+      (util/cache-with *problem-cache* [state remaining-actions]
+        (let [[f & r] remaining-actions]
+          (apply max is/neg-inf
+            (for [[ss sr] (env/optimistic-map f state)]
+              (+ sr (compute-heuristic ss r))))))))
+
+(defn print-heuristic* [state remaining-actions pad]
+  (if (empty? remaining-actions) 0
+    (let [[f & r] remaining-actions]
+          (apply max is/neg-inf
+            (for [[ss sr] (env/optimistic-map f state)]
+              (do (println pad (select-keys (env/as-map state) [ [:base] [:gripper-offset]]) (env/action-name f) sr)
+               (+ sr (print-heuristic* ss r (str pad "  ")))))))))
+
+(defn print-heuristic [hfs] (print-heuristic* (:state hfs) (:remaining-actions hfs) ""))
+
+(defn hfs->aha-star-node [hfs]
+  (is/SimpleNode 
+   (hfs-name hfs) 
+   (+ (:reward hfs) (compute-heuristic (:state hfs) (:remaining-actions hfs))) 
+   (empty? (:remaining-actions hfs)) 
+   hfs))
+
+(defn make-aha-star-simple-search [root-hfs]
+  (is/make-flat-incremental-dijkstra 
+   (hfs->aha-star-node root-hfs) 
+   #_ #(->> % :data hfs-children (map hfs->aha-star-node))
+   #(let [children (->> % :data hfs-children (map hfs->aha-star-node))]
+      (doseq [c children] (util/assert-is (<= (is/max-reward c) (is/max-reward %))
+                                          "%s" [ (exp.2d-manipulation/state-str (:state (:data %)))
+                                                 (map env/action-name (:remaining-actions (:data %)))
+                                                 (map env/action-name (:remaining-actions (:data c)))
+                                                  (print-heuristic (:data %))
+                                                  (println "\n\n")
+                                                  (print-heuristic (:data c))
+                                                 ]
+                                          ))
+      children)))
+
+
+
 ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
 ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;; Top-level  ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
 ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
@@ -348,6 +403,8 @@
 (defn saha-simple [henv]
   (hierarchical-search henv nil make-saha-search first))
 
+(defn aha-star-simple [henv]
+  (hierarchical-search henv nil make-aha-star-simple-search))
 
 
 (comment

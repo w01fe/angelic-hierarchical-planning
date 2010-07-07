@@ -588,33 +588,35 @@
         [:holding]))
 
 (defn move-to-goal-opt [s o]
+  (println "\n\n")
   (assert (= (env/get-var s [:gripper-offset]) [0 0]))
   (let [const (env/get-var s :const)
         base (env/get-var s [:base])
         o-pos (env/get-var s [:pos o])]
     (reduce util/merge-disjoint
             (for [o-dst (get const [:goal o])]
-              (merge-with max
-                          (into {}
-                                (for [b-med (possible-grasp-base-pos const base o-pos)
-                                      b-dst (possible-grasp-base-pos const b-med o-dst)
-;                                      :let [_ (println o-dst b-med b-dst)]
-                                      ]
-                                  [(env/set-vars s [[[:base] b-dst] [[:pos o] o-dst] 
-                                                    [[:object-at o-pos] nil] [[:object-at o-dst] o]
-                                                    [[:at-goal? o] true]])
-                                   (+ (move-base-reward base b-med [0 0])
+              (apply merge-with max
+                     (for [b-med (possible-grasp-base-pos const base o-pos)
+                           b-dst (possible-grasp-base-pos const b-med o-dst)
+                           :let [rel-src (sub-pos o-pos b-med)
+                                 rel-dst (sub-pos o-dst b-dst)
+                                 _ (println o-dst base b-med b-dst rel-src rel-dst)]
+                           ]
+                       {(env/set-vars s [[[:base] b-dst] [[:pos o] o-dst] 
+                                         [[:object-at o-pos] nil] [[:object-at o-dst] o]
+                                         [[:at-goal? o] true]])
+                        (util/prln (+ (move-base-reward base b-med [0 0])
                                       (move-base-reward b-med b-dst [0 0])
                                       pickup-reward putdown-reward
                                       (if (= b-med b-dst)
-                                        (max 0 (+ (move-gripper-reward [0 0] o-pos)
-                                                  (move-gripper-reward o-pos o-dst)
-                                                  (move-gripper-reward o-dst [0 0])
+                                        (min 0 (+ (move-gripper-reward [0 0] rel-src)
+                                                  (move-gripper-reward rel-src rel-dst)
+                                                  (move-gripper-reward rel-dst [0 0])
                                                   (* -4 move-gripper-step-reward)))
-                                        (+ (max 0 (+ (move-gripper-reward [0 0] o-pos)
+                                        (+ (min 0 (+ (* 2 (move-gripper-reward [0 0] rel-src))
                                                      (* -2 move-gripper-step-reward)))
-                                           (max 0 (+ (move-gripper-reward [0 0] o-dst)
-                                                     (* -2 move-gripper-step-reward))))))])))))))
+                                           (min 0 (+ (* 2 (move-gripper-reward [0 0] rel-dst))
+                                                     (* -2 move-gripper-step-reward)))))))}))))))
 
 ;; TODO: cache as much as this as we can ?
 (defn make-move-to-goal-hla [env o] 
@@ -684,6 +686,7 @@
 ;; TODO: can do better on context -- but probably rarely matters?
 (defn- make-tla [env]
  (let [init (env/initial-state env)
+       finish  (env/make-finish-goal-state env)
        context (util/keyset (dissoc init :const))
        objects (remaining-objects init)
        object-rewards (into {} (for [o objects] [o (object-reward init o)]))
@@ -699,21 +702,21 @@
                                   (for [o remaining] [(make-move-to-goal-hla env o) this]))))
                             (cycle-level- [s] 2)
  env/AngelicAction         (optimistic-map [s]
-                             {(env/set-vars s (env/make-finish-goal-state env))
+                             {(env/set-vars s finish)
                               (let [objects (remaining-objects s), 
                                     s1 (set (cons :start objects)), 
                                     s2 (set (cons :finish objects))]
                                 (if (empty? objects ) 0
                                     (util/maximum-matching s1 s2 
-                                     (util/prln (concat (for [o objects] [:start o (+ (object-rewards o) (start-reward s o))])
-                                              (filter (fn [[n1 n2]] (and (s1 n1) (s2 n2))) match-edges))))))})
+                                      (concat (for [o objects] [:start o (+ (object-rewards o) (start-reward s o))])
+                                              (filter (fn [[n1 n2]] (and (s1 n1) (s2 n2))) match-edges)))))})
                            (pessimistic-map [s] {}))))
 
 (defn make-2d-manipulation-hierarchy [env]
   (hierarchy/SimpleHierarchicalEnv env [(make-tla env)]))
 
 
-
+; (use '[exp 2d-manipulation env hierarchy hierarchical-incremental-search] 'edu.berkeley.ai.util)
 
 ; (print-state (initial-state (make-2d-manipulation-env [10 10] [1 1] [ [ [4 4] [6 6] ] ] [ [:a [5 5] [ [4 4] [4 4] ] ] ] 2))) 
 
@@ -723,5 +726,20 @@
 
 ; (let [e (make-2d-manipulation-env-regions [20 20] [1 1] [[[4 4] [7 7]] [[4 14] [7 17]] [[14 4] [17 7]] [[14 14] [17 17]]]  [[:a [5 5] [[14 4] [17 7]]] [:b [15 5] [[14 14] [17 17]]] [:c [15 15] [[4 14] [7 17]]] [:d [5 15] [[4 4] [7 7]]]] 1 2 2 1) h (make-2d-manipulation-hierarchy e)] (println (time (run-counted #(uniform-cost-search e)))) (println (time (run-counted #(sahucs-flat h)))) (println (time (run-counted #(sahucs-inverted h)))))
 
+;  (let [e (make-2d-manipulation-env-regions [4 4] [1 1] [ [ [2 2] [3 3] ] ] [ [:a [2 2] [ [3 3] [3 3 ] ] ] ] 1 2 2 1) h (make-2d-manipulation-hierarchy e)] (println (time (run-counted #(uniform-cost-search e)))) (println (time (run-counted #(sahucs-inverted h)))) (println (time (run-counted #(saha-simple h)))))
 
 ; (let [e (make-2d-manipulation-env-regions [10 10] [1 1] [ [ [4 4] [7 7] ] ] [ [:a [5 5] [ [4 4] [4 4 ] ] ] ] 1 2 2 1) h (make-2d-manipulation-hierarchy e)] (println (time (run-counted #(uniform-cost-search e)))) (println (time (run-counted #(saha-simple h)))))
+
+; (let [e (make-2d-manipulation-env-regions [20 20] [1 1] [[[4 4] [7 7]] [[4 14] [7 17]] [[14 4] [17 7]] [[14 14] [17 17]]]  [[:a [5 5] [[14 4] [17 7]]] [:b [15 5] [[14 14] [17 17]]] [:c [15 15] [[4 14] [7 17]]]] 1 2 2 1)  h (make-2d-manipulation-hierarchy e)] (println (time (run-counted #(uniform-cost-search e)))) (println (time (run-counted #(sahucs-inverted h))))  (println (time (run-counted #(saha-simple h))))) 
+
+; (let [e (make-2d-manipulation-env-regions [20 20] [1 1] [[[4 4] [7 7]] [[4 14] [7 17]] [[14 4] [17 7]] [[14 14] [17 17]]]  [[:a [5 5] [[14 4] [17 7]]] [:b [15 5] [[14 14] [17 17]]] [:c [15 15] [[4 14] [7 17]]]  [:d [5 15] [[4 4] [7 7]]] [:e [6 15] [[14 14] [17 17]]]] 1 2 2 1)  h (make-2d-manipulation-hierarchy e)]   (println (time (run-counted #(saha-simple h)))))
+
+; (let [e (make-2d-manipulation-env-regions [20 20] [1 1] [[[4 4] [7 7]] [[4 14] [7 17]] [[14 4] [17 7]] [[14 14] [17 17]]]  [[:a [5 5] [[14 4] [17 7]]] [:b [15 5] [[14 14] [17 17]]] [:c [15 15] [[4 14] [7 17]]]  [:d [5 15] [[4 4] [7 7]]] [:e [6 6] [[14 14] [17 17]]] [:f [15 6] [[4 14] [7 17]]]] 1 2 2 1)  h (make-2d-manipulation-hierarchy e)]   (println (time (run-counted #(saha-simple h)))))
+
+; (let [e (make-2d-manipulation-env-regions [20 20] [1 1] [[[4 4] [7 7]] [[4 14] [7 17]] [[14 4] [17 7]] [[14 14] [17 17]]]  [[:a [5 5] [[14 4] [17 7]]] [:b [15 5] [[14 14] [17 17]]] [:c [15 15] [[4 14] [7 17]]]  [:d [5 15] [[4 4] [7 7]]] [:e [6 6] [[14 14] [17 17]]] [:f [15 6] [[4 14] [7 17]]]  [:g [16 6] [[4 14] [7 17]]]] 1 2 2 1)  h (make-2d-manipulation-hierarchy e)]   (println (time (run-counted #(saha-simple h)))))
+
+
+
+;; Trying to fix consistency
+
+;  (let [e (make-2d-manipulation-env-regions [7 4] [1 1] [[[2 2] [3 3]] [[5 2] [6 3]] ]  [[:a [2 2] [[5 2] [6 3]]] [:b [5 2] [[2 2] [3 3]]]] 1 2 2 1) h (make-2d-manipulation-hierarchy e)]  (println (time (run-counted #(saha-simple h)))) (println (time (run-counted #(aha-star-simple h)))))

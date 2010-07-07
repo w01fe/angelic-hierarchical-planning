@@ -110,7 +110,7 @@
 
 ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;; Queue Utils ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
 
-(defn pq-add-node  [pq node] (assert (not= :re-added (queues/g-pq-add! pq (node-name node) node))))
+(defn pq-add-node  [pq node] (util/assert-is (not= :re-added (queues/g-pq-add! pq (node-name node) node)) "%s" [node]))
 (defn pq-add-nodes [pq nodes] (doseq [node nodes] (pq-add-node pq node)))
 (defn pq-summary   [pq] (if (queues/g-pq-empty? pq) worst-simple-summary (nth (queues/g-pq-peek-min pq) 1)))
 
