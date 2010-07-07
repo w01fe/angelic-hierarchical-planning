@@ -238,7 +238,7 @@
   (let [const   (env/get-var s :const)
         base    (env/get-var s [:base])
         go      (env/get-var s [:gripper-offset])]
-    (reduce (partial apply assoc-in)
+    (reduce (fn [m [[x y] c]] (assoc-in m [y x] c))
             (get const [:map])
             (concat 
              [[(add-pos base go) \G]
@@ -440,8 +440,11 @@
                                    (make-nav-hla env dst) (make-park s)]])))
                             (cycle-level- [s] nil)
   env/AngelicAction         (optimistic-map [s]
-                               {(env/set-vars s [[[:base] dst] [[:gripper-offset] [0 0]]])
-                                (move-base-reward (env/get-var s [:base]) dst (env/get-var s [:gripper-offset]))})
+                              (let [base (env/get-var s [:base])]
+                                (if (= base dst)
+                                    {s 0}
+                                  {(env/set-vars s [[[:base] dst] [[:gripper-offset] [0 0]]])
+                                (move-base-reward (env/get-var s [:base]) dst (env/get-var s [:gripper-offset]))})))
                             (pessimistic-map [s] {})))
 
 ;                              (let [base (env/get-var s [:base])
@@ -460,6 +463,7 @@
   ([s grasp-pos] 
      (possible-grasp-base-pos (env/get-var s :const) (env/get-var s [:base]) grasp-pos))
   ([const base grasp-pos]
+;     (println "pgbp" base grasp-pos)
      (let [free  (get const [:freespace])
            candidates (->> (get const [:base-offsets])
                            (map #(add-pos % grasp-pos))
@@ -504,7 +508,7 @@
                                                     [[:gripper-offset] go]
                                                     [[:pos o] nil] [[:holding] o]
                                                     [[:object-at opos] nil]])
-                                   (+ (move-base-reward base dst go)
+                                   (+ (move-base-reward base dst [0 0])
                                       (move-gripper-reward
                                        (if (= base dst) (env/get-var s [:gripper-offset]) [0 0])
                                        go)
@@ -539,8 +543,7 @@
              (+ (move-base-reward base dst go)
                 (if (= base dst)
                    (drop-reward dst go o-dst)
-                   (+ (move-gripper-reward go [0 0])
-                      (drop-reward dst [0 0] o-dst))))]))))
+                   (drop-reward dst [0 0] o-dst)))]))))
 
 ;; Note: since we may not sample current position, have to special case.
 (defn make-go-drop-at-hla [env o o-dst] 
@@ -594,7 +597,9 @@
               (merge-with max
                           (into {}
                                 (for [b-med (possible-grasp-base-pos const base o-pos)
-                                      b-dst (possible-grasp-base-pos const b-med o-dst)]
+                                      b-dst (possible-grasp-base-pos const b-med o-dst)
+;                                      :let [_ (println o-dst b-med b-dst)]
+                                      ]
                                   [(env/set-vars s [[[:base] b-dst] [[:pos o] o-dst] 
                                                     [[:object-at o-pos] nil] [[:object-at o-dst] o]
                                                     [[:at-goal? o] true]])
@@ -614,13 +619,13 @@
 ;; TODO: cache as much as this as we can ?
 (defn make-move-to-goal-hla [env o] 
  (reify :as this
-  env/Action                (action-name [] [:go-drop o])
+  env/Action                (action-name [] [:move-to-goal o])
                             (primitive? [] false)
   env/ContextualAction      (precondition-context [s] (move-to-goal-context s o))
   hierarchy/HighLevelAction (immediate-refinements- [s]
                               [[(make-go-grasp-hla env o) (make-go-drop-hla env o)]])
                             (cycle-level- [s] nil)
-  env/AngelicAction         (optimistic-map [s] (move-to-goal-opt s o))
+  env/AngelicAction         (optimistic-map [s] #_ (println (util/map-keys state-str (move-to-goal-opt s o))) (move-to-goal-opt s o))
                             (pessimistic-map [s] {})))
 
 (defn remaining-objects [s] 
@@ -670,20 +675,21 @@
   "Compute edges, except for start, for matching.  Each edge represents a bound on the reward to deliver the
    second object, starting from a state just after the first object has been delivered.  :end represents
    the reward to get to the final configuration, with the gripper home."
-  [s]
-  (let [objects (remaining-objects s)
-        object-rewards (for [o objects] [o (object-reward s o)])]
-    (concat 
-     (for [o1 objects, [o2 or] object-rewards]
+  [s object-rewards]
+  (concat 
+   (for [[o1] object-rewards, [o2 or] object-rewards :when (not (= o1 o2))]
        [o1 o2 (+ or (linkage-reward s o1 o2))])
-     (for [o objects] [o :finish 0]))))
+   (for [[o] object-rewards] [o :finish 0])))
 
 ;; TODO: can do better on context -- but probably rarely matters?
 (defn- make-tla [env]
- (let [context (util/keyset (dissoc (env/initial-state env) :const))
-       match-edges (compute-match-edges (env/initial-state env))]
+ (let [init (env/initial-state env)
+       context (util/keyset (dissoc init :const))
+       objects (remaining-objects init)
+       object-rewards (into {} (for [o objects] [o (object-reward init o)]))
+       match-edges (compute-match-edges init object-rewards)]
  (reify :as this
-  env/Action                (action-name [] [:act])
+  env/Action                (action-name [] [:2dm-tla])
                             (primitive? [] false)
   env/ContextualAction      (precondition-context [s] context)
   hierarchy/HighLevelAction (immediate-refinements- [s]
@@ -699,8 +705,8 @@
                                     s2 (set (cons :finish objects))]
                                 (if (empty? objects ) 0
                                     (util/maximum-matching s1 s2 
-                                     (concat (for [o objects] [:start o (start-reward s o)])
-                                             (filter (fn [[n1 n2]] (and (s1 n1) (s2 n2))) match-edges)))))})
+                                     (util/prln (concat (for [o objects] [:start o (+ (object-rewards o) (start-reward s o))])
+                                              (filter (fn [[n1 n2]] (and (s1 n1) (s2 n2))) match-edges))))))})
                            (pessimistic-map [s] {}))))
 
 (defn make-2d-manipulation-hierarchy [env]

@@ -74,8 +74,14 @@
     (assert (seq remaining-actions)) (assert (zero? reward)) (assert (empty? opt-sol))
     (HierarchicalForwardState mid-state 0 nil (drop 1 remaining-actions))))
 
-(defn join-hfs [first-result rest-result final-state]
-  (combine-hfs first-result rest-result (constantly final-state) (constantly nil)))
+;; TODO: remove expensive assertino.
+(defn join-hfs [parent-hfs first-result rest-result final-state]
+  (combine-hfs first-result rest-result (constantly final-state) (constantly nil))
+#_  (let [my-final (reduce env/transfer-effects (:state parent-hfs)
+                         [(:state first-result) (:state rest-result)])]
+    (util/assert-is (= (dissoc (env/as-map final-state) :const) 
+                       (dissoc (env/as-map my-final) :const)))
+    (combine-hfs first-result rest-result (constantly my-final) (constantly nil))))
 
 
 
@@ -94,8 +100,10 @@
 
 (defn hfs-optimistic-map [hfs]
   (let [{:keys [state remaining-actions]} hfs]
-    (assert (util/singleton? remaining-actions))
-    (env/optimistic-map (first remaining-actions) state)))
+#_    (apply println "Optimistic map for " (hfs-first-sub-name hfs) "is\n"
+             (for [[s r] (env/optimistic-map (util/safe-singleton remaining-actions) state)]
+               (str "  " (env/extract-effects s) ": " r "\n")))
+    (env/optimistic-map (util/safe-singleton remaining-actions) state)))
 
 ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;; HFS & Nodes ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
 
@@ -254,16 +262,16 @@
                                    (hfs->simple-node n ss)))
                          #(apply get-saha-sps-search (:data %))))])))))))
 
-;; TODO: put back error.
+;; Note: may legitimately get to wrong final-state, if some refs reach some states.
 ;(def *bad-args* nil)
 (defn get-saha-sas-search [hfs final-state] 
 #_  (let [f ((get-sas-map hfs) final-state)]
     (when-not f (def *bad-args* [hfs final-state])
-              (println "Got bad final-state: " hfs final-state))
+              (println "Got bad final-state: " (hfs-name hfs) (hfs-first-sub-name hfs)))
     (f))
   (if-let [f ((get-sas-map hfs) final-state)]
     (f)
-    is/failed-search))
+    (do #_(println "Miss! " (hfs-first-sub-name hfs) final-state) is/failed-search)))
 
 
 ;; TODO: remove expensive names.
@@ -284,7 +292,11 @@
                  (fn [x y] x)
                  is/add-simple-summaries 
                  (fn [g1 g2] 
-                   (hfs->simple-node (join-hfs (first (:data g1)) (first (:data g2)) final-state) 
+                   #_(println (hfs->simple-node hfs) (env/extract-effects final-state)
+                            (env/extract-effects (:state (first (:data g1))))
+                            (env/extract-effects (:state (first (:data g2))))
+                            )
+                   (hfs->simple-node (join-hfs hfs (first (:data g1)) (first (:data g2)) final-state) 
                                      :goal)))))))))))
 
 
