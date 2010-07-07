@@ -28,7 +28,7 @@
 ;;;;;;; 2d-nav 
 
 (defn make-exp-set []
-  (experiments/make-experiment-set "2dnav"
+  (experiments/make-experiment-set "prelim-2dnav"
     [:product
      [:objects [1 2 4 6 8 10]]
      [:rand    [1]]
