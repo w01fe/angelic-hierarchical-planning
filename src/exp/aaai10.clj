@@ -28,21 +28,94 @@
 ;;;;;;; 2d-nav 
 
 (defn make-exp-set []
-  (experiments/make-experiment-set "prelim-2dnav"
+  (experiments/make-experiment-set "m2d2"
     [:product
-     [:objects [1 2 4 6 8 10]]
-     [:rand    [1]]
+     [:objects [1 2 3 4 5 6]]
+     [:rand    [3]]
      [:alg     (map first his/aaai-algs)]]
     (fn [m]
       `(m2d/make-2d-manipulation-hierarchy
         (m2d/make-random-2d-manipulation-env ~(:objects m) ~(:rand m))))
     (fn [m] `((get his/aaai-alg-map ~(:alg m)) ~'init))
-    'exp.aaai10 nil 1000 512 false ::ExpResult))
+    'exp.aaai10 nil #_ 10 60 nil false ::ExpResult))
 
-; (plot (ds->chart (experiment-set-results->dataset res) [:alg] :objects :ms {:key "top left" } {} first))
+(defonce *results* nil)
+(defn read-results []
+  (def *results* 
+       (experiments/experiment-set-results->dataset 
+        (experiments/read-experiment-set-results (make-exp-set)))))
+
+
+;;;;;;;;;; Table
+
+(defn pad-right [x n]  
+  (let [xs (str x) 
+        s #^String (str "                               " xs)]
+;    (assert (<= (.length xs) n))
+    (.substring s (- (.length s) n)))) 
+
+(def *cw* 8)
+(def *w* (+ 4 (* 3 *cw*)))
+(defn make-table []
+  (let [results (util/group-by #(get % :alg) *results*)]
+    (doseq [alg (map first his/aaai-algs)]
+      (let [alg-results (results alg)
+            obj-map (util/group-by #(get % :objects) alg-results)
+            objects    (sort (keys obj-map))]
+        (println (apply str (pad-right alg 9) "|" (for [o ["s" "progs" "refs"]] (str (pad-right o *w*) "|"))))
+        (println (apply str (repeat (+ 10 (* 3 (inc *w*))) "-")))
+        (doseq [[no n-res] (map (fn [x] [x (obj-map x)]) objects)]
+          (println (apply str (pad-right no 9) "|"
+                          (for [exp n-res]
+                            (if (:ms exp)
+                              (str (pad-right (/ (int (:ms exp)) 1000.0) *cw*) ", " (pad-right (:next-count exp) *cw*) ", " (pad-right (second (:output exp)) #_(:plan-count exp) *cw*) "|")
+                              (str (pad-right (cond (:memout? exp) "mem" (:timeout? exp) "time") *w*) "|")
+                              ))))))    
+      (println "\n\n"))))
+
+
 
 ;;;;;; charts
 
-(def *chart-folder* "/Users/jawolfe/Projects/reports/10aaai-btamp/poster/figs/")
 
+(def *alg-order* ["H-UCS" "DH-UCS" "DSH-UCS" "AHA*" "DAHA*" "DASHA*"])
+(defn order [things key-fn desired-order]
+;  (println things)
+  (let [m (util/group-by key-fn things)]
+    (map #(first (util/safe-get m %)) desired-order)))
+
+(defn make-charts
+  ([] (make-charts "/Users/jawolfe/Projects/reports/10-aaai-btamp/poster/figs/" ))
+  ([dir]
+     (charts/plot 
+      (datasets/ds->chart 
+       (datasets/ds-derive #(/ (:ms %) 1000) (filter (datasets/ds-fn [ms] (and ms)) *results*) :secs) 
+       [:alg] :objects :secs 
+       {:term "solid dashed size 3,1.7"   :ylog nil :xrange "[1:6]" :yrange "[0:60]"
+;        :title "2d manipulation problems" :xlabel "# of objects" ;:ylabel "runtime (s)"
+        :key "at 2.5, 57"                    
+        :extra-commands ["set ylabel \"runtime(s)\" 1,0"
+                         "set xlabel \"# of objects\" 0,.5"]} 
+       (let [c (util/counter-from 0)] (fn [& args] (let [v ([1 2 3 4 5 6] (c))]  {:lw 3 :pt v :lt v})))
+       #(let [n (first %)] (if (= (last n) \U) (apply str (concat (drop-last n) "-UCS")) (str n "*")))
+       #(order % :title *alg-order*))
+      (str dir "m2d-time.pdf") false)
+    #_ (charts/plot 
+      (datasets/ds->chart 
+       (datasets/ds-derive #(/ (:ms %) 1000) (filter (datasets/ds-fn [ms] (and ms)) *results*) :secs) 
+       [:alg] :objects :next-count 
+       {:term "solid dashed size 3,1.7"   :ylog nil :xrange "[1:6]" :yrange "[0:60000]"  :key "at 3.6,57000"
+     ;   :title "2d manipulation problems"
+        :extra-commands ["set ylabel \"# of primitive action evaluations(s)\" 1,0"
+                         "set xlabel \"# of objects\" 0,.5"]} 
+       (let [c (util/counter-from 0)] (fn [& args] (let [v ([1 2 3 4 5 6] (c))]  {:lw 3 :pt v :lt v})))
+       first #(order % :title *alg-order*))
+      (str dir "m2d-prim.pdf") false)
+     ))
+
+
+;(use '[edu.berkeley.ai.util experiments cluster] 'exp.aaai10)
+;(run-experiment-set-cluster (make-exp-set))
+
+; (plot (ds->chart (experiment-set-results->dataset res) [:alg] :objects :ms {:key "top left" } {} first))
 

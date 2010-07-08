@@ -401,7 +401,7 @@
      [["HU" hu]
       ["DHU" dhu]
       ["DSHU" dshu]
-      ["DSHU-d" dshu-dijkstra]
+;      ["DSHU-d" dshu-dijkstra]
       ["AHA" aha-simple]
       ["DAHA" daha-simple]
       ["DASHA" dasha-simple]])
