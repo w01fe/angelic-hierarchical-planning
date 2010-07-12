@@ -91,12 +91,12 @@
       (datasets/ds->chart 
        (datasets/ds-derive #(/ (:ms %) 1000) (filter (datasets/ds-fn [ms] (and ms)) *results*) :secs) 
        [:alg] :objects :secs 
-       {:term "solid dashed size 3,1.7"   :ylog nil :xrange "[1:6]" :yrange "[0:60]"
+       {:term "solid dashed size 2.4,1.3"   :ylog nil :xrange "[1:6]" :yrange "[0:60]"
 ;        :title "2d manipulation problems" :xlabel "# of objects" ;:ylabel "runtime (s)"
-        :key "at 2.5, 57"                    
+        :key "at 4.8, 67 height 3"                    
         :extra-commands ["set ylabel \"runtime(s)\" 1,0"
                          "set xlabel \"# of objects\" 0,.5"]} 
-       (let [c (util/counter-from 0)] (fn [& args] (let [v ([1 2 3 4 5 6] (c))]  {:lw 3 :pt v :lt v})))
+       (let [c (util/counter-from 0)] (fn [& args] (let [v ([2 3 1 5 4.8 6] (c))]  {:lw 3 :pt v :lt v})))
        #(let [n (first %)] (if (= (last n) \U) (apply str (concat (drop-last n) "-UCS")) (str n "*")))
        #(order % :title *alg-order*))
       (str dir "m2d-time.pdf") false)
@@ -108,7 +108,7 @@
      ;   :title "2d manipulation problems"
         :extra-commands ["set ylabel \"# of primitive action evaluations(s)\" 1,0"
                          "set xlabel \"# of objects\" 0,.5"]} 
-       (let [c (util/counter-from 0)] (fn [& args] (let [v ([1 2 3 4 5 6] (c))]  {:lw 3 :pt v :lt v})))
+       (let [c (util/counter-from 0)] (fn [& args] (let [v ([1 2 3 6 5 4] (c))]  {:lw 3 :pt v :lt v})))
        first #(order % :title *alg-order*))
       (str dir "m2d-prim.pdf") false)
      ))
