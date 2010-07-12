@@ -385,26 +385,26 @@
              [(:opt-sol sol-hfs) (:reward sol-hfs)]))))))
 
 ; Decomposed Angelic State-abstracted Hierarchical (Uniform-cost/A*)
-(defn hu      [henv] (hierarchical-search henv make-flat-search false))
-(defn hu-fast [henv] (hierarchical-search henv make-fast-flat-search false))
-(defn dhu     [henv] (hierarchical-search henv make-recursive-search false))
-(defn dshu    [henv] (hierarchical-search henv make-recursive-search true))
-(defn dshu-dijkstra [henv] (hierarchical-search henv make-acyclic-recursive-search true))
-(defn dshu-gg [henv] (hierarchical-search henv make-gg-search true))
-(defn dshu-inverted [henv] (hierarchical-search henv make-inverted-search true))
-(defn dasha-simple [henv]   (hierarchical-search henv make-saha-search true first))
+(defn h-ucs      [henv] (hierarchical-search henv make-flat-search false))
+(defn h-ucs-fast [henv] (hierarchical-search henv make-fast-flat-search false))
+(defn dh-ucs     [henv] (hierarchical-search henv make-recursive-search false))
+(defn dsh-ucs    [henv] (hierarchical-search henv make-recursive-search true))
+(defn dsh-ucs-dijkstra [henv] (hierarchical-search henv make-acyclic-recursive-search true))
+(defn dsh-ucs-gg [henv] (hierarchical-search henv make-gg-search true))
+(defn dsh-ucs-inverted [henv] (hierarchical-search henv make-inverted-search true))
+(defn dash-a*-simple [henv]   (hierarchical-search henv make-saha-search true first))
 
-(defn aha-simple [henv] (hierarchical-search henv make-aha-star-simple-search false))
-(defn daha-simple [henv] (hierarchical-search henv make-saha-search false first))
+(defn ah-a*-simple [henv] (hierarchical-search henv make-aha-star-simple-search false))
+(defn dah-a*-simple [henv] (hierarchical-search henv make-saha-search false first))
 
 (def aaai-algs
-     [["HU" hu]
-      ["DHU" dhu]
-      ["DSHU" dshu]
+     [["H-UCS" h-ucs]
+      ["DH-UCS" dh-ucs]
+      ["DSH-UCS" dsh-ucs]
 ;      ["DSHU-d" dshu-dijkstra]
-      ["AHA" aha-simple]
-      ["DAHA" daha-simple]
-      ["DASHA" dasha-simple]])
+      ["AH-A" ah-a*-simple]
+      ["DAH-A" dah-a*-simple]
+      ["DASH-A" dash-a*-simple]])
 
 (def aaai-alg-map (into {} aaai-algs))
 

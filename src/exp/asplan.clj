@@ -26,7 +26,6 @@
 ; Can refine until *particular* action resolved, or *any* current action resolved. 
 ;   (not just any action, steps are too small).
 
-;; TODO TODO TODO: current scheme won't properly handle when other action wants current var value in future. 
 
 ;; TODO: should we allow action to fire even when there is already action scheduled on precond ?
 
@@ -94,7 +93,7 @@
    {(parent-var p-var) new-parent} 
    0))
 
-(declare PostFireActionHLA)
+(declare ActivateVarHLA)
 
 (defn make-greedy-fire-plan
   "Return an HLA to greedily fire, or nil if cannot greedily fire."
@@ -110,7 +109,7 @@
       (let [fire (make-fire-action-action a)]
         [(hierarchy/SimpleHLA [::GreedyFire ] (env/precondition-context fire s)
           [(conj (vec (for [p unset-parents] (make-set-parent-var-action (second p) effect-var))) fire)])
-         (PostFireActionHLA hierarchy effect-var)]))))
+         (ActivateVarHLA hierarchy effect-var)]))))
 
 
 (defn active-action-vars [hierarchy s]
@@ -165,7 +164,7 @@
          (can-use-next? hierarchy effect-var eval p (env/get-var s p))))
      ((util/safe-get hierarchy :parent-var-map) effect-var))))
 
-(deftype PostFireActionHLA [hierarchy effect-var]
+(deftype ActivateVarHLA [hierarchy effect-var]
   env/Action
    (action-name [] [::PostFire effect-var])
    (primitive?  [] false)
@@ -209,7 +208,10 @@
        (if-let [greedy (some #(make-greedy-fire-plan hierarchy s %) actives)]
          [(conj (vec greedy) this)]
          (when-let [open (choose-open-var hierarchy s)]
-           [[(AddSomeActionHLA hierarchy open) this]]))
+;  Note; this can cause suboptimalify if someone might want current val.           
+;          [[(AddSomeActionHLA hierarchy open) this]]))
+
+           [[(ActivateVarHLA hierarchy open) this]]))
        [[]]))
    (cycle-level-           [s] nil))
 
@@ -303,5 +305,6 @@
 (defn asplan-solution-pair-name [[sol rew]]
   [(asplan-solution-name sol) rew])
 
+; (use '[exp env hierarchy taxi-infinite ucs asplan hierarchical-incremental-search] 'edu.berkeley.ai.util)
 ; (let [e (make-random-infinite-taxi-sas2 1 2 1 2)] (println (run-counted #(uniform-cost-search e))) (println (run-counted #(asplan-solution-pair-name (debug 0 (sahucs-fast-flat (make-asplan-henv e )))))))
 
