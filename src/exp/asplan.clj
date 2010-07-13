@@ -37,8 +37,6 @@
 
 ;;;;;;;;;;;;;;;;;;;;;;;;;;;; Types, Protocols, Setup ;;;;;;;;;;;;;;;;;;;;;;;;;;;
 
-(deftype ASPlan-Hierarchy 
-  [sas-problem])
 
 (defn goal-action [dtgs]
   (-> dtgs
@@ -146,7 +144,7 @@
    (cycle-level-           [s] nil))
 
 
-
+;; TODO: this precludes state abstraction ? 
 (defn can-use-next? [hierarchy use-var use-val user-var user-val]
   (contains? (get-in (:possible-next-map hierarchy) [user-var user-val use-var]) use-val))
 
@@ -163,6 +161,8 @@
                false)
          (can-use-next? hierarchy effect-var eval p (env/get-var s p))))
      ((util/safe-get hierarchy :parent-var-map) effect-var))))
+
+;; TODO: should not add actinos if only current val can be needed.
 
 (deftype ActivateVarHLA [hierarchy effect-var]
   env/Action
@@ -272,17 +272,18 @@
   [dtgs]
   (into {} (for [[var dtg] dtgs] [var (compute-var-possible-next-map var dtg)])))
 
-(deftype ASPlanHierarchy [sas-problem vars dtgs parent-var-map possible-next-map])
-(defn make-asplan-hierarchy [sas-problem dtgs] 
+(deftype ASPlanFlatHierarchy [sas-problem vars dtgs parent-var-map possible-next-map])
+
+(defn make-asplan-flat-hierarchy [sas-problem dtgs] 
   (let [causal-graph (remove #(apply = %) (sas-analysis/standard-causal-graph sas-problem))
         parent-var-map (util/map-vals #(map second %) (util/group-by first causal-graph))]
     (assert (graphs/dag? causal-graph))
-    {:type              ::ASPlanHierarchy
-     :sas-problem       sas-problem
-     :vars              (keys (:vars sas-problem))
-     :dtgs              dtgs
-     :parent-var-map    parent-var-map 
-     :possible-next-map (compute-possible-next-map dtgs)}))
+    (ASPlanFlatHierarchy
+     sas-problem 
+     (keys (:vars sas-problem))
+     dtgs
+     parent-var-map
+     (compute-possible-next-map dtgs))))
 
 (defn make-asplan-env [sas-problem dtgs]
   (reify env/Env
@@ -291,12 +292,12 @@
    (actions-fn    [] :no-actions-fn)
    (goal-fn       [] (env/goal-fn sas-problem))))
 
-(defn make-asplan-henv [sas-problem] 
+(defn make-asplan-flat-henv [sas-problem] 
   (let [dtgs (sas-analysis/domain-transition-graphs sas-problem)
         env  (make-asplan-env sas-problem dtgs)]
     (hierarchy/SimpleHierarchicalEnv 
      env
-     [(make-flat-asplan-hla (make-asplan-hierarchy sas-problem dtgs) 
+     [(make-flat-asplan-hla (make-asplan-flat-hierarchy sas-problem dtgs) 
                             (env/current-context (env/initial-state env)))])))
 
 (defn asplan-solution-name [sol]
@@ -307,4 +308,58 @@
 
 ; (use '[exp env hierarchy taxi-infinite ucs asplan hierarchical-incremental-search] 'edu.berkeley.ai.util)
 ; (let [e (make-random-infinite-taxi-sas2 1 2 1 2)] (println (run-counted #(uniform-cost-search e))) (println (run-counted #(asplan-solution-pair-name (debug 0 (sahucs-fast-flat (make-asplan-henv e )))))))
+
+
+
+;; OK, now we need a hierarchy.    Problems:
+ ; some of the primitives as-implemented don't play well with state abstraction.
+ ; want all derived knowledge to be represented explicitly ? 
+
+; Basic ideas:
+ ; In perfect world, store "possible next" set for each var.
+  ; When we activate a var, we must either assign to a parent that wants current val (how do we know?),
+  ; or choose an action that can lead to a possible next val. 
+ ; Also need info going down, maybe?
+  ; Maybe we can ignore it for now ...
+  ; Can make it last priority to activate var downward, only if we're otherwise stuck.
+  ; Still, early deadlock detection is probably important. 
+
+; Now an abstract subproblem should be, either:
+ ; (1) achieve a particular precondition of some active action, or 
+ ; (2) achieve some precondition of some active action.  
+ ; (3) achieve some active action
+; advantage of former is simplicity. 
+; advantage of latter is faster termination.  
+ ; and potentially, more state abstraction?  
+
+; Think about (1) first.  We're in some state, have some active actions and parent commitments, want
+; to achieve a particular precondition.  
+;  What matters: var and all ancestors, plus all auxillary vars on these.
+;  Plus: descenents of ancestors, subject ot some constriants.
+;  e.g., same as before.  Not clear what commitments have given us 
+
+; Take a different tack: what we *really* want is maximal state abstraction for each task.
+; task termination conditions are, basically, whenever we're about to leave that envelope. 
+ ; i.e., could include addition of any downward thing.  
+
+
+; Idea: if we have both "precondition" and "fire-action" HLAs we cno't need to worry 
+; about gg ?!
+
+; We can include just strict ancestors in these things, and let goal be: achieve
+; nominal goal, or deadlock.
+
+; Then, we need to be able to recover from deadlock, once we have changed other parts of the world.
+
+; Question: when is this better than, e.g., doing DAG-type thing ? Seems no worse?
+
+; Then, only question is recovery?  Only end up with actions already present if we 
+; deadlocked before?  Can just walk back up, it's fine ... but hopefully can detect
+; whether deadlock possibly avoided before doing lots of work. 
+
+; One idea: can record "deadlock roots".  i.e., each set parent-var can deadlock a whole subtree.  
+; this should really be metadata.  
+
+; Note: what happened to possible-next sets above?  Can use them to filter outside parent-var commitments, once we get up to level where context is apparent.
+; What you lose: always have to fully explore var, if it has multiple parents. 
 
