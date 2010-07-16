@@ -203,9 +203,10 @@
                                      :let  [child (current-child s child-var-map nav)]
                                      :when (and child (not (env/get-var s (action-var child))))]
                                  [nav child])]
-         (println "\n" s "\n" (first (:act-seq (meta s))))
+;         (println "\n\n\n" s "\n\n" (:act-seq (meta s)) "\n")
 ;         (println "\n\n\n" s "\n"  aa-vars "\n"  aa-parent-edges "\n" na-tuples )
-        (util/cond-let [x]
+;        (util/prln
+         (util/cond-let [x]
           ;; Greedy action -- all preconditions satisfied and not assigned elsewhere
           (some #(make-greedy-fire-action s %) aa-vars) 
             [x]
@@ -220,8 +221,8 @@
                 (make-add-action-action a)))
 
           ;; Inactive bottom-up var -- needs to be assigned.  
-          (first aa-parent-edges)
-            (activation-actions s child-var-map (first x))
+          (util/find-first #(env/get-var s (free-var %)) (map first aa-parent-edges))
+            (activation-actions s child-var-map x)
 
           ;; Active top-down var -- add actions
           (util/find-first #(not (env/get-var s (free-var %))) (map second na-tuples))  
@@ -230,7 +231,7 @@
 
           ;; Inactive top-down var -- activate it
           (first (map second na-tuples))
-            (activation-actions s child-var-map x))))
+            (activation-actions s child-var-map x))));)
      (env/goal-map sas-problem))))
 
 (defn asplan-solution-name [sol]
