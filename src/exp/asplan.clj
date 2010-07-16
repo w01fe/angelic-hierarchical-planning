@@ -64,7 +64,10 @@
        [[(action-var sas/goal-var-name) goal-action]
         [(free-var sas/goal-var-name) false]]))))
 
+(def *add-count* (util/sref 0))
+
 (defn make-add-action-action [{:keys [name precond-map effect-map reward] :as factored-primitive}]
+  (util/sref-set! *add-count* (inc (util/sref-get *add-count*)))
   (let [[evar eval] (util/safe-singleton (seq effect-map))]
     (env/FactoredPrimitive
      [::AddAction name]
@@ -152,8 +155,8 @@
 
 (defn current-child [s child-var-map p-var]
   (when-not (env/get-var s (free-var p-var))
-    (some #(env/get-var s (parent-var p-var %))
-          (child-var-map p-var))))
+    (util/find-first #(env/get-var s (parent-var p-var %))
+      (child-var-map p-var))))
 
 ;;;;;;;;;;;;;;;;;;;;;;;;;;;;; Actions fn, actual env ;;;;;;;;;;;;;;;;;;;;;;;;;;;
 
@@ -189,7 +192,7 @@
     (ASPlanEnv 
      (expand-initial-state (env/initial-state sas-problem) child-var-map (goal-action dtgs))
      (fn asplan-actions [s]
-       (let [[aa-vars na-vars] (split-with #(env/get-var s (action-var %)) vars)
+       (let [[aa-vars na-vars] (util/separate #(env/get-var s (action-var %)) vars)
              aa-parent-edges   (for [av aa-vars
                                       :let [pm (:precond-map (env/get-var s (action-var av)))]
                                       pv    (remove #{av} (keys pm))
@@ -200,6 +203,8 @@
                                      :let  [child (current-child s child-var-map nav)]
                                      :when (and child (not (env/get-var s (action-var child))))]
                                  [nav child])]
+         (println "\n" s "\n" (first (:act-seq (meta s))))
+;         (println "\n\n\n" s "\n"  aa-vars "\n"  aa-parent-edges "\n" na-tuples )
         (util/cond-let [x]
           ;; Greedy action -- all preconditions satisfied and not assigned elsewhere
           (some #(make-greedy-fire-action s %) aa-vars) 
@@ -209,8 +214,10 @@
           (util/find-first (fn [[pv cv]] (env/get-var s (parent-var pv cv))) aa-parent-edges)
             (let [[pv cv] x, 
                   p-val (env/get-var s pv)
-                  d-val (util/safe-get-in (env/get-var s (action-var cv)) [:precond-map pv])]
-              (apply concat (map (get-in dtgs [pv p-val]) (acyclic-succ-fn pv p-val d-val))))
+                  d-val ((:precond-map (env/get-var s (action-var cv))) pv)
+                  dtg   (get-in dtgs [pv p-val])]
+              (for [n-val (acyclic-succ-fn pv p-val d-val), a (dtg n-val)]
+                (make-add-action-action a)))
 
           ;; Inactive bottom-up var -- needs to be assigned.  
           (first aa-parent-edges)
@@ -218,7 +225,8 @@
 
           ;; Active top-down var -- add actions
           (util/find-first #(not (env/get-var s (free-var %))) (map second na-tuples))  
-            (apply concat (vals (util/safe-get-in dtgs [x (env/get-var s x)])))
+            (for [as (vals (util/safe-get-in dtgs [x (env/get-var s x)])), a as]
+              (make-add-action-action a))
 
           ;; Inactive top-down var -- activate it
           (first (map second na-tuples))
@@ -226,7 +234,7 @@
      (env/goal-map sas-problem))))
 
 (defn asplan-solution-name [sol]
-  (map second (filter #(= (first %) ::GreedyFire) (map env/action-name sol))))
+  (map second (filter #(= (first %) ::GreedyFire) sol)))
 
 (defn asplan-solution-pair-name [[sol rew]]
   [(asplan-solution-name sol) rew])
