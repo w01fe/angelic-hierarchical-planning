@@ -2,7 +2,8 @@
   (:require [edu.berkeley.ai.util :as util]
             [edu.berkeley.ai.util  [graphs :as graphs] ]
             [exp [env :as env]  [hierarchy :as hierarchy] 
-                 [sas :as sas] [sas-analysis :as sas-analysis]]))
+                 [sas :as sas] [sas-analysis :as sas-analysis]])
+  (:import [java.util HashMap]))
 
 
 ; For now, pretend analysis is free, just brute-force it. 
@@ -24,6 +25,9 @@
 
 ;; TODO: also look at using landmarks to structure search ? 
 ; (but where's the state abstraction?)
+
+; TODO: ideally, we should avoid cyclies in the value of effect-var,
+ ; NOT in whole state-abstracted states.
 
 ;; NOTE: greedy should come in when we choose a parent for a var. 
 ; If some parent can use current var RIGHT NOW, should assign to it, not branch.
@@ -68,21 +72,23 @@
      {(action-var evar) factored-primitive}
      reward)))
 
-(defn make-fire-action-action [{:keys [name precond-map effect-map reward] :as factored-primitive}]
-  (let [[evar eval] (util/safe-singleton (seq effect-map))]
-    (env/FactoredPrimitive
-     [::Fire name]
-     (into precond-map 
-           (cons [(action-var evar) factored-primitive]
-                 (for [[pvar pval] (dissoc precond-map evar)]
-                   [(parent-var pvar evar) true])))
-     (into effect-map 
-           (cons [(action-var evar) nil]
-                 (apply concat
+
+(comment ;; Not actually needed -- use below instead.
+  (defn make-fire-action-action [{:keys [name precond-map effect-map reward] :as factored-primitive}]
+   (let [[evar eval] (util/safe-singleton (seq effect-map))]
+     (env/FactoredPrimitive
+      [::Fire name]
+      (into precond-map 
+            (cons [(action-var evar) factored-primitive]
                   (for [[pvar pval] (dissoc precond-map evar)]
-                    [[(parent-var pvar evar) false]
-                     [(free-var evar) true]]))))
-     0)))
+                    [(parent-var pvar evar) true])))
+      (into effect-map 
+            (cons [(action-var evar) nil]
+                  (apply concat
+                         (for [[pvar pval] (dissoc precond-map evar)]
+                           [[(parent-var pvar evar) false]
+                            [(free-var evar) true]]))))
+      0))))
 
 (defn make-set-parent-var-action [p-var c-var]
   (env/FactoredPrimitive 
@@ -92,249 +98,155 @@
    0))
 
 
-;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
-;;;;;;;;;;;;;;;;;;;;;;;;;;;;;; Flat Hierarchy HLAs ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
-;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
-
-
-; TODO: ideally, we should avoid cyclies in the value of effect-var,
- ; NOT in whole state-abstracted states.
-
-;; TODO: add a way to stop, when we reach the right var val. 
-
-;; TODO: make sure top-down setup is right, e.g., we always add a target 
-; action, then we can work on the precondition
-
-;; TODO: is there an invariant that whenever a var is "truly active" it 
-; has an active var, or is at right val?  If so, we need to enforce this as 
-; we activate a top-down var, since it'll appear dead.  
-
-
-; Simplest way to express mechanics:
-;  If any action can greedily fire,
-;    fire it.
-;  Else, if any vars without actions but with explicit child with action and wrong value,
-;    add a directed action.
-;  Else, if any vars without actions or explicit children but have child with action,
-;    activate precondition
-;  Else, if any var without action but with explicit parent, 
-;    add an undirected action.
-
-;  Schematics:
-;  a => A  goes to  A => A  or a -> a
-;  a -> A  goes to  a => A
-;  a => a  goes to  a => A
-;  A => a  is not allowed ? 
-
-
-
-(defn current-child [hierarchy s p-var]
-  (some #(env/get-var s (parent-var p-var %))
-        (util/safe-get-in hierarchy [:child-var-map p-var])))
-
-(defn possible-next-actions-to [hierarchy var c-val d-val]
-  (apply concat 
-    (map (util/safe-get-in hierarchy [:dtgs var c-val])
-         ((:acyclic-edges-fn hierarchy) var c-val d-val))))
-
-(defn possible-next-actions [hierarchy var c-val]
-  (apply concat (vals (util/safe-get-in hierarchy [:dtgs var c-val]))))
-
-; Add any applicable action, using the target val if available.
-; If not, goal is to ease deadlock by using a parent.
-; TODO: use parent commitments to decide where to head ?
-
-; Ideally, we stop as soon as we've used up at least one parent.
-; One idea is just to stop after each action.
-; This means we must take care when doing top-down; activation may
-; not be required. 
-(comment 
-(deftype AddSomeActionHLA [hierarchy effect-var]
-  env/Action
-   (action-name [] [::AddSomeAction effect-var])
-   (primitive?  [] false)
-  env/ContextualAction 
-   (precondition-context [s] 
-     (let [cc (util/make-safe (current-child hierarchy s effect-var))]
-       #{effect-var (parent-var effect-var cc) (action-var cc)}))
-  hierarchy/HighLevelAction
-   (immediate-refinements- [s] 
-     (assert (not (env/get-var s (action-var effect-var))))
-     (let [cc    (util/make-safe (current-child hierarchy s effect-var))
-           c-val (env/get-var s effect-var)]
-       (if-let [ca (env/get-var s (action-var cc))] ;; driven bottom-up?
-         (let [d-val (util/safe-get-in ca :precond-map effect-var)]
-           (if (= c-val d-val)
-               [[]]) 
-             (for [a (possible-next-action-to hierarchy effect-var c-val d-val)]
-               [(make-add-action-action a)]))
-         (for [a (possible-next-action hierarchy effect-var c-val)]
-           [(make-add-action-action a)]))))
-   (cycle-level-           [s] nil))
- ;)
-
-; Choose a parent for a var; assumes any greedy vars have already
-; fired, so all parents are allowed.  Prereq for adding actions on a var.
-(deftype ActivateVarHLA [hierarchy effect-var]
-  env/Action
-   (action-name [] [::ActivateVar effect-var])
-   (primitive?  [] false)
-  env/ContextualAction 
-   (precondition-context [s] #{})
-  hierarchy/HighLevelAction
-   (immediate-refinements- [s]
-     (assert (env/get-var s (free-var effect-var)))
-     (let [asa (AddSomeActionHLA hierarchy effect-var)]
-      (for [c (util/safe-get-in hierarchy [:child-var-map effect-var])]
-        [(make-set-parent-var-action effect-var c) asa])))
-   (cycle-level-           [s] nil))
-
-
-;; TODO: assert is wrong.?
-
-(defn make-greedy-fire-plan
-  "Return an HLA to greedily fire, or nil if cannot greedily fire."
-  [hierarchy s effect-var]
-  (let [a            (->> effect-var action-var (env/get-var s))
-        _            (assert a)
-        pm           (:precond-map a)
-        precond-vars (keys (dissoc pm effect-var))
+; Try to make an action that greedily fires the action scheduled on effect-var,
+; effectively representing a composition of set-parent and fire-action actions.
+(defn make-greedy-fire-action [s effect-var]
+  (let [{:keys [name precond-map effect-map reward] :as factored-primitive}
+          (->> effect-var action-var (env/get-var s))
+        precond-vars (keys (dissoc precond-map effect-var))
         [free-pv unfree-pv] (util/separate #(env/get-var s (free-var %)) precond-vars)]
-    (when (and (env/state-matches-map? s pm)
+    (when (and (env/state-matches-map? s precond-map)
                (every? #(env/get-var s (parent-var % effect-var)) unfree-pv))
-      (assert (every? #(nil? (env/get-var s (action-var %))) precond-vars))
-      (let [fire (make-fire-action-action a)]
-        [(hierarchy/SimpleHLA [::GreedyFire ] 
-          (env/precondition-context fire s)
-          [(conj (vec (for [p free-pv] (make-set-parent-var-action p effect-var))) 
-                 fire
-                 (AddSomeActionHLA hierarchy effect-var))])]))))
-
-(defn make-a-greedy-fire-plan [hierarchy s]
-  (some #(make-greedy-fire-plan hierarchy s %) 
-        (filter #(env/get-var s (action-var %))
-                (util/safe-get hierarchy :vars))))
-
-
-(defn bottom-up-supported-vars [hierarchy s]
-  (mapcat (fn [v] 
-            (when-let [a (env/get-var s (action-var v))] 
-              (for [[var val] (:precond-map a)
-                    :when (not (= (env/get-var s var) val))]
-                var)))
-          (util/safe-get hierarchy :vars)))
-
-(defn top-down-supported-vars [hierarchy s]
-  (for [vp (util/safe-get hierarchy :vars)
-        vc (util/safe-get-in hierarchy [:child-var-map vp])
-        :when (env/get-var s (parent-var vp vc))]
-    vc))
-
-(defn choose-open-var 
-  "Choose a var to start changing.  Var must be open, i.e. parent-var and action-var both nil.
-   Var should be supported, either 
-     -from below by open precondition of action on potential parent-var, or
-     -from above by parent-var link to this var."
-  [hierarchy s]
-  (first (filter #(env/get-var s (free-var %)) 
-                 (concat (bottom-up-supported-vars hierarchy s)
-                         (top-down-supported-vars hierarchy s)))))
-
-(deftype FlatASPlanHLA [hierarchy name pc] :as this
-  env/Action
-   (action-name [] name)
-   (primitive?  [] false)
-  env/ContextualAction 
-   (precondition-context [s] pc)
-  hierarchy/HighLevelAction
-   (immediate-refinements- [s] 
-     (if-let [g (make-a-greedy-fire-plan hierarchy s)] [(conj (vec g) this)]
-      (if-let [v (choose-open-var hierarchy s)] [[(ActivateVarHLA hierarchy v) this]] 
-        [[]])))
-   (cycle-level-           [s] nil))
-
-(defn make-flat-asplan-hla [hierarchy full-context]
-  (FlatASPlanHLA hierarchy [::FlatASPlan] full-context))
+        (assert (every? #(nil? (env/get-var s (action-var %))) precond-vars))
+        (env/FactoredPrimitive
+         [::GreedyFire name]
+         (into precond-map 
+               (concat [[(action-var effect-var) factored-primitive]]
+                       (for [v free-pv]   [(free-var v)              true])
+                       (for [v unfree-pv] [(parent-var v effect-var) true])))
+         (into effect-map 
+               (concat [[(action-var effect-var) nil]]
+                       (for [v unfree-pv] [(free-var v)              true])
+                       (for [v unfree-pv] [(parent-var v effect-var) false])))
+         0))))
 
 
-;;;;;;;;;;;;;;;;;;;;;;;;; Flat Hierarchy precomputations ;;;;;;;;;;;;;;;;;;;;;;;
 
-;; TODO: cutoff when top-down and bottom-up meet, don't match ? 
+;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
+;;;;;;;;;;;;;;;;;;;;;;;;;;;;; Primitive Environment ;;;;;;;;;;;;;;;;;;;;;;;;;;;;
+;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
 
-;; TODO: note, should be able to use acylic dtgs for, e.g., single parent. 
-
-;; TODO: Take advantage of "greedy-chain" condition, don't assign
-;   val to parent too high up the chain too early. 
-
-;; Memoized partial computations to speed up acylic edge generation.
-(def #^HashMap *forward-reachability-cache* nil)
-(def #^HashMap *backward-reachability-cache* nil)
-
-(defn forward-reachable-nodes-and-preds [#^HashMap cache simple-dtgs var-name from-val]
-  (util/cache-with cache [:forward var-name from-val]
-    (graphs/compute-reachable-nodes-and-necessary-predecessors
-     (util/safe-get simple-dtgs var-name) from-val)))
+;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;; Helpers ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
 
 (defn backward-reachable-nodes-and-preds [#^HashMap cache simple-dtgs var-name to-val]
   (util/cache-with cache [:backward var-name to-val]
     (graphs/compute-reachable-nodes-and-necessary-predecessors
      (map reverse (util/safe-get simple-dtgs var-name)) to-val)))
 
-(defn get-possibly-acyclic-edges
-  "Return a list of edges, where those provably on no acyclic s-t path have been eliminated.
-   Do so in polynomial time, possibly missing some always-cyclic edges."  
-  [cache simple-dtgs var from-val to-val]
-  (let [forward-sets  (forward-reachable-nodes-and-preds cache simple-dtgs var from-val)
-        backward-sets (backward-reachable-nodes-and-preds cache simple-dtgs var to-val)]
-    (filter
-     (fn [[a b]]
-       (let [f (forward-sets a)
-             b (backward-sets b)]
-         (and f b (empty? (clojure.set/intersection f b)))))
-     (util/safe-get simple-dtgs var))))
+(defn possibly-acyclic-successors
+  "Return a list of successors of cur-val, which can potentially lead to dst-val
+   without a cycle."  
+  [cache simple-dtgs var cur-val dst-val]
+  (let [backward-sets (backward-reachable-nodes-and-preds cache simple-dtgs var dst-val)]
+    (for [[s t] (util/safe-get simple-dtgs var)
+          :when (and (= s cur-val) (not (contains? (backward-sets t) s)))]
+      t)))
+
+; TODO: take reduced arcs into account, etc.  
+(defn activation-actions 
+  "Return a list of activation actions for var v, ideally which are supported by 
+   current state; i.e., should take reduced arcs into account, etc. "
+  [s child-map v]
+  (for [c (util/safe-get child-map v)]
+    (make-set-parent-var-action v c)))
+
+(defn current-child [s child-var-map p-var]
+  (when-not (env/get-var s (free-var p-var))
+    (some #(env/get-var s (parent-var p-var %))
+          (child-var-map p-var))))
+
+;;;;;;;;;;;;;;;;;;;;;;;;;;;;; Actions fn, actual env ;;;;;;;;;;;;;;;;;;;;;;;;;;;
+
+; Simplest way to express mechanics (in order of preference):
+
+;  Schematics:
+;  a* => A   goes to a* -> a   (greedy fire)
+;  a => A    goes to  A => A   (bottom-up action)
+;  a -> A    goes to  a => A   (bottom-up activate)
+;  a => a => goes to => A =>   (top-down action)          
+;  a => a -> goes to a => a => (top-down activate)          
+
+; Ideally, should prefer top-most top-down, bottom-most bottom-up, or something...
 
 
-(defn get-child-var-map [sas-problem]
-  (let [causal-graph (remove #(apply = %) (sas-analysis/standard-causal-graph sas-problem))]
-    (assert (graphs/dag? causal-graph))
-    (util/map-vals #(map second %) (util/group-by first causal-graph))))
+;; We make this a real type to make accessing precomputed stuff easier...
+(deftype ASPlanEnv [init actions-fn g-map]
+  env/Env 
+    (initial-state [] init)
+    (actions-fn    [] actions-fn)
+    (goal-fn       [] #(when (env/state-matches-map? % g-map) (env/solution-and-reward %)))
+  env/FactoredEnv
+    (goal-map      [] g-map))
 
-; Cannot be used iwth safe-get...
-;(deftype ASPlanFlatHierarchy [sas-problem vars dtgs child-var-map possible-next-map])
-
-(defn make-asplan-env [sas-problem child-var-map dtgs]
-  (reify env/Env
-   (initial-state [] 
-     (expand-initial-state (env/initial-state sas-problem) child-var-map (goal-action dtgs)))
-   (actions-fn    [] :no-actions-fn)
-   (goal-fn       [] (env/goal-fn sas-problem))))
-
-(defn make-asplan-flat-henv [sas-problem] 
-  (let [child-var-map (get-child-var-map sas-problem)
+(defn make-asplan-env [sas-problem] 
+  (let [causal-graph  (remove #(apply = %) (sas-analysis/standard-causal-graph sas-problem))
+        child-var-map (util/map-vals #(map second %) (util/group-by first causal-graph))
+        vars          (keys (:vars sas-problem))
         dtgs          (sas-analysis/domain-transition-graphs sas-problem)
         simple-dtgs   (util/map-vals (fn [dtg] (for [[pval emap] dtg, [eval _] emap] [pval eval])) dtgs)
-        reach-cache   (HashMap.)
-        env           (make-asplan-env sas-problem child-var-map dtgs)]
-    (hierarchy/SimpleHierarchicalEnv 
-     env
-     [(make-flat-asplan-hla 
-       {:type ASPlanFlatHierarchy
-        :sas-problem      sas-problem 
-        :vars             (keys (:vars sas-problem))
-        :dtgs             dtgs
-        :child-var-map    child-var-map
-        :acyclic-edges-fn (partial get-possibly-acylic-edges cache simple-dtgs)} 
-       (env/current-context (env/initial-state env)))])))
+        acyclic-succ-fn (partial possibly-acyclic-successors (HashMap.) simple-dtgs)]
+    (assert (graphs/dag? causal-graph))    
+    (ASPlanEnv 
+     (expand-initial-state (env/initial-state sas-problem) child-var-map (goal-action dtgs))
+     (fn asplan-actions [s]
+       (let [[aa-vars na-vars] (split-with #(env/get-var s (action-var %)) vars)
+             aa-parent-edges   (for [av aa-vars
+                                      :let [pm (:precond-map (env/get-var s (action-var av)))]
+                                      pv    (remove #{av} (keys pm))
+                                      :when (and (not (env/get-var s (action-var pv)))
+                                                 (not (= (pm pv) (env/get-var s pv))))]
+                                  [pv av])
+             na-tuples         (for [nav na-vars
+                                     :let  [child (current-child s child-var-map nav)]
+                                     :when (and child (not (env/get-var s (action-var child))))]
+                                 [nav child])]
+        (util/cond-let [x]
+          ;; Greedy action -- all preconditions satisfied and not assigned elsewhere
+          (some #(make-greedy-fire-action s %) aa-vars) 
+            [x]
+
+          ;; Active bottom-up var -- assigned, needs its value changed.               
+          (util/find-first (fn [[pv cv]] (env/get-var s (parent-var pv cv))) aa-parent-edges)
+            (let [[pv cv] x, 
+                  p-val (env/get-var s pv)
+                  d-val (util/safe-get-in (env/get-var s (action-var cv)) [:precond-map pv])]
+              (apply concat (map (get-in dtgs [pv p-val]) (acyclic-succ-fn pv p-val d-val))))
+
+          ;; Inactive bottom-up var -- needs to be assigned.  
+          (first aa-parent-edges)
+            (activation-actions s child-var-map (first x))
+
+          ;; Active top-down var -- add actions
+          (util/find-first #(not (env/get-var s (free-var %))) (map second na-tuples))  
+            (apply concat (vals (util/safe-get-in dtgs [x (env/get-var s x)])))
+
+          ;; Inactive top-down var -- activate it
+          (first (map second na-tuples))
+            (activation-actions s child-var-map x))))
+     (env/goal-map sas-problem))))
 
 (defn asplan-solution-name [sol]
-  (map second (filter #(= (first %) ::Fire) (map env/action-name sol))))
+  (map second (filter #(= (first %) ::GreedyFire) (map env/action-name sol))))
 
 (defn asplan-solution-pair-name [[sol rew]]
   [(asplan-solution-name sol) rew])
 
+
+
+;; TODO: cutoff when top-down and bottom-up meet, don't match ? 
+
+;; TODO: Take advantage of "greedy-chain" condition, don't assign
+
+
 ; (use '[exp env hierarchy taxi-infinite ucs asplan hierarchical-incremental-search] 'edu.berkeley.ai.util)
 ; (let [e (make-random-infinite-taxi-sas2 1 2 1 2)] (println (run-counted #(uniform-cost-search e))) (println (run-counted #(asplan-solution-pair-name (debug 0 (sahucs-fast-flat (make-asplan-henv e )))))))
 
+
+
+
+;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
+;;;;;;;;;;;;;;;;;;;;;; First attempt: "Skip" hierarchy ;;;;;;;;;;;;;;;;;;;;;;;;;
+;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
 
 
 ;; OK, now we need a hierarchy.    Problems:
@@ -390,9 +302,7 @@
 ; What you lose: always have to fully explore var, if it has multiple parents. 
 
 
-;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
-;;;;;;;;;;;;;;;;;;;;;; First attempt: "Skip" hierarchy ;;;;;;;;;;;;;;;;;;;;;;;;;
-;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
+
 
 ;; TODO: deal with parents that are not relevant.  (i.e., propagate next-sets).
 
