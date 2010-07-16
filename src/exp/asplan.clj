@@ -150,7 +150,7 @@
   "Return a list of activation actions for var v, ideally which are supported by 
    current state; i.e., should take reduced arcs into account, etc. "
   [s child-map v]
-  (for [c (util/safe-get child-map v)]
+  (for [c (child-map v) #_ (util/safe-get child-map v)]
     (make-set-parent-var-action v c)))
 
 (defn current-child [s child-var-map p-var]
@@ -189,6 +189,7 @@
         simple-dtgs   (util/map-vals (fn [dtg] (for [[pval emap] dtg, [eval _] emap] [pval eval])) dtgs)
         acyclic-succ-fn (partial possibly-acyclic-successors (HashMap.) simple-dtgs)]
     (assert (graphs/dag? causal-graph))    
+;    (clojure.inspector/inspect-tree child-var-map)
     (ASPlanEnv 
      (expand-initial-state (env/initial-state sas-problem) child-var-map (goal-action dtgs))
      (fn asplan-actions [s]
@@ -242,15 +243,16 @@
 
 
 
-;; TODO: cutoff when top-down and bottom-up meet, don't match ? 
+;; TODO: cutoff when top-down and bottom-up meet, don't match ? (or earlier)
 
 ;; TODO: Take advantage of "greedy-chain" condition, don't assign
 
 
-; (use '[exp env hierarchy taxi-infinite ucs asplan hierarchical-incremental-search] 'edu.berkeley.ai.util)
-; (let [e (make-random-infinite-taxi-sas2 1 2 1 2)] (println (run-counted #(uniform-cost-search e))) (println (run-counted #(asplan-solution-pair-name (debug 0 (sahucs-fast-flat (make-asplan-henv e )))))))
+; (use '[exp env hierarchy taxi-infinite ucs asplan hierarchical-incremental-search sas-problems] 'edu.berkeley.ai.util)
 
+; (let [e (make-random-infinite-taxi-sas2 4 4 4 2)] (println (time (run-counted #(uniform-cost-search e)))) (println (time (run-counted #(asplan-solution-pair-name (uniform-cost-search (make-asplan-env e)))))))
 
+; (let [e (force (nth ipc2-logistics 3)) ] #_ (println (time (run-counted #(uniform-cost-search e)))) (println (time (run-counted #(asplan-solution-pair-name (uniform-cost-search (make-asplan-env e)))))))
 
 
 ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
@@ -261,15 +263,6 @@
 ;; OK, now we need a hierarchy.    Problems:
  ; some of the primitives as-implemented don't play well with state abstraction.
  ; want all derived knowledge to be represented explicitly ? 
-
-; Basic ideas:
- ; In perfect world, store "possible next" set for each var.
-  ; When we activate a var, we must either assign to a parent that wants current val (how do we know?),
-  ; or choose an action that can lead to a possible next val. 
- ; Also need info going down, maybe?
-  ; Maybe we can ignore it for now ...
-  ; Can make it last priority to activate var downward, only if we're otherwise stuck.
-  ; Still, early deadlock detection is probably important. 
 
 ; Now an abstract subproblem should be, either:
  ; (1) achieve a particular precondition of some active action, or 
@@ -298,8 +291,6 @@
 
 ; Then, we need to be able to recover from deadlock, once we have changed other parts of the world.
 
-; Question: when is this better than, e.g., doing DAG-type thing ? Seems no worse?
-
 ; Then, only question is recovery?  Only end up with actions already present if we 
 ; deadlocked before?  Can just walk back up, it's fine ... but hopefully can detect
 ; whether deadlock possibly avoided before doing lots of work. 
@@ -308,138 +299,174 @@
 ; this should really be metadata.  
 
 ; Note: what happened to possible-next sets above?  Can use them to filter outside parent-var commitments, once we get up to level where context is apparent.
-; What you lose: always have to fully explore var, if it has multiple parents. 
 
-
-
-
-;; TODO: deal with parents that are not relevant.  (i.e., propagate next-sets).
-
-
-
-
-; Note: in "single parent" we should also include tree-reduced situations. 
 ; Note: in general may be able to improve on precondition context, by taking top-down
 ;   info into account. ??
-; Note: state abstraction not TOO important for achieve-precondition, 
-;   since individual steps are still cached in fire-action.
+
+
+;; OK, (almost) enough talk.  
+; HLAs will be:
+; FireAction -- fires action or deadlocks trying -- not cyclic
+ ; If greedy action possible, refine to that
+ ; If deadlocked, refine to empty plan
+ ; Else, if active precondition with wrong val (non-DL), try to achieve + recursive
+ ; Else, if inactive precondition with wrong val, activate + recursive
+ ; Else, pick a top-down opportunity in scope, and advance that
+    ; Can just fall back to "primitive" actions fn ?!?!
+ ; Basically, this is just primitive thing, with 2 differences: 
+  ; Only look locally at this action, except for top-down things. 
+  ; Preconditions are achieved in one go using AchievePrecondition
+
+; AchievePrecondition -- achieves precondition or deadlocks trying -- ideally aclycic, in practice?
+ ; If correct value, empty sequence
+ ; If active action, try to fire it + PostFireAttempt
+ ; If no active action, add one (that can lead in right dir'n).
+
+; PostFireAttempt:
+ ; If action actually fired, AchievePrecondition; else, empty seq.
+
+; Only question: how do we detect deadlocked precond in FireAction?
+; For now, we can punt and use same solution as AchievePrecondition -- 
+; keep deadlock set in FireAction, clear every time we come in, and rely on SA to save us.
+
+; (ideally, SA just follows deadlock chain)
+
+; Even better: keep track of deadlock var sets for each var
+; (to fire current action on var, must free or ?? parent-links from ALL vars in set).
+; Note: recursive scheme means will be *maximally deadlocked* when we come down.
+;  e.g., every precondition will either be achieved (reserved or not), or deadlocked
+
+;; For now, just do simplest thing, PostFireAttempt and PostAchieveAttempt
+
+(defn make-if-deadlock-hla [var dl-plan nodl-plan]
+  (let [name [:if-deadlock var (map env/action-name dl-plan) (map env/action-name nodl-plan)]
+        av   (action-var var)
+        pc   #{av}]
+    (reify :as this
+      env/Action
+       (action-name [] name)
+       (primitive?  [] false)
+      env/ContextualAction 
+       (precondition-context [s] pc)
+      hierarchy/HighLevelAction
+       (immediate-refinements- [s] (if (env/get-var s av) [dl-plan] [nodl-plan]))
+       (cycle-level-           [s] nil))))
+
+(declare make-fire-action-hla)
+
+(defn make-achieve-precondition-hla [hierarchy var dst-val]
+  (let [name [:achieve-precondition var dst-val]
+        av   (action-var var)
+        pc   (util/safe-get-in hierarchy [:precondition-contexts var])]
+    (reify :as this
+      env/Action
+       (action-name [] name)
+       (primitive?  [] false)
+      env/ContextualAction 
+       (precondition-context [s] pc)
+      hierarchy/HighLevelAction
+       (immediate-refinements- [s] 
+         (cond (= (env/get-var s var) dst-val)
+                 (do (assert (not (env/get-var s av))) [[]])
+               (env/get-var s av)
+                 [[(make-fire-action-hla hierarchy var) 
+                   (make-if-deadlock-hla var [[]] [[this]])]]
+               :else 
+                 (let [p-val (env/get-var s var)
+                       dtg   (util/safe-get-in hierarchy [:dtgs var p-val])]
+                   (for [n-val ((:acyclic-succ-fn hierarchy) var p-val dst-val), a (dtg n-val)]
+                     [(make-add-action-action a) this]))))
+       (cycle-level-           [s] nil))))
+
+;; TODO: faster & early deadlock detection.
+; reduced-pm takes out core precond.
+(defn make-fire-action-hla* [name pc hierarchy effect-var a reduced-pm dl-set  ...]
+  (reify :as this
+    env/Action
+      (action-name [] name)
+      (primitive?  [] false)
+    env/ContextualAction 
+      (precondition-context [s] pc)
+    hierarchy/HighLevelAction
+      (immediate-refinements- [s] 
+        (assert (= (env/get-var s (action-var effect-var)) a))
+        (let [[aa-vars na-vars] (util/separate #(env/get-var s (action-var %)) vars)
+              na-tuples         (for [nav na-vars ;; TODO: refactor this.
+                                      :let  [child (current-child s child-var-map nav)]
+                                      :when (and child (not (env/get-var s (action-var child))))]
+                                  [nav child])]
+         (util/cond-let [x]
+          ;; Greedy -- all preconditions satisfied and not assigned elsewhere
+          (make-greedy-fire-action s effect-var)
+            [[x]]
+
+          ;; Active precondition -- assigned, needs its value changed, not deadlock               
+          (util/find-first #(and (env/get-var s (parent-var % effect-var))
+                                 (not (= (env/get-var s %)) (reduced-pm %))
+                                 (not (contains? deadlock-set %)))
+                           (keys reduced-pm))
+            [[(make-achieve-precondition-hla hierarchy x (reduced-pm x))
+              (make-if-deadlock-hla x 
+                [(make-fire-action-hla* ... (conj deadlock-set x))]
+                [(make-fire-action-hla* ... #{})])]]
+
+          ;; Inactive precondition -- needs to be assigned.  
+          (util/find-first #(env/get-var s (free-var %)) (keys reduced-pm))
+            (activation-actions s (:child-var-map hierarchy) x)
+
+          ;; Active top-down var -- add actions
+          (util/find-first #(not (env/get-var s (free-var %))) (map second na-tuples))  
+            (for [as (vals (util/safe-get-in dtgs [x (env/get-var s x)])), a as]
+              (make-add-action-action a))
+
+          ;; Inactive top-down var -- activate it
+          (first (map second na-tuples))
+            (activation-actions s child-var-map x)
+            
+          ;; Nothing to do here -- return upwards, or fail if goal-var
+          :else
+            (when-not (= effect-var sas/goal-var-name) [[]]))))
+       (cycle-level-           [s] nil)))
+
+(defn make-fire-action-hla [hierarchy var a]
+  (make-fire-action-hla*
+   [:fire-action var] ...
+   hierarchy var #{}))
+
+
+(defn make-asplan-skip-henv [sas-problem] 
+  (let [env  (make-asplan-env sas-problem dtgs)]
+    (hierarchy/SimpleHierarchicalEnv 
+     env
+     [(make-fire-action-hla
+       {:type                  ::ASPlanSkipHierarchy
+        :dtgs                  (:dtgs env)
+        :child-var-map         (:child-var-map env)
+        :acyclic-succ-fn       (:acyclic-succ-fn env)
+        :precondition-contexts ??? ; include ancestor vars, action vars, free vars, in-pointing 'rents
+       }
+       sas/goal-var-name)])))
+
+
+
+
+
+
+
+
+
+
+
 
 ; AddActions, then set-parent-var.   
 ; Can return either a state where precondition accomplished, or 
 ; there exist a chain of actions (posisbly empy) leading to a precondition assigned
 ; outside the context of this precond.  
 
+
 (comment
- (declare make-fire-action-hla)
-
-; Can either try to achieve a goal val, or use a parent goal val, or both, or neither. ?
-; If objective(s) are given, will always return states that satisfy objective(s),
-; OR are deadlocked in the process of doing so. 
-; If not given, will return all possible values assigned to all parents, (OR deadlock),
-; rely on parents to filter.
-
-; Note: nobody actually cares *who* we are deadlocked on, just whether deadlocked outside current set or not ....
-(defn make-change-variable-hla [hierarchy var has-goal-val? goal-val goal-action]
-  (assert (not (and goal-val goal-action)))
-  (let [name [:achieve var goal-val]
-        pc   (util/safe-get-in hierarchy [:precond-sets var])]
-    (reify :as this
-      env/Action
-       (action-name [] name)
-       (primitive?  [] false)
-      env/ContextualAction 
-       (precondition-context [s] pc)
-      hierarchy/HighLevelAction
-       (immediate-refinements- [s]
-         (let [cur-val    (env/get-var s var)
-               cur-parent (env/get-var s (parent-var var))
-               cur-action (env/get-var s (action-var var))]
-           (assert (not (= cur-val goal-val)))
-           (cond cur-parent
-                   [[]]
-                 cur-action 
-                   [[(make-fire-action-hla hierarchy var cur-action) this]]
-                 :else 
-                   [[()]]
-                 
-                 )
-           
-           )
-;         (cond ())
-         (if-let [actives (seq (active-action-vars hierarchy s))]
-           (if-let [greedy (some #(make-greedy-fire-plan hierarchy s %) actives)]
-             [(conj (vec greedy) this)]
-             (when-let [open (choose-open-var hierarchy s)]
-;  Note; this can cause suboptimalify if someone might want current val.           
-;          [[(AddSomeActionHLA hierarchy open) this]]))
-               [[(ActivateVarHLA hierarchy open) this]]))
-           [[]]))
-       (cycle-level-           [s] nil))))
 
 
-
-;; Fire a top-down var, or die trying.  
-;; ?: we can assume that we have some space in which to use this ?
-(defn make-fire-parent-hla [hierarchy var]
-  (let [name [:achieve var goal-val]
-        pc   (util/safe-get-in hierarchy [:precond-sets var])]
-    (reify :as this
-      env/Action
-       (action-name [] name)
-       (primitive?  [] false)
-      env/ContextualAction 
-       (precondition-context [s] pc)
-      hierarchy/HighLevelAction
-       (immediate-refinements- [s]
-;         (cond ())
-         (if-let [actives (seq (active-action-vars hierarchy s))]
-           (if-let [greedy (some #(make-greedy-fire-plan hierarchy s %) actives)]
-             [(conj (vec greedy) this)]
-             (when-let [open (choose-open-var hierarchy s)]
-;  Note; this can cause suboptimalify if someone might want current val.           
-;          [[(AddSomeActionHLA hierarchy open) this]]))
-               [[(ActivateVarHLA hierarchy open) this]]))
-           [[]]))
-       (cycle-level-           [s] nil))))
-
-; Make HLA that fires current action on var.  
-; Note: should try to order preconditions, etc. 
-;; Start with fire-action HLA on goal action.
-; This should be recursive, since we may have to alternate  between preconditions.  
-; Basic idea:
-;  Filter out satisfied & deadlocked preconditions
-;  (deadlocked = "have a chain of actions leading to an out-pointing parent-var")
-;    ??
-;  If there are remaining preconditions, choose a "best" one (shallowest?) to satisfy
-;  If all satisfied, fire action and return state
-;  Otherwise, just return "deadlocked" state.
-
-(defn trivial-precond? 
-  "Is this precond trivially satisfied, and not otherwise reserved."
-  [s par-var pvar pval]
-  (and (= pval         (env/get-var s pvar))
-       (#{nil par-var} (env/get-var (parent-var pvar) par-var))
-       (nil?           (env/get-var (action-var pvar)))))
-
-;; Is it possible to make this precondition true 
-(defn live-precond? 
-  "Is is possible to achieve this precond without touching out-of-scope vars?"
-  [s par-var pvar pval]
-  
-  )
-
-(defn best-live-precond 
-  "Which of these live var-val preconditions should we achieve first?"
-  [s live-preconds]
-  
-  )
-
-(defn top-down-var
-  "Return a var with an inactive parent, that will resolve a deadlock for 
-   this action if resolved."
-  [s var action]
-
-  )
 
 (defn make-fire-action-hla [hierarchy var action]
   (assert (= var (key (util/safe-singleton (:effect-map action)))))
@@ -470,49 +497,9 @@
        (cycle-level-           [s] nil))))
 
 
-(deftype ASPlanSkipHierarchy [sas-problem vars dtgs child-var-map possible-next-map])
-
-(defn make-asplan-skip-hierarchy [sas-problem dtgs] 
-  (let [causal-graph (remove #(apply = %) (sas-analysis/standard-causal-graph sas-problem))
-        child-var-map (util/map-vals #(map second %) (util/group-by first causal-graph))]
-    (assert (graphs/dag? causal-graph))
-    (ASPlanFlatHierarchy
-     sas-problem 
-     (keys (:vars sas-problem))
-     dtgs
-     child-var-map
-     (compute-possible-next-map dtgs))))
-
-(defn make-asplan-skip-henv [sas-problem] 
-  (let [dtgs (sas-analysis/domain-transition-graphs sas-problem)
-        env  (make-asplan-env sas-problem dtgs)]
-    (hierarchy/SimpleHierarchicalEnv 
-     env
-     [(make-fire-action-hla
-       (make-asplan-skip-hierarchy sas-problem dtgs) 
-       (env/current-context (env/initial-state env)))])))
-
-;; NOTE: where does top-down growing come up in all of this ? 
-;  only when everything is deadlocked, AND an available spot.
 ; ALSO: where does better deadlock detection come in ? 
 
-
-
-
-
-
-; end comment
 )
-
-
-
-
-
-
-
-
-
-
 
 
 
