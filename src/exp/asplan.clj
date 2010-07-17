@@ -35,6 +35,9 @@
 ;; For state abstraction, it would be better to split parent into n+1 booleans:
 ; (free? v), (parent? v1 v2)
 
+;; TODO: early detection of set deadlock (a1 + a2 need l1, l2, a1 has l1; a2 has l2)
+; especially important for non-DAG ? 
+
 ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
 ;;;;;;;;;;;;;;;;;;;;;;;;;;;; States, (meta)primitives ;;;;;;;;;;;;;;;;;;;;;;;;;;
 ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
@@ -171,9 +174,9 @@
 
 ; Ideally, should prefer top-most top-down, bottom-most bottom-up, or something...
 
-
-;; We make this a real type to make accessing precomputed stuff easier...
-(deftype ASPlanEnv [init actions-fn g-map]
+(deftype ASPlanEnv [init actions-fn g-map 
+                    ; Following stuff is used by hierarchy.
+                    causal-graph dtgs child-var-map acyclic-succ-fn]
   env/Env 
     (initial-state [] init)
     (actions-fn    [] actions-fn)
@@ -182,6 +185,7 @@
     (goal-map      [] g-map))
 
 (defn make-asplan-env [sas-problem] 
+  (def *add-count* (util/sref 0))
   (let [causal-graph  (remove #(apply = %) (sas-analysis/standard-causal-graph sas-problem))
         child-var-map (util/map-vals #(map second %) (util/group-by first causal-graph))
         vars          (keys (:vars sas-problem))
@@ -233,7 +237,8 @@
           ;; Inactive top-down var -- activate it
           (first (map second na-tuples))
             (activation-actions s child-var-map x))));)
-     (env/goal-map sas-problem))))
+     (env/goal-map sas-problem)
+     causal-graph dtgs child-var-map acyclic-succ-fn)))
 
 (defn asplan-solution-name [sol]
   (map second (filter #(= (first %) ::GreedyFire) sol)))
@@ -357,7 +362,7 @@
 (defn make-achieve-precondition-hla [hierarchy var dst-val]
   (let [name [:achieve-precondition var dst-val]
         av   (action-var var)
-        pc   (util/safe-get-in hierarchy [:precondition-contexts var])]
+        pc   (util/safe-get-in hierarchy [:precondition-context-map var])]
     (reify :as this
       env/Action
        (action-name [] name)
@@ -369,8 +374,8 @@
          (cond (= (env/get-var s var) dst-val)
                  (do (assert (not (env/get-var s av))) [[]])
                (env/get-var s av)
-                 [[(make-fire-action-hla hierarchy var) 
-                   (make-if-deadlock-hla var [[]] [[this]])]]
+                 [[(make-fire-action-hla hierarchy var (env/get-var s av) #{}) 
+                   (make-if-deadlock-hla var [] [this])]]
                :else 
                  (let [p-val (env/get-var s var)
                        dtg   (util/safe-get-in hierarchy [:dtgs var p-val])]
@@ -378,20 +383,37 @@
                      [(make-add-action-action a) this]))))
        (cycle-level-           [s] nil))))
 
-;; TODO: faster & early deadlock detection.
-; reduced-pm takes out core precond.
-(defn make-fire-action-hla* [name pc hierarchy effect-var a reduced-pm dl-set  ...]
-  (reify :as this
+
+; For preconds, care if:
+; reserved elsewhere,
+; value matches and not reserved elsewhere
+; value does not match and not reserved elsewhere and FREE or RESERVED.  
+(defn make-fire-action-hla
+  ([hierarchy effect-var a deadlock-set]
+    (let [reduced-pm (dissoc (:precond-map a) effect-var)]
+     (make-fire-action-hla 
+      hierarchy effect-var a deadlock-set reduced-pm
+      (into #{(action-var effect-var)}
+        (apply concat
+          (for [p (keys reduced-pm)]
+            (cons (free-var p) 
+                  (cons (parent-var p effect-var) 
+                        (get-in hierarchy [:precondition-context-map p])))))))))
+ ([hierarchy effect-var a deadlock-set reduced-pm pc]
+  (let [name          [:fire-action effect-var deadlock-set]
+        child-var-map (:child-var-map hierarchy)]
+;    (println "FA" name)
+   (reify :as this
     env/Action
       (action-name [] name)
       (primitive?  [] false)
     env/ContextualAction 
-      (precondition-context [s] pc)
+      (precondition-context [s] pc) ;; perhaps can do better?
     hierarchy/HighLevelAction
       (immediate-refinements- [s] 
         (assert (= (env/get-var s (action-var effect-var)) a))
-        (let [[aa-vars na-vars] (util/separate #(env/get-var s (action-var %)) vars)
-              na-tuples         (for [nav na-vars ;; TODO: refactor this.
+        (let [na-tuples         (for [nav (util/safe-get-in hierarchy [:ancestor-var-map effect-var])
+                                      :when (not #(env/get-var s (action-var %)))
                                       :let  [child (current-child s child-var-map nav)]
                                       :when (and child (not (env/get-var s (action-var child))))]
                                   [nav child])]
@@ -402,55 +424,90 @@
 
           ;; Active precondition -- assigned, needs its value changed, not deadlock               
           (util/find-first #(and (env/get-var s (parent-var % effect-var))
-                                 (not (= (env/get-var s %)) (reduced-pm %))
+                                 (not (= (env/get-var s %) (reduced-pm %)))
                                  (not (contains? deadlock-set %)))
                            (keys reduced-pm))
             [[(make-achieve-precondition-hla hierarchy x (reduced-pm x))
               (make-if-deadlock-hla x 
-                [(make-fire-action-hla* ... (conj deadlock-set x))]
-                [(make-fire-action-hla* ... #{})])]]
+                [(make-fire-action-hla hierarchy effect-var a (conj deadlock-set x) reduced-pm pc)]
+                [(make-fire-action-hla hierarchy effect-var a #{} reduced-pm pc)])]]
 
           ;; Inactive precondition -- needs to be assigned.  
           (util/find-first #(env/get-var s (free-var %)) (keys reduced-pm))
-            (activation-actions s (:child-var-map hierarchy) x)
+            (for [a (activation-actions s child-var-map x)]
+              [a this])
 
           ;; Active top-down var -- add actions
           (util/find-first #(not (env/get-var s (free-var %))) (map second na-tuples))  
-            (for [as (vals (util/safe-get-in dtgs [x (env/get-var s x)])), a as]
-              (make-add-action-action a))
+            (for [as (vals (util/safe-get-in (:dtgs hierarchy) [x (env/get-var s x)])), a as]
+              [(make-add-action-action a) this])
 
           ;; Inactive top-down var -- activate it
           (first (map second na-tuples))
-            (activation-actions s child-var-map x)
+            (for [a (activation-actions s child-var-map x)]
+              [a this])
             
           ;; Nothing to do here -- return upwards, or fail if goal-var
           :else
             (when-not (= effect-var sas/goal-var-name) [[]]))))
-       (cycle-level-           [s] nil)))
-
-(defn make-fire-action-hla [hierarchy var a]
-  (make-fire-action-hla*
-   [:fire-action var] ...
-   hierarchy var #{}))
+       (cycle-level-           [s] nil)))))
 
 
+
+ ; include ancestor vars, action vars, free vars, in-pointing 'rents
 (defn make-asplan-skip-henv [sas-problem] 
-  (let [env  (make-asplan-env sas-problem dtgs)]
+  (let [env    (make-asplan-env sas-problem)
+        cg     (:causal-graph env)
+        cvm    (:child-var-map env)
+        av-map (into {} (for [v (keys (:vars sas-problem))] [v (graphs/ancestor-set cg [v])]))
+        pc-map (into {} 
+                 (for [[k as] av-map] 
+                   [k 
+                    (into as
+                     (concat
+                      (for [v as] (free-var v))
+                      (for [v as] (action-var v))
+                      (for [v as, c (cvm v), :when (as c)] (parent-var v c))))]))]
     (hierarchy/SimpleHierarchicalEnv 
      env
      [(make-fire-action-hla
-       {:type                  ::ASPlanSkipHierarchy
-        :dtgs                  (:dtgs env)
-        :child-var-map         (:child-var-map env)
-        :acyclic-succ-fn       (:acyclic-succ-fn env)
-        :precondition-contexts ??? ; include ancestor vars, action vars, free vars, in-pointing 'rents
-       }
-       sas/goal-var-name)])))
+       {:type                     ::ASPlanSkipHierarchy
+        :dtgs                     (:dtgs env)
+        :child-var-map            cvm
+        :ancestor-var-map         av-map
+        :acyclic-succ-fn          (:acyclic-succ-fn env)
+        :precondition-context-map pc-map}
+       sas/goal-var-name
+       (env/get-var (env/initial-state env) (action-var sas/goal-var-name))
+       #{})])))
+
+
+(defn asplan-skip-solution-name [sol]
+  (map second (filter #(= (first %) ::GreedyFire) (map env/action-name sol))))
+
+(defn asplan-skip-solution-pair-name [[sol rew]]
+  [(asplan-skip-solution-name sol) rew])
+
+
+;  (let [e (make-random-infinite-taxi-sas2 1 2 1 2)] (println (time (run-counted #(uniform-cost-search e)))) (println (time (run-counted #(asplan-solution-pair-name (uniform-cost-search (make-asplan-env e))))))  (println (debug 0 (time (run-counted #(asplan-solution-pair-name (dsh-ucs-inverted (make-asplan-skip-henv e))))))))
+
+; (let [e (make-random-infinite-taxi-sas2 1 2 1 2)] (interactive-hierarchical-search (make-asplan-skip-henv e)))
 
 
 
-
-
+;; TODO: faster & early deadlock detection.
+;; TODO: precond ordering when we activate (handled by activation-actions?)
+(comment ; May use later for more fine-grained stuff.
+ (defn split-preconds 
+   "Return [deadlocked matching free-unmatching reserved-unmatching]"
+   [s effect-var reduced-pm deadlock-set]
+   (let [[blocked unblocked] (util/separate #(or (deadlock-set %)
+                                                 (and (not (env/get-var s (free-var %)))
+                                                      (not (env/get-var s (parent-var % effect-var)))))
+                                            (keys reduced-pm))
+         [matching no-match] (util/separate #(= (reduced-pm %) (env/get-var s %)) unblocked)
+         [free reserved]     (util/separate #(env/get-var s (free-var %))) no-match]
+     [blocked matching free reserved])))
 
 
 

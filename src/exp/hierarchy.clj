@@ -23,6 +23,9 @@
 ;  (println "Computing Refs for " (env/action-name a))
   (util/timeout)
   (let [refs (immediate-refinements- a s)]
+;    (println refs)
+;    (doseq [ref refs, a ref] (println (map env/action-name ref)))
+;    (util/assert-is (every? (fn [s] (every? #(satisfies? env/Action %) s)) refs))
     (util/print-debug 3 "\nRefs for " (env/action-name a) "from" (env/as-map s) "are" 
              (apply str (doall (map #(str "\n  " (util/str-join ", " (map env/action-name %))) refs))))
     (util/sref-set! *ref-counter*  (+ 1            (util/sref-get *ref-counter*)))
