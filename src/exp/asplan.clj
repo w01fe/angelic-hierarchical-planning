@@ -346,7 +346,8 @@
 (defn make-if-deadlock-hla [hierarchy var dl-plan nodl-plan]
   (let [name [:if-deadlock var (map env/action-name dl-plan) (map env/action-name nodl-plan)]
         av   (action-var var)
-        pc   (:full-context hierarchy )#_(util/safe-get-in hierarchy [:precondition-context-map var])]
+        pc   ;(:full-context hierarchy )#_
+             (util/safe-get-in hierarchy [:precondition-context-map var])]
     (reify :as this
       env/Action
        (action-name [] name)
@@ -362,7 +363,8 @@
 (defn make-achieve-precondition-hla [hierarchy var dst-val]
   (let [name [:achieve-precondition var dst-val]
         av   (action-var var)
-        pc   (:full-context hierarchy )#_(util/safe-get-in hierarchy [:precondition-context-map var])]
+        pc   ;(:full-context hierarchy )#_
+             (util/safe-get-in hierarchy [:precondition-context-map var])]
     (reify :as this
       env/Action
        (action-name [] name)
@@ -402,8 +404,8 @@
   (let [name          [:fire-action effect-var]
         reduced-pm    (dissoc (:precond-map a) effect-var)
         child-var-map (:child-var-map hierarchy)
-        pc            (:full-context hierarchy ) #_
-                      (util/safe-get-in hierarchy [:precondition-context-map effect-var]) #_
+        pc            ;(:full-context hierarchy ) #_
+                      ;(util/safe-get-in hierarchy [:precondition-context-map effect-var]) #_
                       (into #{(action-var effect-var)}
                             (apply concat
                                    (for [p (keys reduced-pm)]
