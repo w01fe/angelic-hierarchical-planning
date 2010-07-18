@@ -374,7 +374,7 @@
          (cond (= (env/get-var s var) dst-val)
                  (do (assert (not (env/get-var s av))) [[]])
                (env/get-var s av)
-                 [[(make-fire-action-hla hierarchy var (env/get-var s av) #{}) 
+                 [[(make-fire-action-hla hierarchy var (env/get-var s av)) 
                    (make-if-deadlock-hla hierarchy var [] [this])]]
                :else 
                  (let [p-val (env/get-var s var)
@@ -390,24 +390,28 @@
  ; Record deadlock causes,
  ; Don't try to detect deadlock, just infinitely cycle through preconds & let search take care of it? 
 ; Seems real deadlock detection is best. 
-(defn make-fire-action-hla
-  ([hierarchy effect-var a deadlock-set]
-    (let [reduced-pm (dissoc (:precond-map a) effect-var)]
-     (make-fire-action-hla 
-      hierarchy effect-var a deadlock-set reduced-pm
-      (:full-context hierarchy ) #_
-      (util/safe-get-in hierarchy [:precondition-context-map effect-var]) #_
-      (into #{(action-var effect-var)}
-        (apply concat
-          (for [p (keys reduced-pm)]
-            (cons (free-var p) 
-                  (cons (parent-var p effect-var) 
-                        (get-in hierarchy [:precondition-context-map p])))))))))
- ([hierarchy effect-var a deadlock-set reduced-pm pc]
-  (let [name          [:fire-action effect-var deadlock-set]
-        child-var-map (:child-var-map hierarchy)]
+
+;; TODO: speed up somehow?
+(defn precond-deadlocked? [s precond e-var]
+  (or (and (not (env/get-var s (free-var precond)))
+           (not (env/get-var s (parent-var precond e-var))))
+      (when-let [a (env/get-var s (action-var precond))]
+        (some #(precond-deadlocked? s % precond) (remove #{precond} (keys (:precond-map a)))))))
+
+(defn make-fire-action-hla  [hierarchy effect-var a]
+  (let [name          [:fire-action effect-var]
+        reduced-pm    (dissoc (:precond-map a) effect-var)
+        child-var-map (:child-var-map hierarchy)
+        pc            (:full-context hierarchy ) #_
+                      (util/safe-get-in hierarchy [:precondition-context-map effect-var]) #_
+                      (into #{(action-var effect-var)}
+                            (apply concat
+                                   (for [p (keys reduced-pm)]
+                                     (cons (free-var p) 
+                                           (cons (parent-var p effect-var) 
+                                                 (get-in hierarchy [:precondition-context-map p]))))))]
 ;    (println "FA" name)
-   (reify :as this
+  (reify :as this
     env/Action
       (action-name [] name)
       (primitive?  [] false)
@@ -429,12 +433,9 @@
           ;; Active precondition -- assigned, needs its value changed, not deadlock               
           (util/find-first #(and (env/get-var s (parent-var % effect-var))
                                  (not (= (env/get-var s %) (reduced-pm %)))
-                                 (not (contains? deadlock-set %)))
+                                 (not (precond-deadlocked? s % effect-var)))
                            (keys reduced-pm))
-            [[(make-achieve-precondition-hla hierarchy x (reduced-pm x))
-              (make-if-deadlock-hla hierarchy x 
-                [(make-fire-action-hla hierarchy effect-var a (conj deadlock-set x) reduced-pm pc)]
-                [(make-fire-action-hla hierarchy effect-var a #{} reduced-pm pc)])]]
+            [[(make-achieve-precondition-hla hierarchy x (reduced-pm x)) this]]
 
           ;; Inactive precondition -- needs to be assigned.  
           (util/find-first #(env/get-var s (free-var %)) (keys reduced-pm))
@@ -454,7 +455,7 @@
           ;; Nothing to do here -- return upwards, or fail if goal-var
           :else
             (when-not (= effect-var sas/goal-var-name) [[]]))))
-       (cycle-level-           [s] nil)))))
+       (cycle-level-           [s] nil))))
 
 
 
@@ -490,8 +491,7 @@
         :acyclic-succ-fn          (:acyclic-succ-fn env)
         :precondition-context-map pc-map}
        sas/goal-var-name
-       (env/get-var (env/initial-state env) (action-var sas/goal-var-name))
-       #{})])))
+       (env/get-var (env/initial-state env) (action-var sas/goal-var-name)))])))
 
 
 (defn asplan-skip-solution-name [sol]
