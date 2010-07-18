@@ -343,10 +343,10 @@
 
 ;; For now, just do simplest thing, PostFireAttempt and PostAchieveAttempt
 
-(defn make-if-deadlock-hla [var dl-plan nodl-plan]
+(defn make-if-deadlock-hla [hierarchy var dl-plan nodl-plan]
   (let [name [:if-deadlock var (map env/action-name dl-plan) (map env/action-name nodl-plan)]
         av   (action-var var)
-        pc   #{av}]
+        pc   (:full-context hierarchy )#_(util/safe-get-in hierarchy [:precondition-context-map var])]
     (reify :as this
       env/Action
        (action-name [] name)
@@ -362,7 +362,7 @@
 (defn make-achieve-precondition-hla [hierarchy var dst-val]
   (let [name [:achieve-precondition var dst-val]
         av   (action-var var)
-        pc   (util/safe-get-in hierarchy [:precondition-context-map var])]
+        pc   (:full-context hierarchy )#_(util/safe-get-in hierarchy [:precondition-context-map var])]
     (reify :as this
       env/Action
        (action-name [] name)
@@ -375,7 +375,7 @@
                  (do (assert (not (env/get-var s av))) [[]])
                (env/get-var s av)
                  [[(make-fire-action-hla hierarchy var (env/get-var s av) #{}) 
-                   (make-if-deadlock-hla var [] [this])]]
+                   (make-if-deadlock-hla hierarchy var [] [this])]]
                :else 
                  (let [p-val (env/get-var s var)
                        dtg   (util/safe-get-in hierarchy [:dtgs var p-val])]
@@ -384,15 +384,19 @@
        (cycle-level-           [s] nil))))
 
 
-; For preconds, care if:
-; reserved elsewhere,
-; value matches and not reserved elsewhere
-; value does not match and not reserved elsewhere and FREE or RESERVED.  
+; Problem: even when an action comes back DL, it may have resolved DLs elsewhere...
+; So, either we:
+ ; Do real deadlock detection (just walk causal chains?),
+ ; Record deadlock causes,
+ ; Don't try to detect deadlock, just infinitely cycle through preconds & let search take care of it? 
+; Seems real deadlock detection is best. 
 (defn make-fire-action-hla
   ([hierarchy effect-var a deadlock-set]
     (let [reduced-pm (dissoc (:precond-map a) effect-var)]
      (make-fire-action-hla 
       hierarchy effect-var a deadlock-set reduced-pm
+      (:full-context hierarchy ) #_
+      (util/safe-get-in hierarchy [:precondition-context-map effect-var]) #_
       (into #{(action-var effect-var)}
         (apply concat
           (for [p (keys reduced-pm)]
@@ -428,7 +432,7 @@
                                  (not (contains? deadlock-set %)))
                            (keys reduced-pm))
             [[(make-achieve-precondition-hla hierarchy x (reduced-pm x))
-              (make-if-deadlock-hla x 
+              (make-if-deadlock-hla hierarchy x 
                 [(make-fire-action-hla hierarchy effect-var a (conj deadlock-set x) reduced-pm pc)]
                 [(make-fire-action-hla hierarchy effect-var a #{} reduced-pm pc)])]]
 
@@ -468,10 +472,18 @@
                       (for [v as] (free-var v))
                       (for [v as] (action-var v))
                       (for [v as, c (cvm v), :when (as c)] (parent-var v c))))]))]
+;    (println)
+;    (util/pp-map av-map)
+;    (println)
+;    (util/pp-map pc-map)
+;    (println)
+;    (println (env/current-context (env/initial-state env)))
+;    (println (= (env/current-context (env/initial-state env)) (get pc-map sas/goal-var-name)))
     (hierarchy/SimpleHierarchicalEnv 
      env
      [(make-fire-action-hla
        {:type                     ::ASPlanSkipHierarchy
+        :full-context             (env/current-context (env/initial-state env))
         :dtgs                     (:dtgs env)
         :child-var-map            cvm
         :ancestor-var-map         av-map
@@ -493,6 +505,7 @@
 
 ; (let [e (make-random-infinite-taxi-sas2 1 2 1 2)] (interactive-hierarchical-search (make-asplan-skip-henv e)))
 
+; (let [e (make-random-infinite-taxi-sas2 2 2 2 2)] (interactive-hierarchical-search (make-asplan-skip-henv e)))
 
 
 ;; TODO: faster & early deadlock detection.

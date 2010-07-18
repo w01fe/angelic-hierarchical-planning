@@ -157,6 +157,9 @@
         (.put m# key# result#)
         result#))))
 
+(defn pp-map [m]
+  (doseq [[k v] m] (println "  " k "\t:" v)))
+
       
 (comment   ; group-by in clojure.contrib.seq-utils.
 (defn categorize 

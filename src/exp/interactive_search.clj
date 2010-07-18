@@ -15,16 +15,21 @@
      (interactive-search root reward-fn expand-fn goal-fn pretty-node-fn (queues/make-graph-search-pq)) )
   ([root reward-fn expand-fn goal-fn pretty-node-fn pq]
      (queues/pq-add! pq root (- (reward-fn root)))
-     (let [n-skip (util/sref 0)]
+     (let [n-skip (util/sref 0)
+           ff?    (util/sref false)]
        (loop []
          (when-not (queues/pq-empty? pq)
-           (let [[next p] (queues/pq-remove-min-with-cost! pq)
+           (let [[nxt p] (queues/pq-remove-min-with-cost! pq)
+                 next     (if (util/sref-get ff?) 
+                              (loop [n nxt] (if (goal-fn n) n (let [r (expand-fn n)] (if-let [s (util/singleton r)] (recur s) n))))
+                            nxt)
                  goal?    (goal-fn next)
                  refs     (when-not goal? (expand-fn next))
                  dead-end? (and (not goal?) (empty? refs))]
-             (print "\n\n" (pretty-node-fn next) (reward-fn next))
-             (cond dead-end?     (print " is a dead end.")
-                   goal?         (print " is a solution.")
+             (util/sref-set! ff? false)
+             (print "\n\n" (pretty-node-fn nxt) (reward-fn nxt))
+             (cond dead-end?     (print " leads to dead end at:\n" (pretty-node-fn next) (reward-fn next) )
+                   goal?         (print " leads to solution:\n" (pretty-node-fn next) (reward-fn next) )
                    :else (print " has successors \n                    " 
                            (util/str-join "\n  " (map (juxt pretty-node-fn reward-fn) refs)) "\n"))
              (or (and goal? next)
@@ -33,12 +38,12 @@
                              (queues/pq-add-all! pq (map (fn [i] [i (- (reward-fn i))]) refs))
                              true)
                            (loop []
-                             (print "\n(d)rop, (n)ext, (s)ave, (q)uit, (r)eroot, go (#), (expr ... *n/*nn/*ns)? ")
+                             (print "\n(n)ext, (f)ast forward, (d)rop, (s)ave, (q)uit, (r)eroot, go (#), (expr ... *n/*nn/*ns)? ")
                              (flush)
                              (let [result (read)]
                                (cond (= result 'd) true
-                                     (= result 'n) (do (queues/pq-add-all! pq (map (fn [i] [i (- (reward-fn i))]) refs)) true)
-                                     (= result 'r) (do (while (not (queues/pq-empty? pq)) (queues/pq-remove-min! pq))
+                                     (= result 'f) (do (queues/pq-add-all! pq (map (fn [i] [i (- (reward-fn i))]) refs)) (util/sref-set! ff? true) true)
+                                     (= result 'n) (do (queues/pq-add-all! pq (map (fn [i] [i (- (reward-fn i))]) refs)) true)                                                                   (= result 'r) (do (while (not (queues/pq-empty? pq)) (queues/pq-remove-min! pq))
                                                        (queues/pq-replace! pq next (- (reward-fn next)))
                                                        true)
                                      (= result 's) (do (def *n next) (recur))
@@ -60,4 +65,4 @@
      :reward
      his/hfs-children
      #(empty? (:remaining-actions %))
-     his/hfs-name)))
+     his/hfs-pretty-name)))

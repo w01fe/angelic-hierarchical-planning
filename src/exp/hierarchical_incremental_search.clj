@@ -28,6 +28,11 @@
   ([hfs] [(:state hfs) (map env/action-name (:remaining-actions hfs))])
   ([hfs more-name] (conj (hfs-name hfs) more-name)))
 
+(defn hfs-pretty-name [hfs]
+  [(map env/action-name (:opt-sol hfs))
+   :THEN
+   (map env/action-name (:remaining-actions hfs))])
+
 (defn make-root-hfs [state action]
   (HierarchicalForwardState state 0 [] [action]))
 
