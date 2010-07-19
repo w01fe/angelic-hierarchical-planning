@@ -19,8 +19,6 @@
 ; Can refine until *particular* action resolved, or *any* current action resolved. 
 ;   (not just any action, steps are too small).
 
-;; TODO: should we allow action to fire even when there is already action scheduled on precond ?
-
 ;; TODO: think about variable orderings more.  i.e., in infinite taxi, DAG order is perfect.
 
 ;; TODO: also look at using landmarks to structure search ? 
@@ -31,12 +29,9 @@
 
 ;; NOTE: greedy should come in when we choose a parent for a var. 
 ; If some parent can use current var RIGHT NOW, should assign to it, not branch.
+ ; Except, greedy actions takes care of this.
 
-;; For state abstraction, it would be better to split parent into n+1 booleans:
-; (free? v), (parent? v1 v2)
-
-;; TODO: early detection of set deadlock (a1 + a2 need l1, l2, a1 has l1; a2 has l2)
-; especially important for non-DAG ? 
+;; For state abstraction, split parent into n+1 booleans: (free? v), (parent? v1 v2)
 
 ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
 ;;;;;;;;;;;;;;;;;;;;;;;;;;;; States, (meta)primitives ;;;;;;;;;;;;;;;;;;;;;;;;;;
@@ -78,23 +73,6 @@
      {(action-var evar) factored-primitive}
      reward)))
 
-
-(comment ;; Not actually needed -- use below instead.
-  (defn make-fire-action-action [{:keys [name precond-map effect-map reward] :as factored-primitive}]
-   (let [[evar eval] (util/safe-singleton (seq effect-map))]
-     (env/FactoredPrimitive
-      [::Fire name]
-      (into precond-map 
-            (cons [(action-var evar) factored-primitive]
-                  (for [[pvar pval] (dissoc precond-map evar)]
-                    [(parent-var pvar evar) true])))
-      (into effect-map 
-            (cons [(action-var evar) nil]
-                  (apply concat
-                         (for [[pvar pval] (dissoc precond-map evar)]
-                           [[(parent-var pvar evar) false]
-                            [(free-var evar) true]]))))
-      0))))
 
 (defn make-set-parent-var-action [p-var c-var]
   (env/FactoredPrimitive 
@@ -149,11 +127,43 @@
       t)))
 
 ; TODO: take reduced arcs into account, etc.  
-(defn activation-actions 
-  "Return a list of activation actions for var v, ideally which are supported by 
-   current state; i.e., should take reduced arcs into account, etc. "
-  [s child-map v]
-  (for [c (child-map v) #_ (util/safe-get child-map v)]
+; Problem: this breaks state abstraction for hierarchy.
+; It will need to do detection at a higher level, i.e., notice deadlock
+
+; To notice deadlock, don't select var in parent chain of another.
+; More generally, don't select var s.t. resolving leads to cycle.
+;  Specifically, assigning to action which will be deadlocked on this precond.
+;  Recipe: keep parent links, add links from a--> b where a has lock on precond needed by b.
+;  If there is a cycle in this graph, we are deadlocked.
+
+(comment
+  (defn possible-activation-actions  
+   "Return a list of possible activation actions for var v possible in state s.
+   To be possible parent, must be supported from below, and not cause deadlock
+   (by pointing to action whose other precondition is needing it. "
+   [s child-map v]
+   (for [c (child-map v)]
+     (make-set-parent-var-action v c))))
+
+;; TODO: do not count parent edges where action does not actually require precondition (top-down)
+(defn deadlocked? [s child-map]
+  (let [parent-edges (for [[p cs] child-map, c cs :when (env/get-var s (parent-var p c))] [p c])
+        res-map      (into {} (filter (fn [[p c]] 
+                                        (when-let [a (env/get-var s (action-var c))]
+                                          (contains? (:precond-map a) p))) 
+                                      parent-edges))
+        extra-edges  (for [[p c] parent-edges 
+                           :let [a (env/get-var s (action-var p))] 
+                           :when a
+                           precond (remove #{p} (keys (:precond-map a)))
+                           :let [res (res-map precond)]
+                           :when res]
+                       [res p])]
+    (not (graphs/dag? (concat parent-edges extra-edges)))))
+
+(defn activation-actions  "Return a list of all activation actions for var v"
+  [child-map v]
+  (for [c (child-map v)]
     (make-set-parent-var-action v c)))
 
 (defn current-child [s child-var-map p-var]
@@ -197,6 +207,8 @@
     (ASPlanEnv 
      (expand-initial-state (env/initial-state sas-problem) child-var-map (goal-action dtgs))
      (fn asplan-actions [s]
+      (if false ;(deadlocked? s child-var-map)
+        (do (println s) nil)
        (let [[aa-vars na-vars] (util/separate #(env/get-var s (action-var %)) vars)
              aa-parent-edges   (for [av aa-vars
                                       :let [pm (:precond-map (env/get-var s (action-var av)))]
@@ -227,7 +239,7 @@
 
           ;; Inactive bottom-up var -- needs to be assigned.  
           (util/find-first #(env/get-var s (free-var %)) (map first aa-parent-edges))
-            (activation-actions s child-var-map x)
+            (activation-actions child-var-map x)
 
           ;; Active top-down var -- add actions
           (util/find-first #(not (env/get-var s (free-var %))) (map second na-tuples))  
@@ -236,7 +248,7 @@
 
           ;; Inactive top-down var -- activate it
           (first (map second na-tuples))
-            (activation-actions s child-var-map x))));)
+            (activation-actions child-var-map x)))))
      (env/goal-map sas-problem)
      causal-graph dtgs child-var-map acyclic-succ-fn)))
 
@@ -346,8 +358,7 @@
 (defn make-if-deadlock-hla [hierarchy var dl-plan nodl-plan]
   (let [name [:if-deadlock var (map env/action-name dl-plan) (map env/action-name nodl-plan)]
         av   (action-var var)
-        pc   ;(:full-context hierarchy )#_
-             (util/safe-get-in hierarchy [:precondition-context-map var])]
+        pc   (util/safe-get-in hierarchy [:precondition-context-map var])]
     (reify :as this
       env/Action
        (action-name [] name)
@@ -363,8 +374,7 @@
 (defn make-achieve-precondition-hla [hierarchy var dst-val]
   (let [name [:achieve-precondition var dst-val]
         av   (action-var var)
-        pc   ;(:full-context hierarchy )#_
-             (util/safe-get-in hierarchy [:precondition-context-map var])]
+        pc   (util/safe-get-in hierarchy [:precondition-context-map var])]
     (reify :as this
       env/Action
        (action-name [] name)
@@ -404,14 +414,12 @@
   (let [name          [:fire-action effect-var]
         reduced-pm    (dissoc (:precond-map a) effect-var)
         child-var-map (:child-var-map hierarchy)
-        pc            ;(:full-context hierarchy ) #_
-                      ;(util/safe-get-in hierarchy [:precondition-context-map effect-var]) #_
-                      (into #{(action-var effect-var)}
-                            (apply concat
-                                   (for [p (keys reduced-pm)]
-                                     (cons (free-var p) 
-                                           (cons (parent-var p effect-var) 
-                                                 (get-in hierarchy [:precondition-context-map p]))))))]
+        pc            (into #{(action-var effect-var)}
+                        (apply concat
+                          (for [p (keys reduced-pm)]
+                            (cons (free-var p) 
+                                  (cons (parent-var p effect-var) 
+                                        (get-in hierarchy [:precondition-context-map p]))))))]
 ;    (println "FA" name)
   (reify :as this
     env/Action
@@ -441,7 +449,7 @@
 
           ;; Inactive precondition -- needs to be assigned.  
           (util/find-first #(env/get-var s (free-var %)) (keys reduced-pm))
-            (for [a (activation-actions s child-var-map x)]
+            (for [a (activation-actions child-var-map x)]
               [a this])
 
           ;; Active top-down var -- add actions
@@ -451,7 +459,7 @@
 
           ;; Inactive top-down var -- activate it
           (first (map second na-tuples))
-            (for [a (activation-actions s child-var-map x)]
+            (for [a (activation-actions child-var-map x)]
               [a this])
             
           ;; Nothing to do here -- return upwards, or fail if goal-var
@@ -475,13 +483,6 @@
                       (for [v as] (free-var v))
                       (for [v as] (action-var v))
                       (for [v as, c (cvm v), :when (as c)] (parent-var v c))))]))]
-;    (println)
-;    (util/pp-map av-map)
-;    (println)
-;    (util/pp-map pc-map)
-;    (println)
-;    (println (env/current-context (env/initial-state env)))
-;    (println (= (env/current-context (env/initial-state env)) (get pc-map sas/goal-var-name)))
     (hierarchy/SimpleHierarchicalEnv 
      env
      [(make-fire-action-hla
@@ -503,15 +504,44 @@
   [(asplan-skip-solution-name sol) rew])
 
 
+
+;; TODO: faster & early deadlock detection.
+;; TODO: detect "out-of-context" deadlock, fail immediately.
+;; TODO: precond ordering when we activate (handled by activation-actions?)
+
+
 ;  (let [e (make-random-infinite-taxi-sas2 1 2 1 2)] (println (time (run-counted #(uniform-cost-search e)))) (println (time (run-counted #(asplan-solution-pair-name (uniform-cost-search (make-asplan-env e))))))  (println (debug 0 (time (run-counted #(asplan-solution-pair-name (dsh-ucs-inverted (make-asplan-skip-henv e))))))))
 
 ; (let [e (make-random-infinite-taxi-sas2 1 2 1 2)] (interactive-hierarchical-search (make-asplan-skip-henv e)))
 
 ; (let [e (make-random-infinite-taxi-sas2 2 2 2 2)] (interactive-hierarchical-search (make-asplan-skip-henv e)))
 
+; (let [e (force (nth ipc2-logistics 0))] (println (time (run-counted #(uniform-cost-search e)))) (println (time (run-counted #(asplan-solution-pair-name (uniform-cost-search (make-asplan-env e))))))  (println (debug 0 (time (run-counted #(asplan-skip-solution-pair-name (dsh-ucs-inverted (make-asplan-skip-henv e))))))))
 
-;; TODO: faster & early deadlock detection.
-;; TODO: precond ordering when we activate (handled by activation-actions?)
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
 (comment ; May use later for more fine-grained stuff.
  (defn split-preconds 
    "Return [deadlocked matching free-unmatching reserved-unmatching]"
@@ -534,12 +564,7 @@
 ; Can return either a state where precondition accomplished, or 
 ; there exist a chain of actions (posisbly empy) leading to a precondition assigned
 ; outside the context of this precond.  
-
-
 (comment
-
-
-
 (defn make-fire-action-hla [hierarchy var action]
   (assert (= var (key (util/safe-singleton (:effect-map action)))))
   (let [name [:fire var]
@@ -657,3 +682,23 @@
             false)
           (can-use-next? hierarchy effect-var eval p (env/get-var s p))))
       ((util/safe-get hierarchy :child-var-map) effect-var)))))
+
+
+
+
+(comment ;; Not actually needed -- use below instead.
+  (defn make-fire-action-action [{:keys [name precond-map effect-map reward] :as factored-primitive}]
+   (let [[evar eval] (util/safe-singleton (seq effect-map))]
+     (env/FactoredPrimitive
+      [::Fire name]
+      (into precond-map 
+            (cons [(action-var evar) factored-primitive]
+                  (for [[pvar pval] (dissoc precond-map evar)]
+                    [(parent-var pvar evar) true])))
+      (into effect-map 
+            (cons [(action-var evar) nil]
+                  (apply concat
+                         (for [[pvar pval] (dissoc precond-map evar)]
+                           [[(parent-var pvar evar) false]
+                            [(free-var evar) true]]))))
+      0))))
