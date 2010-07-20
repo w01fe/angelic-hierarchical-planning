@@ -439,6 +439,8 @@
 
 
 
+;(let [e (make-random-infinite-taxi-sas2 5 5 5 1) ] #_ (println (time (run-counted #(uniform-cost-search e)))) (println (time (run-counted #(asplan-solution-pair-name (uniform-cost-search (make-asplan-env e))))))   (println (debug 0 (time (run-counted #(asplan-skip-solution-pair-name (dsh-ucs-inverted (make-asplan-skip-henv e))))))))
+
 ;; TODO: A/I support is incorrect for now, it seems. 
 ; OK, this is screwy for now, it seems.
 ; We need to be able to transfer control to floating actions? 

@@ -56,6 +56,16 @@
                                                                  (eval result)) "\n") (recur))))))
                    (recur)))))))))
 
+(defn interactive-flat-search [env]
+  (interactive-search 
+   (with-meta  (env/initial-state env) {:reward 0})
+   #(:reward (meta %)) 
+   (let [a-fn (env/actions-fn env)]
+     #(for [a (a-fn %) :when (env/applicable? a %)] (first (env/successor a %))))
+   (env/goal-fn env)
+   #(:act-seq (meta %))
+   ))
+
 (defn interactive-hierarchical-search [henv]
   (let [e    (hierarchy/env henv)
 ;        init (env/initial-logging-state e)
