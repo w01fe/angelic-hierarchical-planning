@@ -221,7 +221,7 @@
           ;; Inactive bottom-up var -- needs to be assigned.  
           (util/find-first #(env/get-var s (free-var %)) (map first aa-parent-edges))
             (do (println "??????????!!") (activation-actions child-var-map x))
-
+;; tODO: put below back, needed for correctness!
           ;; Active top-down var -- add actions
 ;          (util/find-first #(and (not (env/get-var s (free-var %)))
 ;                                 (not (env/get-var s (action-var (current-child s child-var-map %))))) ;->ASPLAN1
