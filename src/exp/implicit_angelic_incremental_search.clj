@@ -7,7 +7,8 @@
   (:import  [java.util HashMap]))
 
 
-; Hierarchical algorithms that can use non-concrete angelic valuations.
+; Hierarchical algorithms that can use angelic valuations.
+; Included are algorithms for explicit valuations, as well as implicit set-vased ones. 
 
 ; (require optimistic & pessimistic in line, by single map from clauses to [p o] pairs) ?
 ; Still have correspondence problem.
