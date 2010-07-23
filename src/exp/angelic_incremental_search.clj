@@ -137,117 +137,12 @@
 ; Then, recipe for AND-search:
  ; Simplest recipe: Whenever we get a goal, make a new cpcpc node and start over.
   ;  This will give big ugly chains for every primitive solution, however.
-  ;  Fix: when we split cpcpc, if either side is primitive, just make wrapped for other.
-   ;  Problem: what if non-refinable but not primitive, e.g.?  
   ; Note: once we start getting results for one clause-output side, we probably don't want to 
     ; refine other side again?
-     ;That, or do explicit cross-product of all goals. 
-     ;  Except, goals from first half can't combine with goals from second-half, unless primitive. 
   ; Note; for each half of cpcpc, we know in advance if it's clause-output or state-output. 
 
-; A main question: what do we do at CAC node when we get refined output clause.
- ; We get this as ...
+; Requirement: only get primitive goals for primitive ends (i.e, minimal state abstraction?) ?
 
-; Step back: this looks like:
-
-; CAC has OR-search
- ; Initially with angelic bound
- ; Then over refinements, which are CPC=CACPC
- ; Can return two types of goals:
-  ; CAC' for refined C
-  ; Primitive plan, iff both ends concrete?
- ; If it gets 
-  ; primitive goal from below, just passes through.
-  ; refined CAC'PC from below, just researchify (CAC' should not be recreated, ideally C'PC is wrapped).
-  ; refined CACPC' from below, 
-   ; Create and return fresh CAC' node?
-   ; Tension:
-   ;   (1) would like this CAC' to have its own existence, for caching sake.
-   ;        but this means other refs are doubly represented
-   ;   (2) right now, only have info for single refinement.  More will follow, as applicable?
-   ;        (sooner or later, depending on how we end up doing AND below)
-   ;        And in this case, we need to be able to add to it.
-   ; Just return CACPC' ? Simple, no duplication, just lose out on CAC' caching.  Can eventaully add inverted-style?
-
-; TODO !!! We need a concrete example here. 
-
-; CPC has AND-search
- ; Initially over basic decomposition.
- ; Can return two types of goals:
-  ; CPC' for refined C
-  ; Primitive plan, iff both ends concrete?
- ; If it gets:
-  ; Primitive goal from below (1), depends on (2)
-  ; Primitive goal form below (2), act like SAHA-simple.
-  ;   (must get primitive goal from (1), or eventually stall?)
-  ; Refined goal from below (1), 
-  ;   Return CAC'PC upwards, stop refining (2) ?
-  ; Retined goal from below (2),
-  ;   Return CACPC' upwards, stop refining (1) ?
-  ; Issue with these: different stopping for different refs may reduce caching.
-
-; Requirement: only get primitive goals for primitive ends (i.e, minimal state abstraction?)
-
-
-;; Seems this is all overly complicated, by including out-clauses in nodes?
-; Can we improve by doing some caching without out-clauses (although searches are always with)?
-;  Seems like red herring.
-
-
-;  Splitting could be explicit decision, rather than automatic thing?
-
-;; So, perhaps answer is to use inverted-style in some places, i.e., for CAC node.
-
-; Yet another alternative: get rid of CPC, everything is CACACACACACAC.
-;   Lose out on caching things like CAC', where C' is specification, looked up directly -- never happen  ???
-; What you lose is: action used in 2 different context.  Once you lift up results, all further refinement of
-; this subproblem can no longer be shared.  
-; If we can keep same decomposition even after we lift...
- ; may save caching, saving graphiness/decomposibility is harder? 
- ; unless we do inverted thing!
- ; Except not really inverted -- more like top-down, but growing bottom-up.
-  ; Meed some sort of consistency guarantee, and we're good. 
-    ; i.e., as we add results, max-reward never increases.  
- ; Questino about what exactly this can be shared bwetween (what do we need about clause generalizations?)
-
-
-; Also: lose out on state abstraction as such sequences grow. 
-
-
-
-
-;; Take 2:  
-; TODO: watch out for loss of state abstraction as seqs grow ? 
-
-; CAC has OR-search
- ; Then over refinements, which are CACAC
- ; Can return two types of goals:
-  ; CACACACAC', for some refinement of A where C' specifizes C
-  ; Primitive plan, iff both ends concrete?
- ; If it gets 
-  ; primitive goal from below, just passes through.
-  ; refined C*C from below, just researchify 
-  ; refined C*C' from below, return it 
-
-; CAC...C has AND-search
- ; split off unrefinable portion, or first action?
- ; Can return two types of goals:
-  ; CAC...C' for refined C
-  ; Primitive plan, iff both ends concrete?
- ; If it gets:
-  ; Primitive goal from below (1), wait for (2) and glue
-  ; Primitive goal form below (2), wait for (1) then glue
-  ;   (must get primitive goal from (1), or eventually stall?)
-  ; Refined goal from below (1), 
-  ;   Return CAC'PC upwards, stop refining (2) ?
-  ; Retined goal from below (2),
-  ;   Return CACPC' upwards, stop refining (1) ?
-  ; Issue with these: different stopping for different refs may reduce caching.
-
-;  Need an example here.
-
-
-;; Take 3:  (best take)
 ;; TODO: note we can't copy searches.  Everything should go through nodes.  This may present a problem?
 
 ; Every node is CACACACACAC.  

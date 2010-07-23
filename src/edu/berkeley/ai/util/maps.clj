@@ -173,3 +173,32 @@
 
 
       
+#_
+(defmacro for-map
+  "Using bindings and filtering as provided by \"for\", efficiently build a map
+   by repeatedly evaluating key-expr and val-expr.  If a key is repeated, the last
+   value (according to \"for\" semantics) will be retained.  An optional symbol
+   can be passed as a first argument, which will be bound to the transient map
+   containing the entries produced so far."
+  ([seq-exprs key-expr val-expr]
+     (for-map (gensym "m") seq-exprs key-expr val-expr))
+  ([m-sym seq-exprs key-expr val-expr]
+     `(let [~m-sym (java.util.HashMap.)]
+        (doseq ~seq-exprs
+          (.put ~m-sym ~key-expr ~val-expr))
+        (clojure.lang.PersistentHashMap/create ~m-sym))))
+
+
+(defmacro for-map
+  "Using bindings and filtering as provided by \"for\", efficiently build a map
+   by repeatedly evaluating key-expr and val-expr.  If a key is repeated, the last
+   value (according to \"for\" semantics) will be retained.  An optional symbol
+   can be passed as a first argument, which will be bound to the transient map
+   containing the entries produced so far."
+  ([seq-exprs key-expr val-expr]
+     (for-map (gensym "m") seq-exprs key-expr val-expr))
+  ([m-sym seq-exprs key-expr val-expr]
+     `(let [m-atom# (atom (transient {}))]
+        (doseq ~seq-exprs
+          (let [~m-sym @m-atom#] (reset! m-atom# (assoc! ~m-sym ~key-expr ~val-expr))))
+        (persistent! @m-atom#))))
