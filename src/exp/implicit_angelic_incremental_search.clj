@@ -1,4 +1,4 @@
-(ns exp.angelic-incremental-search
+(ns exp.implicit-angelic-incremental-search
   (:require [edu.berkeley.ai.util :as util]
             [exp.env :as env] 
             [exp.hierarchy :as hierarchy]

@@ -384,6 +384,7 @@
                  *full-context*      (if sa? :dummy (env/current-context init))]
          (when-let [sol (is/first-goal-node (search-maker (make-root-hfs init tla)))]
            (let [sol-hfs (hfs-sol-extractor (:data sol))]
+;             (println sol-hfs)
              [(:opt-sol sol-hfs) (:reward sol-hfs)]))))))
 
 ; Decomposed Angelic State-abstracted Hierarchical (Uniform-cost/A*)
@@ -394,46 +395,22 @@
 (defn dsh-ucs-dijkstra [henv] (hierarchical-search henv make-acyclic-recursive-search true))
 (defn dsh-ucs-gg [henv] (hierarchical-search henv make-gg-search true))
 (defn dsh-ucs-inverted [henv] (hierarchical-search henv make-inverted-search true))
-(defn dash-a*-simple [henv]   (hierarchical-search henv make-saha-search true first))
+(defn explicit-simple-dash-a* [henv]   (hierarchical-search henv make-saha-search true first))
 
-(defn ah-a*-simple [henv] (hierarchical-search henv make-aha-star-simple-search false))
-(defn dah-a*-simple [henv] (hierarchical-search henv make-saha-search false first))
+(defn explicit-simple-ah-a* [henv] (hierarchical-search henv make-aha-star-simple-search false))
+(defn explicit-simple-dah-a* [henv] (hierarchical-search henv make-saha-search false first))
 
 (def aaai-algs
      [["H-UCS" h-ucs]
       ["DH-UCS" dh-ucs]
       ["DSH-UCS" dsh-ucs]
 ;      ["DSHU-d" dshu-dijkstra]
-      ["AH-A" ah-a*-simple]
-      ["DAH-A" dah-a*-simple]
-      ["DASH-A" dash-a*-simple]])
+      ["AH-A" explicit-simple-ah-a*]
+      ["DAH-A" explicit-simple-dah-a*]
+      ["DASH-A" explicit-simple-dash-a*]])
 
 (def aaai-alg-map (into {} aaai-algs))
 
-(comment ;old names
- (defn sahucs-fast-flat [henv]
-   (hierarchical-search henv make-fast-flat-search))
-
- (defn sahucs-flat [henv]
-   (hierarchical-search henv make-flat-search))
-
- (defn sahucs-simple [henv]
-   (hierarchical-search henv make-recursive-search))
-
- (defn sahucs-dijkstra [henv]
-   (hierarchical-search henv make-acyclic-recursive-search))
-
- (defn sahucs-gg [henv]
-   (hierarchical-search henv make-gg-search))
-
- (defn sahucs-inverted [henv]
-   (hierarchical-search henv make-inverted-search))
-
- (defn saha-simple [henv]
-   (hierarchical-search henv make-saha-search true first))
-
- (defn aha-star-simple [henv]
-   (hierarchical-search henv make-aha-star-simple-search)))
 
 
 (comment

@@ -68,11 +68,13 @@
 
 (def worst-simple-summary (SimpleSummary neg-inf))
 
-(def failed-search
-     (reify IncrementalSearch
+(defn make-failed-search [failed-summary]
+  (reify IncrementalSearch
             (root-node [] (throw (RuntimeException.)))
-            (current-summary [] worst-simple-summary)
+            (current-summary [] failed-summary)
             (next-goal [mr] (throw (RuntimeException.)))))
+
+(def failed-search (make-failed-search worst-simple-summary))
 
 
 (deftype SimpleNode [name reward goal? data]
@@ -322,6 +324,9 @@
                 (let [nxt (next-goal choice (- min-reward (max-reward other-sum)))]
                   (when nxt (reset! choice-atom nxt))
                   (recur min-reward))))))))))
+
+
+
 (comment 
 
 ;; More general way to sequence two searches, which can have multiple goal states
@@ -351,12 +356,64 @@
                                         (recur min-reward)))))))))))
 
 
+
+
+;;;;;;;;;;;;;;;;;;;;;;; Recursive Dijkstra with custom Min ;;;;;;;;;;;;;;;;;;;;;
+
+; This is like the above recursive Dijkstra, except the summary is constructed
+; by an artibrary function of all the sub-summaries.  This entails a linear scan of 
+; all children for each expansion.  The best child to expand is still chosen by 
+; comparator.
+
+
+; Node queue maps node-name --> node.  Search-queue maps [search lift-fn] --> summary.
+(defn make-custom-recursive-incremental-dijkstra 
+  "Like make-recursive-incremental-dijkstra, but with a custom 'min' fn 
+   that constructs the summary of this search from all children.  Operations
+   are linear rather than logarithmic in # of children. min-fn must be
+   commutative and associative."
+  [root searchify-fn min-fn]
+  (let [search-list (atom [])
+        node-list   (atom [root])
+        search-summary (atom worst-simple-summary)
+        node-summary   (atom root)]
+    (reify :as this IncrementalSearch 
+      IncrementalSearch
+       (root-node       [] root)
+       (current-summary [] (min-fn @search-summary @node-summary))
+       (next-goal  [min-reward]
+         (when (viable-search? this min-reward)
+           (if (neg? (compare @search-summary @node-summary))
+             (let [[best & rest]   (sort-by current-summary @search-list)
+                   next-min-reward (max min-reward (max-reward @node-summary) 
+                                        (if-let [x (first rest)] (max-reward (current-summary x)) neg-inf))]
+               (when-let [result (sub-next-node best next-min-reward)]
+                 (swap! node-list conj result)
+                 (swap! node-summary min-fn result))
+               (when-not (viable? (sub-current-summary best) neg-inf)
+                 (reset! search-list rest))
+               (reset! search-summary (apply min-fn (map sub-current-summary @search-list)))
+               (recur min-reward))
+             (let [[best & rest] (sort @node-list)]
+               (if (node-goal? best)
+                 best
+                 (let [sgs-or-nodes (searchify-fn best)]
+                   (if (coll? sgs-or-nodes) 
+                     (do (reset! node-list (concat rest sgs-or-nodes))
+                         (reset! node-summary (apply min-fn @node-list)))
+                     (do (swap! search-list conj sgs-or-nodes)
+                         (swap! search-summary min-fn (sub-current-summary sgs-or-nodes))
+                         (reset! node-list rest)
+                         (reset! node-summary (apply min-fn rest))))
+                   (recur min-reward))))))))))
+
+(defn make-custom-recursive-sr-search "Call searchify1 on root, otherwise searchify2" 
+  [root-node searchify1 searchify2 min-fn]
+  (make-custom-recursive-incremental-dijkstra root-node 
+    #(if (identical? root-node %) (searchify1 %) (searchify2 %)) min-fn))
    
 
 
 
-;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;; Generalized-Goal Search ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
-
-;??????
 
 
