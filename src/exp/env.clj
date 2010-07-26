@@ -232,6 +232,9 @@
   (let [{:keys [act-seq reward]} (meta state)]
     [(reverse act-seq) (or reward 0)]))
 
+(defn concat-solution-pairs [& pairs]
+  [(apply concat (map first pairs)) (apply + 0 (map second pairs))])
+
 (defn reward [state]
   (or (:reward (meta state)) 0))
 

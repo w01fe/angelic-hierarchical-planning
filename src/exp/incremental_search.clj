@@ -215,7 +215,7 @@
              (when (viable-search? backing-search min-reward)
                (do (when-let [r (next-goal backing-search min-reward)] 
                      (swap! results-atom conj r))
-                   (recur min-reward))))))))))
+                   (recur  pos-inf #_ min-reward))))))))))
 
 (defmacro get-cached-search 
   "Take a Map, name, and expression that constructs a fresh IncrementalSearch.  If this is the first
@@ -323,7 +323,7 @@
                             (identical? choice s2) [s2-goal (or @s1-goal (current-summary s1))])]
                 (let [nxt (next-goal choice (- min-reward (max-reward other-sum)))]
                   (when nxt (reset! choice-atom nxt))
-                  (recur min-reward))))))))))
+                  (recur  pos-inf #_ min-reward))))))))))
 
 
 
@@ -365,6 +365,7 @@
 ; all children for each expansion.  The best child to expand is still chosen by 
 ; comparator.
 
+;; TODO: remove pos-inf!
 
 ; Node queue maps node-name --> node.  Search-queue maps [search lift-fn] --> summary.
 (defn make-custom-recursive-incremental-dijkstra 
@@ -393,7 +394,7 @@
                (when-not (viable? (sub-current-summary best) neg-inf)
                  (reset! search-list rest))
                (reset! search-summary (apply min-fn (map sub-current-summary @search-list)))
-               (recur min-reward))
+               (recur pos-inf #_min-reward))
              (let [[best & rest] (sort @node-list)]
                (if (node-goal? best)
                  best
@@ -405,7 +406,7 @@
                          (swap! search-summary min-fn (sub-current-summary sgs-or-nodes))
                          (reset! node-list rest)
                          (reset! node-summary (apply min-fn rest))))
-                   (recur min-reward))))))))))
+                   (recur pos-inf #_ min-reward))))))))))
 
 (defn make-custom-recursive-sr-search "Call searchify1 on root, otherwise searchify2" 
   [root-node searchify1 searchify2 min-fn]

@@ -30,6 +30,11 @@
    :THEN
    (map env/action-name (:remaining-actions hfs))])
 
+(defn hfs-solution-pair [hfs]
+  (when hfs
+   (assert (empty? (:remaining-actions hfs)))
+   [(:opt-sol hfs) (:reward hfs)]))
+
 (defn make-root-hfs [state action]
   (HierarchicalForwardState state 0 [] [action]))
 
@@ -372,33 +377,34 @@
 ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;; Top-level  ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
 ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
 
-(defn hierarchical-search 
-  ([henv search-maker] (hierarchical-search henv search-maker true))
-  ([henv search-maker sa?] (hierarchical-search henv search-maker sa? identity))  
-  ([henv search-maker sa? hfs-sol-extractor]
+(defn generic-hierarchical-search 
+  ([henv sol-hfs-fn] (generic-hierarchical-search henv sol-hfs-fn true))
+  ([henv sol-hfs-fn sa?]
      (let [e    (hierarchy/env henv)
            init (env/initial-logging-state e)
            tla  (hierarchy/TopLevelAction e [(hierarchy/initial-plan henv)])]
        (binding [*problem-cache*    (HashMap.)
                  *state-abstraction?* sa?
                  *full-context*      (if sa? :dummy (env/current-context init))]
-         (when-let [sol (is/first-goal-node (search-maker (make-root-hfs init tla)))]
-           (let [sol-hfs (hfs-sol-extractor (:data sol))]
-;             (println sol-hfs)
-             [(:opt-sol sol-hfs) (:reward sol-hfs)]))))))
+         (sol-hfs-fn (make-root-hfs init tla))))))
+
+(defn simple-hierarchical-search 
+  ([hfs search-maker sa?] (simple-hierarchical-search hfs search-maker sa? identity))
+  ([hfs search-maker sa? sol-extract-fn]
+     (generic-hierarchical-search hfs (comp hfs-solution-pair sol-extract-fn :data is/first-goal-node search-maker) sa?)))
 
 ; Decomposed Angelic State-abstracted Hierarchical (Uniform-cost/A*)
-(defn h-ucs      [henv] (hierarchical-search henv make-flat-search false))
-(defn h-ucs-fast [henv] (hierarchical-search henv make-fast-flat-search false))
-(defn dh-ucs     [henv] (hierarchical-search henv make-recursive-search false))
-(defn dsh-ucs    [henv] (hierarchical-search henv make-recursive-search true))
-(defn dsh-ucs-dijkstra [henv] (hierarchical-search henv make-acyclic-recursive-search true))
-(defn dsh-ucs-gg [henv] (hierarchical-search henv make-gg-search true))
-(defn dsh-ucs-inverted [henv] (hierarchical-search henv make-inverted-search true))
-(defn explicit-simple-dash-a* [henv]   (hierarchical-search henv make-saha-search true first))
+(defn h-ucs      [henv] (simple-hierarchical-search henv make-flat-search false))
+(defn h-ucs-fast [henv] (simple-hierarchical-search henv make-fast-flat-search false))
+(defn dh-ucs     [henv] (simple-hierarchical-search henv make-recursive-search false))
+(defn dsh-ucs    [henv] (simple-hierarchical-search henv make-recursive-search true))
+(defn dsh-ucs-dijkstra [henv] (simple-hierarchical-search henv make-acyclic-recursive-search true))
+(defn dsh-ucs-gg [henv] (simple-hierarchical-search henv make-gg-search true))
+(defn dsh-ucs-inverted [henv] (simple-hierarchical-search henv make-inverted-search true))
+(defn explicit-simple-dash-a* [henv] (simple-hierarchical-search henv make-saha-search true first))
 
-(defn explicit-simple-ah-a* [henv] (hierarchical-search henv make-aha-star-simple-search false))
-(defn explicit-simple-dah-a* [henv] (hierarchical-search henv make-saha-search false first))
+(defn explicit-simple-ah-a* [henv] (simple-hierarchical-search henv make-aha-star-simple-search false))
+(defn explicit-simple-dah-a* [henv] (simple-hierarchical-search henv make-saha-search false first))
 
 (def aaai-algs
      [["H-UCS" h-ucs]
