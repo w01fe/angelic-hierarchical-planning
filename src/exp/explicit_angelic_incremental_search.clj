@@ -488,6 +488,52 @@
 ; - perhaps using some sort of inertia for former.  i.e., depth-first-ish (must do and-switch).
 
 ; Look at: Finding Acceptable Solutions Faster Using Inadmissible Information
+; "Explicit estimation search"
+
+; Here's a concrete proposal:
+;  Each leaf has: pessimistic, optimistic, 
+;   mapping from reward to 
+;     probability that best child achieves >= this, plus
+;     if true: expected # of refinements to raise best child pess bound >= this value
+;     if false: expected # of refinements to drop best child opt bound < this value. 
+
+;  For an entire plan, given a threshold, we can compute :
+;  expected refinements to success ~= (#prove * p + #disprove * (1-p)) / p
+;  If we are to refine a pess plan, we should pick the min such plan.
+;  To decide to do this or raise the global bound b, we can consider some epsilon,
+;    count the number of plans C on the open list with f < b*(1+epsilon),
+;  and compare min expected refinements to success now, with
+;  C + min expected refinements if bound became b(1+epsilon).
+;  We probably want some stochasticity just in case our #prove and #disprove are horribly uncalibrated.
+
+;  For a given sequence of nodes, we can pretend we will decide on (the best) reward breakdown
+;  in advance, and stick to that to the bitter end.  
+;  This also means we ignore sharing for now, which may turn out to be very important.  
+;  Theoretically, for a given reward, want to choose policy that minimizes expected refinements to success (?)
+;  To do that, we just range over all breakdowns, multiplying probabilities and adding refs.
+;    -- note that if a single node fails, we fail, so we don't add #disproves ?
+
+; One problem with all of this -- may be too greedy in some cases (only a few refinements to dramatically 
+; improve bounds on a plan), or not greedy enough in others (?)
+
+; TODO: another problem with these methods in general (as shown above) is out-of-date-ness. 
+
+; In any case, seems doable; we just need: 
+ ; distributions for the above quantities
+ ; efficient ways to do the necessary convolutions
+;  Suppose we just have median reward -- expected is problematic, for obv. reasons.
+;  (assume bipartite uniform distribution -- except if no pess, use geom for that side? )
+; Now, how do we estimate amount of work we need to do?
+ ; Using median reward, (assuming const. action reward), can estimate # of actions in refinement
+ ; Plus avg. branching factor, can estimate total refinements, etc.
+ ; Also know # of levels (ignoring recursion?)
+ ; - assume const. amount of uncertainty goes away at eacy level
+ ; - Assume true value is median of remaining distribution, we shrink towards it.
+ ; - exponential of # of levels until shrink excludes threshold = value ? 
+; Seems like a pretty good idea; in any case, leave it for later. 
+
+
+
 
 (comment
   (use '[exp env hierarchy hierarchical-incremental-search explicit-angelic-incremental-search] 'exp.2d-manipulation 'edu.berkeley.ai.util)
