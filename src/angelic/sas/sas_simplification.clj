@@ -11,8 +11,8 @@
 
 
 (defn simplify-sas-problem [vars actions init untested-vals unset-vals dead-actions]
-  (let [unset-vals-v     (util/map-vals #(set (map second %)) (util/group-by first unset-vals))
-        untst-vals-v     (util/map-vals #(set (map second %)) (util/group-by first untested-vals))
+  (let [unset-vals-v     (util/map-vals #(set (map second %)) (group-by first unset-vals))
+        untst-vals-v     (util/map-vals #(set (map second %)) (group-by first untested-vals))
         val-mappings     (util/map-vals 
                           #(let [unset-vals (or (unset-vals-v (:name %)) {})
                                  untst-vals (clojure.set/difference (or (untst-vals-v (:name %)) {}))

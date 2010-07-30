@@ -93,7 +93,7 @@
 		    [:optional [:cost-parameters ~cost-parameters]]
 		    [:optional [:cost-precondition ~cost-precondition]]
 		    [:cost-expr ~cost-expr]}
-		  (util/partition-all 2 clause)]
+		  (partition-all 2 clause)]
        (let [[pos-pre neg-pre forall-pre] (props/parse-pddl-conjunction-forall pre),
 	     [add     del     forall-eff] (props/parse-pddl-conjunction-forall eff),
 	     [p-add   p-del   forall-p-eff] (props/parse-pddl-conjunction-forall poss),

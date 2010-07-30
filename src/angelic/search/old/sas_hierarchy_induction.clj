@@ -451,7 +451,7 @@
         pvs (compute-precond-var-sets init-sets par-effect-sets ordered-preconds)]
     (when pvs
       (let [topo-map (graphs/topological-sort-indices (compute-interference-graph pvs))
-            chunks   (map #(map key %) (vals (util/group-by val topo-map)))]
+            chunks   (map #(map key %) (vals (group-by val topo-map)))]
         (assert (= (first chunks) [::ROOT]))
 ;    (println (map #(map (juxt (comp env/action-name first) second) %) (next chunks)))
     (reset! ref-atom 

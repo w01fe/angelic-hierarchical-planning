@@ -42,7 +42,7 @@
       (experiments/write-experiment-set es min max))))
 
 ;(defn run-in-subprocess [filename forms] 
-;  (util/spit filename (util/str-join "\n" forms))
+;  (spit filename (util/str-join "\n" forms))
 ;  (util/sh *default-clj* filename))
 
 

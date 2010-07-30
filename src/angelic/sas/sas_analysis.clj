@@ -162,7 +162,7 @@
             (if (> c 0)
                 (.put action-precond-counts a c)
               (queues/pq-add! stack a 0)))))
-;    (println (util/map-vals count (util/group-by first  untested-vals)))
+;    (println (util/map-vals count (group-by first  untested-vals)))
     (println (count unset-vals) (count untested-vals) (count actions-by-precond) (count action-precond-counts))
     [untested-vals (concat unset-vals (keys actions-by-precond)) (keys action-precond-counts)]))
 
@@ -197,7 +197,7 @@
 (defn find-static-equivalence-sets [sas-problem]
   (let [pairs           (find-static-equivalence-pairs sas-problem)
         symmetric-pairs (apply concat (for [[x y] pairs] [[x y] [y x]]))]
-    (loop [remaining-map (util/map-vals #(set (map second %)) (util/group-by first symmetric-pairs)), results nil]
+    (loop [remaining-map (util/map-vals #(set (map second %)) (group-by first symmetric-pairs)), results nil]
       (if (empty? remaining-map) results
         (let [[fk fs] (first remaining-map)]
           (let [all 
@@ -218,7 +218,7 @@
            redundant-vars (set (map first (filter (fn [[x xxx]] (let [vc (count (:vals (vars x))) rc (count xxx)]
                                                                   (assert (<= rc vc)) 
                                                                   (or (= vc rc) )))
-                                                  (util/group-by first (apply concat equiv-sets)))))
+                                                  (group-by first (apply concat equiv-sets)))))
            val-equivs     (reduce (fn [m [ks v]] (assoc-in m ks v))
                                   {}
                                   (for [equiv-set equiv-sets, [var val :as p] equiv-set

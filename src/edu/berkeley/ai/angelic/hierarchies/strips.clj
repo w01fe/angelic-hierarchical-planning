@@ -53,7 +53,7 @@
 	    [:optional [:optimistic   ~optimistic]]
 	    [:optional [:pessimistic  ~pessimistic]]
 	    [:optional [:exact        ~exact]]}
-	  (util/partition-all 2 (next hla))]
+	  (partition-all 2 (next hla))]
     (when exact (util/assert-is (empty? optimistic)) (util/assert-is (empty? pessimistic)))
     (let [name (first hla)
 	  [pos-pre neg-pre] (props/parse-pddl-conjunction precondition)
@@ -68,7 +68,7 @@
 			    [:optional [:parameters ~parameters]]
 			    [:optional [:precondition ~precondition]]
 			    [:expansion ~expansion]]
-			   (util/partition-all 2 refinement)]
+			   (partition-all 2 refinement)]
 		(let [[pp np] (props/parse-pddl-conjunction precondition)]
 		  [(if ref-name (util/symbol-cat name '- ref-name) (gensym name)) pp np 
 		   (util/map-map (fn [[x y]] [y x]) (props/parse-typed-pddl-list parameters)) 

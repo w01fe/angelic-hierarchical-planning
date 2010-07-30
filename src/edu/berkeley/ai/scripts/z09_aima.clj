@@ -102,7 +102,7 @@
 	(experiments/read-experiment-set-results (make-vac-experiment-set)))))
 
 (defn make-vac-csv []
-  (util/spit "/Users/jawolfe/Desktop/vac.csv"
+  (spit "/Users/jawolfe/Desktop/vac.csv"
     (util/str-join "\n"
       (map #(util/str-join "," %)
 	(cons ["rooms" "type" "search-strategy" "prune" "commit" "choice" 

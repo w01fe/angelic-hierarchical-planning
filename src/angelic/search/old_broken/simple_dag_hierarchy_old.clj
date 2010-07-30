@@ -53,7 +53,7 @@
   ([sas-problem greedy?]
      (let [causal-graph (remove #(apply = %) (sas-analysis/standard-causal-graph sas-problem))
            pred-var-set (util/map-vals (comp set #(map first %))
-                                       (util/unsorted-group-by second causal-graph)) 
+                                       (group-by second causal-graph)) 
            dtgs         (sas-analysis/domain-transition-graphs sas-problem)
            sr-dtg       (memoize (fn [var] (for [[pv em] (dtgs var), nv (keys em)] [nv pv])))
            dtg-to       (memoize (fn [var to-val] ;; Edges s.t. all paths from nv to goal include pv

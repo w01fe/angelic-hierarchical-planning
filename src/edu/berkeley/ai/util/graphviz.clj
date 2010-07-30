@@ -65,7 +65,7 @@
   "Draw a graph given an edge list, and optional node label map."
   ([el] (graphviz-el el {}))
   ([el nl]
-     (let [em (map-vals #(map second %) (unsorted-group-by first el))]
+     (let [em (map-vals #(map second %) (group-by first el))]
        (show-pdf-page 
         (prln 
          (write-graphviz 

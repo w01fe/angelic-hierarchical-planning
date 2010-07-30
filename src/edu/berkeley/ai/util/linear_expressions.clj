@@ -96,7 +96,7 @@
 	  {:a 5 :b -2 :c 5 :d {nil -7} :e -1 :g 1 nil 42}
 	  {:a 1 :b 2 :c -3 :d 3 :e 4 :g -3 nil 14})
 	 -28))
-  (is (thrown? Exception 
+  (is (thrown? java.lang.AssertionError 
 	(evaluate-linear-expr
 	  {:a 5 :b -2 :c 5 :d {nil -7} :e -1 nil 42}
 	  {:a 1 :b 2 :c -3 :d 3 :e 4 :g -3 nil 14}))))
@@ -183,7 +183,7 @@
   (is (= (linear-expr-norm-scaling {:a 4 :b 3}) (/ 1 4)))
   (is (= (linear-expr-norm-scaling {:a -7}) (/ 1 -7)))
   (is (thrown? Exception (linear-expr-norm-scaling {})))
-  (is (thrown? Exception (linear-expr-norm-scaling {:a 3 nil 5}))))
+  (is (thrown? java.lang.AssertionError (linear-expr-norm-scaling {:a 3 nil 5}))))
 
 (deftest test-linear-expr-inequalities 
   (is (= (linear-expr-eqz->normalized-inequality
@@ -338,7 +338,7 @@
   (is (= (parse-and-check-hybrid-linear-expression 
 	  '(- (* y 3) 1 (* 2 (+ x 5))) {} '#{x y} #{} #{})
 	 '{x -2 y 3 nil -11 }))
-  (is (thrown? Exception (parse-and-check-hybrid-linear-expression '(* x y) {} '#{x y} #{} #{})))
+  (is (thrown? java.lang.AssertionError (parse-and-check-hybrid-linear-expression '(* x y) {} '#{x y} #{} #{})))
   (is (= (ground-hybrid-linear-expr 
           (parse-and-check-hybrid-linear-expression 
 	   '(* [x a] [y b]) {'a 't1 'b 't2} {} '{x [t1] y [t2]} '#{x})

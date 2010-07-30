@@ -29,7 +29,7 @@
         :else            
           (let [[var & more-vars] vars
                 var-name          (:name var)
-                actions-by-val    (util/group-by #((:precond-map %) var-name) actions)]
+                actions-by-val    (group-by #((:precond-map %) var-name) actions)]
             (if (= (count actions-by-val) 1)
                 (if (nil? (key (first actions-by-val)))
                     (make-simple-successor-generator more-vars actions)
@@ -86,7 +86,7 @@
     [(:name var) (nth (:vals var) valn)]))
 
 (defn infer-var-name [val-names]
-  (let [by-f       (util/group-by first val-names)
+  (let [by-f       (group-by first val-names)
         prototypes (for [props (vals by-f)]
                      (vec (for [elts (apply map vector props)]
                             (if (apply = elts) (first elts) :?))))]

@@ -365,9 +365,9 @@
       (when (pos? n-steps)
 	(visualize-hb-state s)
 	(Thread/sleep delay-ms)
-	(recur (envs/safe-next-state s (util/rand-elt (envs/applicable-actions s as)))
+	(recur (envs/safe-next-state s (rand-nth (envs/applicable-actions s as)))
 ;		 (first (hs/all-quasi-action-instantiations 
-;			 (util/rand-elt
+;			 (rand-nth
 ;			  (hs/applicable-quasi-actions s as))
 ;			 as)))
 	       (dec n-steps))))))

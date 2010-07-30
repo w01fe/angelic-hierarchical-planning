@@ -53,7 +53,7 @@
 		[:precondition ~precondition]
 		[:effect       ~effect]
 		[:optional [:cost  ~cost]]]
-	       (util/partition-all 2 action)]
+	       (partition-all 2 action)]
     (let [vars (props/parse-typed-pddl-list parameters)
 	  [discrete-vars numeric-vars] (hybrid/split-var-maps vars discrete-types numeric-types) ]
  ;     (println vars discrete-vars numeric-vars)
@@ -67,7 +67,7 @@
        (le/parse-and-check-hybrid-linear-expression (or cost 1) discrete-vars numeric-vars numeric-functions constant-numeric-functions)))))
 
 (defn- effected-functions [action] 
-  (he/effected-functions (util/safe-get (into {} (map vec (util/partition-all 2 action))) :effect)))
+  (he/effected-functions (util/safe-get (into {} (map vec (partition-all 2 action))) :effect)))
 
 ;(defn- ground-hybrid-action-schema [schema disc-var-map const-num-fns]
 ;  (assoc schema 
@@ -458,7 +458,7 @@
         (apply util/mean
                (map (fn [tuples] (count (distinct (map #(nth % arg-pos) tuples))))
                     (vals
-                     (util/group-by (fn [tuple] (util/vec-map #(nth tuple %) inst-pos)) atoms)))))))   
+                     (group-by (fn [tuple] (util/vec-map #(nth tuple %) inst-pos)) atoms)))))))   
 
 
 

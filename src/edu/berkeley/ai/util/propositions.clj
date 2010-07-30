@@ -42,8 +42,8 @@
 (defn- maximal-subtypes- [types t1 t2]
   (let [s1 (get-subtypes types t1)
 	s2 (get-subtypes types t2)]
-    (cond (includes? s2 t1) [t1]
-	  (includes? s1 t2) [t2]
+    (cond (some #{t1} s2) [t1]
+	  (some #{t2} s1) [t2]
 	  :else             (concat-elts 
 			     (for [t1p (next s1), t2p (next s2)]
 			       (maximal-subtypes- types t1p t2p))))))

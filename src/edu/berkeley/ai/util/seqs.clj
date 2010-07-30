@@ -49,7 +49,7 @@
 
 (defn random-maximal-element [f s]
   "Return a random element of s maximizing (f elt), throwing an exception if s empty."
-  (rand-elt (make-safe (maximal-elements f s))))
+  (rand-nth (make-safe (maximal-elements f s))))
 	   
 (defn distinct-elts? [s] ;; TODO: remove if core changed
   (or (empty? s) (apply distinct? s)))
@@ -131,13 +131,6 @@
       (when (next coll)
         (report-seq msg (next coll)))))))
 
-;(comment 
-(defn partition-all "Lazily break s into partition-alls of length n (or less, for the final partition-all)."
-  [n s]
-  (when (seq s)
-    (lazy-seq (cons (take n s)
-	       (partition-all n (drop n s))))))
-;  )
 (defn position-if [f s]
   (loop [s (seq s) i (int 0)]
     (when s

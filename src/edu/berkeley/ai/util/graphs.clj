@@ -11,10 +11,10 @@
 
  
 (defn edge-list->incoming-map [edges]
-  (map-vals #(map first %) (unsorted-group-by second edges)))
+  (map-vals #(map first %) (group-by second edges)))
 
 (defn edge-list->outgoing-map [edges]
-  (map-vals #(map second %) (unsorted-group-by first edges)))
+  (map-vals #(map second %) (group-by first edges)))
 
 (defn outgoing-map->edge-list [outgoing-map]
   (for [[k vs] outgoing-map, v vs] [k v]))
@@ -149,9 +149,9 @@
   [edges]
   (let [edges (distinct (concat edges (map (fn [x] [x x]) (apply concat edges))))
         pe (merge (into {} (map vector (map second edges) (repeat nil))) 
-                  (map-vals #(map second %) (unsorted-group-by first edges)))
+                  (map-vals #(map second %) (group-by first edges)))
         e  (HashMap. #^Map pe)
-        re (HashMap. #^Map (map-vals #(map first %) (unsorted-group-by second edges)))
+        re (HashMap. #^Map (map-vals #(map first %) (group-by second edges)))
         s (Stack.)]
     (while (not (.isEmpty e))
      ((fn dfs1 [n]
@@ -257,8 +257,8 @@
         all-edges (concat edge-list 
                           (for [source sources] [::SOURCE source])
                           (for [sink sinks]     [sink     ::SINK]))
-        out-map   (map-vals #(map second %) (unsorted-group-by first all-edges)) 
-        in-map    (map-vals #(map first %)  (unsorted-group-by second all-edges))]
+        out-map   (map-vals #(map second %) (group-by first all-edges)) 
+        in-map    (map-vals #(map first %)  (group-by second all-edges))]
     (map key
      (filter #(and (not (all-nodes (key %))) (not (some #{::SOURCE ::SINK} (key %))) (> (val %) 0))
               (first 
@@ -440,8 +440,8 @@
                             (for [source sources] [::SOURCE source])
                             (for [sink sinks]     [sink     ::SINK]))
           free-edges (remove #(= (set %) (set key-edge)) all-edges)
-          out-map   (map-vals #(map second %) (unsorted-group-by first (cons key-edge free-edges))) 
-          in-map    (map-vals #(map first %)  (unsorted-group-by second (cons key-edge free-edges)))]
+          out-map   (map-vals #(map second %) (group-by first (cons key-edge free-edges))) 
+          in-map    (map-vals #(map first %)  (group-by second (cons key-edge free-edges)))]
       (assert (< (count all-nodes) 500))
       (when-let [[sol] (solve-lp-clp
                         (make-lp

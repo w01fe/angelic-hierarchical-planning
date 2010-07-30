@@ -225,7 +225,7 @@
 ;	all-const-atoms  (util/to-set (get-predicate-instantiations (util/restrict-map pred-map const-preds) trans-objects))
 ;	all-ni-atoms     (util/to-set (get-predicate-instantiations (util/restrict-map pred-map ni-preds)    trans-objects))
 	{reg-init :reg, const-init :const, pi-init :pi, ni-init :ni}
- 	  (util/group-by (fn [atom]
+ 	  (group-by (fn [atom]
 			   (let [pred (first atom)]
 			     (cond (contains? const-preds pred) :const
 				   (contains? pi-preds pred)    :pi
@@ -334,7 +334,7 @@
   	        (apply util/mean
 		 (map (fn [tuples] (count (distinct (map #(nth % arg-pos) tuples))))
 		      (vals
-		       (util/group-by (fn [tuple] (util/vec-map #(nth tuple %) inst-pos)) atoms)))))]
+		       (group-by (fn [tuple] (util/vec-map #(nth tuple %) inst-pos)) atoms)))))]
 	(util/sref-set! mem (assoc (util/sref-get mem) args val))
 	val))))
 

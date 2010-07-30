@@ -85,10 +85,10 @@
 				  init-ms ms mb))))))
 
 (defn write-experiment [experiment clj-file out-file]
-  (util/spit clj-file
+  (spit clj-file
     (util/str-join "\n"
       `[(~'use  'edu.berkeley.ai.util.experiments 'edu.berkeley.ai.util)
-	(util/spit ~out-file (run-experiment '~experiment))
+	(spit ~out-file (run-experiment '~experiment))
 	(System/exit 0)])))
 
   ; Take: some implicit representation of params (ordered!) and a fn that returns 
@@ -174,7 +174,7 @@
   (let [new-dir (str run-dir (:name (:experiment (first results))))
 	out-dir (str new-dir "/out")]
     (doseq [[i e] (util/indexed results)]
-      (util/spit       (str out-dir "/" i ".txt") e))
+      (spit       (str out-dir "/" i ".txt") e))
     results)))
 
 (defn read-experiment-set-results 

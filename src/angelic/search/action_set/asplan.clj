@@ -217,7 +217,7 @@
         vars          (graphs/ancestor-set causal-graph [sas/goal-var-name])
         causal-graph  (filter (fn [[v1 v2]] (and (vars v1) (vars v2))) causal-graph)
         av-map        (into {} (for [v vars] [v (graphs/ancestor-set causal-graph [v])]))
-        child-var-map (util/map-vals #(map second %) (util/group-by first causal-graph))
+        child-var-map (util/map-vals #(map second %) (group-by first causal-graph))
 ;        vars          (keys (:vars sas-problem))
         dtgs          (sas-analysis/domain-transition-graphs sas-problem)
         simple-dtgs   (util/map-vals (fn [dtg] (for [[pval emap] dtg, [eval _] emap] [pval eval])) dtgs)

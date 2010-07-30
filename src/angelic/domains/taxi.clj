@@ -335,7 +335,7 @@
 ; Similar to above, except different encoding and re-picking pass is allowed.
 
 (defn- write-taxi-strips-domain [file]
-  (util/spit file
+  (spit file
     ";; Taxi domain 
      
      (define (domain taxi)
@@ -396,7 +396,7 @@
 
 (defn- write-taxi-strips-instance [tenv file]
   (let [{:keys [width height passengers]} tenv]
-    (util/spit file
+    (spit file
       (util/str-join "\n"
         ["(define (problem taxi-)
            (:domain taxi)
@@ -438,7 +438,7 @@
 ; Identical to above, but with split x and y.
 
 (defn- write-taxi-strips2-domain [file]
-  (util/spit file
+  (spit file
     ";; Taxi domain 
      
      (define (domain taxi2)
@@ -500,7 +500,7 @@
 
 (defn- write-taxi-strips2-instance [tenv file]
   (let [{:keys [width height passengers]} tenv]
-    (util/spit file
+    (spit file
       (util/str-join "\n"
         ["(define (problem taxi2-)
            (:domain taxi2)

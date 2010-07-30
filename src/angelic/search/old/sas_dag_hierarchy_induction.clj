@@ -401,7 +401,7 @@
 (defn extend-precond-set-hla! [hla init-sets par-effect-sets]  
   (let [{:keys [ordered-preconds ref-atom]} hla
         topo-map (compute-topo-map init-sets par-effect-sets ordered-preconds)
-        chunks   (map #(map key %) (vals (util/group-by val topo-map)))]
+        chunks   (map #(map key %) (vals (group-by val topo-map)))]
     (assert (= (first chunks) [::ROOT]))
 ;    (println (map #(map (comp env/action-name first) %) (next chunks)))
     (reset! ref-atom 

@@ -204,7 +204,7 @@
 (defmethod apply-constraint ::ConjunctiveConstraint
   [state constraint disc-var-map cont-var-map objects const-fns pos-fn neg-fn lez-fn eqz-fn gez-fn feasible?-fn]
 ;  (println "Constraint"  constraint "\n\n")
-  (let [constraints (util/group-by :class (util/safe-get constraint :constraints))]
+  (let [constraints (group-by :class (util/safe-get constraint :constraints))]
     (util/reduce-while 
      (fn [states constraint] 
        (mapcat #(apply-constraint % constraint disc-var-map cont-var-map objects 

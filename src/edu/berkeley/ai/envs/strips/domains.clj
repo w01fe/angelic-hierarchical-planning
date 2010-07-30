@@ -16,7 +16,7 @@
 		[:precondition ~precondition]
 		[:effect       ~effect]
 		[:optional [:cost  ~cost]]]
-	       (util/partition-all 2 action)]
+	       (partition-all 2 action)]
     (let [[adds deletes]    (props/parse-pddl-conjunction effect)
 	  [pos-pre neg-pre] (props/parse-pddl-conjunction precondition)] 
       (make-strips-action-schema 

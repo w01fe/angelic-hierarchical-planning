@@ -153,7 +153,7 @@
 ; Identical to above.
 
 (defn- write-infinite-taxi-strips-domain [file]
-  (util/spit file
+  (spit file
     ";; Taxi domain 
      
      (define (domain infinite-taxi)
@@ -206,7 +206,7 @@
 
 (defn- write-infinite-taxi-strips-instance [tenv file]
   (let [{:keys [width height passengers]} tenv]
-    (util/spit file
+    (spit file
       (util/str-join "\n"
         ["(define (problem infinite-taxi-)
            (:domain infinite-taxi)
@@ -254,7 +254,7 @@
 ; This version doesn't split X and Y, to make DAG.
 
 (defn- write-infinite-taxi-strips2-domain [file]
-  (util/spit file
+  (spit file
     ";; Taxi domain 
      
      (define (domain infinite-taxi2)
@@ -301,7 +301,7 @@
 
 (defn- write-infinite-taxi-strips2-instance [tenv file]
   (let [{:keys [width height passengers]} tenv]
-    (util/spit file
+    (spit file
       (util/str-join "\n"
         ["(define (problem infinite-taxi2-)
            (:domain infinite-taxi2)
@@ -346,7 +346,7 @@
 ; This version doesn't split X and Y, to make DAG, and only allows putdown at goal.
 
 (defn- write-infinite-taxi-strips3-domain [file]
-  (util/spit file
+  (spit file
     ";; Taxi domain 
      
      (define (domain infinite-taxi3)
@@ -394,7 +394,7 @@
 
 (defn- write-infinite-taxi-strips3-instance [tenv file]
   (let [{:keys [width height passengers]} tenv]
-    (util/spit file
+    (spit file
       (util/str-join "\n"
         ["(define (problem infinite-taxi3-)
            (:domain infinite-taxi3)

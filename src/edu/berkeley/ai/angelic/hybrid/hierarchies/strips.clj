@@ -64,7 +64,7 @@
 		[:optional [:parameters ~parameters]]
 		[:optional [:precondition ~precondition]]
 		[:expansion ~expansion]]
-	       (util/partition-all 2 ref)]
+	       (partition-all 2 ref)]
     (let [vars (props/parse-typed-pddl-list parameters)
 	  [more-discrete-vars more-numeric-vars] (hybrid/split-var-maps vars discrete-types numeric-types)] 
       (make-hybrid-strips-refinement-schema
@@ -111,7 +111,7 @@
 		 [:optional [:optimistic   ~optimistic]]
 		 [:optional [:pessimistic  ~pessimistic]]
 		 [:optional [:exact        ~exact]]}
-	       (util/partition-all 2 (next hla))]
+	       (partition-all 2 (next hla))]
     (when exact (util/assert-is (empty? optimistic)) (util/assert-is (empty? pessimistic)))
     (let [name (first hla)
 	  vars (props/parse-typed-pddl-list parameters)

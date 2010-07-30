@@ -44,7 +44,7 @@
 (defn parse-and-check-effect [effect discrete-vars predicates numeric-vars numeric-functions const-numeric-fns]
   (let [effects (if (or (empty? effect) (= (first effect) 'and)) (next effect) (list effect))
 	{:keys [adds deletes assignments]}
-          (util/group-by (fn [[a]] (cond (= a '=) :assignments (= a 'not) :deletes :else :adds)) effects)]
+          (group-by (fn [[a]] (cond (= a '=) :assignments (= a 'not) :deletes :else :adds)) effects)]
 ;    (println adds deletes assignments)
     (make-effect 
      (doall (for [a adds] 

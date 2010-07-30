@@ -66,17 +66,17 @@
 (def *cw* 8)
 (def *w* (+ 4 (* 3 *cw*)))
 (defn make-taxi-table []
-  (let [results (util/group-by #(get-in % [:alg]) *taxi-results*)]
+  (let [results (group-by #(get-in % [:alg]) *taxi-results*)]
     (doseq [alg [:ucs :htn-ucs :nsahtn :sahtn]]
       (let [alg-results (results alg)
-            size-map (util/group-by #(get-in % [ :size]) alg-results)
+            size-map (group-by #(get-in % [ :size]) alg-results)
             sizes    (sort (keys size-map))]
         (println (apply str (pad-right alg 9) "|" (for [s sizes] (str (pad-right s *w*) "|"))))
         (println (apply str (repeat (+ 10 (* (count sizes) (inc *w*))) "-")))
-        (doseq [[n-pass pass-maps] (util/group-by #(get-in % [ :npass]) alg-results)]
-                                        ;        (println (util/group-by #(get-in % [:experiment :parameters :size]) pass-maps))
+        (doseq [[n-pass pass-maps] (group-by #(get-in % [ :npass]) alg-results)]
+                                        ;        (println (group-by #(get-in % [:experiment :parameters :size]) pass-maps))
           (println (apply str (pad-right n-pass 9) "|"
-                          (for [[exp] (map val (sort-by key (util/group-by #(get-in % [ :size]) pass-maps)))]
+                          (for [[exp] (map val (sort-by key (group-by #(get-in % [ :size]) pass-maps)))]
                             (if (:ms exp)
                               (str (pad-right (int (:ms exp)) *cw*) ", " (pad-right (:next-count exp) *cw*) ", " (pad-right (second (:output exp)) #_(:plan-count exp) *cw*) "|")
                               (apply str (concat (repeat *w* " ") "|"))
@@ -175,16 +175,16 @@
 ;(def *cw* 8)
 ;(def *w* (+ 4 (* 3 *cw*)))
 (defn make-pp-table []
-  (let [results (util/group-by #(get-in % [:alg]) *pp-results*)]
+  (let [results (group-by #(get-in % [:alg]) *pp-results*)]
     (doseq [alg [:htn-ucs :nsahtn :sahtn]]
       (let [alg-results (results alg)
-            size-map (util/group-by #(get-in % [ :run]) alg-results)
+            size-map (group-by #(get-in % [ :run]) alg-results)
             sizes    (sort (keys size-map))]
         (println (apply str (pad-right alg 9) "|" (for [s sizes] (str (pad-right s *w*) "|"))))
         (println (apply str (repeat (+ 10 (* (count sizes) (inc *w*))) "-")))
-        (doseq [[n-pass pass-maps] (util/group-by #(get-in % [ :size]) alg-results)]
+        (doseq [[n-pass pass-maps] (group-by #(get-in % [ :size]) alg-results)]
           (println (apply str (pad-right n-pass 9) "|"
-                          (for [[exp] (map val (sort-by key (util/group-by #(get-in % [ :run]) pass-maps)))]
+                          (for [[exp] (map val (sort-by key (group-by #(get-in % [ :run]) pass-maps)))]
                             (if (and (:ms exp) )
                               (str (pad-right (int (:ms exp)) *cw*) ", " (pad-right (:next-count exp) *cw*) ", " (pad-right (int (second (:output exp))) #_(:plan-count exp) *cw*) "|")
                               (apply str (concat (repeat *w* " ") "|"))

@@ -31,7 +31,7 @@
 		 [:optional [:effect          ~eff]]
 		 [:optional [:possible-effect ~poss]]
 		 [:cost-expr ~cost-expr]}
-	       (util/partition-all 2 effect)]
+	       (partition-all 2 effect)]
     (make-hybrid-ncstrips-effect-schema
      (hc/parse-and-check-constraint pre discrete-vars predicates numeric-vars numeric-fns const-numeric-fns)
      (he/parse-and-check-effect eff discrete-vars predicates numeric-vars numeric-fns const-numeric-fns)

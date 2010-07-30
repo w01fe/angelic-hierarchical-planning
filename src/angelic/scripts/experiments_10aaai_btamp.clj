@@ -57,10 +57,10 @@
 (def *cw* 8)
 (def *w* (+ 4 (* 3 *cw*)))
 (defn make-table []
-  (let [results (util/group-by #(get % :alg) *results*)]
+  (let [results (group-by #(get % :alg) *results*)]
     (doseq [alg (map first his/aaai-algs)]
       (let [alg-results (results alg)
-            obj-map (util/group-by #(get % :objects) alg-results)
+            obj-map (group-by #(get % :objects) alg-results)
             objects    (sort (keys obj-map))]
         (println (apply str (pad-right alg 9) "|" (for [o ["s" "progs" "refs"]] (str (pad-right o *w*) "|"))))
         (println (apply str (repeat (+ 10 (* 3 (inc *w*))) "-")))
@@ -81,7 +81,7 @@
 (def *alg-order* ["H-UCS" "DH-UCS" "DSH-UCS" "AHA*" "DAHA*" "DASHA*"])
 (defn order [things key-fn desired-order]
 ;  (println things)
-  (let [m (util/group-by key-fn things)]
+  (let [m (group-by key-fn things)]
     (map #(first (util/safe-get m %)) desired-order)))
 
 (defn make-charts

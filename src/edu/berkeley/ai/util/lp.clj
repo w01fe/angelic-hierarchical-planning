@@ -173,7 +173,7 @@
   (let [[mps-file-data namer var-order dummies] (lp->mps* lp)
 	in-file (util/fresh-random-filename "/tmp/lp")
 	out-file (str in-file ".out")]
-    (util/spit in-file mps-file-data)
+    (spit in-file mps-file-data)
     (cheap-sh "glpsol" "--max" "-w" out-file "--mps" in-file)
     (let [[[rows cols] [stat1 stat2 rew] & body] (map #(read-string (str "[" % "]")) (util/read-lines out-file))]
       (assert (is (= (count (drop rows body)) (count var-order))))
@@ -196,7 +196,7 @@
 	in-file (util/fresh-random-filename "/tmp/lp")
 	out-file (str in-file ".out")]
 ;    (println in-file "\n"  var-order "\n\n")
-    (util/spit in-file mps-file-data)
+    (spit in-file mps-file-data)
     (cheap-sh "clp" "-max" "-import" in-file "-solve" "-solution" out-file)
     (let [[[status] [obj val rew] & body] (map #(read-string (str "[" % "]")) (util/read-lines out-file))]
       (assert (is (= [obj val] '[Objective value])))
