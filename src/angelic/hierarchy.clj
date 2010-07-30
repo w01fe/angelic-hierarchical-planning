@@ -1,6 +1,6 @@
-(ns w01fe.hierarchy
+(ns angelic.hierarchy
   (:require [edu.berkeley.ai.util :as util]
-            [w01fe.env :as env]
+            [angelic.env :as env]
             ))
 
 

@@ -1,6 +1,6 @@
-(ns w01fe.saha-simple
+(ns angelic.saha-simple
   (:require [edu.berkeley.ai.util :as util] [edu.berkeley.ai.util.queues :as queues]
-            [w01fe [env :as env] [hierarchy :as hierarchy]])
+            [angelic [env :as env] [hierarchy :as hierarchy]])
   (:import [java.util HashMap])
   )
 

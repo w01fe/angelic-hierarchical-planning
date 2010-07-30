@@ -1,9 +1,9 @@
-(ns w01fe.domains.explicit-angelic-incremental-search
+(ns angelic.domains.explicit-angelic-incremental-search
   (:require [edu.berkeley.ai.util :as util]
-            [w01fe.env :as env] 
-            [w01fe.hierarchy :as hierarchy]
-            [w01fe.incremental-search :as is]
-            [w01fe.hierarchical-incremental-search :as his])
+            [angelic.env :as env] 
+            [angelic.hierarchy :as hierarchy]
+            [angelic.incremental-search :as is]
+            [angelic.hierarchical-incremental-search :as his])
   (:import  [java.util HashMap]))
 
 
@@ -32,7 +32,7 @@
 (def worst-cn-summary (CNSummary is/neg-inf 1))
 (def failed-cn-search (is/make-failed-search worst-cn-summary))
 
-(extend w01fe.incremental_search.Node
+(extend angelic.incremental_search.Node
   ConspiracyNumbered {:conspiracy-number (constantly 1)})
 
 (defn min-cn-summaries
@@ -105,7 +105,7 @@
 (defn explicit-cn-dash-a* [henv] (his/simple-hierarchical-search henv make-explicit-cn-dash-a*-search true first))
 
 (comment
-  (use '[w01fe env hierarchy hierarchical-incremental-search explicit-angelic-incremental-search] 'w01fe.discrete-manipulation 'edu.berkeley.ai.util)
+  (use '[angelic env hierarchy hierarchical-incremental-search explicit-angelic-incremental-search] 'angelic.discrete-manipulation 'edu.berkeley.ai.util)
   
   (let [e (make-random-taxi-env 5 5 5 3) _ (println e) h (simple-taxi-hierarchy e)]  
     (time (println "ucs" (run-counted #(second (uniform-cost-search e)))))
@@ -168,7 +168,7 @@
                (let [c  (- (is/max-reward x) wtd-reward)]
                  (if (not (zero? c)) c
                    (cond goal? -1 
-                         (and (instance? w01fe.incremental_search.Node x) (is/node-goal? x)) 1
+                         (and (instance? angelic.incremental_search.Node x) (is/node-goal? x)) 1
                          :else (- (pess-reward x) pes-reward)))))
   is/Summary (max-reward [] wtd-reward)   
   is/Node    (node-name  [] name)
@@ -256,7 +256,7 @@
 
 
 (comment
-  (use '[w01fe env hierarchy hierarchical-incremental-search explicit-angelic-incremental-search] 'w01fe.discrete-manipulation 'edu.berkeley.ai.util)
+  (use '[angelic env hierarchy hierarchical-incremental-search explicit-angelic-incremental-search] 'angelic.discrete-manipulation 'edu.berkeley.ai.util)
   
 
 
@@ -320,7 +320,7 @@
                (let [c  (- (is/max-reward x) wtd-reward)]
                  (if (not (zero? c)) c
                    (cond goal? -1 
-                         (and (instance? w01fe.incremental_search.Node x) (is/node-goal? x)) 1
+                         (and (instance? angelic.incremental_search.Node x) (is/node-goal? x)) 1
                          :else (- (pess-reward x) pes-reward)))))
   is/Summary (max-reward [] wtd-reward)   
   is/Node    (node-name  [] name)
@@ -538,7 +538,7 @@
 
 
 (comment
-  (use '[w01fe env hierarchy hierarchical-incremental-search explicit-angelic-incremental-search] 'w01fe.discrete-manipulation 'edu.berkeley.ai.util)
+  (use '[angelic env hierarchy hierarchical-incremental-search explicit-angelic-incremental-search] 'angelic.discrete-manipulation 'edu.berkeley.ai.util)
   
 
 

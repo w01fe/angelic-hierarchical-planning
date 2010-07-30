@@ -1,5 +1,5 @@
-(ns w01fe.domains.sas-problems
-  (:require [w01fe [sas :as sas] [taxi :as taxi] [taxi-infinite :as taxi-infinite]])
+(ns angelic.domains.sas-problems
+  (:require [angelic [sas :as sas] [taxi :as taxi] [taxi-infinite :as taxi-infinite]])
   (:use [edu.berkeley.ai [util :as util]])
   (:import [java.io File])
   )

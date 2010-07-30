@@ -1,8 +1,8 @@
-(ns w01fe.scripts.experiments-10aaai10-btamp
+(ns angelic.scripts.experiments-10aaai10-btamp
  (:require [edu.berkeley.ai [util :as util]] 
 	   [edu.berkeley.ai.util [charts :as charts] [datasets :as datasets] [experiments :as experiments]]
-           [w01fe [env :as env] [hierarchy :as hierarchy] [hierarchical-incremental-search :as his]]
-           [w01fe.discrete-manipulation :as dm]
+           [angelic [env :as env] [hierarchy :as hierarchy] [hierarchical-incremental-search :as his]]
+           [angelic.discrete-manipulation :as dm]
 	   [edu.berkeley.ai.util.experiments :as experiments]))
 
 (def *exp-result* ::ExpResult)
@@ -37,7 +37,7 @@
       `(dm/make-discrete-manipulation-hierarchy
         (dm/make-random-discrete-manipulation-env ~(:objects m) ~(:rand m))))
     (fn [m] `((get his/aaai-alg-map ~(:alg m)) ~'init))
-    'w01fe.aaai10 nil #_ 10 60 nil false ::ExpResult))
+    'angelic.aaai10 nil #_ 10 60 nil false ::ExpResult))
 
 (defonce *results* nil)
 (defn read-results []
@@ -66,7 +66,7 @@
         (println (apply str (repeat (+ 10 (* 3 (inc *w*))) "-")))
         (doseq [[no n-res] (map (fn [x] [x (obj-map x)]) objects)]
           (println (apply str (pad-right no 9) "|"
-                          (for [w01fe n-res]
+                          (for [angelic n-res]
                             (if (:ms exp)
                               (str (pad-right (/ (int (:ms exp)) 1000.0) *cw*) ", " (pad-right (:next-count exp) *cw*) ", " (pad-right (second (:output exp)) #_(:plan-count exp) *cw*) "|")
                               (str (pad-right (cond (:memout? exp) "mem" (:timeout? exp) "time") *w*) "|")
@@ -114,7 +114,7 @@
      ))
 
 
-;(use '[edu.berkeley.ai.util experiments cluster] 'w01fe.aaai10)
+;(use '[edu.berkeley.ai.util experiments cluster] 'angelic.aaai10)
 ;(run-experiment-set-cluster (make-exp-set))
 
 ; (plot (ds->chart (experiment-set-results->dataset res) [:alg] :objects :ms {:key "top left" } {} first))

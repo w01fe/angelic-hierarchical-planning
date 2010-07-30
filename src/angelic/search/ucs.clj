@@ -1,7 +1,7 @@
-(ns w01fe.ucs
+(ns angelic.ucs
   (:require [edu.berkeley.ai.util :as util]
             [edu.berkeley.ai.util.queues :as queues]
-            [w01fe [env :as env]]))
+            [angelic [env :as env]]))
 
 ;; TODO: tie breaking
 

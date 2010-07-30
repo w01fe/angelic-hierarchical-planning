@@ -1,6 +1,6 @@
-(ns w01fe.sahucs-fancy-dijkstra
+(ns angelic.sahucs-fancy-dijkstra
   (:require [edu.berkeley.ai.util :as util] [edu.berkeley.ai.util.queues :as queues]
-            [w01fe [env :as env] [hierarchy :as hierarchy]])
+            [angelic [env :as env] [hierarchy :as hierarchy]])
   (:import [java.util HashMap])
   )
 
@@ -189,5 +189,5 @@
 (defn sahucs [henv] (sahucs-top henv false))
 (defn sahucs-fancy-dijkstra [henv] (sahucs-top henv true))
 
-; (dotimes [i 1] (let [h (simple-taxi-hierarchy (make-random-taxi-env 2 2 1 i))] (def *h* h)   (time (println "sahtn-dijkstra" (run-counted #(sahtn-dijkstra h)))) (println)  (time (println "simple" (run-counted #(w01fe.sahucs-simple/sahucs-simple h)))) (println) (time (println "simple-dijkstra" (run-counted #(w01fe.sahucs-simple-dijkstra/sahucs-simple-dijkstra h))))  (println) (time (println "fancy-dijkstra "(run-counted #(sahucs-dijkstra h)))) (println "\n\n\n")))
+; (dotimes [i 1] (let [h (simple-taxi-hierarchy (make-random-taxi-env 2 2 1 i))] (def *h* h)   (time (println "sahtn-dijkstra" (run-counted #(sahtn-dijkstra h)))) (println)  (time (println "simple" (run-counted #(angelic.sahucs-simple/sahucs-simple h)))) (println) (time (println "simple-dijkstra" (run-counted #(angelic.sahucs-simple-dijkstra/sahucs-simple-dijkstra h))))  (println) (time (println "fancy-dijkstra "(run-counted #(sahucs-dijkstra h)))) (println "\n\n\n")))
 

@@ -1,6 +1,6 @@
-(ns w01fe.sas-simplification
+(ns angelic.sas-simplification
   (:require [edu.berkeley.ai.util :as util]
-            [w01fe [env :as env] [sas :as sas]  [sas-analysis :as sas-analysis]]))
+            [angelic [env :as env] [sas :as sas]  [sas-analysis :as sas-analysis]]))
 
 
 (defn merge-vals

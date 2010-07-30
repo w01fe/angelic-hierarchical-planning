@@ -1,8 +1,8 @@
-(ns w01fe.sahdd
+(ns angelic.sahdd
   (:require [edu.berkeley.ai.util :as util]
             [edu.berkeley.ai.util.queues :as queues]
-            [w01fe.env :as env] 
-            [w01fe.hierarchy :as hierarchy])
+            [angelic.env :as env] 
+            [angelic.hierarchy :as hierarchy])
   (:import  [java.util HashMap]))
 
 ; Here, there is no real Seq character.  No real choices.  

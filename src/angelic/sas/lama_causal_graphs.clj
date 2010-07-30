@@ -1,4 +1,4 @@
-(ns w01fe.lama-causal-graphs
+(ns angelic.lama-causal-graphs
   (:require [edu.berkeley.ai.util :as util]
             [edu.berkeley.ai.util [pdf :as pdf] [graphviz :as gv] [graphs :as graphs]]
             [vijual.graphical :as vg]

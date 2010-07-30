@@ -1,7 +1,7 @@
-(ns w01fe.discrete-manipulation
+(ns angelic.discrete-manipulation
 ;  (:use clojure.test)
   (:require [edu.berkeley.ai.util :as util]
-            [w01fe [env :as env] [sas :as sas] [hierarchy :as hierarchy]])
+            [angelic [env :as env] [sas :as sas] [hierarchy :as hierarchy]])
   (:import [java.util Random]))
 
 ; This is meant to be a simplified version of the ICAPS '10/SAHTN 
@@ -729,7 +729,7 @@
   (hierarchy/SimpleHierarchicalEnv env [(make-tla env)]))
 
 
-; (use '[w01fe discrete-manipulation env hierarchy hierarchical-incremental-search] 'edu.berkeley.ai.util)
+; (use '[angelic discrete-manipulation env hierarchy hierarchical-incremental-search] 'edu.berkeley.ai.util)
 
 ; (print-state (initial-state (make-discrete-manipulation-env [10 10] [1 1] [ [ [4 4] [6 6] ] ] [ [:a [5 5] [ [4 4] [4 4] ] ] ] 2))) 
 

@@ -1,6 +1,6 @@
-(ns w01fe.domains.taxi
+(ns angelic.domains.taxi
   (:require [edu.berkeley.ai.util :as util]
-            [w01fe [env :as env] [hierarchy :as hierarchy]])
+            [angelic [env :as env] [hierarchy :as hierarchy]])
   (:import [java.util Random]))
 
 (defn- make-left   [s]
@@ -90,7 +90,7 @@
                    [(inc (.nextInt r width)) (inc (.nextInt r height))]])))))
 
 
-; (use '[w01fe env taxi search hierarchy])
+; (use '[angelic env taxi search hierarchy])
 ; (uniform-cost-search (TaxiEnv 5 5 [ ['bob [1 1] [3 3] ] ['mary [1 1] [3 3] ] ['lisa [1 1] [3 3] ]])) 
 
 (deftype NavHLA [env dx dy] :as this
@@ -126,7 +126,7 @@
                                  [a this])))
                             (cycle-level- [s] 1))
 
-(defmethod hierarchy/gg-action :w01fe.taxi/NavHLA [a] [(GGNavHLA (:env a)) {'[atx] (:dx a) '[aty] (:dy a)}])
+(defmethod hierarchy/gg-action :angelic.taxi/NavHLA [a] [(GGNavHLA (:env a)) {'[atx] (:dx a) '[aty] (:dy a)}])
 
 
 (deftype ServeHLA [env pass] :as this

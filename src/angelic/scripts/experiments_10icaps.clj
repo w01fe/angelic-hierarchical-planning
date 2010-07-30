@@ -1,7 +1,7 @@
-(ns w01fe.scripts.experiments-10icaps
+(ns angelic.scripts.experiments-10icaps
   (:require 
    [edu.berkeley.ai.util :as util]
-   [w01fe [env :as env] [hierarchy :as hierarchy] [taxi :as taxi] [ucs :as ucs] [sahtn-dijkstra :as sd]]
+   [angelic [env :as env] [hierarchy :as hierarchy] [taxi :as taxi] [ucs :as ucs] [sahtn-dijkstra :as sd]]
    [edu.berkeley.ai.util [experiments :as experiments] [charts :as charts] [datasets :as datasets]]))
 
 
@@ -49,7 +49,7 @@
         :sahtn    `(sd/sahtn-dijkstra ~'init)
         :nsahtn    `(sd/sahtn-dijkstra ~'init)
         ))
-    'w01fe.experiments 20 10000 512 false  ::ExpResult))
+    'angelic.experiments 20 10000 512 false  ::ExpResult))
 
 (defn pad-right [x n]  
   (let [xs (str x) 
@@ -148,7 +148,7 @@
      [:run [1  2 3]]
      [:alg [:htn-ucs :nsahtn :sahtn]]]
     (constantly `(println)) (constantly `(println))
-    'w01fe.experiments 0 600 512 false ::ExpResult))
+    'angelic.experiments 0 600 512 false ::ExpResult))
 
 (defn make-fake-pp-exp-set []
   (experiments/make-experiment-set "pp2"
@@ -163,7 +163,7 @@
       [:alg [:sahtn]]]
      ]
     (constantly `(println)) (constantly `(println))
-    'w01fe.experiments 0 600 512 false ::ExpResult))
+    'angelic.experiments 0 600 512 false ::ExpResult))
 
 
 (defn read-pp-results []

@@ -1,6 +1,6 @@
-(ns w01fe.domains.nav-switch
+(ns angelic.domains.nav-switch
   (:require [edu.berkeley.ai.util :as util]
-            [w01fe [env :as env] [hierarchy :as hierarchy]])
+            [angelic [env :as env] [hierarchy :as hierarchy]])
   (:import [java.util Random]))
 
 ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;

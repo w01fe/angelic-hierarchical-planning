@@ -1,4 +1,4 @@
-(ns w01fe.incremental-search
+(ns angelic.incremental-search
   (:require [edu.berkeley.ai.util :as util]
             [edu.berkeley.ai.util.queues :as queues]))
 
@@ -46,7 +46,7 @@
 (def pos-inf Double/POSITIVE_INFINITY)
 (def neg-inf Double/NEGATIVE_INFINITY)
 
-(defmethod queues/get-cost w01fe.incremental_search.Summary [x] (- (max-reward x)))
+(defmethod queues/get-cost angelic.incremental_search.Summary [x] (- (max-reward x)))
 
 (defn viable? [summary min-reward]
   (let [reward (max-reward summary)]
@@ -82,7 +82,7 @@
                (let [c  (- (max-reward x) reward)]
                  (if (not (zero? c)) c
                    (cond goal? -1 
-                         (and (instance? w01fe.incremental_search.Node x) (node-goal? x)) 1
+                         (and (instance? angelic.incremental_search.Node x) (node-goal? x)) 1
                          :else 0))))
   Summary (max-reward [] reward)   
   Node    (node-name  [] name)
@@ -91,7 +91,7 @@
 (defn name-str [x]
   (let [n (:name x)]
     (if (symbol? n) n
-        (vec (map #(if (instance? w01fe.env.FactoredState %) (dissoc (w01fe.env/as-map %) :const) %) n)))))
+        (vec (map #(if (instance? angelic.env.FactoredState %) (dissoc (angelic.env/as-map %) :const) %) n)))))
 
 (defmethod print-method ::SimpleNode [x s]
   (print-method (str "Nd<" (name-str x) "," (:reward x) "," (:goal? x) ">") s))
@@ -142,7 +142,7 @@
   (sub-current-summary [ss])
   (sub-next-node       [ss min-reward]))
 
-(extend w01fe.incremental_search.IncrementalSearch
+(extend angelic.incremental_search.IncrementalSearch
    SubSearch {:sub-current-summary current-summary :sub-next-node next-goal})
 
 (deftype WrappedSubSearch [search reward-offset summary-lift-fn goal-lift-fn]

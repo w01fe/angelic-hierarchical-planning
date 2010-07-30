@@ -1,7 +1,7 @@
-(ns w01fe.flat-incremental-search
+(ns angelic.flat-incremental-search
   (:require [edu.berkeley.ai.util :as util]
-            [w01fe.env :as env] 
-            [w01fe.incremental-search :as is])
+            [angelic.env :as env] 
+            [angelic.incremental-search :as is])
   (:import  [java.util HashMap]))
 
 

@@ -1,7 +1,7 @@
-(ns w01fe.asplan
+(ns angelic.asplan
   (:require [edu.berkeley.ai.util :as util]
             [edu.berkeley.ai.util  [graphs :as graphs] ]
-            [w01fe [env :as env]  [hierarchy :as hierarchy] 
+            [angelic [env :as env]  [hierarchy :as hierarchy] 
                  [sas :as sas] [sas-analysis :as sas-analysis]])
   (:import [java.util HashMap]))
 
@@ -290,7 +290,7 @@
 ;; TODO: Take advantage of "greedy-chain" condition, don't assign
 
 
-; (use '[w01fe env hierarchy taxi-infinite ucs asplan hierarchical-incremental-search sas-problems] 'edu.berkeley.ai.util)
+; (use '[angelic env hierarchy taxi-infinite ucs asplan hierarchical-incremental-search sas-problems] 'edu.berkeley.ai.util)
 
 ; (let [e (make-random-infinite-taxi-sas2 4 4 4 2)] (println (time (run-counted #(uniform-cost-search e)))) (println (time (run-counted #(asplan-solution-pair-name (uniform-cost-search (make-asplan-env e)))))))
 

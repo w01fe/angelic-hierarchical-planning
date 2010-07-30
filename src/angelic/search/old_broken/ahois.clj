@@ -1,8 +1,8 @@
-(ns w01fe.old.ahois
+(ns angelic.old.ahois
   (:require [edu.berkeley.ai.util :as util]
-            [w01fe.env :as env] 
-            [w01fe.hierarchy :as hierarchy]
-            [w01fe.old.incremental-search :as is])
+            [angelic.env :as env] 
+            [angelic.hierarchy :as hierarchy]
+            [angelic.old.incremental-search :as is])
   (:import  [java.util HashMap]))
 
 

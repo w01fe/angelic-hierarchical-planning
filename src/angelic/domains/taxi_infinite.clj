@@ -1,7 +1,7 @@
-(ns w01fe.domains.taxi-infinite
+(ns angelic.domains.taxi-infinite
   (:use clojure.test)
   (:require [edu.berkeley.ai.util :as util]
-            [w01fe [env :as env] [sas :as sas] [hierarchy :as hierarchy]])
+            [angelic [env :as env] [sas :as sas] [hierarchy :as hierarchy]])
   (:import [java.util Random]))
 
 
@@ -88,9 +88,9 @@
                    [(inc (.nextInt r width)) (inc (.nextInt r height))]
                    [(inc (.nextInt r width)) (inc (.nextInt r height))]])))))
 
-(require 'w01fe.ucs)
+(require 'angelic.ucs)
 (deftest infinite-taxi
-  (is (= -15 (second (w01fe.ucs/uniform-cost-search (InfiniteTaxiEnv 5 5 [[:red [2 1] [5 4]] [:green [1 4] [3 3]]]))))))
+  (is (= -15 (second (angelic.ucs/uniform-cost-search (InfiniteTaxiEnv 5 5 [[:red [2 1] [5 4]] [:green [1 4] [3 3]]]))))))
 
 
 
@@ -243,7 +243,7 @@
   )
 
 (deftest infinite-taxi-generic
-  (is (= -15 (second (w01fe.ucs/uniform-cost-search (sas/make-sas-problem-from-pddl (write-infinite-taxi-strips (InfiniteTaxiEnv 5 5 [['red [2 1] [5 4]] ['green [1 4] [3 3]]]))))))))
+  (is (= -15 (second (angelic.ucs/uniform-cost-search (sas/make-sas-problem-from-pddl (write-infinite-taxi-strips (InfiniteTaxiEnv 5 5 [['red [2 1] [5 4]] ['green [1 4] [3 3]]]))))))))
 
 ;; TODO: this is buggy.
 
@@ -336,7 +336,7 @@
   )
 
 (deftest infinite-taxi-generic2
-  (is (= -16 (second (w01fe.ucs/uniform-cost-search (sas/make-sas-problem-from-pddl (write-infinite-taxi-strips2 (InfiniteTaxiEnv 5 5 [['red [2 1] [5 4]] ['green [1 4] [3 3]]]))))))))
+  (is (= -16 (second (angelic.ucs/uniform-cost-search (sas/make-sas-problem-from-pddl (write-infinite-taxi-strips2 (InfiniteTaxiEnv 5 5 [['red [2 1] [5 4]] ['green [1 4] [3 3]]]))))))))
 
 
 
@@ -427,6 +427,6 @@
      prefix))
 
 (deftest infinite-taxi-generic3
-  (is (= -15 (second (w01fe.ucs/uniform-cost-search (sas/make-sas-problem-from-pddl (write-infinite-taxi-strips3 (InfiniteTaxiEnv 5 5 [['red [2 1] [5 4]] ['green [1 4] [3 3]]]))))))))
+  (is (= -15 (second (angelic.ucs/uniform-cost-search (sas/make-sas-problem-from-pddl (write-infinite-taxi-strips3 (InfiniteTaxiEnv 5 5 [['red [2 1] [5 4]] ['green [1 4] [3 3]]]))))))))
 
 ; (make-sas-problem-from-pddl (prln (write-taxi-strips (make-random-taxi-env 1 2 1))) )

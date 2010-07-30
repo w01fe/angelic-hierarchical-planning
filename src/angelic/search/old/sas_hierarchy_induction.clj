@@ -1,7 +1,7 @@
-(ns w01fe.sas-hierarchy-induction
+(ns angelic.sas-hierarchy-induction
   (:require [edu.berkeley.ai.util :as util]
             [edu.berkeley.ai.util  [graphs :as graphs] [graphviz :as gv]]
-            [w01fe [env :as env]  [hierarchy :as hierarchy] [sas :as sas] [sas-analysis :as sas-analysis]])
+            [angelic [env :as env]  [hierarchy :as hierarchy] [sas :as sas] [sas-analysis :as sas-analysis]])
   (:import [java.util HashMap HashSet Collection IdentityHashMap]))
 
 
@@ -692,7 +692,7 @@
 
 ; (debug 0 (time (run-counted #(sahucs-inverted (simple-taxi-hierarchy (make-random-taxi-env 20 20 5 6))))))
 
-; (use '[w01fe env taxi hierarchy ucs sahucs-inverted sas taxi-infinite sas-hierarchy-induction sas-analysis sas-problems] 'edu.berkeley.ai.util)
+; (use '[angelic env taxi hierarchy ucs sahucs-inverted sas taxi-infinite sas-hierarchy-induction sas-analysis sas-problems] 'edu.berkeley.ai.util)
 
 ; (debug 0 (time (run-counted #(uniform-cost-search (identity (make-sas-problem-from-pddl (prln (write-taxi-strips2 (make-random-taxi-env 3 3 2 6)))))))))
 

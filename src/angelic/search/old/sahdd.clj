@@ -1,8 +1,8 @@
-(ns w01fe.sahdd
+(ns angelic.sahdd
   (:require [edu.berkeley.ai.util :as util]
             [edu.berkeley.ai.util.queues :as queues]
-            [w01fe.env :as env] 
-            [w01fe.hierarchy :as hierarchy])
+            [angelic.env :as env] 
+            [angelic.hierarchy :as hierarchy])
   (:import  [java.util HashMap]))
 
 ;; TODO: note other sahucs implementations are incorrect, since they don't handle reward decreases of partial nodes properly. ?  
@@ -55,10 +55,10 @@
 ; Real problem is: each nav dest starts a new dijkstra subproblem. 
 ; With this hierarchy, it is *completely unavoidable* that we refine each Nav once form each state. ? 
 
-(comment (let [e (w01fe.nav-switch/make-random-nav-switch-env 5 10) h (w01fe.nav-switch/make-nav-switch-hierarchy e false)]  
+(comment (let [e (angelic.nav-switch/make-random-nav-switch-env 5 10) h (angelic.nav-switch/make-nav-switch-hierarchy e false)]  
    (time (println "ucs" (run-counted #(second (uniform-cost-search e)))))
-   (doseq [alg `[w01fe.sahucs-inverted/sahucs-inverted sahucs-inverted sahucs-dijkstra   sahucs-simple]]
-     (time (debug 0 (println alg (run-counted #(second (w01fe.env/verify-solution e ((resolve alg) h))))))))))
+   (doseq [alg `[angelic.sahucs-inverted/sahucs-inverted sahucs-inverted sahucs-dijkstra   sahucs-simple]]
+     (time (debug 0 (println alg (run-counted #(second (angelic.env/verify-solution e ((resolve alg) h))))))))))
 
 ;; TODO: share endings between states, to fix slowness here? !  Or provide version that just ignores suffix?  But Suboptimal.
  ; Solution: backwards tree, to go with top-down (and possibly forward - impilcit?) trees.

@@ -1,8 +1,5 @@
-(ns w01fe.env.states
-  (:use clojure.test)
-  (:require [edu.berkeley.ai.util :as util])
-  (:import [java.util Set Map])
-  )
+(ns angelic.env.state
+  (:require [edu.berkeley.ai.util :as util]))
 
 ; Get-logger takes a precondition context.  Its equality semantics will be based
 ;; on values within this context, and changes outside this context. 
@@ -40,46 +37,48 @@
 
 (declare make-logging-factored-state)
 
-(deftype LoggingFactoredState [init #^Set context] :as state
+(deftype LoggingFactoredState [init #^java.util.Set context puts ooc meta] 
   Object 
-   (equals    [lfs]
-     (and (= init (:init lfs)) (= context (:context lfs)) (= (ooc-effects state) (ooc-effects lfs))))
-   (hashCode []
+   (equals   [state lfs]
+     (let [lfs ^LoggingFactoredState lfs]
+       (and (= init (.init lfs)) (= context (.context lfs)) (= (ooc-effects state) (ooc-effects lfs)))))
+   (hashCode [state]
      (unchecked-add (int (hash init))
        (unchecked-multiply (int 13) (int (hash (ooc-effects state))))))
+  clojure.lang.IObj
+   (meta [this] meta)
+   (withMeta [this new-meta] (LoggingFactoredState init context puts ooc new-meta))
   FactoredState
-   (get-var [var]
+   (get-var [state var]
      (get-var init var))
-   (set-var [var val]
-     (let [old-meta (meta state)]
+   (set-var [state var val]
        (LoggingFactoredState. (set-var init var val) ; init
                               context
-                              {:puts (assoc (:puts old-meta) var val)
-                               :ooc  (if (.contains context var) (:ooc old-meta) (assoc (:ooc old-meta) var val))}
-                              {})))
-   (set-vars [vv-pairs]
-     (let [old-meta (meta state)]
+                              (assoc puts var val)
+                              (if (.contains context var) ooc (assoc ooc var val))
+                              {}))
+   (set-vars [state vv-pairs]
        (LoggingFactoredState. (set-vars init vv-pairs)
                               context
-                              {:puts (into (:puts old-meta) vv-pairs)
-                               :ooc  (into (:ooc old-meta) (remove #(.contains context (first %)) vv-pairs))}
-                              {})))
-   (list-vars [] (list-vars init))
-   (as-map [] init)
+                              (into puts vv-pairs)
+                              (into ooc (remove #(.contains context (first %)) vv-pairs))
+                              {}))
+   (list-vars [state] (list-vars init))
+   (as-map    [state] init)
   LoggingState
-   (extract-effects []  (util/safe-get (meta state) :puts))
-   (ooc-effects     []  (util/safe-get (meta state) :ooc) #_(util/filter-map #(not (.contains context (key %))) (util/safe-get (meta state) :puts)))
+   (extract-effects [state]  puts)
+   (ooc-effects     [state]  ooc)
   ContextualState 
-   (current-context []  context)
-   (extract-context [c] (fast-select-keys init c))
-   (apply-effects   [e] (set-vars state e))
-   (get-logger      [c] (make-logging-factored-state (as-map init) c)))
+   (current-context [state ]  context)
+   (extract-context [state c] (fast-select-keys init c))
+   (apply-effects   [state e] (set-vars state e))
+   (get-logger      [state c] (make-logging-factored-state (as-map init) c)))
 
 (defn make-logging-factored-state [init-state context] 
-  (LoggingFactoredState init-state context {:puts {} :ooc {}} {}))
+  (LoggingFactoredState. init-state context {} {} {}))
 
 (defn enforce-logger [state]
-  (assert (= (type state) ::LoggingFactoredState))
+  (assert (instance? LoggingFactoredState state))
   state)
 
 
@@ -100,25 +99,6 @@
   (every? (fn [[k v]] (= (get-var fs k) v)) m))
 
 
-(deftest test-logging-factored-state
-  (let [si {:a 1 :b 2 :c 3}
-        s1 (get-logger si #{:a})
-        s2 (set-var s1 :a 1)
-        s3 (set-var s1 :b 2)
-        s4 (set-var (set-var s1 :a 1) :b 2)
-        s5 (set-var (set-var s1 :a 1) :c 4)
-        ss [s1 s2 s3 s4 s5]
-        equal-sets [#{0 1} #{2 3} #{4}]
-        ]
-    (is (= (map as-map          ss) [si si si si (assoc si :c 4)]))
-    (is (= (map extract-effects ss) [{} {:a 1} {:b 2} {:a 1 :b 2} {:a 1 :c 4}]))
-    (is (= (map ooc-effects     ss) [{} {} {:b 2} {:b 2} {:c 4}]))
-    (doseq [es equal-sets] 
-      (is (apply = (map ss es)))
-      (is (apply = (map (comp hash ss) es))))
-    (doseq [[s1 s2] (util/combinations equal-sets 2), i1 s1, i2 s2]
-      (is (not (= i1 i2)))
-      (is (not (= (hash i1) (hash i2)))))))
 
 ;; TODO: make method so we can use transients?
 

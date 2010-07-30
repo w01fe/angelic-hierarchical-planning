@@ -1,8 +1,5 @@
-(ns w01fe.env
-  (:use clojure.test)
-  (:require [edu.berkeley.ai.util :as util])
-  (:import [java.util Set Map])
-  )
+(ns angelic.env
+  (:require [edu.berkeley.ai.util :as util]))
 
 
 (defprotocol Action
@@ -11,8 +8,7 @@
 
 (defprotocol PrimitiveAction
   (applicable? [a s])
-  (next-state-and-reward  [a s]) ; Precondition: applicable.
-  )
+  (next-state-and-reward  [a s] "Precondition: applicable"))
 
 (defprotocol ContextualAction
   (precondition-context [a s]))
@@ -23,12 +19,7 @@
 (defn reset-next-counter [] 
   (util/sref-set! *next-counter* 0))
 
- 
-
-;; TODO: it feels clunky for this to live outside 
-
 (defn successor [action state]
-;  (prn "next" (:name action))
   (util/timeout)
   (assert (applicable? action state))
   (util/print-debug 4 "Progressing" action #_ state)
@@ -38,10 +29,8 @@
         old-meta      (meta state)]
     [(vary-meta next assoc
        :act-seq (cons (action-name action) (:act-seq old-meta))
-                                        ;(conj (or (:act-seq (meta state)) []) action)
        :reward (+ reward (or (:reward old-meta) 0)))
      reward]))
-
 
 (defn solution-and-reward [state]
   (let [{:keys [act-seq reward]} (meta state)]
@@ -50,21 +39,17 @@
 (defn reward [state]
   (or (:reward (meta state)) 0))
 
-;; Environments have a single goal state
-;; Goal fn returns [sol reward] or nil.
+
 
 (defprotocol Env
   (initial-state [env])
   (actions-fn    [env])
-  (goal-fn      [env]))
+  (goal-fn      [env] "Environments have a single goal state.  Goal-fn returns [sol reward] or nil."))
 
 (defprotocol FactoredEnv
   (goal-map [env]))
 
 
-(defn initial-logging-state [env]
-  (let [init (initial-state env)]
-    (get-logger init (current-context init))))
 
 
 

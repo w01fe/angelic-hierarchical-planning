@@ -1,6 +1,6 @@
-(ns w01fe.sahtn-simple
+(ns angelic.sahtn-simple
   (:require [edu.berkeley.ai.util :as util]
-            [w01fe [env :as env] [hierarchy :as hierarchy]])
+            [angelic [env :as env] [hierarchy :as hierarchy]])
   (:import [java.util HashMap])
   )
 

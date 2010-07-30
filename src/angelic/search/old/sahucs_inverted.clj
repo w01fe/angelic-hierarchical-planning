@@ -1,7 +1,7 @@
-(ns w01fe.sahucs-inverted
+(ns angelic.sahucs-inverted
   (:require [edu.berkeley.ai.util :as util] 
             [edu.berkeley.ai.util [queues :as queues] [debug-repl :as dr]]
-            [w01fe [env :as env] [hierarchy :as hierarchy]])
+            [angelic [env :as env] [hierarchy :as hierarchy]])
   (:import [java.util HashMap HashSet])
   )
 
@@ -170,7 +170,7 @@
 
 
 (comment
-  user> (let [h (simple-taxi-hierarchy (make-random-taxi-env 15 15 9 1))] (println (update-in (time (run-counted #(sahtn-dijkstra h))) [0]  second)) (println (update-in (time (run-counted #(w01fe.sahucs-simple/sahucs-simple h))) [0]  second)) (println (update-in (time (run-counted #(w01fe.sahucs-simple-dijkstra/sahucs-simple-dijkstra h))) [0]  second)) (println (update-in (time (run-counted #(w01fe.sahucs-fancy-dijkstra/sahucs-fancy-dijkstra h))) [0]  second))  (println (time (run-counted #(w01fe.sahucs-inverted/sahucs-inverted h)))))
+  user> (let [h (simple-taxi-hierarchy (make-random-taxi-env 15 15 9 1))] (println (update-in (time (run-counted #(sahtn-dijkstra h))) [0]  second)) (println (update-in (time (run-counted #(angelic.sahucs-simple/sahucs-simple h))) [0]  second)) (println (update-in (time (run-counted #(angelic.sahucs-simple-dijkstra/sahucs-simple-dijkstra h))) [0]  second)) (println (update-in (time (run-counted #(angelic.sahucs-fancy-dijkstra/sahucs-fancy-dijkstra h))) [0]  second))  (println (time (run-counted #(angelic.sahucs-inverted/sahucs-inverted h)))))
 "Elapsed time: 2014.061 msecs"
 [-131 75 22637 84697]
 "Elapsed time: 6585.219 msecs"

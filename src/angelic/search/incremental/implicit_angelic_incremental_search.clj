@@ -1,9 +1,9 @@
-(ns w01fe.implicit-angelic-incremental-search
+(ns angelic.implicit-angelic-incremental-search
   (:require [edu.berkeley.ai.util :as util]
-            [w01fe.env :as env] 
-            [w01fe.hierarchy :as hierarchy]
-            [w01fe.incremental-search :as is]
-            [w01fe.hierarchical-incremental-search :as his])
+            [angelic.env :as env] 
+            [angelic.hierarchy :as hierarchy]
+            [angelic.incremental-search :as is]
+            [angelic.hierarchical-incremental-search :as his])
   (:import  [java.util HashMap]))
 
 
@@ -162,8 +162,8 @@
 (defn compare-saha-nodes [x1 x2]
   (let [c (compare-saha-summaries x1 x2)]
     (if (zero? c)  
-        (compare (and (instance? w01fe.incremental_search.Node x2) (is/node-goal? x2))
-                 (and (instance? w01fe.incremental_search.Node x1) (is/node-goal? x1)))
+        (compare (and (instance? angelic.incremental_search.Node x2) (is/node-goal? x2))
+                 (and (instance? angelic.incremental_search.Node x1) (is/node-goal? x1)))
         c)))
 
 ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;; CAC Node ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
@@ -172,7 +172,7 @@
   (defn name-str [x]
     (let [n (:name x)]
       (if (symbol? n) n
-          (vec (map #(if (instance? w01fe.env.FactoredState %) (dissoc (w01fe.env/as-map %) :const) %) n)))))
+          (vec (map #(if (instance? angelic.env.FactoredState %) (dissoc (angelic.env/as-map %) :const) %) n)))))
 
   (defmethod print-method ::SimpleNode [x s]
     (print-method (str "Nd<" (name-str x) "," (:reward x) "," (:goal? x) ">") s)))

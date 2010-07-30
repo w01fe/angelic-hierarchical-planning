@@ -1,7 +1,7 @@
-(ns w01fe.simple-tree-hierarchy
+(ns angelic.simple-tree-hierarchy
   (:require [edu.berkeley.ai.util :as util]
             [edu.berkeley.ai.util  [graphs :as graphs] [graphviz :as gv]]
-            [w01fe [env :as env]  [hierarchy :as hierarchy] [sas :as sas] [sas-analysis :as sas-analysis]])
+            [angelic [env :as env]  [hierarchy :as hierarchy] [sas :as sas] [sas-analysis :as sas-analysis]])
   )
 
 

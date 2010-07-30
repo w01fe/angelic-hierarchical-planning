@@ -1,7 +1,7 @@
-(ns w01fe.gasplan
+(ns angelic.gasplan
   (:require [edu.berkeley.ai.util :as util]
             [edu.berkeley.ai.util  [graphs :as graphs] ]
-            [w01fe [env :as env]  [hierarchy :as hierarchy] 
+            [angelic [env :as env]  [hierarchy :as hierarchy] 
                  [sas :as sas] [sas-analysis :as sas-analysis]])
   (:import [java.util HashMap]))
 
@@ -248,6 +248,6 @@
 
 
 
-;(let [e (make-sas-problem-from-pddl (w01fe.taxi/write-taxi-strips (w01fe.taxi/make-random-taxi-env 3 3 3))) ]  (println (time (run-counted #(uniform-cost-search e)))) (println (time (run-counted #(w01fe.gasplan/gasplan-solution-pair-name (uniform-cost-search (w01fe.gasplan/make-gasplan-env e)))))))
+;(let [e (make-sas-problem-from-pddl (angelic.taxi/write-taxi-strips (angelic.taxi/make-random-taxi-env 3 3 3))) ]  (println (time (run-counted #(uniform-cost-search e)))) (println (time (run-counted #(angelic.gasplan/gasplan-solution-pair-name (uniform-cost-search (angelic.gasplan/make-gasplan-env e)))))))
 
-;(doseq [ [k v] (sas-sample-files 1) :let [e (make-sas-problem-from-pddl v)]  ] (println "\n\n" k ) (println (time (run-counted #(uniform-cost-search e)))) (println (time (run-counted #(w01fe.gasplan/gasplan-solution-pair-name (uniform-cost-search (w01fe.gasplan/make-gasplan-env e)))))))
+;(doseq [ [k v] (sas-sample-files 1) :let [e (make-sas-problem-from-pddl v)]  ] (println "\n\n" k ) (println (time (run-counted #(uniform-cost-search e)))) (println (time (run-counted #(angelic.gasplan/gasplan-solution-pair-name (uniform-cost-search (angelic.gasplan/make-gasplan-env e)))))))

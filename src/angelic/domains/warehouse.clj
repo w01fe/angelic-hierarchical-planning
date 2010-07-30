@@ -1,7 +1,7 @@
-(ns w01fe.domains.warehouse
+(ns angelic.domains.warehouse
  (:import [java.util HashSet HashMap])
  (:require [edu.berkeley.ai [util :as util]] 
-           [w01fe [env :as env] [hierarchy :as hierarchy]]))
+           [angelic [env :as env] [hierarchy :as hierarchy]]))
 
 ; Note: WW heuristic is inconsistent.
 
@@ -347,20 +347,20 @@
   (time (debug 0 (uniform-cost-search (make-warehouse-env 4 4 [2 3] false {1 '[a] 3 '[c b]} nil ['[a c table1]]))))
 
   ;; TODO: hierarchy somehow beats non for this ?! 
-(let [e (make-warehouse-env 2 2 [2 2] false {1 '[a]} nil ['[a table2]]) h (w01fe.warehouse/simple-warehouse-hierarchy e)]  
+(let [e (make-warehouse-env 2 2 [2 2] false {1 '[a]} nil ['[a table2]]) h (angelic.warehouse/simple-warehouse-hierarchy e)]  
   (time (println "ucs" (run-counted #(second (uniform-cost-search e)))))
   (doseq [alg `[sahtn-dijkstra  sahucs-simple sahucs-dijkstra sahucs-inverted]]
          (time (debug 0 (println alg (run-counted #(second ((resolve alg) h))))))))
 
-(let [e (make-warehouse-env 4 4 [2 3] false {1 '[a] 3 '[c b]} nil ['[a c table2]]) h (w01fe.warehouse/simple-warehouse-hierarchy e)]  
+(let [e (make-warehouse-env 4 4 [2 3] false {1 '[a] 3 '[c b]} nil ['[a c table2]]) h (angelic.warehouse/simple-warehouse-hierarchy e)]  
   (time (println "ucs" (run-counted #(second (uniform-cost-search e)))))
   (doseq [alg `[sahtn-dijkstra  sahucs-simple sahucs-dijkstra sahucs-inverted]]
-         (time (debug 0 (println alg (run-counted #(second (w01fe.env/verify-solution e ((resolve alg) h)))))))))
+         (time (debug 0 (println alg (run-counted #(second (angelic.env/verify-solution e ((resolve alg) h)))))))))
 
-(let [e (make-warehouse-env 6 5 [1 5] false {1 '[a c] 4 '[e g]} nil '[[a e table2] [c g table5]]) h (w01fe.warehouse/simple-warehouse-hierarchy e)]  
+(let [e (make-warehouse-env 6 5 [1 5] false {1 '[a c] 4 '[e g]} nil '[[a e table2] [c g table5]]) h (angelic.warehouse/simple-warehouse-hierarchy e)]  
   (time (println "ucs" (run-counted #(second (uniform-cost-search e)))))
   (doseq [alg `[sahtn-dijkstra  sahucs-simple sahucs-dijkstra sahucs-inverted]]
-         (time (debug 0 (println alg (run-counted #(second (w01fe.env/verify-solution e ((resolve alg) h)))))))))
+         (time (debug 0 (println alg (run-counted #(second (angelic.env/verify-solution e ((resolve alg) h)))))))))
   )
 
 

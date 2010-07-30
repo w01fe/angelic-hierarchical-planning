@@ -1,7 +1,7 @@
-(ns w01fe.sahtn-dijkstra
+(ns angelic.sahtn-dijkstra
   (:require [edu.berkeley.ai.util :as util]
             [edu.berkeley.ai.util.queues :as queues]
-            [w01fe [env :as env] [hierarchy :as hierarchy]])
+            [angelic [env :as env] [hierarchy :as hierarchy]])
   (:import [java.util HashMap])
   )
 

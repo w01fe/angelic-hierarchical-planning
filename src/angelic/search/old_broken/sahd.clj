@@ -1,7 +1,7 @@
-(ns w01fe.sahd
+(ns angelic.sahd
   (:require [edu.berkeley.ai.util :as util]
-            [w01fe.env :as env] 
-            [w01fe.hierarchy :as hierarchy]))
+            [angelic.env :as env] 
+            [angelic.hierarchy :as hierarchy]))
 
 ;; What happens in SAHA?
  ; Initially, get entire structure.

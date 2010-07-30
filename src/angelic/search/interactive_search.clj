@@ -1,7 +1,7 @@
-(ns w01fe.interactive-search
+(ns angelic.interactive-search
   (:require [edu.berkeley.ai.util :as util]
             [edu.berkeley.ai.util.queues :as queues] 
-            [w01fe [hierarchical-incremental-search :as his] [hierarchy :as hierarchy] [env :as env]]
+            [angelic [hierarchical-incremental-search :as his] [hierarchy :as hierarchy] [env :as env]]
             ))
 
 

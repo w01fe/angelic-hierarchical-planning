@@ -1,8 +1,8 @@
-(ns w01fe.hierarchical-incremental-search
+(ns angelic.hierarchical-incremental-search
   (:require [edu.berkeley.ai.util :as util]
-            [w01fe.env :as env] 
-            [w01fe.hierarchy :as hierarchy]
-            [w01fe.incremental-search :as is])
+            [angelic.env :as env] 
+            [angelic.hierarchy :as hierarchy]
+            [angelic.incremental-search :as is])
   (:import  [java.util HashMap]))
 
 
@@ -361,7 +361,7 @@
 (comment ; replace anon with this to test for heuristic inconsistencies.
   #(let [children (->> % :data hfs-children (map hfs->aha-star-node))]
       (doseq [c children] (util/assert-is (<= (is/max-reward c) (is/max-reward %))
-                                          "%s" [ (w01fe.discrete-manipulation/state-str (:state (:data %)))
+                                          "%s" [ (angelic.discrete-manipulation/state-str (:state (:data %)))
                                                  (map env/action-name (:remaining-actions (:data %)))
                                                  (map env/action-name (:remaining-actions (:data c)))
                                                   (print-heuristic (:data %))
@@ -420,14 +420,14 @@
 
 
 (comment
-  (do (use '[w01fe env hierarchy taxi ucs hierarchical-incremental-search] 'edu.berkeley.ai.util) (require '[w01fe sahucs-simple sahucs-simple-dijkstra sahucs-inverted saha-simple] '[w01fe.old ahois]))
+  (do (use '[angelic env hierarchy taxi ucs hierarchical-incremental-search] 'edu.berkeley.ai.util) (require '[angelic sahucs-simple sahucs-simple-dijkstra sahucs-inverted saha-simple] '[angelic.old ahois]))
    (let [e (make-random-taxi-env 5 5 5 3) _ (println e) h (simple-taxi-hierarchy e)]  
     (time (println "ucs" (run-counted #(second (uniform-cost-search e)))))
-    (doseq [alg `[sahucs-flat sahucs-fast-flat w01fe.sahucs-simple/sahucs-simple sahucs-simple w01fe.sahucs-simple-dijkstra/sahucs-simple-dijkstra sahucs-dijkstra w01fe.sahucs-inverted/sahucs-inverted sahucs-inverted w01fe.saha-simple/saha-simple saha-simple ]]
+    (doseq [alg `[sahucs-flat sahucs-fast-flat angelic.sahucs-simple/sahucs-simple sahucs-simple angelic.sahucs-simple-dijkstra/sahucs-simple-dijkstra sahucs-dijkstra angelic.sahucs-inverted/sahucs-inverted sahucs-inverted angelic.saha-simple/saha-simple saha-simple ]]
       (time (println alg (run-counted #(debug 0 (second ((resolve alg) h)))))))))
 
 (comment
- (let [e (w01fe.taxi/make-random-taxi-env 5 5 5 3) _ (println e) h (w01fe.taxi/simple-taxi-hierarchy e)]  
+ (let [e (angelic.taxi/make-random-taxi-env 5 5 5 3) _ (println e) h (angelic.taxi/simple-taxi-hierarchy e)]  
    (time (println "ucs" (run-counted #(second (uniform-cost-search e)))))
    (doseq [alg `[saha-simple ]]
      (time (println alg (run-counted #(debug 0 (second ((resolve alg) h)))))))))
