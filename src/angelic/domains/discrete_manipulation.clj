@@ -1,4 +1,4 @@
-(ns angelic.discrete-manipulation
+(ns angelic.domains.discrete-manipulation
 ;  (:use clojure.test)
   (:require [edu.berkeley.ai.util :as util]
             [angelic [env :as env] [sas :as sas] [hierarchy :as hierarchy]])
