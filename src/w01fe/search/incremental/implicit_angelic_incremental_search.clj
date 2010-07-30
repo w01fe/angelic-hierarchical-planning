@@ -14,11 +14,10 @@
 ; Still have correspondence problem.
 ; unless: require single "region"/clause.  All existing hierarchies had this anyway ?  
 
-;; TODO: fix paredit key bindings.
-;; TODO: formap 
-
-(declare hierarchy/concrete-clause?) ;; Clause is also a state
-(declare hierarchy/can-refine-from?) ; Is clause concrete enough to meaningfully refine this action?
+; nil is a valid clause, meaning "empty" ?
+; States can be used as-is with these functions? 
+(declare hierarchy/clause-is-state?) ;; Clause is also a state
+(declare hierarchy/can-refine-from-clause?) ; Is clause concrete enough to meaningfully refine this action?
 (declare hierarchy/immediate-refinements-clause) ; Returns seq of [constraint ref] pairs from this clause.
 (declare hierarchy/next-clause-and-rewards) ; takes action & clause, returns [result-clause [pess-rew opt-rew]]
 (declare hierarchy/restrict-clause) ;; Takes clause & constraint; returns nil for invalid.
@@ -27,30 +26,137 @@
 ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;; Utilities ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
 ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
 
-(def #^HashMap *problem-cache* nil)
+;;;;;;;;;;;;;;;;;;;;;;;;;; Angelic Hierarchical State ;;;;;;;;;;;;;;;;;;;;;;;;;;
+
+(deftype AngelicHierarchicalState [in-clause actions reward-bounds out-clause primitive?])
+
+(defn ahs-name 
+  ([ahs] [(:in-clause ahs) (map env/action-name actions) (:out-clause ahs)])
+  ([ahs more-name] (conj (ahs-name ahs) more-name)))
+
+(defn ahs-solution-pair [ahs]
+  (when ahs
+   (assert (:primitive? ahs))
+   (assert (apply = (:reward-bounds ahs)))
+   [(:actions ahs) (first (:reward-bounds ahs))]))
+
+(defn make-root-ahs [in action out]
+  (AngelicHierarchicalState state 0 [] [action]))
+
+(defn ahs-children [ahs]
+  (let [{:keys [state reward opt-sol remaining-actions]} ahs]
+    (when-let [[f & r] (seq remaining-actions)]      
+      (if (env/primitive? f)
+        (when-let [[ss sr] (and (env/applicable? f state) (env/successor f state))]
+          [(AngelicHierarchicalState ss (+ reward sr) (conj opt-sol f) r)]) 
+        (for [ref (hierarchy/immediate-refinements f state)]
+          (AngelicHierarchicalState state reward opt-sol (concat ref r)))))))
+
+(defn combine-ahs [n1 n2 state-combiner action-combiner]
+  (AngelicHierarchicalState
+   (state-combiner       (:state n1)   (:state n2))
+   (+                    (:reward n1)  (:reward n2))
+   (into                 (:opt-sol n1) (:opt-sol n2))
+   (action-combiner      (:remaining-actions n1) (:remaining-actions n2))))
+
+;; Sub and lift -- used by recursive, inverted, saha (drop only)
+(defn ahs-first-sub-name "Name for first abstracted subproblem of ahs" [ahs]
+  (let [{[f] :remaining-actions state :state} ahs]
+    [(if *state-abstraction?* (env/extract-context state (env/precondition-context f state)) state) 
+     (env/action-name f)]))
+
+(defn ahs-first-sub "First abstracted subproblem of ahs" [ahs]
+  (let [{[f] :remaining-actions state :state} ahs]
+    (make-root-ahs (env/get-logger state (if *state-abstraction?* (env/precondition-context f state) *full-context*)) f)))
+
+(defn lift-ahs "Lift child-solution into the context of parent-node, counterpart to sub."
+  [parent child] 
+  (combine-ahs parent child env/transfer-effects
+               (fn [r1 r2] (util/assert-is (empty? r2)) (next r1))))
 
 
-;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;; Angelic Summary ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
+;; Used for inverted only
+(defn adjust-ahs-reward [h r]
+  (AngelicHierarchicalState (:state h) (+ r (:reward h)) (:opt-sol h) (:remaining-actions h)))
 
-(defprotocol PSAHA-Summary
-  (min-reward [s])
-  (max-gap    [s]))
+; used for saha only
+(defn first-action-ahs "Return ahs for just first action." [ahs]
+  (let [{:keys [state reward opt-sol remaining-actions]} ahs]
+    (assert (seq remaining-actions)) (assert (zero? reward)) (assert (empty? opt-sol))
+    (AngelicHierarchicalState state 0 nil (take 1 remaining-actions))))
 
-(defn compare-saha-summaries [x1 x2]
-  (let [s1 (- (max-reward x2) (max-reward x1))]
-    (if (zero? s1) (- (min-reward x2) (min-reward x1)) s1)))
+(defn rest-actions-ahs "Return ahs for just first action." [ahs mid-state]
+  (let [{:keys [state reward opt-sol remaining-actions]} ahs]
+    (assert (seq remaining-actions)) (assert (zero? reward)) (assert (empty? opt-sol))
+    (AngelicHierarchicalState mid-state 0 nil (drop 1 remaining-actions))))
 
-(deftype SAHA-Summary [min-reward max-reward max-gap] :as this
-  Comparable    (compareTo  [x] (compare-saha-summaries this x))
-  Summary       (max-reward []  max-reward)
-  PSAHA-Summary (min-reward []  min-reward)
-                (max-gap    []  max-gap))
+;; TODO: remove expensive assertino.
+(defn join-ahs [parent-ahs first-result rest-result final-state]
+  (combine-ahs first-result rest-result (constantly final-state) (constantly nil))
+#_  (let [my-final (reduce env/transfer-effects (:state parent-ahs)
+                         [(:state first-result) (:state rest-result)])]
+    (util/assert-is (= (dissoc (env/as-map final-state) :const) 
+                       (dissoc (env/as-map my-final) :const)))
+    (combine-ahs first-result rest-result (constantly my-final) (constantly nil))))
 
-(defn add-saha-summaries [s1 s2]
-  (SAHA-Sumary 
-   (+ (min-reward s1) (min-reward s2))
-   (+ (max-reward s1) (max-reward s2)) 
-   (max (max-gap s1) (max-gap s2))))
+
+
+(defn ahs-can-reach? [ahs s]
+  (or (seq (:remaining-actions ahs)) (= s (:state ahs))))
+
+(defn ahs-cycle-level [ahs]
+  (when-let [a (first (:remaining-actions ahs))] (hierarchy/cycle-level a (:state ahs))))
+
+(defn ahs-gg "Return gg-ahs and goal-map, or nil if not gg." [ahs]
+  (let [a (util/safe-singleton (:remaining-actions ahs))]
+    (when-let [[gga goal-map] (hierarchy/gg-action a)]
+      [(AngelicHierarchicalState (:state ahs) (:reward ahs) (:opt-sol ahs) [gga])
+       goal-map
+       (every? (env/precondition-context a (:state ahs)) (keys goal-map))])))
+
+(defn ahs-optimistic-map [ahs]
+  (let [{:keys [state remaining-actions]} ahs]
+#_    (apply println "Optimistic map for " (ahs-first-sub-name ahs) "is\n"
+             (for [[s r] (env/optimistic-map (util/safe-singleton remaining-actions) state)]
+               (str "  " (env/extract-effects s) ": " r "\n")))
+    (env/optimistic-map (util/safe-singleton remaining-actions) state)))
+
+
+;;;;;;;;;;;;;;;;;;;;;;;; Simple Weighted Summary & Node ;;;;;;;;;;;;;;;;;;;;;;;;
+;;; lifted from explicit-...
+
+
+; Function from action to weight (> 1).
+(def *sw-weight-fn* nil)
+
+; Here, we only use pess reward for tiebreaking.
+(defprotocol SimpleWeighted
+  (pess-reward [n])
+  (max-gap [n]))
+
+(deftype SWSummary [wtd-reward pes-reward mx-gap]
+  Comparable      (compareTo [x] 
+                    (let [d (- (is/max-reward x) wtd-reward)]
+                      (if (zero? d) (- (pess-reward x) pes-reward) d)))
+  is/Summary      (max-reward       [] wtd-reward)
+  SimpleWeighted  (pess-reward [] pes-reward)
+                  (max-gap [] mx-gap))
+
+(def worst-sw-summary (SWSummary is/neg-inf is/neg-inf 0))
+(def failed-sw-search (is/make-failed-search worst-sw-summary))
+
+
+(defn add-sw-summaries [s1 s2]
+  (let [rew (+ (is/max-reward s1) (is/max-reward s2))]
+    (if (= rew is/neg-inf) worst-sw-summary   
+        (SWSummary rew (+ (pess-reward s1) (pess-reward s2)) (max (max-gap s1) (max-gap s2))))))
+
+
+;; Idea was: why have generic nodes, and then code that uses generic fields 
+; in special way, plus separate "angelic hierarchical state".  
+; Why not just bake logic into different node types? 
+; that might make things slightly more clear, but leads to lots of dup effort,
+; may make, e..g, other weighted versions more difficult.  
 
 
 (defn compare-saha-nodes [x1 x2]
@@ -280,36 +386,5 @@
 (defn make-saha-search [root-ahs]
   (get-saha-sas-search root-ahs (util/safe-singleton (keys (ahs-optimistic-map root-ahs)))))
 
-;; TODO: version with better meta-level control, PN-style. 
 
 
-;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
-;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;; Top-level  ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
-;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
-
-(def *node-type-policy*)
-
-(defn hierarchical-search 
-  ([henv policy search-maker] (hierarchical-search henv policy search-maker identity))
-  ([henv policy search-maker ahs-sol-extractor]
-     (binding [*node-type-policy* policy
-               *problem-cache*    (HashMap.)]
-       (let [e    (hierarchy/env henv)
-             init (env/initial-logging-state e)
-             tla  (hierarchy/TopLevelAction e [(hierarchy/initial-plan henv)])
-             top  (search-maker (make-root-ahs init tla))]
-         (when-let [sol (is/first-goal-node top)]
-           (let [sol-ahs (ahs-sol-extractor (:data sol))]
-             [(:opt-sol sol-ahs) (:reward sol-ahs)]))))))
-
-(defn saha-simple [henv]
-  (hierarchical-search henv nil make-saha-search first))
-
-
-
-(comment
-  (do (use '[exp env hierarchy taxi ucs hierarchical-incremental-search] 'edu.berkeley.ai.util) (require '[exp sahucs-simple sahucs-simple-dijkstra sahucs-inverted saha-simple] '[exp.old ahois]))
-   (let [e (make-random-taxi-env 5 5 5 3) _ (println e) h (simple-taxi-hierarchy e)]  
-    (time (println "ucs" (run-counted #(second (uniform-cost-search e)))))
-    (doseq [alg `[sahucs-flat sahucs-fast-flat exp.sahucs-simple/sahucs-simple sahucs-simple exp.sahucs-simple-dijkstra/sahucs-simple-dijkstra sahucs-dijkstra exp.sahucs-inverted/sahucs-inverted sahucs-inverted exp.saha-simple/saha-simple saha-simple ]]
-      (time (println alg (run-counted #(debug 0 (second ((resolve alg) h)))))))))

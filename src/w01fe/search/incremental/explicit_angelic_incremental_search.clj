@@ -157,6 +157,12 @@
 (def worst-sw-summary (SWSummary is/neg-inf is/neg-inf 0))
 (def failed-sw-search (is/make-failed-search worst-sw-summary))
 
+
+(defn add-sw-summaries [s1 s2]
+  (let [rew (+ (is/max-reward s1) (is/max-reward s2))]
+    (if (= rew is/neg-inf) worst-sw-summary   
+        (SWSummary rew (+ (pess-reward s1) (pess-reward s2)) (max (max-gap s1) (max-gap s2))))))
+
 (deftype SWNode [name wtd-reward pes-reward gap goal? data]
   Comparable (compareTo  [x] 
                (let [c  (- (is/max-reward x) wtd-reward)]
@@ -184,10 +190,6 @@
       (hfs->goal-sw-node hfs ss)
       (SWNode (conj (his/hfs-name hfs) ss) is/pos-inf is/pos-inf 0 false [hfs ss])))
 
-(defn add-sw-summaries [s1 s2]
-  (let [rew (+ (is/max-reward s1) (is/max-reward s2))]
-    (if (= rew is/neg-inf) worst-sw-summary   
-        (SWSummary rew (+ (pess-reward s1) (pess-reward s2)) (max (max-gap s1) (max-gap s2))))))
 
 
 (defn hfs-angelic-map [hfs]

@@ -1,40 +1,15 @@
-(ns exp.hierarchy
+(ns exp.hierarchy-utils
   (:require [edu.berkeley.ai.util :as util]
             [exp.env :as env]
+            [exp.hierarchy :as hierarchy]
             ))
 
+;; Collection of various unrelated utils for making hierarchies.
 
+;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
+;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;; Generic HLA types ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
+;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
 
-(def *ref-counter* (util/sref 0))
-(def *plan-counter* (util/sref 0))
-
-(defn reset-ref-counter [] 
-  (util/sref-set! *ref-counter* 0)
-  (util/sref-set! *plan-counter* 0)  
-  )
-
-(defprotocol HighLevelAction
-  (immediate-refinements- [a s])
-  (cycle-level- [a s]))
-
-;; TODO: this forces eagerness, may not be desirable in some situations.
-(defn immediate-refinements [a s]  
-  ;(println "Refs for " (env/action-name a) "from" (map #(env/get-var s %) '[[atx] [aty]]))
-;  (println "Computing Refs for " (env/action-name a))
-  (util/timeout)
-  (let [refs (immediate-refinements- a s)]
-;    (println refs)
-;    (doseq [ref refs, a ref] (println (map env/action-name ref)))
-;    (util/assert-is (every? (fn [s] (every? #(satisfies? env/Action %) s)) refs))
-    (util/print-debug 3 "\nRefs for " (env/action-name a) "from" (env/as-map s) "are" 
-             (apply str (doall (map #(str "\n  " (util/str-join ", " (map env/action-name %))) refs))))
-    (util/sref-set! *ref-counter*  (+ 1            (util/sref-get *ref-counter*)))
-    (util/sref-set! *plan-counter* (+ (count refs) (util/sref-get *plan-counter*)))
-    refs))
-
-(defn cycle-level [a s]
-  (when-not (env/primitive? a)
-    (cycle-level- a s)))
 
 (deftype TopLevelAction [env initial-plans]
   env/Action           (action-name [] ['act])
@@ -55,12 +30,23 @@
                        (cycle-level- [s] nil))
 
 
-(defprotocol HierarchicalEnv (env [h]) (initial-plan [h]))
+
+;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
+;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;; Generic HEnv ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
+;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
+
 
 (deftype SimpleHierarchicalEnv [env initial-plan] 
  HierarchicalEnv
   (env          [] env)
   (initial-plan [] initial-plan))
+
+
+;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
+;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;; ShopHTNENV ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
+;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
+
+; Turns a hierarchical env into a regular env using SHOP trick.
 
 (deftype ShopHTNPlan [rest-plan state])
 
@@ -112,10 +98,11 @@
                     (when (empty? (:rest-plan s))
                       (env/solution-and-reward (:state s))))))
 
-(defn run-counted [f]
-  (env/reset-next-counter)
-  (reset-ref-counter)
-  [(f) (util/sref-get env/*next-counter*) (util/sref-get env/*optimistic-counter*) (util/sref-get env/*pessimistic-counter*) (util/sref-get *ref-counter*) (util/sref-get *plan-counter*)])
+
+
+;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
+;;;;;;;;;;;;;;;;;;;;;;;;;;; Generalized Goal Actions ;;;;;;;;;;;;;;;;;;;;;;;;;;;
+;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
 
 ;; Stuff for generalized-goal actions.  Perhaps roll into protocol later.
 ; Idea here is:
@@ -125,6 +112,11 @@
 (defmulti gg-action type)
 (defmethod gg-action :default [x] nil)
 
+
+
+;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
+;;;;;;;;;;;;;;;;;;;;;;;;; Anti-State-Abstraction Wrappers ;;;;;;;;;;;;;;;;;;;;;;
+;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
 
  ;;; These types remove state abstraction from a hierarchy.
 
@@ -153,5 +145,3 @@
   (if (env/primitive? a) 
     (NSAPrimitive a full-context)
     (NSAHLA a full-context)))
-
-;; Can take more progressions than flat because 
