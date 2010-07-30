@@ -50,20 +50,20 @@
 
 (deftype InfiniteTaxiEnv [width height passengers] :as this
  env/Env
-  (initial-state []
+  (initial-state [_]
     (into {:const {['width] width ['height] height}
            ['atx] 1 ['aty] 1}
           (apply concat
             (for [[name [sx sy]] passengers]
               [[['passx name] sx] [['passy name] sy]]))))
-  (actions-fn []
+  (actions-fn [_]
    (fn taxi-actions [s]
      (filter identity
        (apply concat 
          (map #(% s) [make-left make-right make-up make-down])
          (for [[pass] passengers x (range 1 (inc width)) y (range 1 (inc height))] 
            [(make-pickup s pass [x y]) (make-dropoff s pass [x y])])))))
-  (goal-fn [] 
+  (goal-fn [this] 
     (let [goal-map (env/goal-map this)]
       #(when (env/state-matches-map? % goal-map)
          (env/solution-and-reward %))))
@@ -98,10 +98,10 @@
 ; Mostly copied from taxi. 
 
 (deftype NavHLA [env dx dy] :as this
-  env/Action                (action-name [] ['nav dx dy])
-                            (primitive? [] false)
-  env/ContextualAction      (precondition-context [s] #{['atx] ['aty]})
-  hierarchy/HighLevelAction (immediate-refinements- [s]
+  env/Action                (action-name [_] ['nav dx dy])
+                            (primitive? [_] false)
+  env/ContextualAction      (precondition-context [_ s] #{['atx] ['aty]})
+  hierarchy/HighLevelAction (immediate-refinements- [_ s]
                              (if (and (= dx (state/get-var s ['atx])) 
                                       (= dy (state/get-var s ['aty])))
                                [[]]
@@ -110,20 +110,20 @@
                                      :when a]
                                  [a this])))
                             (cycle-level- [s] 1)
-  hierarchy/ExplicitAngelicAction         (optimistic-map- [s]
+  hierarchy/ExplicitAngelicAction         (optimistic-map- [_ s]
                               (let [cx (state/get-var s ['atx])
                                     cy (state/get-var s ['aty])]
                                 {(state/set-var (state/set-var s ['atx] dx) ['aty] dy)
                                  (- 0 (util/abs (- dx cx)) (util/abs (- dy cy)))}))
-                            (pessimistic-map-[s] 
+                            (pessimistic-map- [_ s] 
                               (env/optimistic-map- this s)))
 
 (deftype InfiniteTaxiTLA [env context]      :as this
-  env/Action                (action-name [] ['top])
-                            (primitive? [] false)  
-  env/ContextualAction      (precondition-context [s] context)
+  env/Action                (action-name [_] ['top])
+                            (primitive? [_] false)  
+  env/ContextualAction      (precondition-context [_ s] context)
   hierarchy/HighLevelAction 
-  (immediate-refinements- [s]
+  (immediate-refinements- [_ s]
     (let [held-p (set (filter #(= :taxi (state/get-var s ['passx (first %)])) (:passengers env)))
           src-p  (remove #(or (held-p %) (state/get-var s ['pass-served? (first %)])) (:passengers env))
           all-nxt (concat (for [[n _ [dx dy]] held-p] [(NavHLA env dx dy) (make-dropoff :dummy n [dx dy])])
@@ -133,9 +133,9 @@
           [[(NavHLA env width height) (env/make-finish-action env)]])
         (map #(conj (vec %1) this) all-nxt))))
    (cycle-level- [s] nil)
-  hierarchy/ExplicitAngelicAction         (optimistic-map- [s]
+  hierarchy/ExplicitAngelicAction         (optimistic-map- [_ s]
                               {(state/set-vars s (env/make-finish-goal-state env))})
-                            (pessimistic-map-[s] {}))
+                            (pessimistic-map- [_ s] {}))
 
 (defn make-infinite-taxi-tla [env]
   (InfiniteTaxiTLA env (util/keyset (dissoc (env/initial-state env) :const))))

@@ -205,7 +205,7 @@
                     ; Following stuff is used by hierarchy.
                     causal-graph dtgs ancestor-var-map child-var-map acyclic-succ-fn]
   env/Env 
-    (initial-state [] init)
+    (initial-state [_] init)
     (actions-fn    [] actions-fn)
     (goal-fn       [] #(when (env/state-matches-map? % g-map) (env/solution-and-reward %)))
   env/FactoredEnv
@@ -413,12 +413,12 @@
         pc   (util/safe-get-in hierarchy [:precondition-context-map var])]
     (reify :as this
       env/Action
-       (action-name [] name)
+       (action-name [_] name)
        (primitive?  [] false)
       env/ContextualAction 
-       (precondition-context [s] pc)
+       (precondition-context [_ s] pc)
       hierarchy/HighLevelAction
-       (immediate-refinements- [s] 
+       (immediate-refinements- [_ s] 
          (cond (= (state/get-var s var) dst-val)
                  (do ;(print "!S") (flush)
                      (assert (not (state/get-var s av))) [[]])
@@ -459,12 +459,12 @@
 ;    (println "FA" name)
   (reify :as this
     env/Action
-      (action-name [] name)
+      (action-name [_] name)
       (primitive?  [] false)
     env/ContextualAction 
-      (precondition-context [s] pc) ;; perhaps can do better?
+      (precondition-context [_ s] pc) ;; perhaps can do better?
     hierarchy/HighLevelAction
-      (immediate-refinements- [s] 
+      (immediate-refinements- [_ s] 
 ;        (Thread/sleep 10)
         (assert (= (state/get-var s (action-var effect-var)) a))
         (let [na-tuples         (for [nav   ancestor-vars
@@ -589,12 +589,12 @@
          pc   (util/safe-get-in hierarchy [:precondition-context-map var])]
      (reify :as this
             env/Action
-            (action-name [] name)
+            (action-name [_] name)
             (primitive?  [] false)
             env/ContextualAction 
-            (precondition-context [s] pc)
+            (precondition-context [_ s] pc)
             hierarchy/HighLevelAction
-            (immediate-refinements- [s] (if (state/get-var s av) [dl-plan] [nodl-plan]))
+            (immediate-refinements- [_ s] (if (state/get-var s av) [dl-plan] [nodl-plan]))
             (cycle-level-           [s] nil)))))
 
 
@@ -648,12 +648,12 @@
         pm   (dissoc (util/safe-get action :precond-map) var)]
     (reify :as this
       env/Action
-       (action-name [] name)
+       (action-name [_] name)
        (primitive?  [] false)
       env/ContextualAction 
-       (precondition-context [s] pc)
+       (precondition-context [_ s] pc)
       hierarchy/HighLevelAction
-       (immediate-refinements- [s]
+       (immediate-refinements- [_ s]
          (assert (= (state/get-var s (action-var var)) action))
          (let [[sat unsat] (util/separate (fn [[pvar pval]] (trivial-precond? s var pvar pval)) pm)
                live (filter (fn [[pvar pval]] (live-precond? s var pvar pval)) unsat)]
@@ -680,12 +680,12 @@
 (comment ; Version that does not care about target or parent ..
 (deftype AddSomeActionHLA [hierarchy effect-var]
   env/Action
-   (action-name [] [::AddSomeAction effect-var])
+   (action-name [_] [::AddSomeAction effect-var])
    (primitive?  [] false)
   env/ContextualAction 
-   (precondition-context [s] #{effect-var})
+   (precondition-context [_ s] #{effect-var})
   hierarchy/HighLevelAction
-   (immediate-refinements- [s] 
+   (immediate-refinements- [_ s] 
      (assert (not (state/get-var s (free-var effect-var))))
      (assert (not (state/get-var s (action-var effect-var))))
      (for [[eval actions] (util/safe-get-in hierarchy [:dtgs effect-var (state/get-var s effect-var)])

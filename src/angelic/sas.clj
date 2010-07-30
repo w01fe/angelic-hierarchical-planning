@@ -16,7 +16,7 @@
 
 (deftype SAS-Problem [vars init actions actions-fn]
   env/Env
-    (initial-state [] init)
+    (initial-state [_] init)
     (actions-fn    [] (force actions-fn))
     (goal-fn       [] #(= (util/safe-get % goal-var-name) goal-true-val))
   env/FactoredEnv 

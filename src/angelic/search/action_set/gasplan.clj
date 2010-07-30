@@ -171,7 +171,7 @@
 
 (deftype GASPlanEnv [init actions-fn g-map]
   env/Env 
-    (initial-state [] init)
+    (initial-state [_] init)
     (actions-fn    [] actions-fn)
     (goal-fn       [] #(when (env/state-matches-map? % g-map) (env/solution-and-reward %)))
   env/FactoredEnv

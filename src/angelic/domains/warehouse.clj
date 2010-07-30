@@ -78,13 +78,13 @@
 
 (deftype WarehouseEnv [init goal topright] :as this
  env/Env
-  (initial-state [] init)
-  (actions-fn []
+  (initial-state [_] init)
+  (actions-fn [_]
    (fn warehouse-actions [s]
      (for [f [make-left make-right make-up make-down make-turn make-get make-put]
            :let [a (f s)] :when a]
        a)))
-  (goal-fn [] #(when (env/state-matches-map? % goal) (env/solution-and-reward %)))
+  (goal-fn [_] #(when (env/state-matches-map? % goal) (env/solution-and-reward %)))
  env/FactoredEnv
   (goal-map [] goal))
 
@@ -133,10 +133,10 @@
 ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;  Simple Nav ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
 
 (deftype SimpleNavHLA [name context dest] :as this
-  env/Action                (action-name [] name)
-                            (primitive? [] false)
-  env/ContextualAction      (precondition-context [s] context )
-  hierarchy/HighLevelAction (immediate-refinements- [s]
+  env/Action                (action-name [_] name)
+                            (primitive? [_] false)
+  env/ContextualAction      (precondition-context [_ s] context )
+  hierarchy/HighLevelAction (immediate-refinements- [_ s]
                               (if (= dest (state/get-var s ['at]))
                                [[]]
                                (for [af [make-left make-right make-up make-down]
@@ -155,10 +155,10 @@
 ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;  URD   Nav ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
 
 (deftype UpHLA [opt-dy] :as this
-  env/Action                (action-name [] ['up-to opt-dy])
-                            (primitive? [] false)
-  env/ContextualAction      (precondition-context [s] '#{[at]})
-  hierarchy/HighLevelAction (immediate-refinements- [s]
+  env/Action                (action-name [_] ['up-to opt-dy])
+                            (primitive? [_] false)
+  env/ContextualAction      (precondition-context [_ s] '#{[at]})
+  hierarchy/HighLevelAction (immediate-refinements- [_ s]
                               (let [[cx cy] (state/get-var s '[at])]
                                 (filter identity
                                   [(when (or (not opt-dy) (= cy opt-dy)) [])
@@ -167,10 +167,10 @@
                             (cycle-level- [s] nil))
 
 (deftype DownHLA [dx dy] :as this
-  env/Action                (action-name [] ['down-to dx dy])
-                            (primitive? [] false)
-  env/ContextualAction      (precondition-context [s] #{'[at] ['someblockat dx dy]})
-  hierarchy/HighLevelAction (immediate-refinements- [s]
+  env/Action                (action-name [_] ['down-to dx dy])
+                            (primitive? [_] false)
+  env/ContextualAction      (precondition-context [_ s] #{'[at] ['someblockat dx dy]})
+  hierarchy/HighLevelAction (immediate-refinements- [_ s]
                               (let [[cx cy] (state/get-var s '[at])]
                                 (assert (= cx dx))
                                 (filter identity
@@ -183,12 +183,12 @@
   ([x1 x2 x3] (range (min x1 x2 x3) (inc (max x1 x2 x3)))))
 
 (deftype TraverseHLA [dx] :as this
-  env/Action                (action-name [] ['traverse-to dx])
-                            (primitive? [] false)
-  env/ContextualAction      (precondition-context [s] 
+  env/Action                (action-name [_] ['traverse-to dx])
+                            (primitive? [_] false)
+  env/ContextualAction      (precondition-context [_ s] 
                               (let [[cx cy] (state/get-var s '[at])]
                                 (into '#{[at]} (for [x (incl-range cx dx)] ['someblockat x cy]))))
-  hierarchy/HighLevelAction (immediate-refinements- [s]
+  hierarchy/HighLevelAction (immediate-refinements- [_ s]
                               (let [[cx cy] (state/get-var s '[at])]
                                 (filter identity
                                   [(cond (= cx dx) []
@@ -210,11 +210,11 @@
 ; state vars are: (const), at, facingright, holding, blockat, someblockat, on
 
 (deftype MoveBlockHLA [env name context nav-factory b bx by a c cx cy] :as this
-    env/Action                (action-name [] name)
-                              (primitive? [] false)
-    env/ContextualAction      (precondition-context [s] context)
+    env/Action                (action-name [_] name)
+                              (primitive? [_] false)
+    env/ContextualAction      (precondition-context [_ s] context)
     hierarchy/HighLevelAction 
-      (immediate-refinements- [s]
+      (immediate-refinements- [_ s]
         (assert (= b (state/get-var s ['blockat bx by])))
         (assert (= a (state/get-var s ['blockat bx (dec by)])))                                             (assert (= c (state/get-var s ['blockat cx cy])))                                           
         (let [[w h] (get (state/get-var s :const) '[topright])
@@ -250,10 +250,10 @@
 (declare possible-move-refinements)
 
 (deftype MoveBlocksHLA [env goal-fn context nav-context nav-factory block-off-limits] :as this
-    env/Action                (action-name [] ['move-blocks block-off-limits ])
-                              (primitive? [] false)
-    env/ContextualAction      (precondition-context [s] context)
-    hierarchy/HighLevelAction (immediate-refinements- [s] 
+    env/Action                (action-name [_] ['move-blocks block-off-limits ])
+                              (primitive? [_] false)
+    env/ContextualAction      (precondition-context [_ s] context)
+    hierarchy/HighLevelAction (immediate-refinements- [_ s] 
                                  (possible-move-refinements env goal-fn context nav-context 
                                                             nav-factory block-off-limits s))
                               (cycle-level- [s] 2))
@@ -281,10 +281,10 @@
     (set (cons '[at] (for [x (range 1 (inc w)) y (range 2 (inc h))] ['someblockat x y])))))
 
 (deftype WarehouseTLA [env context nav-context nav-factory] :as this
-    env/Action                (action-name [] '[top])
-                              (primitive? [] false)
-    env/ContextualAction      (precondition-context [s] context)
-    hierarchy/HighLevelAction (immediate-refinements- [s] 
+    env/Action                (action-name [_] '[top])
+                              (primitive? [_] false)
+    env/ContextualAction      (precondition-context [_ s] context)
+    hierarchy/HighLevelAction (immediate-refinements- [_ s] 
                                  (let [goal-fn (env/goal-fn env)]
                                    (possible-move-refinements 
                                     env goal-fn context nav-context nav-factory nil s)))

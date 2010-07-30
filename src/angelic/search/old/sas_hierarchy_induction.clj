@@ -174,12 +174,12 @@
     (hla-type        [] (hla-type orig-hla))
     (extend-hla!     [init-sets par-effect-sets] (throw (UnsupportedOperationException.)))
   env/Action
-    (action-name [] [:!C  name])
+    (action-name [_] [:!C  name])
     (primitive?  [] false)
   env/ContextualAction 
-    (precondition-context [s] precond-vars)
+    (precondition-context [_ s] precond-vars)
   hierarchy/HighLevelAction
-    (immediate-refinements- [s] (@ref-generator-atom s))
+    (immediate-refinements- [_ s] (@ref-generator-atom s))
     (cycle-level-           [s] nil))
 
 (defn make-ref-generator [refinements-and-preconditions]
@@ -252,12 +252,12 @@
     (hla-type        [] (type this))
     (extend-hla!     [init-sets par-effect-sets] (extend-vv-hla! this init-sets par-effect-sets true))
   env/Action
-    (action-name [] (vv-hla-name var src-val dst-val))
+    (action-name [_] (vv-hla-name var src-val dst-val))
     (primitive?  [] false)
   env/ContextualAction 
-    (precondition-context [s] @precond-vars-atom)
+    (precondition-context [_ s] @precond-vars-atom)
   hierarchy/HighLevelAction
-    (immediate-refinements- [s] (if (= src-val dst-val) [[]] (apply concat (vals @successor-map-atom))))
+    (immediate-refinements- [_ s] (if (= src-val dst-val) [[]] (apply concat (vals @successor-map-atom))))
     (cycle-level-           [s] nil))
 
 (defn get-current-vv-hla [var src-val dst-val]
@@ -373,12 +373,12 @@
               (swap! src-map-atom assoc src-val (get-current-vv-hla var src-val dst-val)))
             (extend-hla! (util/safe-get @src-map-atom src-val) (assoc init-sets var #{src-val}) (if par-effects? par-effect-sets {}))))))
   env/Action
-    (action-name [] [:precond var dst-val (System/identityHashCode this)])
+    (action-name [_] [:precond var dst-val (System/identityHashCode this)])
     (primitive?  [] false)
   env/ContextualAction 
-    (precondition-context [s] (precond-var-set this))
+    (precondition-context [this s] (precond-var-set this))
   hierarchy/HighLevelAction
-    (immediate-refinements- [s] [[(util/safe-get @src-map-atom (state/get-var s var))]])
+    (immediate-refinements- [_ s] [[(util/safe-get @src-map-atom (state/get-var s var))]])
     (cycle-level-           [s] nil))
 
 (defn make-precond-hla [var dst-val] 
@@ -435,12 +435,12 @@
     (extend-hla!     [init-sets par-effect-sets] 
       (extend-precond-set-hla! this init-sets par-effect-sets))
   env/Action
-    (action-name [] [:ps (System/identityHashCode this)])
+    (action-name [_] [:ps (System/identityHashCode this)])
     (primitive?  [] false)
   env/ContextualAction 
-    (precondition-context [s] (precond-var-set this))
+    (precondition-context [this s] (precond-var-set this))
   hierarchy/HighLevelAction
-    (immediate-refinements- [s] [@ref-atom])
+    (immediate-refinements- [_ s] [@ref-atom])
     (cycle-level-           [s] nil))
 
 ;; For now, punt in several ways, only look for independent chunks, ...
@@ -511,9 +511,9 @@
     (action-name     [] (action-hla-name action))
     (primitive?      [] false)
   env/ContextualAction 
-    (precondition-context [s] (precond-var-set this))
+    (precondition-context [this s] (precond-var-set this))
   hierarchy/HighLevelAction
-    (immediate-refinements- [s] [[precond-set-hla action]])
+    (immediate-refinements- [_ s] [[precond-set-hla action]])
     (cycle-level-           [s] nil))
 
 (defn get-current-action-hla [action]
@@ -569,9 +569,9 @@
     (action-name     [] [:!I (map #(map env/action-name %) refinements) shared-var-set])
     (primitive?      [] false)
   env/ContextualAction 
-    (precondition-context [s] (precond-var-set this))
+    (precondition-context [this s] (precond-var-set this))
   hierarchy/HighLevelAction
-    (immediate-refinements- [s]
+    (immediate-refinements- [_ s]
       (let [[stalled-refs rest-refs] (split-with #(= (hla-type (first %)) ::SAS-Precond-Set-HLA) refinements)]
 ;        (println "\n\n" s "\n" (map (comp env/action-name first) refinements))
 ;        (println (map count [stalled-refs rest-refs]))

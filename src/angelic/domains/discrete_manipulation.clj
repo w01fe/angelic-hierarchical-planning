@@ -304,10 +304,10 @@
 (defn make-reach-hla [env s dst-go] 
   (when (can-reach? s dst-go)
   (reify  :as this
-    env/Action                (action-name [] [:reach dst-go])
-                              (primitive? [] false)
-    env/ContextualAction      (precondition-context [s] (reach-context s))
-    hierarchy/HighLevelAction (immediate-refinements- [s]
+    env/Action                (action-name [_] [:reach dst-go])
+                              (primitive? [_] false)
+    env/ContextualAction      (precondition-context [_ s] (reach-context s))
+    hierarchy/HighLevelAction (immediate-refinements- [_ s]
                                 (if (= dst-go (state/get-var s [:gripper-offset]))
                                     [[]]
                                   (for [dir dirs :let [a (make-gripper-dir s dir)] :when a] 
@@ -316,7 +316,7 @@
     hierarchy/ExplicitAngelicAction         (optimistic-map-[s]
                                 {(state/set-var s [:gripper-offset] dst-go)
                                  (move-gripper-reward (state/get-var s [:gripper-offset]) dst-go)})
-                              (pessimistic-map- [s]
+                              (pessimistic-map- [_ s]
                                 (let [base (state/get-var s [:base])
                                       go   (state/get-var s [:gripper-offset])]
                                   (if (can-directly-nav? 
@@ -335,10 +335,10 @@
 ;; TODO: slack? pess? 
 (defn make-grasp-hla [env o] 
  (reify :as this
-  env/Action                (action-name [] [:grasp o])
-                            (primitive? [] false)
-  env/ContextualAction      (precondition-context [s] (conj (reach-context s) [:pos o] [:at-goal? o] [:holding]))
-  hierarchy/HighLevelAction (immediate-refinements- [s]
+  env/Action                (action-name [_] [:grasp o])
+                            (primitive? [_] false)
+  env/ContextualAction      (precondition-context [_ s] (conj (reach-context s) [:pos o] [:at-goal? o] [:holding]))
+  hierarchy/HighLevelAction (immediate-refinements- [_ s]
                              (let [base (state/get-var s [:base])
                                    opos (state/get-var s [:pos o])]
                                (for [[dirname dir] dirs
@@ -357,7 +357,7 @@
                                                      [[:object-at opos] nil]])
                                     (+ pickup-reward
                                        (move-gripper-reward (state/get-var s [:gripper-offset]) go))]))))
-                            (pessimistic-map- [s] {})))
+                            (pessimistic-map- [_ s] {})))
 
 (defn drop-reward [base init-go o-dst]
   (let [rel-o-dst (sub-pos o-dst base)]
@@ -370,10 +370,10 @@
 ;; TODO: slack, pess ?
 (defn make-drop-at-hla [env o dst]
  (reify :as this
-  env/Action                (action-name [] [:drop-at o dst])
-                            (primitive? [] false)
-  env/ContextualAction      (precondition-context [s] (conj (reach-context s) [:holding] [:object-at dst]))
-  hierarchy/HighLevelAction (immediate-refinements- [s]
+  env/Action                (action-name [_] [:drop-at o dst])
+                            (primitive? [_] false)
+  env/ContextualAction      (precondition-context [_ s] (conj (reach-context s) [:holding] [:object-at dst]))
+  hierarchy/HighLevelAction (immediate-refinements- [_ s]
                              (let [base (state/get-var s [:base])]
                                (for [[dirname dir] dirs
                                      :let [gpos (sub-pos dst dir)
@@ -388,7 +388,7 @@
                                                 [[:object-at dst] o] [[:at-goal? o] true]])
                                (drop-reward (state/get-var s [:base])
                                             (state/get-var s [:gripper-offset]) dst )})
-                            (pessimistic-map- [s] {})))
+                            (pessimistic-map- [_ s] {})))
 
 ; Old version -- not forced back to origin.
 ;                                (into {}
@@ -408,10 +408,10 @@
 ;; TODO: should nav be done by external alg, (fairest between angelic/not) or explicit? 
 (defn make-nav-hla [env dst] 
  (reify :as this
-  env/Action                (action-name [] [:nav dst])
-                            (primitive? [] false)
-  env/ContextualAction      (precondition-context [s] #{[:base]})
-  hierarchy/HighLevelAction (immediate-refinements- [s]
+  env/Action                (action-name [_] [:nav dst])
+                            (primitive? [_] false)
+  env/ContextualAction      (precondition-context [_ s] #{[:base]})
+  hierarchy/HighLevelAction (immediate-refinements- [_ s]
                              (if (= dst (state/get-var s [:base]))
                                [[]]
                                (for [dir dirs :let [a (make-base-dir s dir)] :when a]
@@ -420,7 +420,7 @@
   hierarchy/ExplicitAngelicAction         (optimistic-map-[s]
                               {(state/set-var s [:base] dst)
                                (nav-reward (state/get-var s [:base]) dst)})
-                            (pessimistic-map- [s]
+                            (pessimistic-map- [_ s]
                               (let [cbase (state/get-var s [:base])]
                                 (if (can-directly-nav?
                                      (let [fs ((state/get-var s :const) [:freespace])]
@@ -440,10 +440,10 @@
 
 (defn make-move-base-hla [env dst]
  (reify  :as this
-  env/Action                (action-name [] [:move-base dst])
-                            (primitive? [] false)
-  env/ContextualAction      (precondition-context [s] #{[:base] [:parked?] [:gripper-offset]})
-  hierarchy/HighLevelAction (immediate-refinements- [s]
+  env/Action                (action-name [_] [:move-base dst])
+                            (primitive? [_] false)
+  env/ContextualAction      (precondition-context [_ s] #{[:base] [:parked?] [:gripper-offset]})
+  hierarchy/HighLevelAction (immediate-refinements- [_ s]
                              (let [base (state/get-var s [:base])]
                                (if (= base dst)
                                   [[]]
@@ -456,7 +456,7 @@
                                     {s 0}
                                   {(state/set-vars s [[[:base] dst] [[:gripper-offset] [0 0]]])
                                 (move-base-reward (state/get-var s [:base]) dst (state/get-var s [:gripper-offset]))})))
-                            (pessimistic-map- [s] {})))
+                            (pessimistic-map- [_ s] {})))
 
 ;                              (let [base (state/get-var s [:base])
 ;                                    fs ((state/get-var s :const) [:freespace])]
@@ -500,12 +500,12 @@
 ;; TODO: pess
 (defn make-go-grasp-hla [env o] 
  (reify :as this
-  env/Action                (action-name [] [:go-grasp o])
-                            (primitive? [] false)
-  env/ContextualAction      (precondition-context [s] 
+  env/Action                (action-name [_] [:go-grasp o])
+                            (primitive? [_] false)
+  env/ContextualAction      (precondition-context [_ s] 
                               (conj (reach-context (state/get-var s :const) (state/get-var s [:pos o])) 
                                     [:pos o] [:at-goal? o] [:holding]))
-  hierarchy/HighLevelAction (immediate-refinements- [s]
+  hierarchy/HighLevelAction (immediate-refinements- [_ s]
                              (for [dst (possible-grasp-base-pos s (state/get-var s [:pos o]))]
                                [(make-move-base-hla env dst) (make-grasp-hla env o)]))
                             (cycle-level- [s] nil)
@@ -524,7 +524,7 @@
                                        (if (= base dst) (state/get-var s [:gripper-offset]) [0 0])
                                        go)
                                       pickup-reward)]))))
-                            (pessimistic-map- [s] {})))
+                            (pessimistic-map- [_ s] {})))
 
 ; old version -- not forced back to origin after drop.
 ;(defn go-drop-at-opt [s o o-dst]
@@ -559,29 +559,29 @@
 ;; Note: since we may not sample current position, have to special case.
 (defn make-go-drop-at-hla [env o o-dst] 
  (reify :as this
-  env/Action                (action-name [] [:go-drop-at o o-dst])
-                            (primitive? [] false)
-  env/ContextualAction      (precondition-context [s]
+  env/Action                (action-name [_] [:go-drop-at o o-dst])
+                            (primitive? [_] false)
+  env/ContextualAction      (precondition-context [_ s]
                               (conj (reach-context (state/get-var s :const) o-dst) [:holding] [:object-at o-dst]))
-  hierarchy/HighLevelAction (immediate-refinements- [s]
+  hierarchy/HighLevelAction (immediate-refinements- [_ s]
 ;                              (when (= o :e) (println o-dst (possible-grasp-base-pos s o-dst)))
                               (for [dst (possible-grasp-base-pos s o-dst)]
                                 [(make-move-base-hla env dst) (make-drop-at-hla env o o-dst)]))
                             (cycle-level- [s] nil)
   hierarchy/ExplicitAngelicAction         (optimistic-map-[s] (go-drop-at-opt s o o-dst))
-                            (pessimistic-map- [s] {})))
+                            (pessimistic-map- [_ s] {})))
 
 
 (defn make-go-drop-hla [env o] 
  (reify :as this
-  env/Action                (action-name [] [:go-drop o])
-                            (primitive? [] false)
-  env/ContextualAction      (precondition-context [s] 
+  env/Action                (action-name [_] [:go-drop o])
+                            (primitive? [_] false)
+  env/ContextualAction      (precondition-context [_ s] 
                               (conj (apply clojure.set/union 
                                      (map #(conj (reach-context (state/get-var s :const) %) [:object-at %]) 
                                           (get (state/get-var s :const) [:goal o]))) 
                                     [:holding]))
-  hierarchy/HighLevelAction (immediate-refinements- [s]
+  hierarchy/HighLevelAction (immediate-refinements- [_ s]
                              (for [o-dst (get (state/get-var s :const) [:goal o])]
                                [(make-go-drop-at-hla env o o-dst)]))
                             (cycle-level- [s] nil)
@@ -589,7 +589,7 @@
                               (reduce util/merge-disjoint
                                      (map #(go-drop-at-opt s o %)
                                           (get (state/get-var s :const) [:goal o]))))
-                            (pessimistic-map- [s] {})))
+                            (pessimistic-map- [_ s] {})))
 
 
 (defn move-to-goal-context [s o]
@@ -634,14 +634,14 @@
 ;; TODO: cache as much as this as we can ?
 (defn make-move-to-goal-hla [env o] 
  (reify :as this
-  env/Action                (action-name [] [:move-to-goal o])
-                            (primitive? [] false)
-  env/ContextualAction      (precondition-context [s] (move-to-goal-context s o))
-  hierarchy/HighLevelAction (immediate-refinements- [s]
+  env/Action                (action-name [_] [:move-to-goal o])
+                            (primitive? [_] false)
+  env/ContextualAction      (precondition-context [_ s] (move-to-goal-context s o))
+  hierarchy/HighLevelAction (immediate-refinements- [_ s]
                               [[(make-go-grasp-hla env o) (make-go-drop-hla env o)]])
                             (cycle-level- [s] nil)
   hierarchy/ExplicitAngelicAction         (optimistic-map-[s] #_ (println (util/map-keys state-str (move-to-goal-opt s o))) (move-to-goal-opt s o))
-                            (pessimistic-map- [s] {})))
+                            (pessimistic-map- [_ s] {})))
 
 (defn remaining-objects [s] 
   (remove #(state/get-var s [:at-goal? %])
@@ -705,10 +705,10 @@
        object-rewards (into {} (for [o objects] [o (object-reward init o)]))
        match-edges (compute-match-edges init object-rewards)]
  (reify :as this
-  env/Action                (action-name [] [:discretem-tla])
-                            (primitive? [] false)
-  env/ContextualAction      (precondition-context [s] context)
-  hierarchy/HighLevelAction (immediate-refinements- [s]
+  env/Action                (action-name [_] [:discretem-tla])
+                            (primitive? [_] false)
+  env/ContextualAction      (precondition-context [_ s] context)
+  hierarchy/HighLevelAction (immediate-refinements- [_ s]
                               (let [remaining (remaining-objects s)]
                                 (if (empty? remaining)
                                     [[(env/make-finish-action env)]]
@@ -723,7 +723,7 @@
                                     (util/maximum-matching s1 s2 
                                       (concat (for [o objects] [:start o (+ (object-rewards o) (start-reward s o))])
                                               (filter (fn [[n1 n2]] (and (s1 n1) (s2 n2))) match-edges)))))})
-                           (pessimistic-map- [s] {}))))
+                           (pessimistic-map- [_ s] {}))))
 
 (defn make-discrete-manipulation-hierarchy [env]
   (hierarchy/SimpleHierarchicalEnv env [(make-tla env)]))

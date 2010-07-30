@@ -158,10 +158,10 @@
       (assert (= (not first-action) (satisfied? leaf-precond s)))
       (not first-action))    
   env/Action
-    (action-name [] name)
+    (action-name [_] name)
     (primitive?  [] false)
   env/ContextualAction 
-    (precondition-context [s] (env/precondition-context leaf-precond s)))
+    (precondition-context [_ s] (env/precondition-context leaf-precond s)))
 
 (defn- make-active-precond-hla [hierarchy first-action leaf-precond]
   (SDH-Active-Precond-HLA hierarchy 
@@ -189,12 +189,12 @@
     (active?     []  false)
     (satisfied?  [s] (= (state/get-var s var) dst-val))    
   env/Action
-    (action-name [] name)
+    (action-name [_] name)
     (primitive?  [] false)
   env/ContextualAction 
-    (precondition-context [s] precond-var-set)
+    (precondition-context [_ s] precond-var-set)
   hierarchy/HighLevelAction
-    (immediate-refinements- [s] 
+    (immediate-refinements- [_ s] 
       (let [cur-val (state/get-var s var)]
 ;        (println cur-val dst-val)
         (if (= cur-val dst-val)
@@ -256,9 +256,9 @@
     (action-name     [] name)
     (primitive?      [] false)
   env/ContextualAction 
-    (precondition-context [s] precond-var-set)
+    (precondition-context [_ s] precond-var-set)
   hierarchy/HighLevelAction
-    (immediate-refinements- [s]
+    (immediate-refinements- [_ s]
       (if (every? #(satisfied? % s) precond-hlas) (do (println "gREED!") [[action]])
         (let [var-actives (active-var-set this)
               var-leaves  (leaf-var-set this)
@@ -320,9 +320,9 @@
     (action-name     [] name)
     (primitive?      [] false)
   env/ContextualAction 
-    (precondition-context [s] precond-var-set)
+    (precondition-context [_ s] precond-var-set)
   hierarchy/HighLevelAction
-    (immediate-refinements- [s] 
+    (immediate-refinements- [_ s] 
       [(concat 
         (let [pc-map   (dissoc (:precond-map action) effect-var)
               topo-pcs (sort-by #(- ((:var-levels hierarchy) %)) (keys pc-map))

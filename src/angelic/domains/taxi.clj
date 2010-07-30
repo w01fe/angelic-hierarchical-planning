@@ -54,7 +54,7 @@
 
 (deftype TaxiEnv [width height passengers] :as this
  env/Env
-  (initial-state []
+  (initial-state [_]
     (into {:const (into {['width] width ['height] height}
                       (apply concat
                        (for [[name [sx sy] [dx dy]] passengers]
@@ -63,12 +63,12 @@
            ['atx] 1 ['aty] 1 ['in-taxi] nil}
           (for [[name [sx sy] [dx dy]] passengers]
             [['pass-served? name] (= [sx sy] [dx dy])])))
-  (actions-fn []
+  (actions-fn [_]
    (fn taxi-actions [s]
      (filter identity
        (concat (map #(% s) [make-left make-right make-up make-down make-dropoff])
                (for [[pass] passengers] (make-pickup s pass))))))
-  (goal-fn [] 
+  (goal-fn [this] 
     (let [goal-map (env/goal-map this)]
       #(when (env/state-matches-map? % goal-map)
          (env/solution-and-reward %))))
@@ -94,10 +94,10 @@
 ; (uniform-cost-search (TaxiEnv 5 5 [ ['bob [1 1] [3 3] ] ['mary [1 1] [3 3] ] ['lisa [1 1] [3 3] ]])) 
 
 (deftype NavHLA [env dx dy] :as this
-  env/Action                (action-name [] ['nav dx dy])
-                            (primitive? [] false)
-  env/ContextualAction      (precondition-context [s] #{['atx] ['aty]})
-  hierarchy/HighLevelAction (immediate-refinements- [s]
+  env/Action                (action-name [_] ['nav dx dy])
+                            (primitive? [_] false)
+  env/ContextualAction      (precondition-context [_ s] #{['atx] ['aty]})
+  hierarchy/HighLevelAction (immediate-refinements- [_ s]
                              (if (and (= dx (state/get-var s ['atx])) 
                                       (= dy (state/get-var s ['aty])))
                                [[]]
@@ -106,19 +106,19 @@
                                      :when a]
                                  [a this])))
                             (cycle-level- [s] 1)
-  hierarchy/ExplicitAngelicAction         (optimistic-map- [s]
+  hierarchy/ExplicitAngelicAction         (optimistic-map- [_ s]
                               (let [cx (state/get-var s ['atx])
                                     cy (state/get-var s ['aty])]
                                 {(state/set-var (state/set-var s ['atx] dx) ['aty] dy)
                                  (- 0 (util/abs (- dx cx)) (util/abs (- dy cy)))}))
-                            (pessimistic-map-[s] 
+                            (pessimistic-map- [_ s] 
                               (env/optimistic-map- this s)))
 
 (deftype GGNavHLA [env] :as this
-  env/Action                (action-name [] '[nav])
-                            (primitive? [] false)
-  env/ContextualAction      (precondition-context [s] #{['atx] ['aty]})
-  hierarchy/HighLevelAction (immediate-refinements- [s]
+  env/Action                (action-name [_] '[nav])
+                            (primitive? [_] false)
+  env/ContextualAction      (precondition-context [_ s] #{['atx] ['aty]})
+  hierarchy/HighLevelAction (immediate-refinements- [_ s]
                              (cons []
                                (for [af [make-left make-right make-up make-down]
                                      :let [a (af s)]
@@ -130,10 +130,10 @@
 
 
 (deftype ServeHLA [env pass] :as this
-  env/Action                (action-name [] ['serve pass])
-                            (primitive? [] false)
-  env/ContextualAction      (precondition-context [s] #{ ['atx] ['aty] ['in-taxi] ['pass-served? pass]})
-  hierarchy/HighLevelAction (immediate-refinements- [s]
+  env/Action                (action-name [_] ['serve pass])
+                            (primitive? [_] false)
+  env/ContextualAction      (precondition-context [_ s] #{ ['atx] ['aty] ['in-taxi] ['pass-served? pass]})
+  hierarchy/HighLevelAction (immediate-refinements- [_ s]
                              (let [const (state/get-var s :const)
                                    [sx sy dx dy] 
                                      (map #(get const [% pass]) '[srcx srcy dstx dsty])
@@ -142,7 +142,7 @@
                                (util/assert-is (and pu pd))
                                [[(NavHLA env sx sy) pu (NavHLA env dx dy) pd]]))
                             (cycle-level- [s] nil)
-  hierarchy/ExplicitAngelicAction         (optimistic-map- [s]
+  hierarchy/ExplicitAngelicAction         (optimistic-map- [_ s]
                               (let [const (state/get-var s :const)
                                     [cx cy] (map #(state/get-var s [%]) '[atx aty])
                                     [sx sy dx dy] (map #(get const [% pass]) '[srcx srcy dstx dsty])]
@@ -150,7 +150,7 @@
                                  (- -2 
                                     (util/abs (- sx cx)) (util/abs (- sy cy))
                                     (util/abs (- sx dx)) (util/abs (- sy dy)))}))
-                            (pessimistic-map-[s] 
+                            (pessimistic-map- [_ s] 
                               (env/optimistic-map- this s)))
 
 (defn taxi-hungarian-heuristic [env s] "destination-to-destination."
@@ -172,10 +172,10 @@
             [p ::goal 0]))))))))
 
 (deftype TaxiTLA [env context]      :as this
-  env/Action                (action-name [] ['top])
-                            (primitive? [] false)  
-  env/ContextualAction      (precondition-context [s] context)
-  hierarchy/HighLevelAction (immediate-refinements- [s]
+  env/Action                (action-name [_] ['top])
+                            (primitive? [_] false)  
+  env/ContextualAction      (precondition-context [_ s] context)
+  hierarchy/HighLevelAction (immediate-refinements- [_ s]
                               (let [remaining-passengers
                                     (for [[pass] (:passengers env)
                                           :when (not (state/get-var s ['pass-served? pass]))]
@@ -185,10 +185,10 @@
                                   (for [pass remaining-passengers]
                                     [(ServeHLA env pass) this]))))
                             (cycle-level- [s] nil)
-  hierarchy/ExplicitAngelicAction         (optimistic-map- [s]
+  hierarchy/ExplicitAngelicAction         (optimistic-map- [_ s]
                               {(state/set-vars s (env/make-finish-goal-state env))
                                (taxi-hungarian-heuristic env s)})
-                            (pessimistic-map-[s] {}))
+                            (pessimistic-map- [_ s] {}))
 
 (defn make-taxi-tla [env]
   (TaxiTLA env (util/keyset (dissoc (env/initial-state env) :const))))
@@ -210,10 +210,10 @@
 
 ;; Slightly fancier hierarchy that splits navigation.
 (deftype NavHHLA [env dx] :as this
-  env/Action                (action-name [] ['navh dx])
-                            (primitive? [] false)
-  env/ContextualAction      (precondition-context [s] #{ ['atx]})
-  hierarchy/HighLevelAction (immediate-refinements- [s]
+  env/Action                (action-name [_] ['navh dx])
+                            (primitive? [_] false)
+  env/ContextualAction      (precondition-context [_ s] #{ ['atx]})
+  hierarchy/HighLevelAction (immediate-refinements- [_ s]
                               (if (= dx (state/get-var s ['atx]))                                                                                                 [[]]
                                 (for [af [make-left make-right]
                                      :let [a (af s)]
@@ -222,10 +222,10 @@
                             (cycle-level- [s] 1))
 
 (deftype NavVHLA [env dy] :as this
-  env/Action                (action-name [] ['navv dy])
-                            (primitive? [] false)
-  env/ContextualAction      (precondition-context [s] #{ ['aty]})
-  hierarchy/HighLevelAction (immediate-refinements- [s]
+  env/Action                (action-name [_] ['navv dy])
+                            (primitive? [_] false)
+  env/ContextualAction      (precondition-context [_ s] #{ ['aty]})
+  hierarchy/HighLevelAction (immediate-refinements- [_ s]
                               (if (= dy (state/get-var s ['aty]))                                                                                                [[]]
                                 (for [af [make-up make-down]
                                      :let [a (af s)]
@@ -234,18 +234,18 @@
                             (cycle-level- [s] 1))
 
 (deftype Nav2HLA [env dx dy] :as this
-  env/Action                (action-name [] ['nav dx dy])
-                            (primitive? [] false)
-  env/ContextualAction      (precondition-context [s] #{ ['atx] ['aty]})
-  hierarchy/HighLevelAction (immediate-refinements- [s]
+  env/Action                (action-name [_] ['nav dx dy])
+                            (primitive? [_] false)
+  env/ContextualAction      (precondition-context [_ s] #{ ['atx] ['aty]})
+  hierarchy/HighLevelAction (immediate-refinements- [_ s]
                              [[(NavHHLA env dx) (NavVHLA env dy)]])
                             (cycle-level- [s] nil))
 
 (deftype Serve2HLA [env pass] 
-  env/Action                (action-name [] ['serve pass])
-                            (primitive? [] false)
-  env/ContextualAction      (precondition-context [s] #{ ['atx] ['aty] ['in-taxi] ['pass-served? pass]})                            
-  hierarchy/HighLevelAction (immediate-refinements- [s]
+  env/Action                (action-name [_] ['serve pass])
+                            (primitive? [_] false)
+  env/ContextualAction      (precondition-context [_ s] #{ ['atx] ['aty] ['in-taxi] ['pass-served? pass]})                            
+  hierarchy/HighLevelAction (immediate-refinements- [_ s]
                              (let [const (state/get-var s :const)
                                    [sx sy dx dy] 
                                      (map #(get const [% pass]) '[srcx srcy dstx dsty])
@@ -256,10 +256,10 @@
                             (cycle-level- [s] nil))
 
 (deftype Taxi2TLA [env context]      :as this
-  env/Action                (action-name [] ['top])
-                            (primitive? [] false)  
-  env/ContextualAction      (precondition-context [s] context)
-  hierarchy/HighLevelAction (immediate-refinements- [s]
+  env/Action                (action-name [_] ['top])
+                            (primitive? [_] false)  
+  env/ContextualAction      (precondition-context [_ s] context)
+  hierarchy/HighLevelAction (immediate-refinements- [_ s]
                               (let [remaining-passengers
                                     (for [[pass] (:passengers env)
                                           :when (not (state/get-var s ['pass-served? pass]))]
@@ -289,10 +289,10 @@
 ; Yet another hierarchy that does away with Nav and just directly does h then v.
 
 (deftype Serve3HLA [env pass] 
-  env/Action                (action-name [] ['serve pass])
-                            (primitive? [] false)
-  env/ContextualAction      (precondition-context [s] #{ ['atx] ['aty] ['in-taxi] ['pass-served? pass]})                            
-  hierarchy/HighLevelAction (immediate-refinements- [s]
+  env/Action                (action-name [_] ['serve pass])
+                            (primitive? [_] false)
+  env/ContextualAction      (precondition-context [_ s] #{ ['atx] ['aty] ['in-taxi] ['pass-served? pass]})                            
+  hierarchy/HighLevelAction (immediate-refinements- [_ s]
                              (let [const (state/get-var s :const)
                                    [sx sy dx dy] 
                                      (map #(get const [% pass]) '[srcx srcy dstx dsty])
@@ -304,10 +304,10 @@
                             (cycle-level- [s] nil))
 
 (deftype Taxi3TLA [env context]      :as this
-  env/Action                (action-name [] ['top])
-                            (primitive? [] false)  
-  env/ContextualAction      (precondition-context [s] context)
-  hierarchy/HighLevelAction (immediate-refinements- [s]
+  env/Action                (action-name [_] ['top])
+                            (primitive? [_] false)  
+  env/ContextualAction      (precondition-context [_ s] context)
+  hierarchy/HighLevelAction (immediate-refinements- [_ s]
                               (let [remaining-passengers
                                     (for [[pass] (:passengers env)
                                           :when (not (state/get-var s ['pass-served? pass]))]

@@ -40,15 +40,15 @@
 ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;; Env ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
 ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
 
-(deftype NavSwitchEnv [width height sx sy sh? gx gy switch-set] :as this
+(defrecord NavSwitchEnv [width height sx sy sh? gx gy switch-set] 
   env/Env
-  (initial-state [] 
+  (initial-state [_] 
     {'[x] sx '[y] sy '[h] (if sh? true false)
      :const {'[x] width '[y] height :switch-set switch-set}})
-  (actions-fn []
+  (actions-fn [_]
    (fn nav-switch-actions [s]
      (filter identity (map #(% s) [make-left make-right make-up make-down make-switch]))))
-  (goal-fn [] 
+  (goal-fn [this] 
     (let [goal-map (env/goal-map this)]
       #(when (env/state-matches-map? % goal-map)
          (env/solution-and-reward %))))
@@ -87,11 +87,12 @@
   (let [[xc yc] (if (state/get-var s '[h]) [-2 -4] [-4 -2])]
     (nav-outcome-map s dx dy xc yc)))
 
-(deftype SimpleNavHLA [dx dy] :as this
-  env/Action                (action-name [] ['nav dx dy])
-                            (primitive? [] false)
-  env/ContextualAction      (precondition-context [s] '#{[x] [y] [h]})
-  hierarchy/HighLevelAction (immediate-refinements- [s]
+(defrecord SimpleNavHLA [dx dy]
+  env/Action 
+               (action-name [_] ['nav dx dy])
+                            (primitive? [_] false)
+  env/ContextualAction      (precondition-context [_ s] '#{[x] [y] [h]})
+  hierarchy/HighLevelAction (immediate-refinements- [_ s]
                              (if (and (= dx (state/get-var s '[x])) 
                                       (= dy (state/get-var s '[y])))
                                [[]]
@@ -99,52 +100,52 @@
                                      :let [a (af s)] :when a]
                                  [a this])))
                             (cycle-level- [s] 1)
-  hierarchy/ExplicitAngelicAction         (optimistic-map- [s] (exact-nav-map s dx dy))
-                            (pessimistic-map-[s] (exact-nav-map s dx dy)))
+  hierarchy/ExplicitAngelicAction         (optimistic-map- [_ s] (exact-nav-map s dx dy))
+                            (pessimistic-map- [_ s] (exact-nav-map s dx dy)))
 
 (deftype NavDHLA [h? dest] :as this
-  env/Action                (action-name [] [(if h? 'navh 'navv) dest])
-                            (primitive? [] false)
-  env/ContextualAction      (precondition-context [s] (if h? '#{[x] [h]} '#{[y] [h]}))
-  hierarchy/HighLevelAction (immediate-refinements- [s]
+  env/Action                (action-name [_] [(if h? 'navh 'navv) dest])
+                            (primitive? [_] false)
+  env/ContextualAction      (precondition-context [_ s] (if h? '#{[x] [h]} '#{[y] [h]}))
+  hierarchy/HighLevelAction (immediate-refinements- [_ s]
                               (if (= dest (state/get-var s (if h? '[x] '[y]))) 
                                  [[]]
                                (for [af (if h? [make-left make-right] [make-up make-down])
                                      :let [a (af s)] :when a]
                                  [a this])))
                             (cycle-level- [s] 1)
-  hierarchy/ExplicitAngelicAction         (optimistic-map- [s]
+  hierarchy/ExplicitAngelicAction         (optimistic-map- [_ s]
                               (let [dir  (if h? '[x] '[y])
                                     cur  (state/get-var s dir)
                                     cost (if (util/truth= (state/get-var s '[h]) h?) -2 -4)]
                                 {(state/set-var s dir dest)
                                  (* cost (util/abs (- cur dest)))}))
-                            (pessimistic-map-[s] (env/optimistic-map- this s)))
+                            (pessimistic-map- [_ s] (env/optimistic-map- this s)))
 
 (deftype SplitNavHLA [dx dy] 
-  env/Action                (action-name [] ['split-nav dx dy])
-                            (primitive? [] false)
-  env/ContextualAction      (precondition-context [s] '#{[x] [y] [h]})
-  hierarchy/HighLevelAction (immediate-refinements- [s] [[(NavDHLA true dx) (NavDHLA false dy)]])
+  env/Action                (action-name [_] ['split-nav dx dy])
+                            (primitive? [_] false)
+  env/ContextualAction      (precondition-context [_ s] '#{[x] [y] [h]})
+  hierarchy/HighLevelAction (immediate-refinements- [_ s] [[(NavDHLA true dx) (NavDHLA false dy)]])
                             (cycle-level- [s] nil)
-  hierarchy/ExplicitAngelicAction         (optimistic-map- [s] (exact-nav-map s dx dy))
-                            (pessimistic-map-[s] (exact-nav-map s dx dy)))
+  hierarchy/ExplicitAngelicAction         (optimistic-map- [_ s] (exact-nav-map s dx dy))
+                            (pessimistic-map- [_ s] (exact-nav-map s dx dy)))
 
 
 
 (deftype NavSwitchTLA [switch-set gx gy nav-factory] :as this
-  env/Action                (action-name [] '[top])
-                            (primitive? [] false)
-  env/ContextualAction      (precondition-context [s] '#{[x] [y] [h]})
-  hierarchy/HighLevelAction (immediate-refinements- [s]
+  env/Action                (action-name [_] '[top])
+                            (primitive? [_] false)
+  env/ContextualAction      (precondition-context [_ s] '#{[x] [y] [h]})
+  hierarchy/HighLevelAction (immediate-refinements- [_ s]
                              (cons [(nav-factory gx gy)]
                                (for [[sx sy] switch-set]
                                  [(nav-factory sx sy)
                                   (make-specific-switch (state/get-var s '[h]) sx sy)
                                   this]))) 
                             (cycle-level- [s] 2)
-  hierarchy/ExplicitAngelicAction         (optimistic-map- [s] (nav-outcome-map s gx gy 2 2))
-                            (pessimistic-map-[s] (exact-nav-map s gx gy)))
+  hierarchy/ExplicitAngelicAction         (optimistic-map- [_ s] (nav-outcome-map s gx gy 2 2))
+                            (pessimistic-map- [_ s] (exact-nav-map s gx gy)))
 
 
 (defn make-nav-switch-tla [env split-nav?]

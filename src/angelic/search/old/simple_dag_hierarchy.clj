@@ -170,10 +170,10 @@
     (active?     []  true)
     (satisfied?  [s] false)    
   env/Action
-    (action-name [] name)
+    (action-name [_] name)
     (primitive?  [] false)
  ; env/ContextualAction 
- ;   (precondition-context [s] (env/precondition-context leaf-precond s))   
+ ;   (precondition-context [_ s] (env/precondition-context leaf-precond s))   
     )
 
 (defn- make-active-precond-hla [hierarchy first-action leaf-precond]
@@ -215,7 +215,7 @@
     (active?     []  true)
     (satisfied?  [s] (= cur-val (:dst-val inactive-leaf)))    
   env/Action
-    (action-name [] name)
+    (action-name [_] name)
     (primitive?  [] false))
 
 (defn- advance-active-leaf-precond-hla [prev new-val]
@@ -237,12 +237,12 @@
     (active?     []  false)
     (satisfied?  [s] (= (state/get-var s var) dst-val))    
   env/Action
-    (action-name [] name)
+    (action-name [_] name)
     (primitive?  [] false)
   env/ContextualAction 
-    (precondition-context [s] precond-var-set)
+    (precondition-context [_ s] precond-var-set)
   hierarchy/HighLevelAction
-    (immediate-refinements- [s] 
+    (immediate-refinements- [_ s] 
       (let [cur-val (state/get-var s var)]
         (if (= cur-val dst-val)
             [[]]
@@ -308,9 +308,9 @@
     (action-name     [] name)
     (primitive?      [] false)
   env/ContextualAction 
-    (precondition-context [s] precond-var-set)
+    (precondition-context [_ s] precond-var-set)
   hierarchy/HighLevelAction
-    (immediate-refinements- [s]
+    (immediate-refinements- [_ s]
      (let [var-leaves  (leaf-var-set this)]
        (if (needs-expand? this)  ; Prevent loop where new trivial-sat prec.
            (let [nexts  (for [[prefix nxt] (expand this var-leaves)] (if nxt (conj prefix nxt) prefix))]
@@ -374,9 +374,9 @@
     (action-name     [] name)
     (primitive?      [] false)
   env/ContextualAction 
-    (precondition-context [s] precond-var-set)
+    (precondition-context [_ s] precond-var-set)
   hierarchy/HighLevelAction
-    (immediate-refinements- [s] 
+    (immediate-refinements- [_ s] 
       [(concat 
         (let [pc-map   (dissoc (:precond-map action) effect-var)
               topo-pcs (sort-by #(- ((:var-levels hierarchy) %)) (keys pc-map))

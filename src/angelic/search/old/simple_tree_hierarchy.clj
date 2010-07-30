@@ -85,12 +85,12 @@
 
 (deftype STH-Precond-HLA  [hierarchy name var dst-val dtg precond-var-set] :as this
   env/Action
-    (action-name [] name)
+    (action-name [_] name)
     (primitive?  [] false)
   env/ContextualAction 
-    (precondition-context [s] precond-var-set)
+    (precondition-context [_ s] precond-var-set)
   hierarchy/HighLevelAction
-    (immediate-refinements- [s] 
+    (immediate-refinements- [_ s] 
       (let [cur-val (state/get-var s var)]
         (if (= cur-val dst-val)
             [[]]
@@ -115,9 +115,9 @@
     (action-name     [] name)
     (primitive?      [] false)
   env/ContextualAction 
-    (precondition-context [s] precond-var-set)
+    (precondition-context [_ s] precond-var-set)
   hierarchy/HighLevelAction
-    (immediate-refinements- [s] 
+    (immediate-refinements- [_ s] 
       [(concat 
         (for [[var val] (sort-by (comp - (:var-levels hierarchy) key) 
                                              (:precond-map action))
