@@ -105,7 +105,7 @@
                                      :let [a (af s)]
                                      :when a]
                                  [a this])))
-                            (cycle-level- [s] 1)
+                            (cycle-level- [_ s] 1)
   hierarchy/ExplicitAngelicAction         (optimistic-map- [_ s]
                               (let [cx (state/get-var s ['atx])
                                     cy (state/get-var s ['aty])]
@@ -124,7 +124,7 @@
                                      :let [a (af s)]
                                      :when a]
                                  [a this])))
-                            (cycle-level- [s] 1))
+                            (cycle-level- [_ s] 1))
 
 (defmethod hierarchy/gg-action :angelic.taxi/NavHLA [a] [(GGNavHLA (:env a)) {'[atx] (:dx a) '[aty] (:dy a)}])
 
@@ -141,7 +141,7 @@
                                    pd (make-dropoff s pass)]
                                (util/assert-is (and pu pd))
                                [[(NavHLA env sx sy) pu (NavHLA env dx dy) pd]]))
-                            (cycle-level- [s] nil)
+                            (cycle-level- [_ s] nil)
   hierarchy/ExplicitAngelicAction         (optimistic-map- [_ s]
                               (let [const (state/get-var s :const)
                                     [cx cy] (map #(state/get-var s [%]) '[atx aty])
@@ -184,7 +184,7 @@
                                     [[(env/make-finish-action env)]]
                                   (for [pass remaining-passengers]
                                     [(ServeHLA env pass) this]))))
-                            (cycle-level- [s] nil)
+                            (cycle-level- [_ s] nil)
   hierarchy/ExplicitAngelicAction         (optimistic-map- [_ s]
                               {(state/set-vars s (env/make-finish-goal-state env))
                                (taxi-hungarian-heuristic env s)})
@@ -219,7 +219,7 @@
                                      :let [a (af s)]
                                      :when a]
                                  [a this])))
-                            (cycle-level- [s] 1))
+                            (cycle-level- [_ s] 1))
 
 (deftype NavVHLA [env dy] :as this
   env/Action                (action-name [_] ['navv dy])
@@ -231,7 +231,7 @@
                                      :let [a (af s)]
                                      :when a]
                                  [a this])))
-                            (cycle-level- [s] 1))
+                            (cycle-level- [_ s] 1))
 
 (deftype Nav2HLA [env dx dy] :as this
   env/Action                (action-name [_] ['nav dx dy])
@@ -239,7 +239,7 @@
   env/ContextualAction      (precondition-context [_ s] #{ ['atx] ['aty]})
   hierarchy/HighLevelAction (immediate-refinements- [_ s]
                              [[(NavHHLA env dx) (NavVHLA env dy)]])
-                            (cycle-level- [s] nil))
+                            (cycle-level- [_ s] nil))
 
 (deftype Serve2HLA [env pass] 
   env/Action                (action-name [_] ['serve pass])
@@ -253,7 +253,7 @@
                                    pd (make-dropoff s pass)]
                                (util/assert-is (and pu pd))
                                [[(Nav2HLA env sx sy) pu (Nav2HLA env dx dy) pd]]))
-                            (cycle-level- [s] nil))
+                            (cycle-level- [_ s] nil))
 
 (deftype Taxi2TLA [env context]      :as this
   env/Action                (action-name [_] ['top])
@@ -268,7 +268,7 @@
                                     [[(env/make-finish-action env)]]
                                   (for [pass remaining-passengers]
                                     [(Serve2HLA env pass) this]))))
-                            (cycle-level- [s] nil))
+                            (cycle-level- [_ s] nil))
 
 (defn make-taxi-tla2 [env]
   (Taxi2TLA env (util/keyset (dissoc (env/initial-state env) :const))))
@@ -301,7 +301,7 @@
                                (util/assert-is (and pu pd))
                                [[(NavHHLA env sx) (NavVHLA env sy) pu 
                                  (NavHHLA env dx) (NavVHLA env dy) pd]]))
-                            (cycle-level- [s] nil))
+                            (cycle-level- [_ s] nil))
 
 (deftype Taxi3TLA [env context]      :as this
   env/Action                (action-name [_] ['top])
@@ -316,7 +316,7 @@
                                     [[(env/make-finish-action env)]]
                                   (for [pass remaining-passengers]
                                     [(Serve3HLA env pass) this]))))
-                            (cycle-level- [s] nil))
+                            (cycle-level- [_ s] nil))
 
 (defn make-taxi-tla3 [env]
   (Taxi3TLA env (util/keyset (dissoc (env/initial-state env) :const))))

@@ -1,15 +1,9 @@
-(ns angelic.ucs
+(ns angelic.search.ucs
   (:require [edu.berkeley.ai.util :as util]
             [edu.berkeley.ai.util.queues :as queues]
-            [angelic [env :as env]]))
+            [angelic.env :as env]))
 
 ;; TODO: tie breaking
-
-;(defn incremental-search 
-;  "Expand queue items until (1) goal is reached, or (2) goal "
-;  [queue goal-condition])
-
-
 
 (defn uniform-cost-search 
   ([env] (uniform-cost-search env true))
@@ -22,9 +16,6 @@
          (when-not (queues/pq-empty? q)
            (let [[s c] (queues/pq-remove-min-with-cost! q)]
              (util/print-debug 3 "dequeueing " (:act-seq (meta s)) c s "\n")
-;             (when (> c -10) (println s))
-;             (print c " ")
-;             (flush)
              (or (and (goal s) [(reverse (:act-seq (meta s))) (:reward (meta s))])
                  (do
                    (let [acts (actions s)]
@@ -34,7 +25,6 @@
                          (queues/pq-add! q ss (- c sc)))))
                    (recur)))))))))
 
-;; Two other algorithms: exhaustive HTN, and SA-HTN, possibly also SA-HTN-queue.
-; Issues of DP in standard search.  
+
 
 

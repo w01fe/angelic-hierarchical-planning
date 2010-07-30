@@ -109,7 +109,7 @@
                                      :let [a (af s)]
                                      :when a]
                                  [a this])))
-                            (cycle-level- [s] 1)
+                            (cycle-level- [_ s] 1)
   hierarchy/ExplicitAngelicAction         (optimistic-map- [_ s]
                               (let [cx (state/get-var s ['atx])
                                     cy (state/get-var s ['aty])]
@@ -132,7 +132,7 @@
         (let [{:keys [width height]} env]
           [[(NavHLA env width height) (env/make-finish-action env)]])
         (map #(conj (vec %1) this) all-nxt))))
-   (cycle-level- [s] nil)
+   (cycle-level- [_ s] nil)
   hierarchy/ExplicitAngelicAction         (optimistic-map- [_ s]
                               {(state/set-vars s (env/make-finish-goal-state env))})
                             (pessimistic-map- [_ s] {}))

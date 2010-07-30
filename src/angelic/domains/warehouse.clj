@@ -143,7 +143,7 @@
                                      :let [a (af s)]
                                      :when a]
                                  [a this])))
-                            (cycle-level- [s] 1))
+                            (cycle-level- [_ s] 1))
 
 
 ;Issue with context: we also learn for other initial states, possibly outside initial range.
@@ -164,7 +164,7 @@
                                   [(when (or (not opt-dy) (= cy opt-dy)) [])
                                    (when (or (not opt-dy) (< cy opt-dy))
                                      (when-let [a (make-up s)] [a this]))])))
-                            (cycle-level- [s] nil))
+                            (cycle-level- [_ s] nil))
 
 (deftype DownHLA [dx dy] :as this
   env/Action                (action-name [_] ['down-to dx dy])
@@ -176,7 +176,7 @@
                                 (filter identity
                                   [(cond (= cy dy) []
                                          (> cy dy) (when-let [a (make-down s)] [a this]))])))
-                            (cycle-level- [s] nil))
+                            (cycle-level- [_ s] nil))
 
 (defn incl-range 
   ([x1 x2] (if (<= x1 x2) (range x1 (inc x2)) (range x2 (inc x1))))
@@ -194,7 +194,7 @@
                                   [(cond (= cx dx) []
                                          (> cx dx) (when-let [a (make-left s)] [a this])
                                          (< cx dx) (when-let [a (make-right s)] [a this]))])))
-                            (cycle-level- [s] nil))
+                            (cycle-level- [_ s] nil))
 
 (defn make-fancy-nav-plan [dx dy h]
   (if (= dy h)
@@ -237,7 +237,7 @@
                (conj (nav-factory gx2 h) (make-specific-turn [gx2 h] fr1)))
              (nav-factory gx2 gy2)
              [(make-specific-put b c fr2 gx2 gy2)]))))
-      (cycle-level- [s] nil))
+      (cycle-level- [_ s] nil))
 
 (defn make-move-block-hla [env nav-context nav-factory b bx by a c cx cy]
   (MoveBlockHLA env ['move-block b c]
@@ -256,7 +256,7 @@
     hierarchy/HighLevelAction (immediate-refinements- [_ s] 
                                  (possible-move-refinements env goal-fn context nav-context 
                                                             nav-factory block-off-limits s))
-                              (cycle-level- [s] 2))
+                              (cycle-level- [_ s] 2))
 
 ; Note: differs from previous (strips) version in use of goal test.
 ;; TODO: should allow self-moves? 
@@ -288,7 +288,7 @@
                                  (let [goal-fn (env/goal-fn env)]
                                    (possible-move-refinements 
                                     env goal-fn context nav-context nav-factory nil s)))
-                              (cycle-level- [s] nil))
+                              (cycle-level- [_ s] nil))
  
 
 (defn make-warehouse-tla [env]

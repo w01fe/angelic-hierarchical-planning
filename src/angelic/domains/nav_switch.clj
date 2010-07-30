@@ -99,7 +99,7 @@
                                (for [af [make-left make-right make-up make-down]
                                      :let [a (af s)] :when a]
                                  [a this])))
-                            (cycle-level- [s] 1)
+                            (cycle-level- [_ s] 1)
   hierarchy/ExplicitAngelicAction         (optimistic-map- [_ s] (exact-nav-map s dx dy))
                             (pessimistic-map- [_ s] (exact-nav-map s dx dy)))
 
@@ -113,7 +113,7 @@
                                (for [af (if h? [make-left make-right] [make-up make-down])
                                      :let [a (af s)] :when a]
                                  [a this])))
-                            (cycle-level- [s] 1)
+                            (cycle-level- [_ s] 1)
   hierarchy/ExplicitAngelicAction         (optimistic-map- [_ s]
                               (let [dir  (if h? '[x] '[y])
                                     cur  (state/get-var s dir)
@@ -127,7 +127,7 @@
                             (primitive? [_] false)
   env/ContextualAction      (precondition-context [_ s] '#{[x] [y] [h]})
   hierarchy/HighLevelAction (immediate-refinements- [_ s] [[(NavDHLA true dx) (NavDHLA false dy)]])
-                            (cycle-level- [s] nil)
+                            (cycle-level- [_ s] nil)
   hierarchy/ExplicitAngelicAction         (optimistic-map- [_ s] (exact-nav-map s dx dy))
                             (pessimistic-map- [_ s] (exact-nav-map s dx dy)))
 
@@ -143,7 +143,7 @@
                                  [(nav-factory sx sy)
                                   (make-specific-switch (state/get-var s '[h]) sx sy)
                                   this]))) 
-                            (cycle-level- [s] 2)
+                            (cycle-level- [_ s] 2)
   hierarchy/ExplicitAngelicAction         (optimistic-map- [_ s] (nav-outcome-map s gx gy 2 2))
                             (pessimistic-map- [_ s] (exact-nav-map s gx gy)))
 
