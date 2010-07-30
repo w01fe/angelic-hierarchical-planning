@@ -21,7 +21,7 @@
   (assert (not (contains? m k)))
   (assoc m k v))
 
-;(defn spos [s]  (try  (map #(env/get-var s %) '[[atx] [aty]]) (catch Exception e)))
+;(defn spos [s]  (try  (map #(state/get-var s %) '[[atx] [aty]]) (catch Exception e)))
 
 
 ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
@@ -81,7 +81,7 @@
   "Create a new sa-node, or returned the cached copy if it exists."
   (let [s       (:state parent-entry)
         context (env/precondition-context a s)
-        cache-key [(env/action-name a) (env/extract-context s context)]
+        cache-key [(env/action-name a) (state/extract-context s context)]
         cache-val (.get cache cache-key)]
     (when cache-val (assert (<= pre-reward (second (peek @(:parent-vec-atom cache-val))))))
     (cond (and cache-val (.contains #^HashSet (:parent-set cache-val) parent-entry))
@@ -110,7 +110,7 @@
 (defn update-parent [cache parent-entry parent-pre-reward new-state new-reward child-sanode]
   (let [new-effects (env/extract-effects new-state (:context child-sanode))
         parent-sa   (System/identityHashCode (:sanode parent-entry))
-        final-state (vary-meta (env/apply-effects (:state parent-entry) new-effects)
+        final-state (vary-meta (state/apply-effects (:state parent-entry) new-effects)
                        assoc :opt (concat (:opt (meta (:state parent-entry))) 
                                           (:opt (meta new-state)))
                        :node-set (conj (clojure.set/union (:node-set (meta new-state))

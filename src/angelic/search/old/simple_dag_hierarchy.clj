@@ -232,10 +232,10 @@
     (needs-expand?   []  false)
     (expand          [lv] (throw (UnsupportedOperationException.)))
     (greedy-select?  [s v av] false)
-    (select-leaf     [s v av] (assert (= v var)) [(make-active-leaf-precond-hla this (env/get-var s v))])
+    (select-leaf     [s v av] (assert (= v var)) [(make-active-leaf-precond-hla this (state/get-var s v))])
   SDH-Precond-HLA 
     (active?     []  false)
-    (satisfied?  [s] (= (env/get-var s var) dst-val))    
+    (satisfied?  [s] (= (state/get-var s var) dst-val))    
   env/Action
     (action-name [] name)
     (primitive?  [] false)
@@ -243,7 +243,7 @@
     (precondition-context [s] precond-var-set)
   hierarchy/HighLevelAction
     (immediate-refinements- [s] 
-      (let [cur-val (env/get-var s var)]
+      (let [cur-val (state/get-var s var)]
         (if (= cur-val dst-val)
             [[]]
           (for [as (vals (get dtg cur-val)), action as]

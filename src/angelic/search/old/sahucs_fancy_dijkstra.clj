@@ -39,13 +39,13 @@
 (defn stitch-effect-map [effect-map state reward-to-state]
   (util/map-map1 
    (fn [[effects local-reward]]
-     [(vary-meta (env/apply-effects state effects) assoc 
+     [(vary-meta (state/apply-effects state effects) assoc 
                  :opt (concat (:opt (meta state)) (:opt (meta effects))))
       (+ reward-to-state local-reward)]) 
    effect-map))
 
 (defn stitch-state [target-state effected-state ]
-  (vary-meta (env/apply-effects target-state (env/extract-effects effected-state ))
+  (vary-meta (state/apply-effects target-state (env/extract-effects effected-state ))
              assoc :opt (concat (:opt (meta target-state)) (:opt (meta effected-state)))))
 
 
@@ -102,7 +102,7 @@
 (defn get-sa-node [#^HashMap cache s a]
   "Create a new sa-node, or returned the cached copy if it exists."
   (let [context (env/precondition-context a s)]
-    (util/cache-with cache [(env/action-name a) (env/extract-context s context)]
+    (util/cache-with cache [(env/action-name a) (state/extract-context s context)]
       (let [s (env/get-logger s context)
             prim? (env/primitive? a)]
         (SANode  a 

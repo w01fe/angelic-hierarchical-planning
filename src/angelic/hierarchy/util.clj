@@ -1,6 +1,8 @@
 (ns angelic.hierarchy-utils
   (:require [edu.berkeley.ai.util :as util]
             [angelic.env :as env]
+            [angelic.env.state :as state]
+            [angelic.env.util :as envutil]            
             [angelic.hierarchy :as hierarchy]
             ))
 
@@ -11,23 +13,35 @@
 ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
 
 
-(deftype TopLevelAction [env initial-plans]
-  env/Action           (action-name [] ['act])
-                       (primitive? [] false)  
-  env/ContextualAction (precondition-context [s] (env/current-context (env/initial-state env)))
-  HighLevelAction      (immediate-refinements- [s] initial-plans)
-                       (cycle-level- [s] nil)
-  env/AngelicAction    (optimistic-map- [s]
-                         {(env/set-vars s (env/make-finish-goal-state env)) 
-                          Double/POSITIVE_INFINITY})
-                       (pessimistic-map- [s] {}))
+(defrecord TopLevelAction [env initial-plans]
+  env/Action
+  (action-name [_] ['act])
+  (primitive?  [_] false)  
 
-(deftype SimpleHLA [name pc refs]
-  env/Action           (action-name [] name)
-                       (primitive? [] false)  
-  env/ContextualAction (precondition-context [s] pc)
-  HighLevelAction      (immediate-refinements- [s] refs)
-                       (cycle-level- [s] nil))
+  env/ContextualAction
+  (precondition-context [_ s] (state/current-context (env/initial-state env)))
+
+  hierarchy/HighLevelAction
+  (immediate-refinements- [_ s] initial-plans)
+  (cycle-level- [_ s] nil)
+
+  hierarchy/ExplicitAngelicAction
+  (optimistic-map- [_ s]
+    {(state/set-vars s (envutil/make-finish-goal-state env)) 
+     Double/POSITIVE_INFINITY})
+  (pessimistic-map- [_ s] {}))
+
+(defrecord SimpleHLA [name pc refs]
+  env/Action
+  (action-name [_] name)
+  (primitive?  [_] false)  
+
+  env/ContextualAction
+  (precondition-context [_ s] pc)
+
+  hierarchy/HighLevelAction
+  (immediate-refinements- [_ s] refs)
+  (cycle-level-           [_ s] nil))
 
 
 
@@ -36,10 +50,10 @@
 ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
 
 
-(deftype SimpleHierarchicalEnv [env initial-plan] 
- HierarchicalEnv
-  (env          [] env)
-  (initial-plan [] initial-plan))
+(defrecord SimpleHierarchicalEnv [env initial-plan] 
+  hierarchy/HierarchicalEnv
+  (env          [_] env)
+  (initial-plan [_] initial-plan))
 
 
 ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
@@ -48,7 +62,7 @@
 
 ; Turns a hierarchical env into a regular env using SHOP trick.
 
-(deftype ShopHTNPlan [rest-plan state])
+(defrecord ShopHTNPlan [rest-plan state])
 
 (defmethod print-method ::ShopHTNPlan [p os] 
   (let [[sol rew] (env/solution-and-reward (:state p))]
@@ -62,41 +76,40 @@
       (when (env/applicable? first-action state)
         (recur rest-actions (first (env/successor first-action state)))))))
 
-(defn normalized-plan [rest-plan state]
+(defn- normalized-plan [rest-plan state]
   (let [[prim-prefix high-level-suffix] (split-with #(env/primitive? %) rest-plan)
         prim-result (successor-seq prim-prefix state)]
     (when prim-result   
-      (ShopHTNPlan high-level-suffix prim-result))))
+      (ShopHTNPlan. high-level-suffix prim-result))))
 
-
-(deftype ShopHTNEnv [he] env/Env
-  (initial-state [] (util/make-safe (normalized-plan (initial-plan he) (env/initial-state (env he)))))
-  (actions-fn []
+(defrecord ShopHTNEnv [he]
+  env/Env
+  (initial-state [_] (util/make-safe (normalized-plan (hierarchy/initial-plan he) (env/initial-state (hierarchy/env he)))))
+  (actions-fn [_]
     (fn [shp]
-;      (println shp)
       (let [[first-action & rest-plan] (:rest-plan shp)
             state                    (:state shp)]
-        (util/sref-set! *ref-counter* (inc (util/sref-get *ref-counter*)))
-        (for [[i ref] (util/indexed (immediate-refinements first-action state))
+        (util/sref-set! hierarchy/*ref-counter* (inc (util/sref-get hierarchy/*ref-counter*)))
+        (for [[i ref] (util/indexed (hierarchy/immediate-refinements first-action state))
               :let [result (normalized-plan (concat ref rest-plan) state)]
               :when result]
           (reify 
            env/Action
-            (action-name [] 
+            (action-name [_] 
               [ref (env/action-name first-action) i])
            env/PrimitiveAction
-            (applicable? [s] 
+            (applicable? [_ s] 
               (assert (identical? s shp)) 
               true)
-            (next-state-and-reward [s] 
-              ;(println result)
+            (next-state-and-reward [_ s] 
               (assert (identical? s shp))
               (util/sref-set! env/*next-counter* (dec (util/sref-get env/*next-counter*))) ;; uncount this.
-              (util/sref-set! *plan-counter* (inc (util/sref-get *plan-counter*))) ;; uncount this.
+              (util/sref-set! hierarchy/*plan-counter* (inc (util/sref-get hierarchy/*plan-counter*))) ;; uncount this.
               [result (- (env/reward (:state result)) (env/reward state))]))))))
-  (goal-fn [] (fn [s] 
-                    (when (empty? (:rest-plan s))
-                      (env/solution-and-reward (:state s))))))
+  (goal-fn [_]
+    (fn [s] 
+      (when (empty? (:rest-plan s))
+        (env/solution-and-reward (:state s))))))
 
 
 
@@ -122,26 +135,36 @@
 
 (declare wrap-action-nsa)
 
-(deftype NSAPrimitive [a full-context]
-  env/Action                (action-name [] (env/action-name a))
-                            (primitive? [] true)  
-  env/ContextualAction      (precondition-context [s] full-context)
-  env/PrimitiveAction       (applicable? [s] (env/applicable? a s)) 
-                            (next-state-and-reward [s] (env/next-state-and-reward a s)))
+(defrecord NSAPrimitive [a full-context]
+  env/Action
+  (action-name [_] (env/action-name a))
+  (primitive?  [_] true)  
 
-(deftype NSAHLA       [a full-context]
-  env/Action                (action-name [] (env/action-name a))
-                            (primitive? [] false)  
-  env/ContextualAction      (precondition-context [s] full-context)
-  HighLevelAction (immediate-refinements- [s]
-                             (map (fn [ref] (map #(wrap-action-nsa % full-context) ref))
-                              (immediate-refinements- a s)))
-                            (cycle-level- [s] (cycle-level- a s)))
+  env/ContextualAction
+  (precondition-context [_ s] full-context)
+
+  env/PrimitiveAction
+  (applicable?           [_ s] (env/applicable? a s)) 
+  (next-state-and-reward [_ s] (env/next-state-and-reward a s)))
+
+(defrecord NSAHLA       [a full-context]
+  env/Action
+  (action-name [_] (env/action-name a))
+  (primitive?  [_] false)  
+
+  env/ContextualAction
+  (precondition-context [_ s] full-context)
+
+  hierarchy/HighLevelAction
+  (immediate-refinements- [_ s]
+    (map (fn [ref] (map #(wrap-action-nsa % full-context) ref))
+         (hierarchy/immediate-refinements- a s)))
+  (cycle-level-           [_ s] (hierarchy/cycle-level- a s)))
 
 (defmethod print-method ::NSAPrimitive [a o] (print-method (env/action-name a) o))
 (defmethod print-method ::NSAHLA [a o] (print-method (env/action-name a) o))
 
 (defn wrap-action-nsa [a full-context]
   (if (env/primitive? a) 
-    (NSAPrimitive a full-context)
-    (NSAHLA a full-context)))
+    (NSAPrimitive. a full-context)
+    (NSAHLA. a full-context)))

@@ -35,10 +35,10 @@
                     (make-simple-successor-generator more-vars actions)
                   (let [v  (key (first actions-by-val))
                         sg (make-simple-successor-generator more-vars actions)]
-                    (fn successor-gen2 [s] (when (= v (env/get-var s var-name)) (sg s)))))
+                    (fn successor-gen2 [s] (when (= v (state/get-var s var-name)) (sg s)))))
               (let [dc-sg   (make-simple-successor-generator more-vars (get actions-by-val nil)) 
                     val-sgs (util/map-vals #(make-simple-successor-generator more-vars %) actions-by-val)]
-                (fn successor-gen [s] (concat (dc-sg s) (when-let [f (val-sgs (env/get-var s var-name))] (f s)))))))))
+                (fn successor-gen [s] (concat (dc-sg s) (when-let [f (val-sgs (state/get-var s var-name))] (f s)))))))))
 
 (defn make-sas-problem [vars init actions]
   (SAS-Problem vars init actions (delay (make-simple-successor-generator (vals vars) actions))))

@@ -120,12 +120,12 @@
 
 (defn get-sa-node [#^HashMap cache s a]
   (let [context   (env/precondition-context a s)
-        node      (util/cache-with cache [(env/action-name a) (env/extract-context s context)] 
+        node      (util/cache-with cache [(env/action-name a) (state/extract-context s context)] 
                                    (create-sa-node cache (env/get-logger s context) a))]
     (SANodeWrapper s node
        (into {}
          (for [ss (optimistic-reachable-set node)]
-           [(env/apply-effects s (env/extract-effects ss)) ss])))))
+           [(state/apply-effects s (env/extract-effects ss)) ss])))))
 
 (deftype RefNode [state first-sa successors solution-map-atom optimistic-val-atom] :as this
   Node

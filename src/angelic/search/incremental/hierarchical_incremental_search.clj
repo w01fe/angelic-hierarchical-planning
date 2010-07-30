@@ -57,7 +57,7 @@
 ;; Sub and lift -- used by recursive, inverted, saha (drop only)
 (defn hfs-first-sub-name "Name for first abstracted subproblem of hfs" [hfs]
   (let [{[f] :remaining-actions state :state} hfs]
-    [(if *state-abstraction?* (env/extract-context state (env/precondition-context f state)) state) 
+    [(if *state-abstraction?* (state/extract-context state (env/precondition-context f state)) state) 
      (env/action-name f)]))
 
 (defn hfs-first-sub "First abstracted subproblem of hfs" [hfs]
@@ -90,8 +90,8 @@
   (combine-hfs first-result rest-result (constantly final-state) (constantly nil))
 #_  (let [my-final (reduce env/transfer-effects (:state parent-hfs)
                          [(:state first-result) (:state rest-result)])]
-    (util/assert-is (= (dissoc (env/as-map final-state) :const) 
-                       (dissoc (env/as-map my-final) :const)))
+    (util/assert-is (= (dissoc (state/as-map final-state) :const) 
+                       (dissoc (state/as-map my-final) :const)))
     (combine-hfs first-result rest-result (constantly my-final) (constantly nil))))
 
 
@@ -191,7 +191,7 @@
   (if-let [[gg-hfs goal-map single-goal?] (hfs-gg hfs)]
     (let [goal-vars (keys goal-map)]
       (is/get-generalized-search *problem-cache* (hfs-first-sub-name gg-hfs)     
-        (fn [n] (let [s (:state (:data n))] (map #(env/get-var s %) goal-vars)))
+        (fn [n] (let [s (:state (:data n))] (map #(state/get-var s %) goal-vars)))
         (map goal-map goal-vars) single-goal?
         (make-fast-flat-search gg-hfs)))
     (make-recursive-ef-search hfs abstract-gg-search)))
@@ -354,7 +354,7 @@
        (let [[f & r] remaining-actions]
          (apply max is/neg-inf
                 (for [[ss sr] (env/optimistic-map f state)]
-                  (do (println pad (select-keys (env/as-map state) [ [:base] [:gripper-offset]]) (env/action-name f) sr)
+                  (do (println pad (select-keys (state/as-map state) [ [:base] [:gripper-offset]]) (env/action-name f) sr)
                       (+ sr (print-heuristic* ss r (str pad "  ")))))))))
 
          (defn print-heuristic [hfs] (print-heuristic* (:state hfs) (:remaining-actions hfs) "")))
@@ -385,7 +385,7 @@
            tla  (hierarchy/TopLevelAction e [(hierarchy/initial-plan henv)])]
        (binding [*problem-cache*    (HashMap.)
                  *state-abstraction?* sa?
-                 *full-context*      (if sa? :dummy (env/current-context init))]
+                 *full-context*      (if sa? :dummy (state/current-context init))]
          (sol-hfs-fn (make-root-hfs init tla))))))
 
 (defn simple-hierarchical-search 

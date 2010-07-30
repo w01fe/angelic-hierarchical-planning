@@ -4,31 +4,31 @@
   (:import [java.util Random]))
 
 (defn- make-left   [s]
-  (let [cx     (env/get-var s '[atx])]
+  (let [cx     (state/get-var s '[atx])]
     (when (> cx 1) 
       (env/FactoredPrimitive ['left cx]  {['atx] cx} {['atx] (dec cx)} -1))))
 
 (defn- make-right  [s]
-  (let [const (env/get-var s :const)
+  (let [const (state/get-var s :const)
         width  (get const '[width])
-        cx     (env/get-var s '[atx])]
+        cx     (state/get-var s '[atx])]
     (when (< cx width)  
       (env/FactoredPrimitive ['right cx] {['atx] cx} {['atx] (inc cx)} -1))))
 
 (defn- make-down  [s]
-  (let [cy     (env/get-var s '[aty])]
+  (let [cy     (state/get-var s '[aty])]
     (when (> cy 1)
       (env/FactoredPrimitive ['down cy]  {['aty] cy} {['aty] (dec cy)} -1))))
 
 (defn- make-up    [s]
-  (let [const (env/get-var s :const)
+  (let [const (state/get-var s :const)
         height (get const '[height])
-        cy     (env/get-var s '[aty])]
+        cy     (state/get-var s '[aty])]
     (when (< cy height)
       (env/FactoredPrimitive ['up cy] {['aty] cy} {['aty] (inc cy)} -1))))
 
 (defn- make-pickup  [s pass]
-  (let [const (env/get-var s :const)]
+  (let [const (state/get-var s :const)]
     (env/FactoredPrimitive 
      ['pickup pass] 
      {['atx] (get const ['srcx pass]) 
@@ -39,10 +39,10 @@
      -1)))
 
 (defn- make-dropoff 
-  ([s] (make-dropoff s (env/get-var s '[in-taxi])))
+  ([s] (make-dropoff s (state/get-var s '[in-taxi])))
   ([s pass]
      (when pass 
-       (let [const (env/get-var s :const)
+       (let [const (state/get-var s :const)
              dx (get const ['dstx pass])
              dy (get const ['dsty pass])]
          (env/FactoredPrimitive 
@@ -98,18 +98,18 @@
                             (primitive? [] false)
   env/ContextualAction      (precondition-context [s] #{['atx] ['aty]})
   hierarchy/HighLevelAction (immediate-refinements- [s]
-                             (if (and (= dx (env/get-var s ['atx])) 
-                                      (= dy (env/get-var s ['aty])))
+                             (if (and (= dx (state/get-var s ['atx])) 
+                                      (= dy (state/get-var s ['aty])))
                                [[]]
                                (for [af [make-left make-right make-up make-down]
                                      :let [a (af s)]
                                      :when a]
                                  [a this])))
                             (cycle-level- [s] 1)
-  env/AngelicAction         (optimistic-map- [s]
-                              (let [cx (env/get-var s ['atx])
-                                    cy (env/get-var s ['aty])]
-                                {(env/set-var (env/set-var s ['atx] dx) ['aty] dy)
+  hierarchy/ExplicitAngelicAction         (optimistic-map- [s]
+                              (let [cx (state/get-var s ['atx])
+                                    cy (state/get-var s ['aty])]
+                                {(state/set-var (state/set-var s ['atx] dx) ['aty] dy)
                                  (- 0 (util/abs (- dx cx)) (util/abs (- dy cy)))}))
                             (pessimistic-map-[s] 
                               (env/optimistic-map- this s)))
@@ -134,7 +134,7 @@
                             (primitive? [] false)
   env/ContextualAction      (precondition-context [s] #{ ['atx] ['aty] ['in-taxi] ['pass-served? pass]})
   hierarchy/HighLevelAction (immediate-refinements- [s]
-                             (let [const (env/get-var s :const)
+                             (let [const (state/get-var s :const)
                                    [sx sy dx dy] 
                                      (map #(get const [% pass]) '[srcx srcy dstx dsty])
                                    pu (make-pickup  s pass)
@@ -142,11 +142,11 @@
                                (util/assert-is (and pu pd))
                                [[(NavHLA env sx sy) pu (NavHLA env dx dy) pd]]))
                             (cycle-level- [s] nil)
-  env/AngelicAction         (optimistic-map- [s]
-                              (let [const (env/get-var s :const)
-                                    [cx cy] (map #(env/get-var s [%]) '[atx aty])
+  hierarchy/ExplicitAngelicAction         (optimistic-map- [s]
+                              (let [const (state/get-var s :const)
+                                    [cx cy] (map #(state/get-var s [%]) '[atx aty])
                                     [sx sy dx dy] (map #(get const [% pass]) '[srcx srcy dstx dsty])]
-                                {(env/set-vars s [[['atx] dx] [['aty] dy] [['pass-served? pass] true]])
+                                {(state/set-vars s [[['atx] dx] [['aty] dy] [['pass-served? pass] true]])
                                  (- -2 
                                     (util/abs (- sx cx)) (util/abs (- sy cy))
                                     (util/abs (- sx dx)) (util/abs (- sy dy)))}))
@@ -154,8 +154,8 @@
                               (env/optimistic-map- this s)))
 
 (defn taxi-hungarian-heuristic [env s] "destination-to-destination."
-  (let [[cx cy] (map #(env/get-var s [%]) '[atx aty])
-        pass    (remove #(env/get-var s ['pass-served? (first %)]) (:passengers env))]
+  (let [[cx cy] (map #(state/get-var s [%]) '[atx aty])
+        pass    (remove #(state/get-var s ['pass-served? (first %)]) (:passengers env))]
     (if (empty? pass) 0
       (int (Math/floor 
          (util/maximum-matching
@@ -178,15 +178,15 @@
   hierarchy/HighLevelAction (immediate-refinements- [s]
                               (let [remaining-passengers
                                     (for [[pass] (:passengers env)
-                                          :when (not (env/get-var s ['pass-served? pass]))]
+                                          :when (not (state/get-var s ['pass-served? pass]))]
                                       pass)]
                                 (if (empty? remaining-passengers)
                                     [[(env/make-finish-action env)]]
                                   (for [pass remaining-passengers]
                                     [(ServeHLA env pass) this]))))
                             (cycle-level- [s] nil)
-  env/AngelicAction         (optimistic-map- [s]
-                              {(env/set-vars s (env/make-finish-goal-state env))
+  hierarchy/ExplicitAngelicAction         (optimistic-map- [s]
+                              {(state/set-vars s (env/make-finish-goal-state env))
                                (taxi-hungarian-heuristic env s)})
                             (pessimistic-map-[s] {}))
 
@@ -214,7 +214,7 @@
                             (primitive? [] false)
   env/ContextualAction      (precondition-context [s] #{ ['atx]})
   hierarchy/HighLevelAction (immediate-refinements- [s]
-                              (if (= dx (env/get-var s ['atx]))                                                                                                 [[]]
+                              (if (= dx (state/get-var s ['atx]))                                                                                                 [[]]
                                 (for [af [make-left make-right]
                                      :let [a (af s)]
                                      :when a]
@@ -226,7 +226,7 @@
                             (primitive? [] false)
   env/ContextualAction      (precondition-context [s] #{ ['aty]})
   hierarchy/HighLevelAction (immediate-refinements- [s]
-                              (if (= dy (env/get-var s ['aty]))                                                                                                [[]]
+                              (if (= dy (state/get-var s ['aty]))                                                                                                [[]]
                                 (for [af [make-up make-down]
                                      :let [a (af s)]
                                      :when a]
@@ -246,7 +246,7 @@
                             (primitive? [] false)
   env/ContextualAction      (precondition-context [s] #{ ['atx] ['aty] ['in-taxi] ['pass-served? pass]})                            
   hierarchy/HighLevelAction (immediate-refinements- [s]
-                             (let [const (env/get-var s :const)
+                             (let [const (state/get-var s :const)
                                    [sx sy dx dy] 
                                      (map #(get const [% pass]) '[srcx srcy dstx dsty])
                                    pu (make-pickup  s pass)
@@ -262,7 +262,7 @@
   hierarchy/HighLevelAction (immediate-refinements- [s]
                               (let [remaining-passengers
                                     (for [[pass] (:passengers env)
-                                          :when (not (env/get-var s ['pass-served? pass]))]
+                                          :when (not (state/get-var s ['pass-served? pass]))]
                                       pass)]
                                 (if (empty? remaining-passengers)
                                     [[(env/make-finish-action env)]]
@@ -293,7 +293,7 @@
                             (primitive? [] false)
   env/ContextualAction      (precondition-context [s] #{ ['atx] ['aty] ['in-taxi] ['pass-served? pass]})                            
   hierarchy/HighLevelAction (immediate-refinements- [s]
-                             (let [const (env/get-var s :const)
+                             (let [const (state/get-var s :const)
                                    [sx sy dx dy] 
                                      (map #(get const [% pass]) '[srcx srcy dstx dsty])
                                    pu (make-pickup  s pass)
@@ -310,7 +310,7 @@
   hierarchy/HighLevelAction (immediate-refinements- [s]
                               (let [remaining-passengers
                                     (for [[pass] (:passengers env)
-                                          :when (not (env/get-var s ['pass-served? pass]))]
+                                          :when (not (state/get-var s ['pass-served? pass]))]
                                       pass)]
                                 (if (empty? remaining-passengers)
                                     [[(env/make-finish-action env)]]

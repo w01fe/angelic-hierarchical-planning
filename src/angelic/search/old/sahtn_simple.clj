@@ -48,7 +48,7 @@
   (env/enforce-logger s)
 ;  (println s)
   (let [context-schema  (env/precondition-context a s)
-        context         (env/extract-context s context-schema)
+        context         (state/extract-context s context-schema)
 	cache-key       [(env/action-name a) context]
 	cache-val       (.get cache cache-key)
         result          
@@ -70,7 +70,7 @@
     (with-meta 
       (util/map-map 
        (fn [[effect-map local-reward]]
-         [(vary-meta (env/apply-effects s effect-map)
+         [(vary-meta (state/apply-effects s effect-map)
                      assoc :opt (concat (:opt (meta s)) (:opt (meta effect-map))))
           (+ r local-reward)])
        result)

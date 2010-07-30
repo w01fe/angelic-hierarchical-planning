@@ -93,7 +93,7 @@
         (constantly refs))
     (fn [s]
       (for [[pre-pairs ref] refinements-and-preconditions, 
-            :when (every? (fn [[var val]] (= val (env/get-var s var))) pre-pairs)]
+            :when (every? (fn [[var val]] (= val (state/get-var s var))) pre-pairs)]
         ref))))
 
 (defn make-compiled-hla [name precond-vars effects pre-ref-pairs]
@@ -222,7 +222,7 @@
   env/ContextualAction 
     (precondition-context [s] (precond-var-set this))
   hierarchy/HighLevelAction
-    (immediate-refinements- [s] [[(util/safe-get @src-map-atom (env/get-var s var))]])
+    (immediate-refinements- [s] [[(util/safe-get @src-map-atom (state/get-var s var))]])
     (cycle-level-           [s] nil))
 
 (defn make-precond-hla [var dst-val] 

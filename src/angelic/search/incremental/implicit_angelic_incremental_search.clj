@@ -62,7 +62,7 @@
 ;; Sub and lift -- used by recursive, inverted, saha (drop only)
 (defn ahs-first-sub-name "Name for first abstracted subproblem of ahs" [ahs]
   (let [{[f] :remaining-actions state :state} ahs]
-    [(if *state-abstraction?* (env/extract-context state (env/precondition-context f state)) state) 
+    [(if *state-abstraction?* (state/extract-context state (env/precondition-context f state)) state) 
      (env/action-name f)]))
 
 (defn ahs-first-sub "First abstracted subproblem of ahs" [ahs]
@@ -95,8 +95,8 @@
   (combine-ahs first-result rest-result (constantly final-state) (constantly nil))
 #_  (let [my-final (reduce env/transfer-effects (:state parent-ahs)
                          [(:state first-result) (:state rest-result)])]
-    (util/assert-is (= (dissoc (env/as-map final-state) :const) 
-                       (dissoc (env/as-map my-final) :const)))
+    (util/assert-is (= (dissoc (state/as-map final-state) :const) 
+                       (dissoc (state/as-map my-final) :const)))
     (combine-ahs first-result rest-result (constantly my-final) (constantly nil))))
 
 
@@ -172,7 +172,7 @@
   (defn name-str [x]
     (let [n (:name x)]
       (if (symbol? n) n
-          (vec (map #(if (instance? angelic.env.FactoredState %) (dissoc (angelic.env/as-map %) :const) %) n)))))
+          (vec (map #(if (instance? angelic.env.FactoredState %) (dissoc (angelic.state/as-map %) :const) %) n)))))
 
   (defmethod print-method ::SimpleNode [x s]
     (print-method (str "Nd<" (name-str x) "," (:reward x) "," (:goal? x) ">") s)))

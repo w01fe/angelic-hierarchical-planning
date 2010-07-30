@@ -71,7 +71,7 @@
 
 (defn make-cc-node [op-node state var-cc-nodes]
   (let [{:keys [problem var dst-val]} op-node]
-    (CPO-CC problem var (if-let [ccn (var-cc-nodes var)] (:dst-val (last ccn)) (env/get-var state var)) dst-val nil)))
+    (CPO-CC problem var (if-let [ccn (var-cc-nodes var)] (:dst-val (last ccn)) (state/get-var state var)) dst-val nil)))
 
 ;; How do we do cycle stuff?  Hybrid?  ...
 

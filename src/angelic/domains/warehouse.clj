@@ -8,10 +8,10 @@
 
 
 (defn- make-dir [s name [dx dy]]
-  (let [[cx cy :as cp] (env/get-var s '[at])
-        [w h]          (get (env/get-var s :const) '[topright])
+  (let [[cx cy :as cp] (state/get-var s '[at])
+        [w h]          (get (state/get-var s :const) '[topright])
         nx (+ cx dx), ny (+ cy dy)]
-    (when (and (<= 1 nx w) (<= 1 ny h) (not (env/get-var s ['someblockat nx ny])))
+    (when (and (<= 1 nx w) (<= 1 ny h) (not (state/get-var s ['someblockat nx ny])))
       (env/FactoredPrimitive
        name
        {['at] cp ['someblockat nx ny] false}
@@ -29,9 +29,9 @@
                          {'[facingright] (not cur-fr)} -1))
 
 (defn- make-turn   [s]
-  (let [[cx cy] (env/get-var s '[at])
-        cur-fr  (env/get-var s '[facingright])]
-    (when (= cy (nth (get (env/get-var s :const) '[topright]) 1))  
+  (let [[cx cy] (state/get-var s '[at])
+        cur-fr  (state/get-var s '[facingright])]
+    (when (= cy (nth (get (state/get-var s :const) '[topright]) 1))  
       (make-specific-turn [cx cy] cur-fr))))
 
 
@@ -45,14 +45,14 @@
      -1)))
 
 (defn- make-get [s]
-  (when-not (env/get-var s ['holding])
-    (let [[cx cy] (env/get-var s '[at])
-          cur-fr  (env/get-var s '[facingright])
-          [width] (get (env/get-var s :const) '[topright])
+  (when-not (state/get-var s ['holding])
+    (let [[cx cy] (state/get-var s '[at])
+          cur-fr  (state/get-var s '[facingright])
+          [width] (get (state/get-var s :const) '[topright])
           bx      (+ cx (if cur-fr 1 -1))]
-      (when-let [b (and (<= 1 bx width) (env/get-var s ['blockat bx cy]))]
-        (when-not (env/get-var s ['on b])
-          (let [c (env/get-var s ['blockat bx (dec cy)])]
+      (when-let [b (and (<= 1 bx width) (state/get-var s ['blockat bx cy]))]
+        (when-not (state/get-var s ['on b])
+          (let [c (state/get-var s ['blockat bx (dec cy)])]
             (make-specific-get b c cur-fr cx cy)))))))
 
 (defn- make-specific-put [b c fr? gx gy]
@@ -65,13 +65,13 @@
      -1)))
 
 (defn- make-put [s]
-  (when-let [b (env/get-var s ['holding])]
-    (let [[cx cy] (env/get-var s '[at])
-          cur-fr  (env/get-var s '[facingright])
-          [width] (get (env/get-var s :const) '[topright])
+  (when-let [b (state/get-var s ['holding])]
+    (let [[cx cy] (state/get-var s '[at])
+          cur-fr  (state/get-var s '[facingright])
+          [width] (get (state/get-var s :const) '[topright])
           bx      (+ cx (if cur-fr 1 -1))]
-      (when-let [c (and (<= 1 bx width) (env/get-var s ['blockat bx (dec cy)]))]
-        (when-not (env/get-var s ['on c])
+      (when-let [c (and (<= 1 bx width) (state/get-var s ['blockat bx (dec cy)]))]
+        (when-not (state/get-var s ['on c])
           (make-specific-put b c cur-fr cx cy))))))
 
 
@@ -137,7 +137,7 @@
                             (primitive? [] false)
   env/ContextualAction      (precondition-context [s] context )
   hierarchy/HighLevelAction (immediate-refinements- [s]
-                              (if (= dest (env/get-var s ['at]))
+                              (if (= dest (state/get-var s ['at]))
                                [[]]
                                (for [af [make-left make-right make-up make-down]
                                      :let [a (af s)]
@@ -159,7 +159,7 @@
                             (primitive? [] false)
   env/ContextualAction      (precondition-context [s] '#{[at]})
   hierarchy/HighLevelAction (immediate-refinements- [s]
-                              (let [[cx cy] (env/get-var s '[at])]
+                              (let [[cx cy] (state/get-var s '[at])]
                                 (filter identity
                                   [(when (or (not opt-dy) (= cy opt-dy)) [])
                                    (when (or (not opt-dy) (< cy opt-dy))
@@ -171,7 +171,7 @@
                             (primitive? [] false)
   env/ContextualAction      (precondition-context [s] #{'[at] ['someblockat dx dy]})
   hierarchy/HighLevelAction (immediate-refinements- [s]
-                              (let [[cx cy] (env/get-var s '[at])]
+                              (let [[cx cy] (state/get-var s '[at])]
                                 (assert (= cx dx))
                                 (filter identity
                                   [(cond (= cy dy) []
@@ -186,10 +186,10 @@
   env/Action                (action-name [] ['traverse-to dx])
                             (primitive? [] false)
   env/ContextualAction      (precondition-context [s] 
-                              (let [[cx cy] (env/get-var s '[at])]
+                              (let [[cx cy] (state/get-var s '[at])]
                                 (into '#{[at]} (for [x (incl-range cx dx)] ['someblockat x cy]))))
   hierarchy/HighLevelAction (immediate-refinements- [s]
-                              (let [[cx cy] (env/get-var s '[at])]
+                              (let [[cx cy] (state/get-var s '[at])]
                                 (filter identity
                                   [(cond (= cx dx) []
                                          (> cx dx) (when-let [a (make-left s)] [a this])
@@ -215,19 +215,19 @@
     env/ContextualAction      (precondition-context [s] context)
     hierarchy/HighLevelAction 
       (immediate-refinements- [s]
-        (assert (= b (env/get-var s ['blockat bx by])))
-        (assert (= a (env/get-var s ['blockat bx (dec by)])))                                             (assert (= c (env/get-var s ['blockat cx cy])))                                           
-        (let [[w h] (get (env/get-var s :const) '[topright])
-  ;                                      [gx gy]  (env/get-var s '[at])
-              fr?   (env/get-var s '[facingright])
+        (assert (= b (state/get-var s ['blockat bx by])))
+        (assert (= a (state/get-var s ['blockat bx (dec by)])))                                             (assert (= c (state/get-var s ['blockat cx cy])))                                           
+        (let [[w h] (get (state/get-var s :const) '[topright])
+  ;                                      [gx gy]  (state/get-var s '[at])
+              fr?   (state/get-var s '[facingright])
               dirs  '[[true 1] [false -1]]]
           (for [[fr1 dx1] dirs
                 :let [gx1  (- bx dx1), gy1 by]
-                :when (and (<= 1 gx1 w) (not (env/get-var s  ['someblockat gx1 gy1])))
+                :when (and (<= 1 gx1 w) (not (state/get-var s  ['someblockat gx1 gy1])))
                 [fr2 dx2] dirs
                 :let [gx2  (- cx dx2), gy2 (inc cy)]
                 :when (and (<= 1 gx2 w) 
-                           (contains? #{nil b} (env/get-var s ['blockat gx2 gy2])))]
+                           (contains? #{nil b} (state/get-var s ['blockat gx2 gy2])))]
             (concat
              (when (not (util/truth= fr? fr1))
                (conj (nav-factory gx1 h) (make-specific-turn [gx1 h] fr?)))
@@ -261,19 +261,19 @@
 ; Note: differs from previous (strips) version in use of goal test.
 ;; TODO: should allow self-moves? 
 (defn possible-move-refinements [env goal-fn context nav-context nav-factory block-off-limits state]
-  (let [[w h] (get (env/get-var state :const) '[topright])
+  (let [[w h] (get (state/get-var state :const) '[topright])
         tops  (for [x (range 1 (inc w))] 
-                [x (last (take-while #(and (<= % h) (env/get-var state ['someblockat x %])) (range 1 (inc h))))])]
+                [x (last (take-while #(and (<= % h) (state/get-var state ['someblockat x %])) (range 1 (inc h))))])]
     (util/cons-when
      (when (goal-fn state) [])
      (for [[bx by] tops
-           :let [b (env/get-var state ['blockat bx by])]
+           :let [b (state/get-var state ['blockat bx by])]
            :when (and (> by 1) (not (= b block-off-limits))) 
            [cx cy] tops
-           :let [c (env/get-var state ['blockat cx cy])]
+           :let [c (state/get-var state ['blockat cx cy])]
            :when (and (< cy h) (not (= b c)))]
        [(make-move-block-hla env nav-context nav-factory
-                             b bx by (env/get-var state ['blockat bx (dec by)]) c cx cy)
+                             b bx by (state/get-var state ['blockat bx (dec by)]) c cx cy)
         (MoveBlocksHLA env goal-fn context nav-context nav-factory b)]))))
 
 (defn make-nav-context [env]
@@ -316,8 +316,8 @@
 
 
   (defn warehouse-hungarian-heuristic [env s] "destination-to-destination."
-    (let [[cx cy] (map #(env/get-var s [%]) '[atx aty])
-          pass    (remove #(env/get-var s ['pass-served? (first %)]) (:passengers env))]
+    (let [[cx cy] (map #(state/get-var s [%]) '[atx aty])
+          pass    (remove #(state/get-var s ['pass-served? (first %)]) (:passengers env))]
       (if (empty? pass) 0
           (int (Math/floor 
                 (util/maximum-matching

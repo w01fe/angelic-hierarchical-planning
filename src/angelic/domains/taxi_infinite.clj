@@ -7,26 +7,26 @@
 
 
 (defn- make-left   [s]
-  (let [cx     (env/get-var s '[atx])]
+  (let [cx     (state/get-var s '[atx])]
     (when (> cx 1) 
       (env/FactoredPrimitive ['left cx]  {['atx] cx} {['atx] (dec cx)} -1))))
 
 (defn- make-right  [s]
-  (let [const (env/get-var s :const)
+  (let [const (state/get-var s :const)
         width  (get const '[width])
-        cx     (env/get-var s '[atx])]
+        cx     (state/get-var s '[atx])]
     (when (< cx width)  
       (env/FactoredPrimitive ['right cx] {['atx] cx} {['atx] (inc cx)} -1))))
 
 (defn- make-down  [s]
-  (let [cy     (env/get-var s '[aty])]
+  (let [cy     (state/get-var s '[aty])]
     (when (> cy 1)
       (env/FactoredPrimitive ['down cy]  {['aty] cy} {['aty] (dec cy)} -1))))
 
 (defn- make-up    [s]
-  (let [const (env/get-var s :const)
+  (let [const (state/get-var s :const)
         height (get const '[height])
-        cy     (env/get-var s '[aty])]
+        cy     (state/get-var s '[aty])]
     (when (< cy height)
       (env/FactoredPrimitive ['up cy] {['aty] cy} {['aty] (inc cy)} -1))))
 
@@ -102,18 +102,18 @@
                             (primitive? [] false)
   env/ContextualAction      (precondition-context [s] #{['atx] ['aty]})
   hierarchy/HighLevelAction (immediate-refinements- [s]
-                             (if (and (= dx (env/get-var s ['atx])) 
-                                      (= dy (env/get-var s ['aty])))
+                             (if (and (= dx (state/get-var s ['atx])) 
+                                      (= dy (state/get-var s ['aty])))
                                [[]]
                                (for [af [make-left make-right make-up make-down]
                                      :let [a (af s)]
                                      :when a]
                                  [a this])))
                             (cycle-level- [s] 1)
-  env/AngelicAction         (optimistic-map- [s]
-                              (let [cx (env/get-var s ['atx])
-                                    cy (env/get-var s ['aty])]
-                                {(env/set-var (env/set-var s ['atx] dx) ['aty] dy)
+  hierarchy/ExplicitAngelicAction         (optimistic-map- [s]
+                              (let [cx (state/get-var s ['atx])
+                                    cy (state/get-var s ['aty])]
+                                {(state/set-var (state/set-var s ['atx] dx) ['aty] dy)
                                  (- 0 (util/abs (- dx cx)) (util/abs (- dy cy)))}))
                             (pessimistic-map-[s] 
                               (env/optimistic-map- this s)))
@@ -124,8 +124,8 @@
   env/ContextualAction      (precondition-context [s] context)
   hierarchy/HighLevelAction 
   (immediate-refinements- [s]
-    (let [held-p (set (filter #(= :taxi (env/get-var s ['passx (first %)])) (:passengers env)))
-          src-p  (remove #(or (held-p %) (env/get-var s ['pass-served? (first %)])) (:passengers env))
+    (let [held-p (set (filter #(= :taxi (state/get-var s ['passx (first %)])) (:passengers env)))
+          src-p  (remove #(or (held-p %) (state/get-var s ['pass-served? (first %)])) (:passengers env))
           all-nxt (concat (for [[n _ [dx dy]] held-p] [(NavHLA env dx dy) (make-dropoff :dummy n [dx dy])])
                           (for [[n [sx sy] _]  src-p] [(NavHLA env sx sy) (make-pickup  :dummy n [sx sy])]))]
       (if (empty? all-nxt)
@@ -133,8 +133,8 @@
           [[(NavHLA env width height) (env/make-finish-action env)]])
         (map #(conj (vec %1) this) all-nxt))))
    (cycle-level- [s] nil)
-  env/AngelicAction         (optimistic-map- [s]
-                              {(env/set-vars s (env/make-finish-goal-state env))})
+  hierarchy/ExplicitAngelicAction         (optimistic-map- [s]
+                              {(state/set-vars s (env/make-finish-goal-state env))})
                             (pessimistic-map-[s] {}))
 
 (defn make-infinite-taxi-tla [env]

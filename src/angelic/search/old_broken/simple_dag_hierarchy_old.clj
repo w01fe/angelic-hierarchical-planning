@@ -150,7 +150,7 @@
          (for [[prefix new-fa] (if (env/primitive? first-action) 
                                    [[first-action] nil]
                                  (do-refinement first-action s v av lv))
-               new-fa          (if new-fa [new-fa] (map first (rec-immediate-refinements leaf-precond (env/set-var s (:var leaf-precond) (effect-val first-action)))))]
+               new-fa          (if new-fa [new-fa] (map first (rec-immediate-refinements leaf-precond (state/set-var s (:var leaf-precond) (effect-val first-action)))))]
            [prefix (make-active-precond-hla hierarchy new-fa leaf-precond)])))
   SDH-Precond-HLA  
     (active?     []  true)
@@ -187,7 +187,7 @@
            [[] (make-active-precond-hla hierarchy a this)])))
   SDH-Precond-HLA 
     (active?     []  false)
-    (satisfied?  [s] (= (env/get-var s var) dst-val))    
+    (satisfied?  [s] (= (state/get-var s var) dst-val))    
   env/Action
     (action-name [] name)
     (primitive?  [] false)
@@ -195,7 +195,7 @@
     (precondition-context [s] precond-var-set)
   hierarchy/HighLevelAction
     (immediate-refinements- [s] 
-      (let [cur-val (env/get-var s var)]
+      (let [cur-val (state/get-var s var)]
 ;        (println cur-val dst-val)
         (if (= cur-val dst-val)
             [[]]

@@ -91,7 +91,7 @@
 (defn name-str [x]
   (let [n (:name x)]
     (if (symbol? n) n
-        (vec (map #(if (instance? angelic.env.FactoredState %) (dissoc (angelic.env/as-map %) :const) %) n)))))
+        (vec (map #(if (instance? angelic.env.FactoredState %) (dissoc (angelic.state/as-map %) :const) %) n)))))
 
 (defmethod print-method ::SimpleNode [x s]
   (print-method (str "Nd<" (name-str x) "," (:reward x) "," (:goal? x) ">") s))

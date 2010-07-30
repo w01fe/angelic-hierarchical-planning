@@ -91,7 +91,7 @@
     (precondition-context [s] precond-var-set)
   hierarchy/HighLevelAction
     (immediate-refinements- [s] 
-      (let [cur-val (env/get-var s var)]
+      (let [cur-val (state/get-var s var)]
         (if (= cur-val dst-val)
             [[]]
           (for [as (vals (get dtg cur-val)), action as]

@@ -52,8 +52,8 @@
    that var), AND in such a case, it can also have an active action to help achieve that val.
    (which changes only that var)."
   [init child-var-map goal-action]
-  (let [vars (env/list-vars init)]
-    (env/set-vars init
+  (let [vars (state/list-vars init)]
+    (state/set-vars init
       (concat 
        (apply concat
          (for [var vars]
@@ -86,12 +86,12 @@
 ; effectively representing a composition of set-parent and fire-action actions.
 (defn make-greedy-fire-action [s effect-var]
   (let [{:keys [name precond-map effect-map reward] :as factored-primitive}
-          (->> effect-var action-var (env/get-var s))
+          (->> effect-var action-var (state/get-var s))
         precond-vars (keys (dissoc precond-map effect-var))
-        [free-pv unfree-pv] (util/separate #(env/get-var s (free-var %)) precond-vars)]
+        [free-pv unfree-pv] (util/separate #(state/get-var s (free-var %)) precond-vars)]
     (when (and (env/state-matches-map? s precond-map)
-               (every? #(env/get-var s (parent-var % effect-var)) unfree-pv))
-        (assert (every? #(nil? (env/get-var s (action-var %))) precond-vars))
+               (every? #(state/get-var s (parent-var % effect-var)) unfree-pv))
+        (assert (every? #(nil? (state/get-var s (action-var %))) precond-vars))
         (env/FactoredPrimitive
          [::GreedyFire name]
          (into precond-map 
@@ -134,13 +134,13 @@
 
 (defn deadlocked? [s child-map extra-edges]
   (let [parent-edges (concat extra-edges 
-                       (for [[p cs] child-map, c cs :when (env/get-var s (parent-var p c))] [p c]))
+                       (for [[p cs] child-map, c cs :when (state/get-var s (parent-var p c))] [p c]))
         res-map      (into {} (filter (fn [[p c]] 
-                                        (when-let [a (env/get-var s (action-var c))]
+                                        (when-let [a (state/get-var s (action-var c))]
                                           (contains? (:precond-map a) p))) 
                                       parent-edges))
         extra-edges  (for [[p c] parent-edges 
-                           :let [a (env/get-var s (action-var p))] 
+                           :let [a (state/get-var s (action-var p))] 
                            :when a
                            precond (remove #{p} (keys (:precond-map a)))
                            :let [res (res-map precond)]
@@ -149,10 +149,10 @@
     (not (graphs/dag? (concat parent-edges extra-edges)))))
 
 (defn var-not-usable? [s ancestor-map target-var a-var]
-  (if-let [a  (env/get-var s (action-var a-var))]
+  (if-let [a  (state/get-var s (action-var a-var))]
       (let [pm (:precond-map a)]
         (every?
-         (fn [pv] (or (= (env/get-var s pv) (pm pv)) (var-not-usable? s ancestor-map target-var pv)))
+         (fn [pv] (or (= (state/get-var s pv) (pm pv)) (var-not-usable? s ancestor-map target-var pv)))
          (remove #{a-var} (keys pm))))
     (not (contains? (ancestor-map a-var) target-var))))
 
@@ -162,14 +162,14 @@
 ; Or, more simply, variables should "die off".  
 ;; TODO: generalize.  This is just special case for most logistics,
 (defn dead-end? [s ancestor-map child-map extra-edges]
-  (let [gpm      (:precond-map (env/get-var s (action-var sas/goal-var-name)))
+  (let [gpm      (:precond-map (state/get-var s (action-var sas/goal-var-name)))
         live-set (apply clojure.set/union #{sas/goal-var-name}
                         (for [pv (remove #{sas/goal-var-name} (keys gpm))
-                              :when (not (= (env/get-var s pv) (gpm pv)))]
+                              :when (not (= (state/get-var s pv) (gpm pv)))]
                           (ancestor-map pv)))]
     (some #(not (live-set (second %)))
           (concat extra-edges
-            (for [[p cs] child-map, c cs :when (env/get-var s (parent-var p c))] [p c])))))
+            (for [[p cs] child-map, c cs :when (state/get-var s (parent-var p c))] [p c])))))
 
 (defn possible-activation-actions  
    "Return a list of possible activation actions for var v possible in state s.
@@ -184,8 +184,8 @@
 
 
 (defn current-child [s child-var-map p-var]
-  (when-not (env/get-var s (free-var p-var))
-    (util/find-first #(env/get-var s (parent-var p-var %))
+  (when-not (state/get-var s (free-var p-var))
+    (util/find-first #(state/get-var s (parent-var p-var %))
       (child-var-map p-var))))
 
 ;;;;;;;;;;;;;;;;;;;;;;;;;;;;; Actions fn, actual env ;;;;;;;;;;;;;;;;;;;;;;;;;;;
@@ -230,16 +230,16 @@
 ;      (if false ;(deadlocked? s child-var-map)
 ;        (do (println s) nil)
       (when-not (dead-end? s av-map child-var-map []);)
-       (let [[aa-vars na-vars] (util/separate #(env/get-var s (action-var %)) vars)
+       (let [[aa-vars na-vars] (util/separate #(state/get-var s (action-var %)) vars)
              aa-parent-edges   (for [av aa-vars
-                                      :let [pm (:precond-map (env/get-var s (action-var av)))]
+                                      :let [pm (:precond-map (state/get-var s (action-var av)))]
                                       pv    (remove #{av} (keys pm))
-                                      :when (and (not (env/get-var s (action-var pv)))
-                                                 (not (= (pm pv) (env/get-var s pv))))]
+                                      :when (and (not (state/get-var s (action-var pv)))
+                                                 (not (= (pm pv) (state/get-var s pv))))]
                                   [pv av])
              na-tuples         (for [nav na-vars
                                      :let  [child (current-child s child-var-map nav)]
-                                     :when (and child (not (env/get-var s (action-var child))))]
+                                     :when (and child (not (state/get-var s (action-var child))))]
                                  [nav child])]
 ;         (println "\n\n\n" s "\n\n" (:act-seq (meta s)) "\n")
 ;         (println "\n\n\n" s "\n"  aa-vars "\n"  aa-parent-edges "\n" na-tuples )
@@ -250,26 +250,26 @@
             [x]
 
           ;; Active bottom-up var -- assigned, needs its value changed.               
-          (util/find-first (fn [[pv cv]] (env/get-var s (parent-var pv cv))) aa-parent-edges)
+          (util/find-first (fn [[pv cv]] (state/get-var s (parent-var pv cv))) aa-parent-edges)
             (let [[pv cv] x, 
-                  p-val (env/get-var s pv)
-                  d-val ((:precond-map (env/get-var s (action-var cv))) pv)
+                  p-val (state/get-var s pv)
+                  d-val ((:precond-map (state/get-var s (action-var cv))) pv)
                   dtg   (get-in dtgs [pv p-val])]
               (for [n-val (acyclic-succ-fn pv p-val d-val), a (dtg n-val)]
                 (make-add-action-action a)))
 
           ;; Inactive bottom-up var -- needs to be assigned.  
-          (util/find-first #(env/get-var s (free-var %)) (map first aa-parent-edges))
+          (util/find-first #(state/get-var s (free-var %)) (map first aa-parent-edges))
             (possible-activation-actions s av-map child-var-map x)
 
           ;; Active top-down var -- add actions
-          (util/find-first #(not (env/get-var s (free-var %))) (map second na-tuples))  
-            (do (println "A!" x (env/get-var s x) (env/get-var s (parent-var x sas/goal-var-name)))
-             (for [as (vals (util/safe-get-in dtgs [x (env/get-var s x)])), a as]
+          (util/find-first #(not (state/get-var s (free-var %))) (map second na-tuples))  
+            (do (println "A!" x (state/get-var s x) (state/get-var s (parent-var x sas/goal-var-name)))
+             (for [as (vals (util/safe-get-in dtgs [x (state/get-var s x)])), a as]
                (make-add-action-action a)))
 
           ;; Inactive top-down var -- activate it
-          (util/find-first #(env/get-var s (free-var %)) (map second na-tuples))
+          (util/find-first #(state/get-var s (free-var %)) (map second na-tuples))
             (do (println "I!")
              (possible-activation-actions s av-map child-var-map x))
             
@@ -386,19 +386,19 @@
 
 (declare precond-deadlocked?)
 (defn action-deadlocked? [s var]
-  (when-let [a (env/get-var s (action-var var))]
+  (when-let [a (state/get-var s (action-var var))]
     (some #(precond-deadlocked? s % var) (remove #{var} (keys (:precond-map a))))))
 
 (defn precond-deadlocked? [s precond e-var]
-  (or (and (not (env/get-var s (free-var precond)))
-           (not (env/get-var s (parent-var precond e-var))))
+  (or (and (not (state/get-var s (free-var precond)))
+           (not (state/get-var s (parent-var precond e-var))))
       (action-deadlocked? s precond)))
 
 (defn precond-deadlocked-ooc? [s precond e-var child-var-map context]
-  (or (and (not (env/get-var s (free-var precond)))
-           (not (env/get-var s (parent-var precond e-var)))
+  (or (and (not (state/get-var s (free-var precond)))
+           (not (state/get-var s (parent-var precond e-var)))
            (not (contains? context (current-child s child-var-map precond))))
-      (when-let [a (env/get-var s (action-var precond))]
+      (when-let [a (state/get-var s (action-var precond))]
         (some #(precond-deadlocked-ooc? s % precond child-var-map context) 
               (remove #{precond} (keys (:precond-map a)))))))
 
@@ -419,17 +419,17 @@
        (precondition-context [s] pc)
       hierarchy/HighLevelAction
        (immediate-refinements- [s] 
-         (cond (= (env/get-var s var) dst-val)
+         (cond (= (state/get-var s var) dst-val)
                  (do ;(print "!S") (flush)
-                     (assert (not (env/get-var s av))) [[]])
-               (env/get-var s av)
+                     (assert (not (state/get-var s av))) [[]])
+               (state/get-var s av)
                  (if (action-deadlocked? s var) 
                      (do ;(print "!D") 
                        [[]])
                    (do ;(print "!A") 
-                       [[(make-fire-action-hla hierarchy var (env/get-var s av)) this]]))
+                       [[(make-fire-action-hla hierarchy var (state/get-var s av)) this]]))
                :else 
-                 (let [p-val (env/get-var s var)
+                 (let [p-val (state/get-var s var)
                        dtg   (util/safe-get-in hierarchy [:dtgs var p-val])]
                    ;(print "!C")
                    (for [n-val ((:acyclic-succ-fn hierarchy) var p-val dst-val), a (dtg n-val)]
@@ -466,11 +466,11 @@
     hierarchy/HighLevelAction
       (immediate-refinements- [s] 
 ;        (Thread/sleep 10)
-        (assert (= (env/get-var s (action-var effect-var)) a))
+        (assert (= (state/get-var s (action-var effect-var)) a))
         (let [na-tuples         (for [nav   ancestor-vars
-                                      :when (not #(env/get-var s (action-var %)))
+                                      :when (not #(state/get-var s (action-var %)))
                                       :let  [child (current-child s child-var-map nav)]
-                                      :when (and child (not (env/get-var s (action-var child))))]
+                                      :when (and child (not (state/get-var s (action-var child))))]
                                   [nav child])]
          (util/cond-let [x]
           ;; Greedy -- all preconditions satisfied and not assigned elsewhere
@@ -491,25 +491,25 @@
 
           ;; Active precondition -- assigned, needs its value changed, not deadlock               
           ;; TODO: order
-          (util/find-first #(and (env/get-var s (parent-var % effect-var))
-                                 (not (= (env/get-var s %) (reduced-pm %)))
+          (util/find-first #(and (state/get-var s (parent-var % effect-var))
+                                 (not (= (state/get-var s %) (reduced-pm %)))
                                  (not (precond-deadlocked? s % effect-var)))
                            (keys reduced-pm))
-            (do ;(print "a" (if (env/get-var s (action-var x)) "o" "n")) (flush)
+            (do ;(print "a" (if (state/get-var s (action-var x)) "o" "n")) (flush)
              [[(make-achieve-precondition-hla hierarchy x (reduced-pm x)) this]])
 
           ;; Inactive precondition -- needs to be assigned.  
-          (util/find-first #(and (env/get-var s (free-var %))
-                                 (not (= (env/get-var s %) (reduced-pm %))))
+          (util/find-first #(and (state/get-var s (free-var %))
+                                 (not (= (state/get-var s %) (reduced-pm %))))
                            (keys reduced-pm))
             (do ;(print "i") (flush) 
              (for [a (activation-actions child-var-map x)]
                [a this]))
 
           ;; Active top-down var -- add actions
-          (util/find-first #(not (env/get-var s (free-var %))) (map second na-tuples))  
+          (util/find-first #(not (state/get-var s (free-var %))) (map second na-tuples))  
             (do (println "A!");(print "a") (flush)
-             (for [as (vals (util/safe-get-in (:dtgs hierarchy) [x (env/get-var s x)])), a as]
+             (for [as (vals (util/safe-get-in (:dtgs hierarchy) [x (state/get-var s x)])), a as]
                [(make-add-action-action a) this]))
 
           ;; Inactive top-down var -- activate it
@@ -546,14 +546,14 @@
      env
      [(make-fire-action-hla
        {:type                     ::ASPlanSkipHierarchy
-        :full-context             (env/current-context (env/initial-state env))
+        :full-context             (state/current-context (env/initial-state env))
         :dtgs                     (:dtgs env)
         :child-var-map            cvm
         :ancestor-var-map         av-map
         :acyclic-succ-fn          (:acyclic-succ-fn env)
         :precondition-context-map pc-map}
        sas/goal-var-name
-       (env/get-var (env/initial-state env) (action-var sas/goal-var-name)))])))
+       (state/get-var (env/initial-state env) (action-var sas/goal-var-name)))])))
 
 
 (defn asplan-skip-solution-name [sol]
@@ -594,7 +594,7 @@
             env/ContextualAction 
             (precondition-context [s] pc)
             hierarchy/HighLevelAction
-            (immediate-refinements- [s] (if (env/get-var s av) [dl-plan] [nodl-plan]))
+            (immediate-refinements- [s] (if (state/get-var s av) [dl-plan] [nodl-plan]))
             (cycle-level-           [s] nil)))))
 
 
@@ -623,11 +623,11 @@
    "Return [deadlocked matching free-unmatching reserved-unmatching]"
    [s effect-var reduced-pm deadlock-set]
    (let [[blocked unblocked] (util/separate #(or (deadlock-set %)
-                                                 (and (not (env/get-var s (free-var %)))
-                                                      (not (env/get-var s (parent-var % effect-var)))))
+                                                 (and (not (state/get-var s (free-var %)))
+                                                      (not (state/get-var s (parent-var % effect-var)))))
                                             (keys reduced-pm))
-         [matching no-match] (util/separate #(= (reduced-pm %) (env/get-var s %)) unblocked)
-         [free reserved]     (util/separate #(env/get-var s (free-var %))) no-match]
+         [matching no-match] (util/separate #(= (reduced-pm %) (state/get-var s %)) unblocked)
+         [free reserved]     (util/separate #(state/get-var s (free-var %))) no-match]
      [blocked matching free reserved])))
 
 
@@ -654,7 +654,7 @@
        (precondition-context [s] pc)
       hierarchy/HighLevelAction
        (immediate-refinements- [s]
-         (assert (= (env/get-var s (action-var var)) action))
+         (assert (= (state/get-var s (action-var var)) action))
          (let [[sat unsat] (util/separate (fn [[pvar pval]] (trivial-precond? s var pvar pval)) pm)
                live (filter (fn [[pvar pval]] (live-precond? s var pvar pval)) unsat)]
            (cond-let [x]
@@ -686,9 +686,9 @@
    (precondition-context [s] #{effect-var})
   hierarchy/HighLevelAction
    (immediate-refinements- [s] 
-     (assert (not (env/get-var s (free-var effect-var))))
-     (assert (not (env/get-var s (action-var effect-var))))
-     (for [[eval actions] (util/safe-get-in hierarchy [:dtgs effect-var (env/get-var s effect-var)])
+     (assert (not (state/get-var s (free-var effect-var))))
+     (assert (not (state/get-var s (action-var effect-var))))
+     (for [[eval actions] (util/safe-get-in hierarchy [:dtgs effect-var (state/get-var s effect-var)])
            a actions]
        [(make-add-action-action a)]))
    (cycle-level-           [s] nil))
@@ -748,15 +748,15 @@
 
  ; Only need vars that could use current val *next* (with support from below, ignore for now).
  (defn possible-parents [hierarchy s effect-var]
-   (let [eval (env/get-var s effect-var)]
+   (let [eval (state/get-var s effect-var)]
      (filter
       (fn [p]
-        (if-let [pa (env/get-var s (action-var p))]
+        (if-let [pa (state/get-var s (action-var p))]
           (condp = (get (:precond-map pa) effect-var)
             nil  (can-use-next? hierarchy effect-var eval p (get (:effect-map pa) p))
             eval true
             false)
-          (can-use-next? hierarchy effect-var eval p (env/get-var s p))))
+          (can-use-next? hierarchy effect-var eval p (state/get-var s p))))
       ((util/safe-get hierarchy :child-var-map) effect-var)))))
 
 

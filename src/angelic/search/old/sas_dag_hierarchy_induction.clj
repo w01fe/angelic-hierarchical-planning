@@ -154,7 +154,7 @@
         (constantly refs))
     (fn gen [s]
       (for [[pre-pairs ref] refinements-and-preconditions, 
-            :when (every? (fn [[var val]] (= val (env/get-var s var))) pre-pairs)]
+            :when (every? (fn [[var val]] (= val (state/get-var s var))) pre-pairs)]
         ref))))
 
 (defn make-compiled-hla [name orig-hla precond-vars effects]
@@ -330,7 +330,7 @@
   env/ContextualAction 
     (precondition-context [s] (precond-var-set this))
   hierarchy/HighLevelAction
-    (immediate-refinements- [s] [[(util/safe-get @src-map-atom (env/get-var s var))]])
+    (immediate-refinements- [s] [[(util/safe-get @src-map-atom (state/get-var s var))]])
     (cycle-level-           [s] nil))
 
 (defn make-precond-hla [var dst-val] 
@@ -426,7 +426,7 @@
 (defn trivially-satisfied-precond-set? [a s]
   (if (= (type a) ::SAS-Compiled-HLA) (recur (:orig-hla a) s)
       (and (= (type a) ::SAS-Precond-Set-HLA)
-           (every? (fn [p] (= (env/get-var s (:var p)) (:dst-val p)))
+           (every? (fn [p] (= (state/get-var s (:var p)) (:dst-val p)))
                    (:ordered-preconds a)))))
 
 ; (loop [init-sets init-sets, ordered-preconds ordered-preconds, used-vars #{}]

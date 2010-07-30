@@ -65,7 +65,7 @@
     (is/SimpleNode (hfs-name hfs) (:reward hfs) nil 
                    (lazy-seq (map hfs->simple-node (hfs-children hfs))) hfs)))
 
-(defn lift-state [parent child] (env/apply-effects parent (env/extract-effects child)))
+(defn lift-state [parent child] (state/apply-effects parent (env/extract-effects child)))
 
 (defn lift-hfs 
   "Lift child-solution into the context of parent-node."
@@ -87,7 +87,7 @@
   (let [{:keys [state reward opt-sol remaining-actions]} hfs
         [f & r] remaining-actions
         context (env/precondition-context f state)]      
-    [[(env/extract-context state context) (env/action-name f)]
+    [[(state/extract-context state context) (env/action-name f)]
      #(make-root-hfs (env/get-logger state context) f)]))
 
 (defn first-action-hfs "Return hfs for just first action." [hfs]

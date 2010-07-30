@@ -42,7 +42,7 @@
 (defn stitch-effect-map [effect-map state reward-to-state]
   (util/map-map1 
    (fn [[effects local-reward]]
-     [(vary-meta (env/apply-effects state effects) assoc 
+     [(vary-meta (state/apply-effects state effects) assoc 
                  :opt (concat (:opt (meta state)) (:opt (meta effects)))
                  :cycle-depth (:cycle-depth (meta effects)))
       (+ reward-to-state local-reward)]) 
@@ -104,7 +104,7 @@
 (defn get-sa-node [#^HashMap cache s a]
   "Create a new sa-node, or returned the cached copy if it exists."
   (let [context (env/precondition-context a s)]
-    (util/cache-with cache [(env/action-name a) (env/extract-context s context)]
+    (util/cache-with cache [(env/action-name a) (state/extract-context s context)]
       (let [s     (env/get-logger s)
             prim? (env/primitive? a)
             [ss r] (when-let [x (and prim? (env/applicable? a s) (env/successor a s))] x)] ;pun        
@@ -168,7 +168,7 @@
   (let [[g-cutoff g-depth] (first (subseq cdm >= cutoff))]
     (if (< depth (min node-depth  g-depth)) (assoc cdm cutoff depth) cdm)))
 
-(defn spos [s]  (try  (map #(env/get-var s %) '[[atx] [aty]]) (catch Exception e)))
+(defn spos [s]  (try  (map #(state/get-var s %) '[[atx] [aty]]) (catch Exception e)))
 
 ;; May return states better than next-best, but these will be held at the parent.
 
@@ -176,7 +176,7 @@
 (defn expand-sa-node [node #^HashMap cache next-best state reward-to-state last-context
                       #^IdentityHashMap stack-node-depths depth]
   (assert (not (.containsKey stack-node-depths node)))
- ; (println (apply str (repeat depth \ )) "Entering " (env/action-name (:action node)) (map #(env/get-var state %) '[[atx] [aty]]) "at depth" depth ", " (count (first @(:result-vec-and-map-atom node))) ", " (cutoff (:queue node)) next-best last-context reward-to-state)
+ ; (println (apply str (repeat depth \ )) "Entering " (env/action-name (:action node)) (map #(state/get-var state %) '[[atx] [aty]]) "at depth" depth ", " (count (first @(:result-vec-and-map-atom node))) ", " (cutoff (:queue node)) next-best last-context reward-to-state)
 ;  (println (apply str (repeat depth \ )) "States on queue are: " (util/map-map (fn [[k v]] [[(spos (:state k)) (map env/action-name (:remaining-actions k))] (- v)]) (into {} (filter #(< (second %) Double/POSITIVE_INFINITY) (queues/pq-peek-pairs (:queue node))))))  
   (.put stack-node-depths node depth)
   (let [good-queue (:queue node)
@@ -213,7 +213,7 @@
 ;            (let [[_ dx dy] (env/action-name (:action node))]
 ;              (doseq [[ss sr] (stitch-effect-map clean state 0 #_ reward-to-state)]
 ;                (println ss sr clean new-results (env/action-name (:action node)))
-;                (let [[sx sy] (map #(env/get-var state %) '[[atx] [aty]])]
+;                (let [[sx sy] (map #(state/get-var state %) '[[atx] [aty]])]
 ;                  (when-not (= (- sr) (+ (util/abs (- sx dx)) (util/abs (- sy dy))))
 ;                     (println "ERROR" [sx sy] [dx dy] sr (:min-cycle-depth (:entry (meta ss))) reward-to-state) #_ (dr/debug-repl))))))
           
@@ -225,7 +225,7 @@
               (- (or (:cutoff (meta entry)) (:reward-to-state entry))))) ;(if-let [n  (:sanode entry)] (cutoff (:queue n)) 0)
           (.remove stack-node-depths node) ;; TODO: catchup!! 
 
-       ;   (println (apply str (repeat depth \ )) "Returning from" (env/action-name (:action node)) (map #(env/get-var state %) '[[atx] [aty]]) "With cutoffs" cut (cutoff good-queue) ", ns"  (util/map-keys spos (stitch-effect-map catchup state reward-to-state) ) (count catchup) (count new-results))   
+       ;   (println (apply str (repeat depth \ )) "Returning from" (env/action-name (:action node)) (map #(state/get-var state %) '[[atx] [aty]]) "With cutoffs" cut (cutoff good-queue) ", ns"  (util/map-keys spos (stitch-effect-map catchup state reward-to-state) ) (count catchup) (count new-results))   
           (assert (<= (cutoff good-queue) init-cutoff))
           
           (PartialResult (stitch-effect-map 
@@ -241,12 +241,12 @@
               b-ra (:remaining-actions entry), b-sa (:sanode entry), b-cd (:min-cycle-depth entry)
               rec-next-best (- (max next-best (cutoff both-queue)) b-rts)]
           (if (empty? b-ra)
-              (do  ;(println (apply str (repeat depth \ )) "! found state" (map #(env/get-var b-s %) '[[atx] [aty]]) "for" (env/action-name (:action node)) "form" (map #(env/get-var state %) '[[atx] [aty]]) "with reward" b-rts "mcd" (:min-cycle-depth entry))
+              (do  ;(println (apply str (repeat depth \ )) "! found state" (map #(state/get-var b-s %) '[[atx] [aty]]) "for" (env/action-name (:action node)) "form" (map #(state/get-var state %) '[[atx] [aty]]) "with reward" b-rts "mcd" (:min-cycle-depth entry))
                 (recur (assoc-safe new-results >=
                                   (vary-meta (extract-effect b-s (:context node) (:opt (meta b-s))) assoc :entry entry) b-rts)
                       cutoff-depth-map good-roots))
             (let [[rec rcut] (if-let [stack-depth (.get stack-node-depths b-sa)]
-                            (do ;(println "Stack hit on" (env/action-name (:action b-sa)) (map #(env/get-var b-s %) '[[atx] [aty]])) 
+                            (do ;(println "Stack hit on" (env/action-name (:action b-sa)) (map #(state/get-var b-s %) '[[atx] [aty]])) 
                                 [(PartialResult {} Double/NEGATIVE_INFINITY stack-depth @(:rec-context-atom entry)) (- neg-reward)])
                             [(expand-sa-node b-sa cache rec-next-best b-s b-rts @(:rec-context-atom entry)
                                               stack-node-depths (inc depth)) (+ (cutoff (:queue b-sa)) b-rts)])

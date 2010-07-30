@@ -72,12 +72,12 @@
 (defn- sahtn-action [#^HashMap cache s a r]
   "Handling boring things - caching and stitching states, etc."
   (let [context-schema  (env/precondition-context a s)
-        context         (env/extract-context s context-schema)
+        context         (state/extract-context s context-schema)
 	cache-key       [(env/action-name a) context]
 	cache-val       (.get cache cache-key)]
     (util/map-map 
         (fn [[effect-map local-reward]]
-          [(vary-meta (env/apply-effects s effect-map)
+          [(vary-meta (state/apply-effects s effect-map)
                       assoc :opt (concat (:opt (meta s)) (:opt (meta effect-map))))
            (+ r local-reward)])
         (or cache-val

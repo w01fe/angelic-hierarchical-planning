@@ -128,12 +128,12 @@
 
 
 (defn generalize-outcome-pair [[outcome-state reward] gen-state reward-to-gen-state]
-  [(vary-meta (env/apply-effects gen-state (env/extract-effects outcome-state)) assoc 
+  [(vary-meta (state/apply-effects gen-state (env/extract-effects outcome-state)) assoc 
               :opt (concat (:opt (meta gen-state)) (:opt (meta outcome-state))))
    (+ reward reward-to-gen-state)])
 
 (defn pretty-state [s]
-  (dissoc (env/as-map (or s {})) :const))
+  (dissoc (state/as-map (or s {})) :const))
 
 
 
@@ -243,7 +243,7 @@
 (defn make-abstracted-incremental-dijkstra-sa-search [state reward action]
   (let [context (env/precondition-context action state)]
     (make-search-in-context 
-     (get-cached-search [(env/extract-context state context) (env/action-name action)] 
+     (get-cached-search [(state/extract-context state context) (env/action-name action)] 
        (make-incremental-dijkstra-sa-search (env/get-logger state context) action))
      state reward)))
 
@@ -361,7 +361,7 @@
 
 (defn connect-downward-cache [#^HashMap cc state action [new-parent new-reward :as new-parent-pair]]
   (let [context (env/precondition-context action state)
-        ic      (util/cache-with cc [(env/extract-context state context) (env/action-name action)]
+        ic      (util/cache-with cc [(state/extract-context state context) (env/action-name action)]
                   (InvertedCache (atom []) (atom []) new-reward))
         {:keys [result-pairs-atom parent-pairs-atom base-reward]} ic 
         first-visit?  (empty? @parent-pairs-atom)]

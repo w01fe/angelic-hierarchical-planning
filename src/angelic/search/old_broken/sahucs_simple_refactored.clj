@@ -77,7 +77,7 @@
 
 
 (defn generalize-outcome-pair [[outcome-state reward] gen-state reward-to-gen-state]
-  [(vary-meta (env/apply-effects gen-state (env/extract-effects outcome-state)) assoc 
+  [(vary-meta (state/apply-effects gen-state (env/extract-effects outcome-state)) assoc 
               :opt (concat (:opt (meta gen-state)) (:opt (meta outcome-state))))
    (+ reward reward-to-gen-state)])
 
@@ -91,7 +91,7 @@
 (declare se-goal se-refine)
 
 (defn pretty-state [s]
-  (dissoc (env/as-map (or s {})) :const))
+  (dissoc (state/as-map (or s {})) :const))
 
 (deftype OpenSubproblem [name child-queue] :as this
   Subproblem
@@ -173,9 +173,9 @@
          x#))))
 
 (defn get-open-subproblem-instance [state action]
-;  (println "\nGetting subproblem" (env/as-map state) (env/action-name action) "\n")
+;  (println "\nGetting subproblem" (state/as-map state) (env/action-name action) "\n")
   (let [context   (env/precondition-context action state)
-        name     [(env/extract-context state context) (env/action-name action)]]
+        name     [(state/extract-context state context) (env/action-name action)]]
     (make-shared-subproblem 
      (get-subproblem-instance name 
        (make-shared-subproblem-cache

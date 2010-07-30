@@ -34,7 +34,7 @@
 (defn stitch-effect-map [effect-map state reward-to-state]
   (util/map-map1 
    (fn [[effects local-reward]]
-     [(vary-meta (env/apply-effects state effects) assoc 
+     [(vary-meta (state/apply-effects state effects) assoc 
                  :opt (concat (:opt (meta state)) (:opt (meta effects))))
       (+ reward-to-state local-reward)]) 
    effect-map))
@@ -90,7 +90,7 @@
 (defn get-sa-node [#^HashMap cache s a]
   "Create a new sa-node, or returned the cached copy if it exists."
   (let [context (env/precondition-context a s)]
-    (util/cache-with cache [(env/action-name a) (env/extract-context s context)]
+    (util/cache-with cache [(env/action-name a) (state/extract-context s context)]
       (let [s (env/get-logger s context)]
         (if (env/primitive? a)
           (SANode s  a 
@@ -125,7 +125,7 @@
                     (queues/g-pq-remove!  (:queue node) entry)
                     (recur (assoc-safe new-results >= eff b-rts)))
                 (not b-sa)     ;; Dijkstra child.
-                  (do ;(println "Out" (map #(env/get-var (:state node) %) '[[atx] [aty]]) (map env/action-name b-ra))
+                  (do ;(println "Out" (map #(state/get-var (:state node) %) '[[atx] [aty]]) (map env/action-name b-ra))
                       (doseq [ref (hierarchy/immediate-refinements (first b-ra) b-s)]
                         (queues/pq-add! (:queue node) 
                                         (get-sanode-entry cache b-s b-rts (concat ref (next b-ra)) cycle-level)
