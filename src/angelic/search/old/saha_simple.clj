@@ -116,7 +116,7 @@
       (SANode s a
               (for [ref ne-refs] (make-ref-node cache s ref))
               (atom (if (seq empty-refs) {s []} {}))
-              (atom (if (seq empty-refs) (assoc (env/optimistic-map a s) s 0) (env/optimistic-map a s)))))))
+              (atom (if (seq empty-refs) (assoc (hierarchy/optimistic-map a s) s 0) (hierarchy/optimistic-map a s)))))))
 
 (defn get-sa-node [#^HashMap cache s a]
   (let [context   (env/precondition-context a s)

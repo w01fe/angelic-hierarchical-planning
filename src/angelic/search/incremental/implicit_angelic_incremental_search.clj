@@ -117,9 +117,9 @@
 (defn ahs-optimistic-map [ahs]
   (let [{:keys [state remaining-actions]} ahs]
 #_    (apply println "Optimistic map for " (ahs-first-sub-name ahs) "is\n"
-             (for [[s r] (env/optimistic-map (util/safe-singleton remaining-actions) state)]
+             (for [[s r] (hierarchy/optimistic-map (util/safe-singleton remaining-actions) state)]
                (str "  " (env/extract-effects s) ": " r "\n")))
-    (env/optimistic-map (util/safe-singleton remaining-actions) state)))
+    (hierarchy/optimistic-map (util/safe-singleton remaining-actions) state)))
 
 
 ;;;;;;;;;;;;;;;;;;;;;;;; Simple Weighted Summary & Node ;;;;;;;;;;;;;;;;;;;;;;;;

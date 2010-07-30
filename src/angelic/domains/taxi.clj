@@ -70,7 +70,7 @@
                (for [[pass] passengers] (make-pickup s pass))))))
   (goal-fn [this] 
     (let [goal-map (env/goal-map this)]
-      #(when (env/state-matches-map? % goal-map)
+      #(when (state/state-matches-map? % goal-map)
          (env/solution-and-reward %))))
  env/FactoredEnv
   (goal-map [] (into {} (for [[pass] passengers] [['pass-served? pass] true]))))
@@ -112,7 +112,7 @@
                                 {(state/set-var (state/set-var s ['atx] dx) ['aty] dy)
                                  (- 0 (util/abs (- dx cx)) (util/abs (- dy cy)))}))
                             (pessimistic-map- [_ s] 
-                              (env/optimistic-map- this s)))
+                              (hierarchy/optimistic-map- this s)))
 
 (deftype GGNavHLA [env] :as this
   env/Action                (action-name [_] '[nav])
@@ -151,7 +151,7 @@
                                     (util/abs (- sx cx)) (util/abs (- sy cy))
                                     (util/abs (- sx dx)) (util/abs (- sy dy)))}))
                             (pessimistic-map- [_ s] 
-                              (env/optimistic-map- this s)))
+                              (hierarchy/optimistic-map- this s)))
 
 (defn taxi-hungarian-heuristic [env s] "destination-to-destination."
   (let [[cx cy] (map #(state/get-var s [%]) '[atx aty])

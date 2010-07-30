@@ -78,7 +78,7 @@
         precond-vars (keys (dissoc precond-map effect-var))
         effect-vars  (keys (dissoc effect-map effect-var))
         [free-pv unfree-pv] (util/separate #(state/get-var s (free-var %)) (concat precond-vars effect-vars))]
-    (when (and (env/state-matches-map? s precond-map)
+    (when (and (state/state-matches-map? s precond-map)
                (every? #(state/get-var s (parent-var % effect-var)) unfree-pv))
         (util/assert-is (every? #(nil? (state/get-var s (action-var %))) precond-vars) ); "%s" [name effect-var (println s)])
         (util/assert-is (every? #(nil? (state/get-var s (action-var %))) effect-vars))        
@@ -173,7 +173,7 @@
   env/Env 
     (initial-state [_] init)
     (actions-fn    [] actions-fn)
-    (goal-fn       [] #(when (env/state-matches-map? % g-map) (env/solution-and-reward %)))
+    (goal-fn       [] #(when (state/state-matches-map? % g-map) (env/solution-and-reward %)))
   env/FactoredEnv
     (goal-map      [] g-map))
 

@@ -84,7 +84,7 @@
      (for [f [make-left make-right make-up make-down make-turn make-get make-put]
            :let [a (f s)] :when a]
        a)))
-  (goal-fn [_] #(when (env/state-matches-map? % goal) (env/solution-and-reward %)))
+  (goal-fn [_] #(when (state/state-matches-map? % goal) (env/solution-and-reward %)))
  env/FactoredEnv
   (goal-map [] goal))
 

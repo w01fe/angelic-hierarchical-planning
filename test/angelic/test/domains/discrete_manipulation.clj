@@ -41,7 +41,7 @@ parked
          [[:a [15 13] #{[4 6] [6 3]}] [:b [4 3] #{[14 13] [16 14]}] [:c [13 5] #{[6 13] [4 13]}] [:d [15 6] #{[3 13] [3 16]}] [:e [15 3] #{[4 3] [3 6]}] [:f [16 15] #{[13 3] [14 6]}]])))
 
 
-(def *test-domains*
+(def *discrete-manipulation-test-domains*
      [[[[10 10] [1 1] [[[4 4] [6 6]]]
         [[:a [5 5] [[4 4] [6 6]]] [:b [4 5] [[5 5] [6 6]]]] 2 2 2]
        -27 -29]
@@ -56,7 +56,7 @@ parked
        nil nil]])
 
 (deftest discrete-manipulation-ucs
-  (doseq [[args reward _] *test-domains*]
+  (doseq [[args reward _] *discrete-manipulation-test-domains*]
     (is (= (->> args
                 (apply make-discrete-manipulation-env-regions)
                 ucs/uniform-cost-search
@@ -64,7 +64,7 @@ parked
            reward))))
 
 (deftest discrete-manipulation-shop-ucs
-  (doseq [[args _ reward] *test-domains*]
+  (doseq [[args _ reward] *discrete-manipulation-test-domains*]
     (is (= (->> args
                 (apply make-discrete-manipulation-env-regions)
                 make-discrete-manipulation-hierarchy

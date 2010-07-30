@@ -219,7 +219,7 @@
             {:keys [state remaining-actions]} inner-hfs
             next-hfs  (lazy-seq (hfs-children inner-hfs))]
         (into {}
-          (for [[ss sr] (env/optimistic-map (util/safe-singleton remaining-actions) state)]
+          (for [[ss sr] (hierarchy/optimistic-map (util/safe-singleton remaining-actions) state)]
             [ss 
              (is/cache-incremental-search
               (is/make-delayed-search :dummy (is/SimpleSummary sr)
@@ -260,7 +260,7 @@
 
 (defn make-saha-search [state action]
   (get-saha-sas-search (make-root-hfs state action) 
-                       (util/safe-singleton (keys (env/optimistic-map action state)))))
+                       (util/safe-singleton (keys (hierarchy/optimistic-map action state)))))
 
 
 

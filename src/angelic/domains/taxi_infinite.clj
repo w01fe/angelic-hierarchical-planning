@@ -65,7 +65,7 @@
            [(make-pickup s pass [x y]) (make-dropoff s pass [x y])])))))
   (goal-fn [this] 
     (let [goal-map (env/goal-map this)]
-      #(when (env/state-matches-map? % goal-map)
+      #(when (state/state-matches-map? % goal-map)
          (env/solution-and-reward %))))
  env/FactoredEnv
   (goal-map [] 
@@ -116,7 +116,7 @@
                                 {(state/set-var (state/set-var s ['atx] dx) ['aty] dy)
                                  (- 0 (util/abs (- dx cx)) (util/abs (- dy cy)))}))
                             (pessimistic-map- [_ s] 
-                              (env/optimistic-map- this s)))
+                              (hierarchy/optimistic-map- this s)))
 
 (deftype InfiniteTaxiTLA [env context]      :as this
   env/Action                (action-name [_] ['top])
