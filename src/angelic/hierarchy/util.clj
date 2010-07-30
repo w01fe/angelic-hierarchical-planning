@@ -1,4 +1,4 @@
-(ns angelic.hierarchy-utils
+(ns angelic.hierarchy.util
   (:require [edu.berkeley.ai.util :as util]
             [angelic.env :as env]
             [angelic.env.state :as state]

@@ -1,11 +1,13 @@
 (ns angelic.sas
   (:require [edu.berkeley.ai.util :as util]
-            [angelic [env :as env]])
+            [angelic.env :as env]
+            [angelic.env.state :as state]
+            angelic.env.util)
   (:import [java.util LinkedList])
   )
 
 
-(deftype SAS-Var     [name vals])
+(defrecord SAS-Var [name vals])
 
 ;; SAS-Problem will always have a special action goal-action-name and var :goal with init [:false], desired [:true]. 
 
@@ -14,13 +16,14 @@
 (def goal-true-val    [:goal :true])
 (def goal-false-val   [:goal :false])
 
-(deftype SAS-Problem [vars init actions actions-fn]
+(defrecord SAS-Problem [vars init actions actions-fn]
   env/Env
-    (initial-state [_] init)
-    (actions-fn    [] (force actions-fn))
-    (goal-fn       [] #(= (util/safe-get % goal-var-name) goal-true-val))
+  (initial-state [_] init)
+  (actions-fn    [_] (force actions-fn))
+  (goal-fn       [_] #(= (util/safe-get % goal-var-name) goal-true-val))
+
   env/FactoredEnv 
-    (goal-map      [] {goal-var-name goal-true-val}))
+  (goal-map      [_] {goal-var-name goal-true-val}))
 
 (defn make-simple-successor-generator [vars actions]
 ;  (println (count vars) (count actions))
@@ -41,7 +44,7 @@
                 (fn successor-gen [s] (concat (dc-sg s) (when-let [f (val-sgs (state/get-var s var-name))] (f s)))))))))
 
 (defn make-sas-problem [vars init actions]
-  (SAS-Problem vars init actions (delay (make-simple-successor-generator (vals vars) actions))))
+  (SAS-Problem. vars init actions (delay (make-simple-successor-generator (vals vars) actions))))
 
 
 (def *working-dir* "/tmp/")
@@ -116,7 +119,7 @@
            _       (assert (= (.pop sas-q) "end_variables"))
            vars    (vec (for [[i [n ds]] (util/indexed (concat vars-ds [[goal-var-name 2]]))]
                           (let [var-info (util/safe-get var-map n)]
-                            (SAS-Var (infer-var-name var-info) (vec var-info)))))
+                            (SAS-Var. (infer-var-name var-info) (vec var-info)))))
            _       (util/assert-is (apply distinct? (map :name vars)))
            _       (assert (= (.pop sas-q) "begin_state"))
            init-v  (vec (for [_ (range n-vars)] (read-string (.pop sas-q))))
@@ -139,7 +142,7 @@
                               (assert (apply distinct? (concat (map first prevails)
                                                                (map #(nth % 1) effects))))
                               (util/assert-is (every? #(= 0 (first %)) effects))
-                              (env/FactoredPrimitive 
+                              (angelic.env.util.FactoredPrimitive. 
                                name
                                (into {} (map (partial expand-condition vars)
                                              (concat (for [[_ v ov] effects :when (not (= ov -1))] [v ov]) 
@@ -150,7 +153,7 @@
         (into {} (map (juxt :name identity) vars)) 
         (util/map-map (partial expand-condition vars) (util/indexed (conj init-v 0)))
         (conj (vec ops) 
-              (env/FactoredPrimitive goal-action-name (util/map-map (partial expand-condition vars) goal-m) 
+              (angelic.env.util.FactoredPrimitive. goal-action-name (util/map-map (partial expand-condition vars) goal-m) 
                                      {goal-var-name goal-true-val} 0))))))
 
 

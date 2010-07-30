@@ -1,16 +1,17 @@
-(ns angelic.lama-causal-graphs
+(ns angelic.sas.lama-causal-graphs
   (:require [edu.berkeley.ai.util :as util]
             [edu.berkeley.ai.util [pdf :as pdf] [graphviz :as gv] [graphs :as graphs]]
-            [vijual.graphical :as vg]
+;            [vijual.graphical :as vg]
             )
   )
 
 ;; Stuff for reading and displaying causal graphs from LAMA output.
 
-(defn show-directed-graph 
-  "Take a list of [src dst] pairs and draw the graph on the screen."
-  ( [dg] (pdf/show-image (vg/draw-directed-graph-image dg)))
-  ( [dg ni] (pdf/show-image (vg/draw-directed-graph-image dg ni))))
+(comment
+  (defn show-directed-graph 
+   "Take a list of [src dst] pairs and draw the graph on the screen."
+   ( [dg] (pdf/show-image (vg/draw-directed-graph-image dg)))
+   ( [dg ni] (pdf/show-image (vg/draw-directed-graph-image dg ni)))))
 
 (defn group 
   "Take a flattened representation of a 2-d seq, and return the 2-d seq"
@@ -63,7 +64,7 @@
   [groups-file preproc-file]
   (let [m (read-groups groups-file)
         o (read-var-ordering preproc-file)]
-    (vec (map #(util/sfe-get m %) o)))) 
+    (vec (map #(util/safe-get m %) o)))) 
 
 (def *working-dir* "/tmp/")
 (def *lama-dir* "/Users/jawolfe/Projects/research/planners/seq-sat-lama/lama/")

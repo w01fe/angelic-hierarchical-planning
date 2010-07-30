@@ -1,6 +1,8 @@
-(ns angelic.sas-simplification
+(ns angelic.sas.simplification
   (:require [edu.berkeley.ai.util :as util]
-            [angelic [env :as env] [sas :as sas]  [sas-analysis :as sas-analysis]]))
+            [angelic [env :as env] [sas :as sas]]
+            angelic.env.util
+            [angelic.sas.analysis :as sas-analysis]))
 
 
 (defn merge-vals
@@ -28,7 +30,7 @@
                                        _ (assert (and (> (count new-vals) 0)
                                                       (val-map (init vn))))]
                                  :when (> (count new-vals) 1)]
-                             [vn (sas/SAS-Var vn new-vals)]))
+                             [vn (angelic.sas.SAS-Var. vn new-vals)]))
         final-actions    (vec (for [a (remove (set dead-actions) actions)
                                     :let [fp (into {} (for [[var val] (:precond-map a)
                                                             :when (contains? final-vars var)]
@@ -38,7 +40,7 @@
                                                             :when (and (contains? final-vars var) new-val)]
                                                         [var new-val]))]
                                     :when (seq fe)]
-                                (env/FactoredPrimitive (:name a) fp fe (:reward a))))]
+                                (angelic.env.util.FactoredPrimitive (:name a) fp fe (:reward a))))]
     (println "Removing"   (- (count actions) (count final-actions)) "actions," 
                             (count dead-actions) "initial;" 
                           (- (count vars) (count final-vars)) "vars;"
