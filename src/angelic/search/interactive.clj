@@ -1,4 +1,4 @@
-(ns angelic.interactive-search
+(ns angelic.search.interactive
   (:require [edu.berkeley.ai.util :as util]
             [edu.berkeley.ai.util.queues :as queues] 
             [angelic [hierarchical-incremental-search :as his] [hierarchy :as hierarchy] [env :as env]]

@@ -1,14 +1,9 @@
-(ns angelic.flat-incremental-search
+(ns angelic.search.incremental.flat
   (:require [edu.berkeley.ai.util :as util]
             [angelic.env :as env] 
             [angelic.incremental-search :as is])
   (:import  [java.util HashMap]))
 
-
-
-;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;; Forward Search Node ;;;;;;;;;;;;;;;;;;;;;;;;;;;;
-
-;; This should probably live in another file -- just here as an example.
 
 (defn make-forward-search 
   "Make a forward search that stops at goals."

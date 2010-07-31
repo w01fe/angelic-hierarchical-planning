@@ -3,7 +3,7 @@
         angelic.domains.warehouse)
   (:require [angelic.env :as env]
             angelic.hierarchy.util
-            [angelic.search.ucs :as ucs]))
+            [angelic.search.uniform-cost :as ucs]))
 
 
 

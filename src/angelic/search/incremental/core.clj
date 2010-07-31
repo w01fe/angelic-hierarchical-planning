@@ -1,4 +1,4 @@
-(ns angelic.incremental-search
+(ns angelic.search.incremental.core
   (:require [edu.berkeley.ai.util :as util]
             [edu.berkeley.ai.util.queues :as queues]))
 

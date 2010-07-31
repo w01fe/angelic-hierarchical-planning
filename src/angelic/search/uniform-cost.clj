@@ -1,4 +1,4 @@
-(ns angelic.search.ucs
+(ns angelic.search.uniform-cost
   (:require [edu.berkeley.ai.util :as util]
             [edu.berkeley.ai.util.queues :as queues]
             [angelic.env :as env]))
