@@ -1,8 +1,9 @@
 (ns angelic.hierarchy
   (:require [edu.berkeley.ai.util :as util]
-            angelic.env.state
+            [angelic.env :as env]
+            [angelic.env.state :as state]
             angelic.env.util
-            [angelic.env :as env]))
+))
 
 
 ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
@@ -36,7 +37,7 @@
   ;(println "Refs for " (env/action-name a) "from" (map #(state/get-var s %) '[[atx] [aty]]))
   (util/timeout)
   (let [refs (immediate-refinements- a s)]
-    (util/print-debug 3 "\nRefs for " (env/action-name a) "from" (angelic.env.state/as-map s) "are" 
+    (util/print-debug 3 "\nRefs for " (env/action-name a) "from" (state/as-map s) "are" 
              (apply str (doall (map #(str "\n  " (util/str-join ", " (map env/action-name %))) refs))))
     (util/sref-set! *ref-counter*  (+ 1            (util/sref-get *ref-counter*)))
     (util/sref-set! *plan-counter* (+ (count refs) (util/sref-get *plan-counter*)))
@@ -67,7 +68,7 @@
   (util/sref-set! *pessimistic-counter* (inc (util/sref-get *pessimistic-counter*)))
   (pessimistic-map- a s))
 
-(extend env-util/make-factored-primitive
+(extend angelic.env.util.FactoredPrimitive
   ExplicitAngelicAction
   {:optimistic-map- 
      (fn optimistic-map- [this s]
