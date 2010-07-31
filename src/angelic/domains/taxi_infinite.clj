@@ -97,66 +97,67 @@
 
 
 ;;;;;;;;;;;;;;;;;;;;;;;; Hierarchy ;;;;;;;;;;;;;;;;;;;;;
-; Mostly copied from taxi. 
+; Mostly copied from taxi.   In fact, never finished.  
 
-(defrecord NavHLA [env dx dy]
-  env/Action
-  (action-name [_] ['nav dx dy])
-  (primitive? [_] false)
+(comment ; Unfinished.
+ (defrecord NavHLA [env dx dy]
+   env/Action
+   (action-name [_] ['nav dx dy])
+   (primitive? [_] false)
 
-  env/ContextualAction
-  (precondition-context [_ s] #{['atx] ['aty]})
+   env/ContextualAction
+   (precondition-context [_ s] #{['atx] ['aty]})
 
-  hierarchy/HighLevelAction
-  (immediate-refinements- [this s]
-    (if (and (= dx (state/get-var s ['atx])) 
-             (= dy (state/get-var s ['aty])))
-      [[]]
-      (for [af [make-left make-right make-up make-down]
-            :let [a (af s)]
-            :when a]
-        [a this])))
-  (cycle-level- [_ s] 1)
+   hierarchy/HighLevelAction
+   (immediate-refinements- [this s]
+                           (if (and (= dx (state/get-var s ['atx])) 
+                                    (= dy (state/get-var s ['aty])))
+                             [[]]
+                             (for [af [make-left make-right make-up make-down]
+                                   :let [a (af s)]
+                                   :when a]
+                               [a this])))
+   (cycle-level- [_ s] 1)
 
-  hierarchy/ExplicitAngelicAction
-  (optimistic-map- [_ s]
-    (let [cx (state/get-var s ['atx])
-          cy (state/get-var s ['aty])]
-      {(state/set-var (state/set-var s ['atx] dx) ['aty] dy)
-       (- 0 (util/abs (- dx cx)) (util/abs (- dy cy)))}))
-  (pessimistic-map- [this s] (hierarchy/optimistic-map- this s)))
+   hierarchy/ExplicitAngelicAction
+   (optimistic-map- [_ s]
+                    (let [cx (state/get-var s ['atx])
+                          cy (state/get-var s ['aty])]
+                      {(state/set-var (state/set-var s ['atx] dx) ['aty] dy)
+                       (- 0 (util/abs (- dx cx)) (util/abs (- dy cy)))}))
+   (pessimistic-map- [this s] (hierarchy/optimistic-map- this s)))
 
-(defrecord InfiniteTaxiTLA [env context] 
-  env/Action
-  (action-name [_] ['top])
-  (primitive? [_] false)  
+ (defrecord InfiniteTaxiTLA [env context] 
+   env/Action
+   (action-name [_] ['top])
+   (primitive? [_] false)  
 
-  env/ContextualAction
-  (precondition-context [_ s] context)
+   env/ContextualAction
+   (precondition-context [_ s] context)
 
-  hierarchy/HighLevelAction 
-  (immediate-refinements- [this s]
-    (let [held-p (set (filter #(= :taxi (state/get-var s ['passx (first %)])) (:passengers env)))
-          src-p  (remove #(or (held-p %) (state/get-var s ['pass-served? (first %)])) (:passengers env))
-          all-nxt (concat (for [[n _ [dx dy]] held-p] [(NavHLA. env dx dy) (make-dropoff :dummy n [dx dy])])
-                          (for [[n [sx sy] _]  src-p] [(NavHLA. env sx sy) (make-pickup  :dummy n [sx sy])]))]
-      (if (empty? all-nxt)
-        (let [{:keys [width height]} env]
-          [[(NavHLA. env width height) (env-util/make-finish-action env)]])
-        (map #(conj (vec %1) this) all-nxt))))
+   hierarchy/HighLevelAction 
+   (immediate-refinements- [this s]
+                           (let [held-p (set (filter #(= :taxi (state/get-var s ['passx (first %)])) (:passengers env)))
+                                 src-p  (remove #(or (held-p %) (state/get-var s ['pass-served? (first %)])) (:passengers env))
+                                 all-nxt (concat (for [[n _ [dx dy]] held-p] [(NavHLA. env dx dy) (make-dropoff :dummy n [dx dy])])
+                                                 (for [[n [sx sy] _]  src-p] [(NavHLA. env sx sy) (make-pickup  :dummy n [sx sy])]))]
+                             (if (empty? all-nxt)
+                               (let [{:keys [width height]} env]
+                                 [[(NavHLA. env width height) (env-util/make-finish-action env)]])
+                               (map #(conj (vec %1) this) all-nxt))))
    (cycle-level- [_ s] nil)
 
    hierarchy/ExplicitAngelicAction
    (optimistic-map- [_ s] {(state/set-vars s (env-util/make-finish-goal-state env))})
    (pessimistic-map- [_ s] {}))
 
-(defn make-infinite-taxi-tla [env]
-  (InfiniteTaxiTLA. env (util/keyset (dissoc (env/initial-state env) :const))))
+ (defn- make-infinite-taxi-tla [env]
+   (InfiniteTaxiTLA. env (util/keyset (dissoc (env/initial-state env) :const))))
 
-(defn simple-taxi-hierarchy [#^InfTaxiEnv env]
-  (angelic.hierarchy.util.SimpleHierarchicalEnv.
-   env
-   [(make-infinite-taxi-tla env)]))
+ (defn simple-infinite-taxi-hierarchy [#^InfTaxiEnv env]
+   (angelic.hierarchy.util.SimpleHierarchicalEnv.
+    env
+    [(make-infinite-taxi-tla env)])))
 
 
 
@@ -165,9 +166,11 @@
 
 ; Identical to above.
 
-(defn- write-infinite-taxi-strips-domain [file]
-  (spit file
-    ";; Taxi domain 
+;; This version currently doesn't work for some reason.  
+(comment 
+  (defn- write-infinite-taxi-strips-domain [file]
+    (spit file
+          ";; Taxi domain 
      
      (define (domain infinite-taxi)
        (:requirements :typing)
@@ -215,45 +218,45 @@
          :precondition (and (aty ?l1) (ABOVE ?l1 ?l2))
          :effect       (and (not (aty ?l1)) (aty ?l2))))"
          
-        ))
+          ))
 
-(defn- write-infinite-taxi-strips-instance [tenv file]
-  (let [{:keys [width height passengers]} tenv]
-    (spit file
-      (util/str-join "\n"
-        ["(define (problem infinite-taxi-)
+  (defn- write-infinite-taxi-strips-instance [tenv file]
+    (let [{:keys [width height passengers]} tenv]
+      (spit file
+            (util/str-join "\n"
+                           ["(define (problem infinite-taxi-)
            (:domain infinite-taxi)
            (:objects "
-              (util/str-join " " (map first passengers)) " - pass"
-              (util/str-join " " (map (partial str "x") (range 1 (inc width)))) " - x"
-              (util/str-join " " (map (partial str "y") (range 1 (inc width)))) " - y"              
-         "    )
+                            (util/str-join " " (map first passengers)) " - pass"
+                            (util/str-join " " (map (partial str "x") (range 1 (inc width)))) " - x"
+                            (util/str-join " " (map (partial str "y") (range 1 (inc width)))) " - y"              
+                            "    )
            (:init "
-              (util/str-join " " (for [x (range 1 width)] (str "(LEFTOF x" x " x" (inc x) ")")))
-              (util/str-join " " (for [y (range 1 height)] (str "(ABOVE y"  (inc y) " y" y ")")))              
-              "(atx x1)" "(aty y1)"
-              (util/str-join " " (apply concat
-                                   (for [[n [sx sy]] passengers]
-                                     [(str "(passx " n " x" sx ")")
-                                      (str "(passy " n " y" sy ")")])))
-         "  )
+                            (util/str-join " " (for [x (range 1 width)] (str "(LEFTOF x" x " x" (inc x) ")")))
+                            (util/str-join " " (for [y (range 1 height)] (str "(ABOVE y"  (inc y) " y" y ")")))              
+                            "(atx x1)" "(aty y1)"
+                            (util/str-join " " (apply concat
+                                                      (for [[n [sx sy]] passengers]
+                                                        [(str "(passx " n " x" sx ")")
+                                                         (str "(passy " n " y" sy ")")])))
+                            "  )
            (:goal (and "  (str "(at " width "-" height ")")
-              (util/str-join " " (apply concat
-                                   (for [[n _ [dx dy]] passengers]
-                                     [(str "(passx " n " x" dx ")")
-                                      (str "(passy " n " y" dy ")")])))
-              ")))"]))))
+                            (util/str-join " " (apply concat
+                                                      (for [[n _ [dx dy]] passengers]
+                                                        [(str "(passx " n " x" dx ")")
+                                                         (str "(passy " n " y" dy ")")])))
+                            ")))"]))))
 
-(defn write-infinite-taxi-strips 
-  ([tenv] (write-infinite-taxi-strips tenv (str "/tmp/inf-taxi" (rand-int 10000))))
-  ([tenv prefix]
-     (write-infinite-taxi-strips-domain (str prefix "-domain.pddl"))
-     (write-infinite-taxi-strips-instance tenv (str prefix ".pddl"))
-     prefix))
+  (defn write-infinite-taxi-strips 
+    ([tenv] (write-infinite-taxi-strips tenv (str "/tmp/inf-taxi" (rand-int 10000))))
+    ([tenv prefix]
+       (write-infinite-taxi-strips-domain (str prefix "-domain.pddl"))
+       (write-infinite-taxi-strips-instance tenv (str prefix ".pddl"))
+       prefix))
 
-(defn make-random-infinite-taxi-sas [& args]
-  (sas/make-sas-problem-from-pddl (write-infinite-taxi-strips (apply make-random-infinite-taxi-env args)))
-  )
+  (defn make-random-infinite-taxi-sas [& args]
+    (sas/make-sas-problem-from-pddl (write-infinite-taxi-strips (apply make-random-infinite-taxi-env args)))
+    ))
 
 
 
@@ -435,6 +438,9 @@
      (write-infinite-taxi-strips3-domain (str prefix "-domain.pddl"))
      (write-infinite-taxi-strips3-instance tenv (str prefix ".pddl"))
      prefix))
+
+(defn make-random-infinite-taxi-sas3 [& args]
+  (sas/make-sas-problem-from-pddl (write-infinite-taxi-strips3 (apply make-random-infinite-taxi-env args))))
 
 
 ; (make-sas-problem-from-pddl (prln (write-taxi-strips (make-random-taxi-env 1 2 1))) )

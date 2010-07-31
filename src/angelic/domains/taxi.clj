@@ -3,6 +3,7 @@
             [angelic.env :as env]
             [angelic.env.state :as state]            
             [angelic.env.util :as env-util]
+            [angelic.sas :as sas]
             [angelic.hierarchy :as hierarchy]
             angelic.hierarchy.util)
   (:import [java.util Random]))
@@ -178,7 +179,7 @@
   (pessimistic-map- [this s] 
     (hierarchy/optimistic-map- this s)))
 
-(defn taxi-hungarian-heuristic [env s] "destination-to-destination."
+(defn- taxi-hungarian-heuristic [env s] "destination-to-destination."
   (let [[cx cy] (map #(state/get-var s [%]) '[atx aty])
         pass    (remove #(state/get-var s ['pass-served? (first %)]) (:passengers env))]
     (if (empty? pass) 0
@@ -222,7 +223,7 @@
      (taxi-hungarian-heuristic env s)})
   (pessimistic-map- [_ s] {}))
 
-(defn make-taxi-tla [env]
+(defn- make-taxi-tla [env]
   (TaxiTLA. env (util/keyset (dissoc (env/initial-state env) :const))))
 
 (defn simple-taxi-hierarchy [#^TaxiEnv env]
@@ -329,7 +330,7 @@
           [(Serve2HLA. env pass) this]))))
   (cycle-level- [_ s] nil))
 
-(defn make-taxi-tla2 [env]
+(defn- make-taxi-tla2 [env]
   (Taxi2TLA. env (util/keyset (dissoc (env/initial-state env) :const))))
 
 (defn simple-taxi-hierarchy2 [#^TaxiEnv env]
@@ -387,7 +388,7 @@
           [(Serve3HLA. env pass) this]))))
   (cycle-level- [_ s] nil))
 
-(defn make-taxi-tla3 [env]
+(defn- make-taxi-tla3 [env]
   (Taxi3TLA. env (util/keyset (dissoc (env/initial-state env) :const))))
 
 (defn simple-taxi-hierarchy3 [#^TaxiEnv env]
@@ -496,6 +497,8 @@
      (write-taxi-strips-instance tenv (str prefix ".pddl"))
      prefix))
 
+(defn make-random-taxi-sas [& args]
+  (sas/make-sas-problem-from-pddl (write-taxi-strips (apply make-random-taxi-env args))))
 
 ; (make-sas-problem-from-pddl (prln (write-taxi-strips (make-random-taxi-env 1 2 1))) )
 
@@ -597,3 +600,6 @@
      (write-taxi-strips2-domain (str prefix "-domain.pddl"))
      (write-taxi-strips2-instance tenv (str prefix ".pddl"))
      prefix))
+
+(defn make-random-taxi-sas2 [& args]
+  (sas/make-sas-problem-from-pddl (write-taxi-strips2 (apply make-random-taxi-env args))))
