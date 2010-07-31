@@ -2,7 +2,7 @@
   (:use clojure.test
         angelic.domains.taxi)
   (:require [angelic.env :as env]
-            angelic.hierarchy.util
+            [angelic.hierarchy.util :as hierarchy-util]
             [angelic.search.uniform-cost :as ucs]))
 
 (deftest taxi-random-env

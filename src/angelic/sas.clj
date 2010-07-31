@@ -1,8 +1,8 @@
 (ns angelic.sas
   (:require [edu.berkeley.ai.util :as util]
             [angelic.env :as env]
-            [angelic.env.state :as state]
-            angelic.env.util)
+            [angelic.env.state :as state]            
+            [angelic.env.util :as env-util])
   (:import [java.util LinkedList])
   )
 
