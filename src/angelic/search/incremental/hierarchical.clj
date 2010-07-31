@@ -419,6 +419,16 @@
 
 
 
+(defn interactive-hierarchical-search [henv]
+  (let [e    (hierarchy/env henv)
+        tla  (hierarchy/TopLevelAction e [(hierarchy/initial-plan henv)])]
+    (interactive/generic-interactive-search 
+     (make-root-hfs (env/initial-state e) tla)
+     :reward
+     hfs-children
+     #(empty? (:remaining-actions %))
+     hfs-pretty-name)))
+
 (comment
   (do (use '[angelic env hierarchy taxi ucs hierarchical-incremental-search] 'edu.berkeley.ai.util) (require '[angelic sahucs-simple sahucs-simple-dijkstra sahucs-inverted saha-simple] '[angelic.old ahois]))
    (let [e (make-random-taxi-env 5 5 5 3) _ (println e) h (simple-taxi-hierarchy e)]  

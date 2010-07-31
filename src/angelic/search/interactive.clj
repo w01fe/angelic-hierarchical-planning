@@ -1,18 +1,18 @@
 (ns angelic.search.interactive
   (:require [edu.berkeley.ai.util :as util]
-            [edu.berkeley.ai.util.queues :as queues] 
-            [angelic [hierarchical-incremental-search :as his] [hierarchy :as hierarchy] [env :as env]]
-            ))
+            [edu.berkeley.ai.util.queues :as queues]
+            [angelic.env :as env]
+            [angelic.hierarchy :as hierarchy]))
 
 
 (def *n)
 (def *nn)
 (def *ns)
-(defn interactive-search 
+(defn generic-interactive-search 
   ([root reward-fn expand-fn goal-fn] 
-     (interactive-search root reward-fn expand-fn goal-fn identity))
+     (generic-interactive-search root reward-fn expand-fn goal-fn identity))
   ([root reward-fn expand-fn goal-fn pretty-node-fn]
-     (interactive-search root reward-fn expand-fn goal-fn pretty-node-fn (queues/make-graph-search-pq)) )
+     (generic-interactive-search root reward-fn expand-fn goal-fn pretty-node-fn (queues/make-graph-search-pq)) )
   ([root reward-fn expand-fn goal-fn pretty-node-fn pq]
      (queues/pq-add! pq root (- (reward-fn root)))
      (let [n-skip (util/sref 0)
@@ -56,23 +56,12 @@
                                                                  (eval result)) "\n") (recur))))))
                    (recur)))))))))
 
-(defn interactive-flat-search [env]
-  (interactive-search 
+(defn interactive-search [env]
+  (generic-interactive-search 
    (with-meta  (env/initial-state env) {:reward 0})
    #(:reward (meta %)) 
    (let [a-fn (env/actions-fn env)]
      #(for [a (a-fn %) :when (env/applicable? a %)] (first (env/successor a %))))
    (env/goal-fn env)
-   #(:act-seq (meta %))
-   ))
+   #(:act-seq (meta %))))
 
-(defn interactive-hierarchical-search [henv]
-  (let [e    (hierarchy/env henv)
-;        init (env/initial-logging-state e)
-        tla  (hierarchy/TopLevelAction e [(hierarchy/initial-plan henv)])]
-    (interactive-search 
-     (his/make-root-hfs (env/initial-state e) tla)
-     :reward
-     his/hfs-children
-     #(empty? (:remaining-actions %))
-     his/hfs-pretty-name)))

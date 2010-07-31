@@ -1,5 +1,7 @@
 (ns angelic.hierarchy
   (:require [edu.berkeley.ai.util :as util]
+            angelic.env.state
+            angelic.env.util
             [angelic.env :as env]))
 
 
