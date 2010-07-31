@@ -1,7 +1,11 @@
 (ns angelic.domains.warehouse
  (:import [java.util HashSet HashMap])
- (:require [edu.berkeley.ai [util :as util]] 
-           [angelic [env :as env] [hierarchy :as hierarchy]]))
+ (:require [edu.berkeley.ai [util :as util]]
+           [angelic.env :as env]
+           [angelic.env.state :as state]
+           angelic.env.util
+           [angelic.hierarchy :as hierarchy]
+           angelic.hierarchy.util))
 
 ; Note: WW heuristic is inconsistent.
 
@@ -12,7 +16,7 @@
         [w h]          (get (state/get-var s :const) '[topright])
         nx (+ cx dx), ny (+ cy dy)]
     (when (and (<= 1 nx w) (<= 1 ny h) (not (state/get-var s ['someblockat nx ny])))
-      (env/FactoredPrimitive
+      (angelic.env.util.FactoredPrimitive.
        name
        {['at] cp ['someblockat nx ny] false}
        {['at] [nx ny]}
@@ -25,7 +29,7 @@
 
 
 (defn- make-specific-turn [pos cur-fr]
-  (env/FactoredPrimitive [(if cur-fr 'turn-l 'turn-r)] {['at] pos ['facingright] cur-fr} 
+  (angelic.env.util.FactoredPrimitive. [(if cur-fr 'turn-l 'turn-r)] {['at] pos ['facingright] cur-fr} 
                          {'[facingright] (not cur-fr)} -1))
 
 (defn- make-turn   [s]
@@ -37,7 +41,7 @@
 
 (defn- make-specific-get [b c fr? gx gy]
   (let [bx (+ gx (if fr? 1 -1))]
-    (env/FactoredPrimitive
+    (angelic.env.util.FactoredPrimitive.
      [(if fr? 'get-r 'get-l) b c]
      {'[at] [gx gy] '[facingright] fr? ['blockat bx gy] b 
       ['on c] b ['on b] nil '[holding] nil}
@@ -57,7 +61,7 @@
 
 (defn- make-specific-put [b c fr? gx gy]
   (let [bx (+ gx (if fr? 1 -1))]
-    (env/FactoredPrimitive
+    (angelic.env.util.FactoredPrimitive.
      [(if fr? 'put-r 'put-l) b c]
      {'[at] [gx gy] '[facingright] fr? ['blockat bx (dec gy)] c 
       ['on c] nil '[holding] b}
@@ -76,7 +80,7 @@
 
 
 
-(deftype WarehouseEnv [init goal topright] :as this
+(defrecord WarehouseEnv [init goal topright] 
  env/Env
   (initial-state [_] init)
   (actions-fn [_]
@@ -86,7 +90,7 @@
        a)))
   (goal-fn [_] #(when (state/state-matches-map? % goal) (env/solution-and-reward %)))
  env/FactoredEnv
-  (goal-map [] goal))
+  (goal-map [_] goal))
 
 ; state vars are: (const), at, facingright, holding, blockat, someblockat, on
 ; initial-stacks is map from column number to stacks of block names (top-down).
@@ -108,7 +112,7 @@
                         (vec (take height (concat [(util/symbol-cat 'table i)] 
                                                   (reverse (get initial-stacks i)) 
                                                   (repeat nil))))))]
-      (WarehouseEnv 
+      (WarehouseEnv. 
        (into {:const {['topright] topright}
               '[at]  (vec initial-pos)
               '[facingright] (if initial-faceright? true false)
@@ -132,74 +136,97 @@
 
 ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;  Simple Nav ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
 
-(deftype SimpleNavHLA [name context dest] :as this
-  env/Action                (action-name [_] name)
-                            (primitive? [_] false)
-  env/ContextualAction      (precondition-context [_ s] context )
-  hierarchy/HighLevelAction (immediate-refinements- [_ s]
-                              (if (= dest (state/get-var s ['at]))
-                               [[]]
-                               (for [af [make-left make-right make-up make-down]
-                                     :let [a (af s)]
-                                     :when a]
-                                 [a this])))
-                            (cycle-level- [_ s] 1))
+(defrecord SimpleNavHLA [name context dest]
+  env/Action
+  (action-name [_] name)
+  (primitive? [_] false)
+
+  env/ContextualAction
+  (precondition-context [_ s] context )
+
+  hierarchy/HighLevelAction
+  (immediate-refinements- [this s]
+    (if (= dest (state/get-var s ['at]))
+      [[]]
+      (for [af [make-left make-right make-up make-down]
+            :let [a (af s)]
+            :when a]
+        [a this])))
+  (cycle-level- [_ s] 1))
 
 
 ;Issue with context: we also learn for other initial states, possibly outside initial range.
 (defn make-simple-nav-hla [dx dy nav-context]
-  (SimpleNavHLA ['nav dx dy] nav-context [dx dy]))
+  (SimpleNavHLA. ['nav dx dy] nav-context [dx dy]))
    ;(into '#{[at]} (for [x (incl-range dx gx) y (range (min dy gy) (inc h))] ['someblockat x y])) [dx dy]))
 
 
 ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;  URD   Nav ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
 
-(deftype UpHLA [opt-dy] :as this
-  env/Action                (action-name [_] ['up-to opt-dy])
-                            (primitive? [_] false)
-  env/ContextualAction      (precondition-context [_ s] '#{[at]})
-  hierarchy/HighLevelAction (immediate-refinements- [_ s]
-                              (let [[cx cy] (state/get-var s '[at])]
-                                (filter identity
-                                  [(when (or (not opt-dy) (= cy opt-dy)) [])
-                                   (when (or (not opt-dy) (< cy opt-dy))
-                                     (when-let [a (make-up s)] [a this]))])))
-                            (cycle-level- [_ s] nil))
+(defrecord UpHLA [opt-dy] 
+  env/Action
+  (action-name [_] ['up-to opt-dy])
+  (primitive? [_] false)
 
-(deftype DownHLA [dx dy] :as this
-  env/Action                (action-name [_] ['down-to dx dy])
-                            (primitive? [_] false)
-  env/ContextualAction      (precondition-context [_ s] #{'[at] ['someblockat dx dy]})
-  hierarchy/HighLevelAction (immediate-refinements- [_ s]
-                              (let [[cx cy] (state/get-var s '[at])]
-                                (assert (= cx dx))
-                                (filter identity
-                                  [(cond (= cy dy) []
-                                         (> cy dy) (when-let [a (make-down s)] [a this]))])))
-                            (cycle-level- [_ s] nil))
+  env/ContextualAction
+  (precondition-context [_ s] '#{[at]})
+
+  hierarchy/HighLevelAction
+  (immediate-refinements- [this s]
+    (let [[cx cy] (state/get-var s '[at])]
+      (filter identity
+              [(when (or (not opt-dy) (= cy opt-dy)) [])
+               (when (or (not opt-dy) (< cy opt-dy))
+                 (when-let [a (make-up s)] [a this]))])))
+  (cycle-level- [_ s] nil))
+
+
+(defrecord DownHLA [dx dy] 
+  env/Action
+  (action-name [_] ['down-to dx dy])
+  (primitive? [_] false)
+
+  env/ContextualAction
+  (precondition-context [_ s] #{'[at] ['someblockat dx dy]})
+
+  hierarchy/HighLevelAction
+  (immediate-refinements- [this s]
+    (let [[cx cy] (state/get-var s '[at])]
+      (assert (= cx dx))
+      (filter identity
+              [(cond (= cy dy) []
+                     (> cy dy) (when-let [a (make-down s)] [a this]))])))
+  (cycle-level- [_ s] nil))
+
 
 (defn incl-range 
   ([x1 x2] (if (<= x1 x2) (range x1 (inc x2)) (range x2 (inc x1))))
   ([x1 x2 x3] (range (min x1 x2 x3) (inc (max x1 x2 x3)))))
 
-(deftype TraverseHLA [dx] :as this
-  env/Action                (action-name [_] ['traverse-to dx])
-                            (primitive? [_] false)
-  env/ContextualAction      (precondition-context [_ s] 
-                              (let [[cx cy] (state/get-var s '[at])]
-                                (into '#{[at]} (for [x (incl-range cx dx)] ['someblockat x cy]))))
-  hierarchy/HighLevelAction (immediate-refinements- [_ s]
-                              (let [[cx cy] (state/get-var s '[at])]
-                                (filter identity
-                                  [(cond (= cx dx) []
-                                         (> cx dx) (when-let [a (make-left s)] [a this])
-                                         (< cx dx) (when-let [a (make-right s)] [a this]))])))
-                            (cycle-level- [_ s] nil))
+
+(defrecord TraverseHLA [dx] 
+  env/Action
+  (action-name [_] ['traverse-to dx])
+  (primitive? [_] false)
+
+  env/ContextualAction
+  (precondition-context [_ s] 
+    (let [[cx cy] (state/get-var s '[at])]
+      (into '#{[at]} (for [x (incl-range cx dx)] ['someblockat x cy]))))
+
+  hierarchy/HighLevelAction
+  (immediate-refinements- [this s]
+    (let [[cx cy] (state/get-var s '[at])]
+      (filter identity
+              [(cond (= cx dx) []
+                     (> cx dx) (when-let [a (make-left s)] [a this])
+                     (< cx dx) (when-let [a (make-right s)] [a this]))])))
+  (cycle-level- [_ s] nil))
 
 (defn make-fancy-nav-plan [dx dy h]
   (if (= dy h)
-      [(UpHLA dy) (TraverseHLA dx)]
-    [(UpHLA nil) (TraverseHLA dx) (DownHLA dx dy)]))
+      [(UpHLA. dy) (TraverseHLA. dx)]
+    [(UpHLA. nil) (TraverseHLA. dx) (DownHLA. dx dy)]))
 
 
 ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;  Hierarchy ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
@@ -209,14 +236,19 @@
 
 ; state vars are: (const), at, facingright, holding, blockat, someblockat, on
 
-(deftype MoveBlockHLA [env name context nav-factory b bx by a c cx cy] :as this
-    env/Action                (action-name [_] name)
-                              (primitive? [_] false)
-    env/ContextualAction      (precondition-context [_ s] context)
-    hierarchy/HighLevelAction 
+(defrecord MoveBlockHLA [env name context nav-factory b bx by a c cx cy]
+  env/Action
+  (action-name [_] name)
+  (primitive? [_] false)
+
+  env/ContextualAction
+  (precondition-context [_ s] context)
+
+  hierarchy/HighLevelAction 
       (immediate-refinements- [_ s]
         (assert (= b (state/get-var s ['blockat bx by])))
-        (assert (= a (state/get-var s ['blockat bx (dec by)])))                                             (assert (= c (state/get-var s ['blockat cx cy])))                                           
+        (assert (= a (state/get-var s ['blockat bx (dec by)])))
+        (assert (= c (state/get-var s ['blockat cx cy])))                                           
         (let [[w h] (get (state/get-var s :const) '[topright])
   ;                                      [gx gy]  (state/get-var s '[at])
               fr?   (state/get-var s '[facingright])
@@ -240,7 +272,7 @@
       (cycle-level- [_ s] nil))
 
 (defn make-move-block-hla [env nav-context nav-factory b bx by a c cx cy]
-  (MoveBlockHLA env ['move-block b c]
+  (MoveBlockHLA. env ['move-block b c]
                 (into nav-context
                       ['[facingright] ['on a] ['on c] '[holding]
                        ['blockat bx by] ['blockat cx (inc cy)]]) 
@@ -249,14 +281,19 @@
 
 (declare possible-move-refinements)
 
-(deftype MoveBlocksHLA [env goal-fn context nav-context nav-factory block-off-limits] :as this
-    env/Action                (action-name [_] ['move-blocks block-off-limits ])
-                              (primitive? [_] false)
-    env/ContextualAction      (precondition-context [_ s] context)
-    hierarchy/HighLevelAction (immediate-refinements- [_ s] 
-                                 (possible-move-refinements env goal-fn context nav-context 
-                                                            nav-factory block-off-limits s))
-                              (cycle-level- [_ s] 2))
+(defrecord MoveBlocksHLA [env goal-fn context nav-context nav-factory block-off-limits]
+  env/Action
+  (action-name [_] ['move-blocks block-off-limits ])
+  (primitive? [_] false)
+
+  env/ContextualAction
+  (precondition-context [_ s] context)
+  
+  hierarchy/HighLevelAction
+  (immediate-refinements- [_ s] 
+    (possible-move-refinements env goal-fn context nav-context 
+                               nav-factory block-off-limits s))
+  (cycle-level- [_ s] 2))
 
 ; Note: differs from previous (strips) version in use of goal test.
 ;; TODO: should allow self-moves? 
@@ -274,40 +311,45 @@
            :when (and (< cy h) (not (= b c)))]
        [(make-move-block-hla env nav-context nav-factory
                              b bx by (state/get-var state ['blockat bx (dec by)]) c cx cy)
-        (MoveBlocksHLA env goal-fn context nav-context nav-factory b)]))))
+        (MoveBlocksHLA. env goal-fn context nav-context nav-factory b)]))))
 
 (defn make-nav-context [env]
   (let [ [w h] (:topright env)]
     (set (cons '[at] (for [x (range 1 (inc w)) y (range 2 (inc h))] ['someblockat x y])))))
 
-(deftype WarehouseTLA [env context nav-context nav-factory] :as this
-    env/Action                (action-name [_] '[top])
-                              (primitive? [_] false)
-    env/ContextualAction      (precondition-context [_ s] context)
-    hierarchy/HighLevelAction (immediate-refinements- [_ s] 
-                                 (let [goal-fn (env/goal-fn env)]
-                                   (possible-move-refinements 
-                                    env goal-fn context nav-context nav-factory nil s)))
-                              (cycle-level- [_ s] nil))
+(defrecord WarehouseTLA [env context nav-context nav-factory]
+  env/Action
+  (action-name [_] '[top])
+  (primitive? [_] false)
+
+  env/ContextualAction
+  (precondition-context [_ s] context)
+  
+  hierarchy/HighLevelAction
+  (immediate-refinements- [_ s] 
+    (let [goal-fn (env/goal-fn env)]
+      (possible-move-refinements 
+       env goal-fn context nav-context nav-factory nil s)))
+  (cycle-level- [_ s] nil))
  
 
 (defn make-warehouse-tla [env]
   (let [nav-context (make-nav-context env)]
-    (WarehouseTLA env (util/keyset (dissoc (env/initial-state env) :const))
+    (WarehouseTLA. env (util/keyset (dissoc (env/initial-state env) :const))
                   nav-context (fn [dx dy] [(make-simple-nav-hla dx dy nav-context)]))))
 
 (defn simple-warehouse-hierarchy [#^WarehouseEnv env]
-  (hierarchy/SimpleHierarchicalEnv env [(make-warehouse-tla env)]))
+  (angelic.hierarchy.util.SimpleHierarchicalEnv. env [(make-warehouse-tla env)]))
 
 
 (defn make-warehouse-tla-fancynav [env]
   (let [nav-context (make-nav-context env)
         [w h]       (:topright env)]
-    (WarehouseTLA env (util/keyset (dissoc (env/initial-state env) :const))
+    (WarehouseTLA. env (util/keyset (dissoc (env/initial-state env) :const))
                   nav-context (fn [dx dy] (make-fancy-nav-plan dx dy h)))))
 
 (defn simple-warehouse-hierarchy-fancynav [#^WarehouseEnv env]
-  (hierarchy/SimpleHierarchicalEnv env [(make-warehouse-tla-fancynav env)]))
+  (angelic.hierarchy.util.SimpleHierarchicalEnv. env [(make-warehouse-tla-fancynav env)]))
 
 ;; TODO: heuristic
 ;; TODO: missing precond handling && preconds ? 
