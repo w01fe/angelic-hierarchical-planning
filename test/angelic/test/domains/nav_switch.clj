@@ -37,7 +37,7 @@
     (is (= (->> args
                 (apply make-nav-switch-env)
                 (#(make-nav-switch-hierarchy % split?))
-                angelic.hierarchy.util.ShopHTNEnv.
+                hierarchy-util/make-shop-htn-env
                 ucs/uniform-cost-search
                 second)
            reward))))

@@ -25,7 +25,7 @@
   (initial-sets    [a])
   (effect-sets     [a]))
 
-(extend ::env/FactoredPrimitive
+(extend ::env/env-util/make-factored-primitive
   SAS-Induced-Action
     {:precond-var-set (fn [a] (util/keyset (:precond-map a)))
      :initial-sets    (fn [a] (util/map-vals (fn [x] #{x}) (:precond-map a)))
@@ -170,7 +170,7 @@
               *reverse-dtgs* (sas-analysis/reverse-domain-transition-graphs vars actions)
               *hla-cache*    (HashMap.)              
               ]
-      (hierarchy/SimpleHierarchicalEnv sas-problem 
+      (hierarchy-util/make-simple-hierarchical-env sas-problem 
         [(util/make-safe 
           (induce-action-hla (util/safe-singleton (get-in *reverse-dtgs* [sas/goal-var-name sas/goal-true-val sas/goal-false-val]))
                              (util/map-vals (fn [x] #{x}) init)))]))))
@@ -190,7 +190,7 @@
 
 (defmethod pretty-print-action ::SAS-VV-HLA [h] (pretty-print-hla h))
 (defmethod pretty-print-action ::SAS-Action-HLA [h] (pretty-print-hla h))
-(defmethod pretty-print-action ::env/FactoredPrimitive [h] nil)
+(defmethod pretty-print-action ::env/env-util/make-factored-primitive [h] nil)
 
 
 (defn pretty-print-hierarchy [hierarchy]

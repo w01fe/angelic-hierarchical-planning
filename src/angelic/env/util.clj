@@ -16,6 +16,9 @@
     (precondition-context [this s]
       (.keySet #^java.util.Map precond-map)))
 
+(defn make-factored-primitive [name precond-map effect-map reward]
+  (FactoredPrimitive. name precond-map effect-map reward))
+
 (defmethod print-method FactoredPrimitive [a o] (print-method (env/action-name a) o))
 
 
@@ -42,6 +45,8 @@
   env/FactoredEnv
    (goal-map      [this] g-map))
 
+(defn make-simple-factored-env [init a-fn g-map]
+  (SimpleFactoredEnv. init a-fn g-map))
 
 
 (defn initial-logging-state [env]
@@ -49,7 +54,7 @@
     (state/get-logger init (state/current-context init))))
 
 (defn make-finish-action [env]
-  (FactoredPrimitive. 
+  (FactoredPrimitive.
     '[finish]
     (env/goal-map env)
     (zipmap (state/list-vars (env/initial-state env)) (repeat :goal))
@@ -72,7 +77,7 @@
   (let [e1 (:effect-map fp1), p2 (:precond-map fp2)
         common-keys (clojure.set/intersection (util/keyset e1) (util/keyset p2))]   
     (assert (= (select-keys e1 common-keys) (select-keys p2 common-keys)))
-    (FactoredPrimitive. 
+    (env-util/make-factored-primitive 
      [::Composed (:name fp1) (:name fp2)]
      (util/merge-agree (:precond-map fp1) (apply dissoc p2 common-keys))
      (merge e1 (:effect-map fp2))

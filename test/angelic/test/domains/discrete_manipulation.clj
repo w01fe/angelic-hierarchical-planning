@@ -68,7 +68,7 @@ parked
     (is (= (->> args
                 (apply make-discrete-manipulation-env-regions)
                 make-discrete-manipulation-hierarchy
-                angelic.hierarchy.util.ShopHTNEnv.
+                hierarchy-util/make-shop-htn-env
                 ucs/uniform-cost-search
                 second)
            reward))))

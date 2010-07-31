@@ -142,7 +142,7 @@
                               (assert (apply distinct? (concat (map first prevails)
                                                                (map #(nth % 1) effects))))
                               (util/assert-is (every? #(= 0 (first %)) effects))
-                              (angelic.env.util.FactoredPrimitive. 
+                              (env-util/make-factored-primitive 
                                name
                                (into {} (map (partial expand-condition vars)
                                              (concat (for [[_ v ov] effects :when (not (= ov -1))] [v ov]) 
@@ -153,7 +153,7 @@
         (into {} (map (juxt :name identity) vars)) 
         (util/map-map (partial expand-condition vars) (util/indexed (conj init-v 0)))
         (conj (vec ops) 
-              (angelic.env.util.FactoredPrimitive. goal-action-name (util/map-map (partial expand-condition vars) goal-m) 
+              (env-util/make-factored-primitive goal-action-name (util/map-map (partial expand-condition vars) goal-m) 
                                      {goal-var-name goal-true-val} 0))))))
 
 

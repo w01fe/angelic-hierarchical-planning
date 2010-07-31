@@ -401,7 +401,7 @@
             *problem-cache*    (HashMap.)]
     (let [e    (hierarchy/env henv)
           init (env/initial-logging-state e)
-          tla  (hierarchy/TopLevelAction e [(hierarchy/initial-plan henv)])
+          tla  (hierarchy/hierarchy-util/make-top-level-action e [(hierarchy/initial-plan henv)])
           top  (search-maker init tla)]
       (when-let [[s r] (first (:result-pairs (next-partial-solution top Double/NEGATIVE_INFINITY)))]
         [(map env/action-name (:opt (meta s))) r ]))))

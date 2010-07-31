@@ -71,7 +71,7 @@
        (assert (graphs/dag? causal-graph))
        (assert (sas-analysis/homogenous? sas-problem))    
   
-       (hierarchy/SimpleHierarchicalEnv 
+       (hierarchy-util/make-simple-hierarchical-env 
         sas-problem 
          [(make-action-hla 
            (Simple-DAG-Hierarchy

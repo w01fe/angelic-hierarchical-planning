@@ -31,6 +31,9 @@
      Double/POSITIVE_INFINITY})
   (pessimistic-map- [_ s] {}))
 
+(defn make-top-level-action [env initial-plans]
+  (TopLevelAction. env initial-plans))
+
 (defrecord SimpleHLA [name pc refs]
   env/Action
   (action-name [_] name)
@@ -42,6 +45,9 @@
   hierarchy/HighLevelAction
   (immediate-refinements- [_ s] refs)
   (cycle-level-           [_ s] nil))
+
+(defn make-simple-hla [name pc refs]
+  (SimpleHLA. name pc refs))
 
 
 
@@ -55,6 +61,8 @@
   (env          [_] env)
   (initial-plan [_] initial-plan))
 
+(defn make-simple-hierarchical-env [env initial-plan]
+  (SimpleHierarchicalEnv. env initial-plan))
 
 ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
 ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;; ShopHTNENV ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
@@ -64,7 +72,7 @@
 
 (defrecord ShopHTNPlan [rest-plan state])
 
-(defmethod print-method ::ShopHTNPlan [p os] 
+(defmethod print-method ShopHTNPlan [p os] 
   (let [[sol rew] (env/solution-and-reward (:state p))]
     (print-method  [(map env/action-name sol) rew (map env/action-name (:rest-plan p))]
                    os)))
@@ -111,6 +119,7 @@
       (when (empty? (:rest-plan s))
         (env/solution-and-reward (:state s))))))
 
+(defn make-shop-htn-env [he] (ShopHTNEnv. he))
 
 
 

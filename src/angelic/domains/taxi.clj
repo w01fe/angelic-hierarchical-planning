@@ -5,36 +5,36 @@
             [angelic.env.util :as env-util]
             [angelic.sas :as sas]
             [angelic.hierarchy :as hierarchy]
-            angelic.hierarchy.util)
+            [angelic.hierarchy.util :as hierarchy-util])
   (:import [java.util Random]))
 
 (defn- make-left   [s]
   (let [cx     (state/get-var s '[atx])]
     (when (> cx 1) 
-      (angelic.env.util.FactoredPrimitive. ['left cx]  {['atx] cx} {['atx] (dec cx)} -1))))
+      (env-util/make-factored-primitive ['left cx]  {['atx] cx} {['atx] (dec cx)} -1))))
 
 (defn- make-right  [s]
   (let [const (state/get-var s :const)
         width  (get const '[width])
         cx     (state/get-var s '[atx])]
     (when (< cx width)  
-      (angelic.env.util.FactoredPrimitive. ['right cx] {['atx] cx} {['atx] (inc cx)} -1))))
+      (env-util/make-factored-primitive ['right cx] {['atx] cx} {['atx] (inc cx)} -1))))
 
 (defn- make-down  [s]
   (let [cy     (state/get-var s '[aty])]
     (when (> cy 1)
-      (angelic.env.util.FactoredPrimitive. ['down cy]  {['aty] cy} {['aty] (dec cy)} -1))))
+      (env-util/make-factored-primitive ['down cy]  {['aty] cy} {['aty] (dec cy)} -1))))
 
 (defn- make-up    [s]
   (let [const (state/get-var s :const)
         height (get const '[height])
         cy     (state/get-var s '[aty])]
     (when (< cy height)
-      (angelic.env.util.FactoredPrimitive. ['up cy] {['aty] cy} {['aty] (inc cy)} -1))))
+      (env-util/make-factored-primitive ['up cy] {['aty] cy} {['aty] (inc cy)} -1))))
 
 (defn- make-pickup  [s pass]
   (let [const (state/get-var s :const)]
-    (angelic.env.util.FactoredPrimitive. 
+    (env-util/make-factored-primitive 
      ['pickup pass] 
      {['atx] (get const ['srcx pass]) 
       ['aty] (get const ['srcy pass]) 
@@ -50,7 +50,7 @@
        (let [const (state/get-var s :const)
              dx (get const ['dstx pass])
              dy (get const ['dsty pass])]
-         (angelic.env.util.FactoredPrimitive. 
+         (env-util/make-factored-primitive 
           ['dropoff pass] 
           {['atx] dx '[aty] dy '[in-taxi] pass}
           {'[in-taxi] nil ['pass-served? pass] true}
@@ -227,13 +227,13 @@
   (TaxiTLA. env (util/keyset (dissoc (env/initial-state env) :const))))
 
 (defn simple-taxi-hierarchy [#^TaxiEnv env]
-  (angelic.hierarchy.util.SimpleHierarchicalEnv.
+  (hierarchy-util/make-simple-hierarchical-env
    env
    [(make-taxi-tla env)]))
 
 
 (defn simple-taxi-hierarchy-nsa [#^TaxiEnv env]
-  (angelic.hierarchy.util.SimpleHierarchicalEnv.
+  (hierarchy-util/make-simple-hierarchical-env
    env
    [(angelic.hierarchy.util.NSAHLA. (make-taxi-tla env) (util/keyset (dissoc (env/initial-state env) :const)))]))
 
@@ -334,7 +334,7 @@
   (Taxi2TLA. env (util/keyset (dissoc (env/initial-state env) :const))))
 
 (defn simple-taxi-hierarchy2 [#^TaxiEnv env]
-  (angelic.hierarchy.util.SimpleHierarchicalEnv.
+  (hierarchy-util/make-simple-hierarchical-env
    env
    [(make-taxi-tla2 env)]))
 
@@ -392,7 +392,7 @@
   (Taxi3TLA. env (util/keyset (dissoc (env/initial-state env) :const))))
 
 (defn simple-taxi-hierarchy3 [#^TaxiEnv env]
-  (angelic.hierarchy.util.SimpleHierarchicalEnv.
+  (hierarchy-util/make-simple-hierarchical-env
    env
    [(make-taxi-tla3 env)]))
 

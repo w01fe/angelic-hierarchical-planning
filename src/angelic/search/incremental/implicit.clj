@@ -162,8 +162,8 @@
 (defn compare-saha-nodes [x1 x2]
   (let [c (compare-saha-summaries x1 x2)]
     (if (zero? c)  
-        (compare (and (instance? angelic.incremental_search.Node x2) (is/node-goal? x2))
-                 (and (instance? angelic.incremental_search.Node x1) (is/node-goal? x1)))
+        (compare (and (instance? angelic.search.incremental.Node x2) (is/node-goal? x2))
+                 (and (instance? angelic.search.incremental.Node x1) (is/node-goal? x1)))
         c)))
 
 ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;; CAC Node ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;

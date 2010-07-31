@@ -4,7 +4,7 @@
             [angelic.env.state :as state]            
             [angelic.env.util :as env-util]
             [angelic.hierarchy :as hierarchy]
-            angelic.hierarchy.util)
+            [angelic.hierarchy.util :as hierarchy-util])
   (:import [java.util Random]))
 
 ; This is meant to be a simplified version of the ICAPS '10/SAHTN 
@@ -79,10 +79,10 @@
 (def unpark-reward -2)
 
 (defn make-park [s]
-  (angelic.env.util.FactoredPrimitive. [:park] {[:parked?] false} {[:parked?] true} park-reward))
+  (env-util/make-factored-primitive [:park] {[:parked?] false} {[:parked?] true} park-reward))
 
 (defn make-unpark [s]
-  (angelic.env.util.FactoredPrimitive. [:unpark] {[:parked?] true [:gripper-offset] [0 0]} {[:parked?] false} unpark-reward))
+  (env-util/make-factored-primitive [:unpark] {[:parked?] true [:gripper-offset] [0 0]} {[:parked?] false} unpark-reward))
 
 (def move-base-step-reward -2)
 
@@ -91,7 +91,7 @@
         base  (state/get-var s [:base])
         nbase (add-pos base dir)]
     (when (contains? (get const [:freespace]) nbase)
-      (angelic.env.util.FactoredPrimitive. 
+      (env-util/make-factored-primitive 
        [:base dirname]
        {[:base] base [:parked?] false}
        {[:base] nbase}
@@ -106,7 +106,7 @@
         ngo   (add-pos go dir)
         npos  (add-pos ngo base)]
     (when (contains? (get const [:legal-go]) ngo)
-      (angelic.env.util.FactoredPrimitive. 
+      (env-util/make-factored-primitive 
        [:gripper dirname]
        {[:base] base [:gripper-offset] go [:parked?] true 
         [:object-at npos] nil}
@@ -116,7 +116,7 @@
 (def pickup-reward -1)
 
 (defn make-pickup [dirname base go o opos]
-  (angelic.env.util.FactoredPrimitive. 
+  (env-util/make-factored-primitive 
    [:pickup dirname]
    {[:base] base [:gripper-offset] go [:parked?] true 
     [:pos o] opos [:holding] nil [:at-goal? o] false}
@@ -134,7 +134,7 @@
 (def putdown-reward -1)
 
 (defn make-putdown [dirname base go o opos]
-  (angelic.env.util.FactoredPrimitive. 
+  (env-util/make-factored-primitive 
        [:putdown dirname]
        {[:base] base [:gripper-offset] go [:parked?] true 
         [:holding] o [:object-at opos] nil}
@@ -171,7 +171,7 @@
         all-cells      (set (region-cells [[0 0] size]))
         freespace      (clojure.set/difference all-cells border-cells obstacle-cells)
         legal-go       (set (spiral-to g-rad))]
-    (angelic.env.util.SimpleFactoredEnv.
+    (env-util/make-simple-factored-env
      (into {:const (into {[:size] size [:freespace] freespace [:legal-go] legal-go [:objects] objects
                           [:max-go] g-rad
                           [:base-offsets] (pseudo-shuffle random (spiral-to (inc g-rad)) )
@@ -758,7 +758,7 @@
   (pessimistic-map- [_ s] {}))))
 
 (defn make-discrete-manipulation-hierarchy [env]
-  (angelic.hierarchy.util.SimpleHierarchicalEnv. env [(make-tla env)]))
+  (hierarchy-util/make-simple-hierarchical-env env [(make-tla env)]))
 
 
 ; (use '[angelic discrete-manipulation env hierarchy hierarchical-incremental-search] 'edu.berkeley.ai.util)

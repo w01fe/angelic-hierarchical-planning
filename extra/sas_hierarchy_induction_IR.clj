@@ -64,7 +64,7 @@
   (pre-ref-pairs   [a])
   (compile-hla     [a]))
 
-(extend ::env/FactoredPrimitive
+(extend ::env/env-util/make-factored-primitive
   SAS-Induced-Action
     {:precond-var-set (fn [a] (util/keyset (:precond-map a)))
 ;     :initial-sets    (fn [a] (util/map-vals (fn [x] #{x}) (:precond-map a))) ;?
@@ -378,10 +378,10 @@
       (let [goal-action (util/safe-singleton (get-in *extended-dtgs* [sas/goal-var-name sas/goal-false-val sas/goal-true-val]))
             goal-hla    (get-current-action-hla goal-action)]
         (extend-action-hla! goal-hla (util/map-vals (fn [x] #{x}) init))
-        (hierarchy/SimpleHierarchicalEnv sas-problem [goal-hla])))))
+        (hierarchy-util/make-simple-hierarchical-env sas-problem [goal-hla])))))
 
 (defn compile-hierarchy [h]
-  (hierarchy/SimpleHierarchicalEnv (hierarchy/env h) (compile-refinement (hierarchy/initial-plan h))))
+  (hierarchy-util/make-simple-hierarchical-env (hierarchy/env h) (compile-refinement (hierarchy/initial-plan h))))
 
 (defn induce-hierarchy [sas-problem]
   (compile-hierarchy (induce-raw-hierarchy sas-problem)))
@@ -400,7 +400,7 @@
       (pretty-print-action a done-set))))
 
 (defmethod pretty-print-action :default [h ds] (pretty-print-hla h ds))
-(defmethod pretty-print-action ::env/FactoredPrimitive [h ds] nil)
+(defmethod pretty-print-action ::env/env-util/make-factored-primitive [h ds] nil)
 
 
 (defn pretty-print-hierarchy [hierarchy]

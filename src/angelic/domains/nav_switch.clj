@@ -2,9 +2,9 @@
   (:require [edu.berkeley.ai.util :as util]
             [angelic.env :as env]
             [angelic.env.state :as state]            
-            angelic.env.util
+            [angelic.env.util :as env-util]
             [angelic.hierarchy :as hierarchy]
-            angelic.hierarchy.util)
+            [angelic.hierarchy.util :as hierarchy-util])
   (:import [java.util Random]))
 
 ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
@@ -18,7 +18,7 @@
         ov    (state/get-var s dim)
         nv    (+ ov dir)]
     (when (<= 1 nv (get (state/get-var s :const) dim))
-      (angelic.env.util.FactoredPrimitive. name {dim ov, '[h] cur-h} {dim nv} 
+      (env-util/make-factored-primitive name {dim ov, '[h] cur-h} {dim nv} 
                              (if (util/truth= cur-h h?) -2 -4)))))
 
 (defn- make-left  [s] (make-dir s '[left]  true  -1))
@@ -28,7 +28,7 @@
 
 
 (defn- make-specific-switch [cur-h cur-x cur-y]
-  (angelic.env.util.FactoredPrimitive. 
+  (env-util/make-factored-primitive 
    [(if cur-h 'v 'h)] {'[h] cur-h '[x] cur-x '[y] cur-y} {'[h] (not cur-h)} -1))
 
 
@@ -187,6 +187,6 @@
                  (if split-nav?  #(SplitNavHLA. %1 %2) #(SimpleNavHLA. %1 %2))))
 
 (defn make-nav-switch-hierarchy [#^NavSwitchEnv env split-nav?]
-  (angelic.hierarchy.util.SimpleHierarchicalEnv. env [(make-nav-switch-tla env split-nav?)]))
+  (hierarchy-util/make-simple-hierarchical-env env [(make-nav-switch-tla env split-nav?)]))
 
 

@@ -32,7 +32,7 @@
 (def worst-cn-summary (CNSummary is/neg-inf 1))
 (def failed-cn-search (is/make-failed-search worst-cn-summary))
 
-(extend angelic.incremental_search.Node
+(extend angelic.search.incremental.Node
   ConspiracyNumbered {:conspiracy-number (constantly 1)})
 
 (defn min-cn-summaries
@@ -168,7 +168,7 @@
                (let [c  (- (is/max-reward x) wtd-reward)]
                  (if (not (zero? c)) c
                    (cond goal? -1 
-                         (and (instance? angelic.incremental_search.Node x) (is/node-goal? x)) 1
+                         (and (instance? angelic.search.incremental.Node x) (is/node-goal? x)) 1
                          :else (- (pess-reward x) pes-reward)))))
   is/Summary (max-reward [] wtd-reward)   
   is/Node    (node-name  [] name)
@@ -320,7 +320,7 @@
                (let [c  (- (is/max-reward x) wtd-reward)]
                  (if (not (zero? c)) c
                    (cond goal? -1 
-                         (and (instance? angelic.incremental_search.Node x) (is/node-goal? x)) 1
+                         (and (instance? angelic.search.incremental.Node x) (is/node-goal? x)) 1
                          :else (- (pess-reward x) pes-reward)))))
   is/Summary (max-reward [] wtd-reward)   
   is/Node    (node-name  [] name)

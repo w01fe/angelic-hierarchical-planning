@@ -221,7 +221,7 @@
   (let [e     (hierarchy/env henv)
         init  (env/initial-logging-state e)]
     (binding [*subproblem-cache* (HashMap.)]
-      (let [tla (hierarchy/TopLevelAction e [(hierarchy/initial-plan henv)])
+      (let [tla (hierarchy/hierarchy-util/make-top-level-action e [(hierarchy/initial-plan henv)])
             top (make-open-subproblem [:init] init tla)
             result (sub-refine top Double/NEGATIVE_INFINITY)]
         (when (not (number? result))

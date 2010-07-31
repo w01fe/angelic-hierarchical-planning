@@ -40,7 +40,7 @@
                                                             :when (and (contains? final-vars var) new-val)]
                                                         [var new-val]))]
                                     :when (seq fe)]
-                                (angelic.env.util.FactoredPrimitive (:name a) fp fe (:reward a))))]
+                                (env-util/make-factored-primitive (:name a) fp fe (:reward a))))]
     (println "Removing"   (- (count actions) (count final-actions)) "actions," 
                             (count dead-actions) "initial;" 
                           (- (count vars) (count final-vars)) "vars;"

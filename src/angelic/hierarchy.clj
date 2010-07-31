@@ -67,7 +67,7 @@
   (util/sref-set! *pessimistic-counter* (inc (util/sref-get *pessimistic-counter*)))
   (pessimistic-map- a s))
 
-(extend angelic.env.util.FactoredPrimitive
+(extend env-util/make-factored-primitive
   ExplicitAngelicAction
   {:optimistic-map- 
      (fn optimistic-map- [this s]

@@ -131,7 +131,7 @@
   (let [e     (hierarchy/env henv)
         cache (HashMap.)
         init  (env/initial-logging-state e)
-        root  (get-sa-node cache init (hierarchy/TopLevelAction e [(hierarchy/initial-plan henv)]))]
+        root  (get-sa-node cache init (hierarchy/hierarchy-util/make-top-level-action e [(hierarchy/initial-plan henv)]))]
     (loop [cutoff 0]
       (let [result (expand-sa-node root cache cutoff init 0.0 cutoff)]
         (cond (not (empty? (:result-map result)))

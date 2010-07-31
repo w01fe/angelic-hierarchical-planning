@@ -55,7 +55,7 @@
   (assert (contains? effect-map target-var))
   (let [eval (effect-map target-var)
         pval? (contains? precond-map target-var)]
-    (env/FactoredPrimitive
+    (env/env-util/make-factored-primitive
      [::AddAction name]
      (if pval? {(action-var target-var) nil, target-var (get precond-map target-var), (free-var target-var) false}
          {(action-var target-var) nil, (free-var target-var) false})
@@ -63,7 +63,7 @@
      reward)))
 
 (defn make-set-parent-var-action [p-var c-var]
-  (env/FactoredPrimitive 
+  (env/env-util/make-factored-primitive 
    [::SetParent p-var c-var] 
    {(free-var p-var) true} 
    {(free-var p-var) false (parent-var p-var c-var) true} 
@@ -82,7 +82,7 @@
                (every? #(state/get-var s (parent-var % effect-var)) unfree-pv))
         (util/assert-is (every? #(nil? (state/get-var s (action-var %))) precond-vars) ); "%s" [name effect-var (println s)])
         (util/assert-is (every? #(nil? (state/get-var s (action-var %))) effect-vars))        
-        (env/FactoredPrimitive
+        (env/env-util/make-factored-primitive
          [::GreedyFire name]
          (into precond-map 
                (concat [[(action-var effect-var) factored-primitive]]

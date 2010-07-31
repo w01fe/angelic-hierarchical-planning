@@ -275,7 +275,7 @@
             *problem-cache*    (HashMap.)]
     (let [e    (hierarchy/env henv)
           init (env/initial-logging-state e)
-          tla  (hierarchy/TopLevelAction e [(hierarchy/initial-plan henv)])
+          tla  (hierarchy/hierarchy-util/make-top-level-action e [(hierarchy/initial-plan henv)])
           top  (search-maker init tla)]
       (is/first-solution-reward-pair top))))
 

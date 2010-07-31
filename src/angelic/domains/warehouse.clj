@@ -3,9 +3,9 @@
  (:require [edu.berkeley.ai [util :as util]]
            [angelic.env :as env]
            [angelic.env.state :as state]
-           angelic.env.util
+           [angelic.env.util :as env-util]
            [angelic.hierarchy :as hierarchy]
-           angelic.hierarchy.util))
+           [angelic.hierarchy.util :as hierarchy-util]))
 
 ; Note: WW heuristic is inconsistent.
 
@@ -16,7 +16,7 @@
         [w h]          (get (state/get-var s :const) '[topright])
         nx (+ cx dx), ny (+ cy dy)]
     (when (and (<= 1 nx w) (<= 1 ny h) (not (state/get-var s ['someblockat nx ny])))
-      (angelic.env.util.FactoredPrimitive.
+      (env-util/make-factored-primitive
        name
        {['at] cp ['someblockat nx ny] false}
        {['at] [nx ny]}
@@ -29,7 +29,7 @@
 
 
 (defn- make-specific-turn [pos cur-fr]
-  (angelic.env.util.FactoredPrimitive. [(if cur-fr 'turn-l 'turn-r)] {['at] pos ['facingright] cur-fr} 
+  (env-util/make-factored-primitive [(if cur-fr 'turn-l 'turn-r)] {['at] pos ['facingright] cur-fr} 
                          {'[facingright] (not cur-fr)} -1))
 
 (defn- make-turn   [s]
@@ -41,7 +41,7 @@
 
 (defn- make-specific-get [b c fr? gx gy]
   (let [bx (+ gx (if fr? 1 -1))]
-    (angelic.env.util.FactoredPrimitive.
+    (env-util/make-factored-primitive
      [(if fr? 'get-r 'get-l) b c]
      {'[at] [gx gy] '[facingright] fr? ['blockat bx gy] b 
       ['on c] b ['on b] nil '[holding] nil}
@@ -61,7 +61,7 @@
 
 (defn- make-specific-put [b c fr? gx gy]
   (let [bx (+ gx (if fr? 1 -1))]
-    (angelic.env.util.FactoredPrimitive.
+    (env-util/make-factored-primitive
      [(if fr? 'put-r 'put-l) b c]
      {'[at] [gx gy] '[facingright] fr? ['blockat bx (dec gy)] c 
       ['on c] nil '[holding] b}
@@ -339,7 +339,7 @@
                   nav-context (fn [dx dy] [(make-simple-nav-hla dx dy nav-context)]))))
 
 (defn simple-warehouse-hierarchy [#^WarehouseEnv env]
-  (angelic.hierarchy.util.SimpleHierarchicalEnv. env [(make-warehouse-tla env)]))
+  (hierarchy-util/make-simple-hierarchical-env env [(make-warehouse-tla env)]))
 
 
 (defn make-warehouse-tla-fancynav [env]
@@ -349,7 +349,7 @@
                   nav-context (fn [dx dy] (make-fancy-nav-plan dx dy h)))))
 
 (defn simple-warehouse-hierarchy-fancynav [#^WarehouseEnv env]
-  (angelic.hierarchy.util.SimpleHierarchicalEnv. env [(make-warehouse-tla-fancynav env)]))
+  (hierarchy-util/make-simple-hierarchical-env env [(make-warehouse-tla-fancynav env)]))
 
 ;; TODO: heuristic
 ;; TODO: missing precond handling && preconds ? 

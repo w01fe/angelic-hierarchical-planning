@@ -1,8 +1,10 @@
 (ns angelic.search.incremental.hierarchical
   (:require [edu.berkeley.ai.util :as util]
-            [angelic.env :as env] 
+            [angelic.env :as env]
+            [angelic.env.state :as state]
+            [angelic.env.util :as env-util] 
             [angelic.hierarchy :as hierarchy]
-            [angelic.incremental-search :as is])
+            [angelic.search.incremental.core :as is])
   (:import  [java.util HashMap]))
 
 
@@ -19,7 +21,9 @@
 
 ;;;;;;;;;;;;;;;;;;;;;;;;;;; Hierarchical Forward State ;;;;;;;;;;;;;;;;;;;;;;;;;
 
-(deftype HierarchicalForwardState [state reward opt-sol remaining-actions])
+(defrecord HierarchicalForwardState [state reward opt-sol remaining-actions])
+(defn make-hierarchical-forward-state [state reward opt-sol remaining-actions]
+  (HierarchicalForwardState. state reward opt-sol remaining-actions))
 
 (defn hfs-name 
   ([hfs] [(:state hfs) (map env/action-name (:remaining-actions hfs))])
@@ -36,19 +40,19 @@
    [(:opt-sol hfs) (:reward hfs)]))
 
 (defn make-root-hfs [state action]
-  (HierarchicalForwardState state 0 [] [action]))
+  (make-hierarchical-forward-state state 0 [] [action]))
 
 (defn hfs-children [hfs]
   (let [{:keys [state reward opt-sol remaining-actions]} hfs]
     (when-let [[f & r] (seq remaining-actions)]      
       (if (env/primitive? f)
         (when-let [[ss sr] (and (env/applicable? f state) (env/successor f state))]
-          [(HierarchicalForwardState ss (+ reward sr) (conj opt-sol f) r)]) 
+          [(make-hierarchical-forward-state ss (+ reward sr) (conj opt-sol f) r)]) 
         (for [ref (hierarchy/immediate-refinements f state)]
-          (HierarchicalForwardState state reward opt-sol (concat ref r)))))))
+          (make-hierarchical-forward-state state reward opt-sol (concat ref r)))))))
 
 (defn combine-hfs [n1 n2 state-combiner action-combiner]
-  (HierarchicalForwardState
+  (make-hierarchical-forward-state
    (state-combiner       (:state n1)   (:state n2))
    (+                    (:reward n1)  (:reward n2))
    (into                 (:opt-sol n1) (:opt-sol n2))
@@ -62,28 +66,28 @@
 
 (defn hfs-first-sub "First abstracted subproblem of hfs" [hfs]
   (let [{[f] :remaining-actions state :state} hfs]
-    (make-root-hfs (env/get-logger state (if *state-abstraction?* (env/precondition-context f state) *full-context*)) f)))
+    (make-root-hfs (state/get-logger state (if *state-abstraction?* (env/precondition-context f state) *full-context*)) f)))
 
 (defn lift-hfs "Lift child-solution into the context of parent-node, counterpart to sub."
   [parent child] 
-  (combine-hfs parent child env/transfer-effects
+  (combine-hfs parent child state/transfer-effects
                (fn [r1 r2] (util/assert-is (empty? r2)) (next r1))))
 
 
 ;; Used for inverted only
 (defn adjust-hfs-reward [h r]
-  (HierarchicalForwardState (:state h) (+ r (:reward h)) (:opt-sol h) (:remaining-actions h)))
+  (make-hierarchical-forward-state (:state h) (+ r (:reward h)) (:opt-sol h) (:remaining-actions h)))
 
 ; used for saha only
 (defn first-action-hfs "Return hfs for just first action." [hfs]
   (let [{:keys [state reward opt-sol remaining-actions]} hfs]
     (assert (seq remaining-actions)) (assert (zero? reward)) (assert (empty? opt-sol))
-    (HierarchicalForwardState state 0 nil (take 1 remaining-actions))))
+    (make-hierarchical-forward-state state 0 nil (take 1 remaining-actions))))
 
 (defn rest-actions-hfs "Return hfs for just first action." [hfs mid-state]
   (let [{:keys [state reward opt-sol remaining-actions]} hfs]
     (assert (seq remaining-actions)) (assert (zero? reward)) (assert (empty? opt-sol))
-    (HierarchicalForwardState mid-state 0 nil (drop 1 remaining-actions))))
+    (make-hierarchical-forward-state mid-state 0 nil (drop 1 remaining-actions))))
 
 ;; TODO: remove expensive assertino.
 (defn join-hfs [parent-hfs first-result rest-result final-state]
@@ -105,7 +109,7 @@
 (defn hfs-gg "Return gg-hfs and goal-map, or nil if not gg." [hfs]
   (let [a (util/safe-singleton (:remaining-actions hfs))]
     (when-let [[gga goal-map] (hierarchy/gg-action a)]
-      [(HierarchicalForwardState (:state hfs) (:reward hfs) (:opt-sol hfs) [gga])
+      [(make-hierarchical-forward-state (:state hfs) (:reward hfs) (:opt-sol hfs) [gga])
        goal-map
        (every? (env/precondition-context a (:state hfs)) (keys goal-map))])))
 
@@ -120,12 +124,12 @@
 
 
 (defn hfs->simple-node 
-  ([hfs] (is/SimpleNode (hfs-name hfs) (:reward hfs) (empty? (:remaining-actions hfs)) hfs))
+  ([hfs] (is/make-simple-node (hfs-name hfs) (:reward hfs) (empty? (:remaining-actions hfs)) hfs))
   ([hfs extra-data] (hfs->simple-node hfs extra-data (empty? (:remaining-actions hfs))))
   ([hfs extra-data goal?] ; for inverted, needs non-goal goal-looking nodes.
-     (is/SimpleNode (conj (hfs-name hfs) extra-data) (:reward hfs) goal? [hfs extra-data]))
+     (is/make-simple-node (conj (hfs-name hfs) extra-data) (:reward hfs) goal? [hfs extra-data]))
   ([hfs extra-data goal? rew] ; for saha, needs estimated reward.
-     (is/SimpleNode (conj (hfs-name hfs) extra-data) rew goal? [hfs extra-data])))
+     (is/make-simple-node (conj (hfs-name hfs) extra-data) rew goal? [hfs extra-data])))
 
 
 ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
@@ -149,7 +153,7 @@
 ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;; Recursive search ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
 
 (defn make-abstract-subsearch [hfs search-factory]    
-  (is/WrappedSubSearch 
+  (is/make-wrapped-subsearch
    (is/get-cached-search *problem-cache* (hfs-first-sub-name hfs)
      (search-factory (hfs-first-sub hfs))) 
    (:reward hfs) 
@@ -213,7 +217,7 @@
 (declare make-upward-node make-inverted-node)
 
 ; parents are [parent-hfs parent-ic] pairs. base-reward is that of first parent.
-(deftype InvertedCache [results-atom parents-atom base-reward])
+(defrecord InvertedCache [results-atom parents-atom base-reward])
 
 (defn add-cache-result [_ [hfs ic :as hfs-ic-pair]]
   (let [{:keys [results-atom parents-atom base-reward]} ic]
@@ -223,7 +227,7 @@
 
 (defn add-cache-parent [#^HashMap cc [parent-hfs parent-ic :as parent-pair]]
   (let [ic (util/cache-with cc (hfs-first-sub-name parent-hfs) 
-             (InvertedCache (atom []) (atom []) (:reward parent-hfs)))
+             (InvertedCache. (atom []) (atom []) (:reward parent-hfs)))
         {:keys [results-atom parents-atom base-reward]} ic]
     (when-let [o (last @parents-atom)] 
       (util/assert-is (<= (:reward parent-hfs) (:reward (first o)))))
@@ -260,7 +264,7 @@
 
 (defn get-sas-map "Get a map from outer final states to SAS nodes/" [hfs]
   (util/cache-with *problem-cache* (hfs-name hfs) ; unabstracted state SA cache
-    (util/map-keys #(env/transfer-effects (:state hfs) %)
+    (util/map-keys #(state/transfer-effects (:state hfs) %)
       (util/cache-with *problem-cache* (hfs-first-sub-name hfs) ; abstracted state SA cache
         (let [inner-hfs (hfs-first-sub hfs)
               next-hfs (lazy-seq (hfs-children inner-hfs))]
@@ -303,9 +307,9 @@
                  (fn [x y] x)
                  is/add-simple-summaries 
                  (fn [g1 g2] 
-                   #_(println (hfs->simple-node hfs) (env/extract-effects final-state)
-                            (env/extract-effects (:state (first (:data g1))))
-                            (env/extract-effects (:state (first (:data g2))))
+                   #_(println (hfs->simple-node hfs) (state/extract-effects final-state)
+                            (state/extract-effects (:state (first (:data g1))))
+                            (state/extract-effects (:state (first (:data g2))))
                             )
                    (hfs->simple-node (join-hfs hfs (first (:data g1)) (first (:data g2)) final-state) 
                                      :goal)))))))))))
@@ -337,7 +341,7 @@
 
 
 (defn hfs->aha-star-node [hfs]
-  (is/SimpleNode 
+  (is/make-simple-node 
    (hfs-name hfs) 
    (+ (:reward hfs) (compute-heuristic (:state hfs) (:remaining-actions hfs))) 
    (empty? (:remaining-actions hfs)) 
@@ -381,8 +385,8 @@
   ([henv sol-hfs-fn] (generic-hierarchical-search henv sol-hfs-fn true))
   ([henv sol-hfs-fn sa?]
      (let [e    (hierarchy/env henv)
-           init (env/initial-logging-state e)
-           tla  (hierarchy/TopLevelAction e [(hierarchy/initial-plan henv)])]
+           init (env-util/initial-logging-state e)
+           tla  (hierarchy/hierarchy-util/make-top-level-action e [(hierarchy/initial-plan henv)])]
        (binding [*problem-cache*    (HashMap.)
                  *state-abstraction?* sa?
                  *full-context*      (if sa? :dummy (state/current-context init))]
@@ -421,7 +425,7 @@
 
 (defn interactive-hierarchical-search [henv]
   (let [e    (hierarchy/env henv)
-        tla  (hierarchy/TopLevelAction e [(hierarchy/initial-plan henv)])]
+        tla  (hierarchy/hierarchy-util/make-top-level-action e [(hierarchy/initial-plan henv)])]
     (interactive/generic-interactive-search 
      (make-root-hfs (env/initial-state e) tla)
      :reward

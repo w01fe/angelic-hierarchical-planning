@@ -155,7 +155,7 @@
       (doseq [[var val] (:precond-map a)]
         (.remove untested-vals [var val])
         (.put actions-by-precond [var val] (cons a (.get actions-by-precond [var val])))))
-    (queues/pq-add! stack (angelic.env.util.FactoredPrimitive. [:init] {} init 0) 0)
+    (queues/pq-add! stack (env-util/make-factored-primitive [:init] {} init 0) 0)
     (while (not (queues/pq-empty? stack))
         (doseq [[var val] (:effect-map (queues/pq-remove-min! stack))
                 a (.remove actions-by-precond [var val])]
@@ -178,7 +178,7 @@
 
 (defn find-static-equivalence-pairs [sas-problem]
   (let [{:keys [vars actions init]} sas-problem
-        actions                     (cons (angelic.env.util.FactoredPrimitive. [:init] {} init 0) actions)
+        actions                     (cons (env-util/make-factored-primitive [:init] {} init 0) actions)
         extended-dtgs               (domain-transition-graphs vars actions)
         extended-rdtgs              (reverse-domain-transition-graphs vars actions)]
     (filter

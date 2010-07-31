@@ -97,7 +97,7 @@
   (let [e       (hierarchy/env henv)
         cache   (HashMap.)
 ;        _       (def *cache* cache)
-        results (sahtn-action cache (env/initial-logging-state e) (hierarchy/TopLevelAction e [(hierarchy/initial-plan henv)]) 0)]
+        results (sahtn-action cache (env/initial-logging-state e) (hierarchy/hierarchy-util/make-top-level-action e [(hierarchy/initial-plan henv)]) 0)]
     (when-not (empty? results)
 ;      (assert (= (count results) 1))
       (let [[k v] (util/first-maximal-element val results)]

@@ -49,7 +49,7 @@
     (assert (graphs/inverted-tree-reducible? causal-graph))
     (assert (sas-analysis/homogenous? sas-problem))    
   
-    (hierarchy/SimpleHierarchicalEnv sas-problem 
+    (hierarchy-util/make-simple-hierarchical-env sas-problem 
       [(make-action-hla 
         (Simple-Tree-Hierarchy
          sas-problem

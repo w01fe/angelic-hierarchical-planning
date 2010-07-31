@@ -5,7 +5,7 @@
             [angelic.sas :as sas]
             [angelic.env.util :as env-util]
             [angelic.hierarchy :as hierarchy]
-            angelic.hierarchy.util)
+            [angelic.hierarchy.util :as hierarchy-util])
   (:import [java.util Random]))
 
 
@@ -13,29 +13,29 @@
 (defn- make-left   [s]
   (let [cx     (state/get-var s '[atx])]
     (when (> cx 1) 
-      (angelic.env.util.FactoredPrimitive. ['left cx]  {['atx] cx} {['atx] (dec cx)} -1))))
+      (env-util/make-factored-primitive ['left cx]  {['atx] cx} {['atx] (dec cx)} -1))))
 
 (defn- make-right  [s]
   (let [const (state/get-var s :const)
         width  (get const '[width])
         cx     (state/get-var s '[atx])]
     (when (< cx width)  
-      (angelic.env.util.FactoredPrimitive. ['right cx] {['atx] cx} {['atx] (inc cx)} -1))))
+      (env-util/make-factored-primitive ['right cx] {['atx] cx} {['atx] (inc cx)} -1))))
 
 (defn- make-down  [s]
   (let [cy     (state/get-var s '[aty])]
     (when (> cy 1)
-      (angelic.env.util.FactoredPrimitive. ['down cy]  {['aty] cy} {['aty] (dec cy)} -1))))
+      (env-util/make-factored-primitive ['down cy]  {['aty] cy} {['aty] (dec cy)} -1))))
 
 (defn- make-up    [s]
   (let [const (state/get-var s :const)
         height (get const '[height])
         cy     (state/get-var s '[aty])]
     (when (< cy height)
-      (angelic.env.util.FactoredPrimitive. ['up cy] {['aty] cy} {['aty] (inc cy)} -1))))
+      (env-util/make-factored-primitive ['up cy] {['aty] cy} {['aty] (inc cy)} -1))))
 
 (defn- make-pickup  [s pass [x y]]
-  (angelic.env.util.FactoredPrimitive. 
+  (env-util/make-factored-primitive 
    ['pickup pass x y] 
    {['atx]        x     ['aty]        y
     ['passx pass] x     ['passy pass] y}
@@ -44,7 +44,7 @@
 
 (defn- make-dropoff [s pass [x y]]
   (when pass 
-    (angelic.env.util.FactoredPrimitive. 
+    (env-util/make-factored-primitive 
      ['dropoff pass x y] 
      {['atx]        x     '[aty] y 
       ['passx pass] :taxi ['passy pass] :taxi}
@@ -155,7 +155,7 @@
    (InfiniteTaxiTLA. env (util/keyset (dissoc (env/initial-state env) :const))))
 
  (defn simple-infinite-taxi-hierarchy [#^InfTaxiEnv env]
-   (angelic.hierarchy.util.SimpleHierarchicalEnv.
+   (hierarchy-util/make-simple-hierarchical-env
     env
     [(make-infinite-taxi-tla env)])))
 

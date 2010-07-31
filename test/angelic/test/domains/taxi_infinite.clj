@@ -37,7 +37,7 @@
      (is (= (->> args
                  (apply make-random-infinite-taxi-env)
                  simple-infinite-taxi-hierarchy
-                 angelic.hierarchy.util.ShopHTNEnv.
+                 hierarchy-util/make-shop-htn-env
                  ucs/uniform-cost-search
                  second)
             reward)))))

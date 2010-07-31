@@ -67,7 +67,7 @@
 (defn make-add-action-action [{:keys [name precond-map effect-map reward] :as factored-primitive}]
   (util/sref-set! *add-count* (inc (util/sref-get *add-count*)))
   (let [[evar eval] (util/safe-singleton (seq effect-map))]
-    (env/FactoredPrimitive
+    (env/env-util/make-factored-primitive
      [::AddAction name]
      {(action-var evar) nil, evar (precond-map evar), (free-var evar) false}
      {(action-var evar) factored-primitive}
@@ -75,7 +75,7 @@
 
 
 (defn make-set-parent-var-action [p-var c-var]
-  (env/FactoredPrimitive 
+  (env/env-util/make-factored-primitive 
    [::SetParent p-var c-var] 
    {(free-var p-var) true} 
    {(free-var p-var) false (parent-var p-var c-var) true} 
@@ -92,7 +92,7 @@
     (when (and (state/state-matches-map? s precond-map)
                (every? #(state/get-var s (parent-var % effect-var)) unfree-pv))
         (assert (every? #(nil? (state/get-var s (action-var %))) precond-vars))
-        (env/FactoredPrimitive
+        (env/env-util/make-factored-primitive
          [::GreedyFire name]
          (into precond-map 
                (concat [[(action-var effect-var) factored-primitive]]
@@ -542,7 +542,7 @@
                       (for [v as] (free-var v))
                       (for [v as] (action-var v))
                       (for [v as, c (cvm v), :when (as c)] (parent-var v c))))]))]
-    (hierarchy/SimpleHierarchicalEnv 
+    (hierarchy-util/make-simple-hierarchical-env 
      env
      [(make-fire-action-hla
        {:type                     ::ASPlanSkipHierarchy
@@ -765,7 +765,7 @@
 (comment ;; Not actually needed -- use below instead.
   (defn make-fire-action-action [{:keys [name precond-map effect-map reward] :as factored-primitive}]
    (let [[evar eval] (util/safe-singleton (seq effect-map))]
-     (env/FactoredPrimitive
+     (env/env-util/make-factored-primitive
       [::Fire name]
       (into precond-map 
             (cons [(action-var evar) factored-primitive]

@@ -146,7 +146,7 @@
   (let [e     (hierarchy/env henv)
         cache (HashMap.)
         queue (queues/make-graph-search-pq)
-        tla   (hierarchy/TopLevelAction e [(hierarchy/initial-plan henv)])]
+        tla   (hierarchy/hierarchy-util/make-top-level-action e [(hierarchy/initial-plan henv)])]
     (queues/pq-add-all! queue (get-sa-node cache tla (make-pe (env/initial-logging-state e) 0 nil nil) 0))
     (loop []
       (if (queues/g-pq-empty? queue) nil

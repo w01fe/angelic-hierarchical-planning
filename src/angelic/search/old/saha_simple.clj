@@ -9,7 +9,7 @@
 ;; Assumes atomic-state angelic descriptions, always refines first 
 ;; action, no pessimistic descriptions.
 
-;; NOTE: this is not properly lazy about something or other.  We can do 3x better, see hierarhcical_incremental_search.
+;; NOTE: this is not properly lazy about something or other.  We can do 3x better, see hierarhcical_search.incremental.
 
 ; Node has fixed set of result states;
 ; what changes is cost estimate for these.
@@ -174,7 +174,7 @@
   (let [e     (hierarchy/env henv)
         root  (get-sa-node (HashMap.)
                 (env/initial-logging-state e)
-                (hierarchy/TopLevelAction e [(hierarchy/initial-plan henv)]))]
+                (hierarchy/hierarchy-util/make-top-level-action e [(hierarchy/initial-plan henv)]))]
     (when-let [goals (seq (optimistic-reachable-set root))]
       (let [goal (util/safe-singleton goals)]
         (refine-state root goal Double/NEGATIVE_INFINITY)

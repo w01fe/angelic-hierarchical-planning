@@ -311,7 +311,7 @@
   (let [e     (hierarchy/env henv)
         cache (HashMap.)
         init  (env/initial-logging-state e)
-        root  (get-sa-node cache init (hierarchy/TopLevelAction e [(hierarchy/initial-plan henv)]))]
+        root  (get-sa-node cache init (hierarchy/hierarchy-util/make-top-level-action e [(hierarchy/initial-plan henv)]))]
     (loop [cutoff 0 last-cutoff 0]
 ;        (println "\ncutoff" cutoff "\n")
       (let [result (expand-sa-node root cache cutoff init 0.0 0 (IdentityHashMap.) 0)]
