@@ -104,3 +104,17 @@
    (util/sref-get *ref-counter*)
    (util/sref-get *plan-counter*)])
 
+
+
+
+;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
+;;;;;;;;;;;;;;;;;;;;;;;;;;; Generalized Goal Actions ;;;;;;;;;;;;;;;;;;;;;;;;;;;
+;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
+
+;; Stuff for generalized-goal actions.  Perhaps roll into protocol later.
+; Idea here is:
+ ; for actions A whose refinements are all [b A] or []. 
+ ; assume different As with same name will behave same, except different goals.
+ ; Goal must always be on same set of vars.
+(defmulti gg-action type)
+(defmethod gg-action :default [x] nil)

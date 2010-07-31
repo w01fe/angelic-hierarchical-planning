@@ -1,8 +1,10 @@
 (ns angelic.domains.sas-problems
-  (:require [angelic [sas :as sas] [taxi :as taxi] [taxi-infinite :as taxi-infinite]])
-  (:use [edu.berkeley.ai [util :as util]])
-  (:import [java.io File])
-  )
+  (:require [edu.berkeley.ai [util :as util]]
+            [angelic.sas :as sas]
+            [angelic.domains.taxi :as taxi]
+            [angelic.domains.taxi-infinite :as taxi-infinite])
+  (:import [java.io File]))
+
 
 (defn dig2 [n]
   (assert (< 0 n 100))

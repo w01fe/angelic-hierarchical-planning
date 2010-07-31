@@ -1,7 +1,11 @@
 (ns angelic.domains.taxi-infinite
-  (:use clojure.test)
   (:require [edu.berkeley.ai.util :as util]
-            [angelic [env :as env] [sas :as sas] [hierarchy :as hierarchy]])
+            [angelic.env :as env]
+            [angelic.env.state :as state]
+            [angelic.sas :as sas]
+            [angelic.env.util :as env-util]
+            [angelic.hierarchy :as hierarchy]
+            angelic.hierarchy.util)
   (:import [java.util Random]))
 
 
@@ -9,29 +13,29 @@
 (defn- make-left   [s]
   (let [cx     (state/get-var s '[atx])]
     (when (> cx 1) 
-      (env/FactoredPrimitive ['left cx]  {['atx] cx} {['atx] (dec cx)} -1))))
+      (angelic.env.util.FactoredPrimitive. ['left cx]  {['atx] cx} {['atx] (dec cx)} -1))))
 
 (defn- make-right  [s]
   (let [const (state/get-var s :const)
         width  (get const '[width])
         cx     (state/get-var s '[atx])]
     (when (< cx width)  
-      (env/FactoredPrimitive ['right cx] {['atx] cx} {['atx] (inc cx)} -1))))
+      (angelic.env.util.FactoredPrimitive. ['right cx] {['atx] cx} {['atx] (inc cx)} -1))))
 
 (defn- make-down  [s]
   (let [cy     (state/get-var s '[aty])]
     (when (> cy 1)
-      (env/FactoredPrimitive ['down cy]  {['aty] cy} {['aty] (dec cy)} -1))))
+      (angelic.env.util.FactoredPrimitive. ['down cy]  {['aty] cy} {['aty] (dec cy)} -1))))
 
 (defn- make-up    [s]
   (let [const (state/get-var s :const)
         height (get const '[height])
         cy     (state/get-var s '[aty])]
     (when (< cy height)
-      (env/FactoredPrimitive ['up cy] {['aty] cy} {['aty] (inc cy)} -1))))
+      (angelic.env.util.FactoredPrimitive. ['up cy] {['aty] cy} {['aty] (inc cy)} -1))))
 
 (defn- make-pickup  [s pass [x y]]
-  (env/FactoredPrimitive 
+  (angelic.env.util.FactoredPrimitive. 
    ['pickup pass x y] 
    {['atx]        x     ['aty]        y
     ['passx pass] x     ['passy pass] y}
@@ -40,7 +44,7 @@
 
 (defn- make-dropoff [s pass [x y]]
   (when pass 
-    (env/FactoredPrimitive 
+    (angelic.env.util.FactoredPrimitive. 
      ['dropoff pass x y] 
      {['atx]        x     '[aty] y 
       ['passx pass] :taxi ['passy pass] :taxi}
@@ -48,7 +52,7 @@
      -1)))
 
 
-(deftype InfiniteTaxiEnv [width height passengers] :as this
+(defrecord InfiniteTaxiEnv [width height passengers]
  env/Env
   (initial-state [_]
     (into {:const {['width] width ['height] height}
@@ -68,7 +72,7 @@
       #(when (state/state-matches-map? % goal-map)
          (env/solution-and-reward %))))
  env/FactoredEnv
-  (goal-map [] 
+  (goal-map [_] 
     (into {} 
       (apply concat
         [[['atx] width] [['aty] height]]
@@ -82,66 +86,75 @@
   ([width height n-passengers seed]
      (let [r (Random. seed)]
        (.nextDouble r) (.nextDouble r)
-       (InfiniteTaxiEnv width height
+       (InfiniteTaxiEnv. width height
                 (for [i (range n-passengers)]
                   [(symbol (str "pass" i))
                    [(inc (.nextInt r width)) (inc (.nextInt r height))]
                    [(inc (.nextInt r width)) (inc (.nextInt r height))]])))))
 
-(require 'angelic.ucs)
-(deftest infinite-taxi
-  (is (= -15 (second (angelic.ucs/uniform-cost-search (InfiniteTaxiEnv 5 5 [[:red [2 1] [5 4]] [:green [1 4] [3 3]]]))))))
+
 
 
 
 ;;;;;;;;;;;;;;;;;;;;;;;; Hierarchy ;;;;;;;;;;;;;;;;;;;;;
 ; Mostly copied from taxi. 
 
-(deftype NavHLA [env dx dy] :as this
-  env/Action                (action-name [_] ['nav dx dy])
-                            (primitive? [_] false)
-  env/ContextualAction      (precondition-context [_ s] #{['atx] ['aty]})
-  hierarchy/HighLevelAction (immediate-refinements- [_ s]
-                             (if (and (= dx (state/get-var s ['atx])) 
-                                      (= dy (state/get-var s ['aty])))
-                               [[]]
-                               (for [af [make-left make-right make-up make-down]
-                                     :let [a (af s)]
-                                     :when a]
-                                 [a this])))
-                            (cycle-level- [_ s] 1)
-  hierarchy/ExplicitAngelicAction         (optimistic-map- [_ s]
-                              (let [cx (state/get-var s ['atx])
-                                    cy (state/get-var s ['aty])]
-                                {(state/set-var (state/set-var s ['atx] dx) ['aty] dy)
-                                 (- 0 (util/abs (- dx cx)) (util/abs (- dy cy)))}))
-                            (pessimistic-map- [_ s] 
-                              (hierarchy/optimistic-map- this s)))
+(defrecord NavHLA [env dx dy]
+  env/Action
+  (action-name [_] ['nav dx dy])
+  (primitive? [_] false)
 
-(deftype InfiniteTaxiTLA [env context]      :as this
-  env/Action                (action-name [_] ['top])
-                            (primitive? [_] false)  
-  env/ContextualAction      (precondition-context [_ s] context)
+  env/ContextualAction
+  (precondition-context [_ s] #{['atx] ['aty]})
+
+  hierarchy/HighLevelAction
+  (immediate-refinements- [this s]
+    (if (and (= dx (state/get-var s ['atx])) 
+             (= dy (state/get-var s ['aty])))
+      [[]]
+      (for [af [make-left make-right make-up make-down]
+            :let [a (af s)]
+            :when a]
+        [a this])))
+  (cycle-level- [_ s] 1)
+
+  hierarchy/ExplicitAngelicAction
+  (optimistic-map- [_ s]
+    (let [cx (state/get-var s ['atx])
+          cy (state/get-var s ['aty])]
+      {(state/set-var (state/set-var s ['atx] dx) ['aty] dy)
+       (- 0 (util/abs (- dx cx)) (util/abs (- dy cy)))}))
+  (pessimistic-map- [this s] (hierarchy/optimistic-map- this s)))
+
+(defrecord InfiniteTaxiTLA [env context] 
+  env/Action
+  (action-name [_] ['top])
+  (primitive? [_] false)  
+
+  env/ContextualAction
+  (precondition-context [_ s] context)
+
   hierarchy/HighLevelAction 
-  (immediate-refinements- [_ s]
+  (immediate-refinements- [this s]
     (let [held-p (set (filter #(= :taxi (state/get-var s ['passx (first %)])) (:passengers env)))
           src-p  (remove #(or (held-p %) (state/get-var s ['pass-served? (first %)])) (:passengers env))
-          all-nxt (concat (for [[n _ [dx dy]] held-p] [(NavHLA env dx dy) (make-dropoff :dummy n [dx dy])])
-                          (for [[n [sx sy] _]  src-p] [(NavHLA env sx sy) (make-pickup  :dummy n [sx sy])]))]
+          all-nxt (concat (for [[n _ [dx dy]] held-p] [(NavHLA. env dx dy) (make-dropoff :dummy n [dx dy])])
+                          (for [[n [sx sy] _]  src-p] [(NavHLA. env sx sy) (make-pickup  :dummy n [sx sy])]))]
       (if (empty? all-nxt)
         (let [{:keys [width height]} env]
-          [[(NavHLA env width height) (env/make-finish-action env)]])
+          [[(NavHLA. env width height) (env-util/make-finish-action env)]])
         (map #(conj (vec %1) this) all-nxt))))
    (cycle-level- [_ s] nil)
-  hierarchy/ExplicitAngelicAction         (optimistic-map- [_ s]
-                              {(state/set-vars s (env/make-finish-goal-state env))})
-                            (pessimistic-map- [_ s] {}))
+
+   hierarchy/ExplicitAngelicAction
+   (optimistic-map- [_ s] {(state/set-vars s (env-util/make-finish-goal-state env))})
+   (pessimistic-map- [_ s] {}))
 
 (defn make-infinite-taxi-tla [env]
-  (InfiniteTaxiTLA env (util/keyset (dissoc (env/initial-state env) :const))))
+  (InfiniteTaxiTLA. env (util/keyset (dissoc (env/initial-state env) :const))))
 
 (defn simple-taxi-hierarchy [#^InfTaxiEnv env]
-  (hierarchy/SimpleHierarchicalEnv
+  (angelic.hierarchy.util.SimpleHierarchicalEnv.
    env
    [(make-infinite-taxi-tla env)]))
 
@@ -242,8 +255,7 @@
   (sas/make-sas-problem-from-pddl (write-infinite-taxi-strips (apply make-random-infinite-taxi-env args)))
   )
 
-(deftest infinite-taxi-generic
-  (is (= -15 (second (angelic.ucs/uniform-cost-search (sas/make-sas-problem-from-pddl (write-infinite-taxi-strips (InfiniteTaxiEnv 5 5 [['red [2 1] [5 4]] ['green [1 4] [3 3]]]))))))))
+
 
 ;; TODO: this is buggy.
 
@@ -335,8 +347,6 @@
   (sas/make-sas-problem-from-pddl (write-infinite-taxi-strips2 (apply make-random-infinite-taxi-env args)))
   )
 
-(deftest infinite-taxi-generic2
-  (is (= -16 (second (angelic.ucs/uniform-cost-search (sas/make-sas-problem-from-pddl (write-infinite-taxi-strips2 (InfiniteTaxiEnv 5 5 [['red [2 1] [5 4]] ['green [1 4] [3 3]]]))))))))
 
 
 
@@ -426,7 +436,5 @@
      (write-infinite-taxi-strips3-instance tenv (str prefix ".pddl"))
      prefix))
 
-(deftest infinite-taxi-generic3
-  (is (= -15 (second (angelic.ucs/uniform-cost-search (sas/make-sas-problem-from-pddl (write-infinite-taxi-strips3 (InfiniteTaxiEnv 5 5 [['red [2 1] [5 4]] ['green [1 4] [3 3]]]))))))))
 
 ; (make-sas-problem-from-pddl (prln (write-taxi-strips (make-random-taxi-env 1 2 1))) )
