@@ -117,7 +117,7 @@
 
 ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;; Queue Utils ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
 
-(defn pq-add-node  [pq node] (util/assert-is (not= :re-added (queues/g-pq-add! pq (node-name node) node)) "%s" [node]))
+(defn pq-add-node  [pq node] #_(print node) (util/assert-is (not= :re-added (queues/g-pq-add! pq (node-name node) node)) "%s" [node]))
 (defn pq-add-nodes [pq nodes] (doseq [node nodes] (pq-add-node pq node)))
 (defn pq-summary   [pq] (if (queues/g-pq-empty? pq) worst-simple-summary (nth (queues/g-pq-peek-min pq) 1)))
 
@@ -167,17 +167,16 @@
   (let [search-queue (doto (queues/make-graph-search-pq))
         node-queue   (doto (queues/make-graph-search-pq) (pq-add-node root))]
     (reify IncrementalSearch 
-      IncrementalSearch
        (root-node       [_] root)
        (current-summary [_] (let [s1 (pq-summary search-queue) s2 (pq-summary node-queue)]
                              (if (neg? (compare s1 s2)) s1 s2)))
        (next-goal       [this min-reward]
-;         (println "\n Ref-rec" root (max-reward (current-summary this)) min-reward) (Thread/sleep 100)
+;                        (println "\n Ref-rec" root (max-reward (current-summary this)) min-reward [(queues/pq-size search-queue) (queues/pq-size node-queue)]) (Thread/sleep 100)
          (when (viable-search? this min-reward)
            (if (neg? (compare (pq-summary search-queue) (pq-summary node-queue)))
              (let [[best-sgs summary] (queues/pq-remove-min-with-cost! search-queue)
                    next-min-reward    (max min-reward (max-reward (current-summary this)))]
-;               (println next-min-reward "\n") (Thread/sleep 100)
+;               (println "AAA" next-min-reward "\n") (Thread/sleep 100)
                (queues/pq-replace! search-queue best-sgs summary) ; Add back for recursive call
                (when-let [result (sub-next-node best-sgs next-min-reward)]
                  (pq-add-node node-queue result))
@@ -187,10 +186,12 @@
                    (queues/pq-remove! search-queue best-sgs)))
                (recur min-reward))
              (let [best-node (nth (queues/pq-remove-min-with-cost! node-queue) 1)]
+;               (println "EEE" (node-goal? best-node) (max-reward best-node) "\n") (Thread/sleep 100)               
                (if (node-goal? best-node)
                  best-node
                  (let [sgs-or-nodes (searchify-fn best-node)]
-                   (if (coll? sgs-or-nodes) 
+;                   (println sgs-or-nodes (satisfies? SubSearch sgs-or-nodes))
+                   (if (not (satisfies? SubSearch sgs-or-nodes)) 
                      (pq-add-nodes node-queue sgs-or-nodes)
                      (queues/pq-add! search-queue sgs-or-nodes (sub-current-summary sgs-or-nodes)))
                    (recur min-reward))))))))))
@@ -220,7 +221,7 @@
              (when (viable-search? backing-search min-reward)
                (do (when-let [r (next-goal backing-search min-reward)] 
                      (swap! results-atom conj r))
-                   (recur  pos-inf #_ min-reward))))))))))
+                   (recur #_ pos-inf  min-reward))))))))))
 
 (defmacro get-cached-search 
   "Take a Map, name, and expression that constructs a fresh IncrementalSearch.  If this is the first
@@ -328,7 +329,7 @@
                             (identical? choice s2) [s2-goal (or @s1-goal (current-summary s1))])]
                 (let [nxt (next-goal choice (- min-reward (max-reward other-sum)))]
                   (when nxt (reset! choice-atom nxt))
-                  (recur  pos-inf #_ min-reward))))))))))
+                  (recur #_ pos-inf min-reward))))))))))
 
 
 
@@ -400,19 +401,19 @@
                (when-not (viable? (sub-current-summary best) neg-inf)
                  (reset! search-list rest))
                (reset! search-summary (apply min-fn (map sub-current-summary @search-list)))
-               (recur pos-inf #_min-reward))
+               (recur #_ pos-inf min-reward))
              (let [[best & rest] (sort @node-list)]
                (if (node-goal? best)
                  best
                  (let [sgs-or-nodes (searchify-fn best)]
-                   (if (coll? sgs-or-nodes) 
+                   (if (not (satisfies? SubSearch sgs-or-nodes))
                      (do (reset! node-list (concat rest sgs-or-nodes))
                          (reset! node-summary (apply min-fn @node-list)))
                      (do (swap! search-list conj sgs-or-nodes)
                          (swap! search-summary min-fn (sub-current-summary sgs-or-nodes))
                          (reset! node-list rest)
                          (reset! node-summary (apply min-fn rest))))
-                   (recur pos-inf #_ min-reward))))))))))
+                   (recur #_ pos-inf  min-reward))))))))))
 
 (defn make-custom-recursive-sr-search "Call searchify1 on root, otherwise searchify2" 
   [root-node searchify1 searchify2 min-fn]

@@ -47,7 +47,7 @@
        (unchecked-multiply (int 13) (int (hash (ooc-effects state))))))
   clojure.lang.IObj
    (meta [this] meta)
-   (withMeta [this new-meta] (LoggingFactoredState init context puts ooc new-meta))
+   (withMeta [this new-meta] (LoggingFactoredState. init context puts ooc new-meta))
   FactoredState
    (get-var [state var]
      (get-var init var))

@@ -158,9 +158,18 @@
   (optimistic-map- [_ s] (exact-nav-map s dx dy))
   (pessimistic-map- [_ s] (exact-nav-map s dx dy)))
 
+; Does not work with null vals
+(defn merge-map-keys [map-fn merge-fn m]
+  (loop [remaining-kv m
+         result (transient {})]
+    (if-let [[[k v] & r] (seq remaining-kv)]
+      (let [nk (map-fn k)]
+        (recur r (assoc! result nk (if-let [ov (get result nk)] (merge-fn v ov) v))))      
+      (persistent! result))))
 
 
-(defrecord NavSwitchTLA [switch-set gx gy nav-factory] 
+
+(defrecord NavSwitchTLA [env switch-set gx gy nav-factory finish] 
   env/Action
   (action-name [_] '[top])
   (primitive?  [_] false)
@@ -170,7 +179,7 @@
 
   hierarchy/HighLevelAction
   (immediate-refinements- [this s]
-    (cons [(nav-factory gx gy)]
+    (cons [(nav-factory gx gy) (env-util/make-finish-action env)]
           (for [[sx sy] switch-set]
             [(nav-factory sx sy)
              (make-specific-switch (state/get-var s '[h]) sx sy)
@@ -178,13 +187,14 @@
   (cycle-level- [_ s] 2)
 
   hierarchy/ExplicitAngelicAction
-  (optimistic-map-  [_ s] (nav-outcome-map s gx gy 2 2))
-  (pessimistic-map- [_ s] (exact-nav-map s gx gy)))
+  (optimistic-map-  [_ s] (merge-map-keys #(state/set-vars % finish) max (nav-outcome-map s gx gy 2 2)))
+  (pessimistic-map- [_ s] (merge-map-keys #(state/set-vars % finish) max (exact-nav-map s gx gy))))
 
 
 (defn- make-nav-switch-tla [env split-nav?]
-  (NavSwitchTLA. (:switch-set env) (:gx env) (:gy env)
-                 (if split-nav?  #(SplitNavHLA. %1 %2) #(SimpleNavHLA. %1 %2))))
+  (NavSwitchTLA. env (:switch-set env) (:gx env) (:gy env)
+                 (if split-nav?  #(SplitNavHLA. %1 %2) #(SimpleNavHLA. %1 %2))
+                 (env-util/make-finish-goal-state env)))
 
 (defn make-nav-switch-hierarchy [#^NavSwitchEnv env split-nav?]
   (hierarchy-util/make-simple-hierarchical-env env [(make-nav-switch-tla env split-nav?)]))

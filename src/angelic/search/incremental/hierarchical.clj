@@ -4,7 +4,11 @@
             [angelic.env.state :as state]
             [angelic.env.util :as env-util] 
             [angelic.hierarchy :as hierarchy]
-            [angelic.search.incremental.core :as is])
+            [angelic.hierarchy.util :as hierarchy-util]            
+            [angelic.search.incremental.core :as is]
+
+            [angelic.search.interactive :as interactive])
+  
   (:import  [java.util HashMap]))
 
 
@@ -386,7 +390,7 @@
   ([henv sol-hfs-fn sa?]
      (let [e    (hierarchy/env henv)
            init (env-util/initial-logging-state e)
-           tla  (hierarchy/hierarchy-util/make-top-level-action e [(hierarchy/initial-plan henv)])]
+           tla  (hierarchy-util/make-top-level-action e [(hierarchy/initial-plan henv)])]
        (binding [*problem-cache*    (HashMap.)
                  *state-abstraction?* sa?
                  *full-context*      (if sa? :dummy (state/current-context init))]
@@ -414,10 +418,22 @@
      [["H-UCS" h-ucs]
       ["DH-UCS" dh-ucs]
       ["DSH-UCS" dsh-ucs]
-;      ["DSHU-d" dshu-dijkstra]
       ["AH-A" explicit-simple-ah-a*]
       ["DAH-A" explicit-simple-dah-a*]
       ["DASH-A" explicit-simple-dash-a*]])
+
+(def all-algorithms
+     [["H-UCS" h-ucs]
+      ["H-UCS-fast" h-ucs-fast]
+      ["DH-UCS" dh-ucs]
+      ["DSH-UCS" dsh-ucs]
+      ["DSH-UCS-dijkstra" dsh-ucs-dijkstra]
+      ["DSH-UCS-inverted" dsh-ucs-inverted]            
+      ["AH-A" explicit-simple-ah-a*]
+      ["DAH-A" explicit-simple-dah-a*]
+      ["DASH-A" explicit-simple-dash-a*]])
+
+
 
 (def aaai-alg-map (into {} aaai-algs))
 
@@ -425,7 +441,7 @@
 
 (defn interactive-hierarchical-search [henv]
   (let [e    (hierarchy/env henv)
-        tla  (hierarchy/hierarchy-util/make-top-level-action e [(hierarchy/initial-plan henv)])]
+        tla  (hierarchy-util/make-top-level-action e [(hierarchy/initial-plan henv)])]
     (interactive/generic-interactive-search 
      (make-root-hfs (env/initial-state e) tla)
      :reward

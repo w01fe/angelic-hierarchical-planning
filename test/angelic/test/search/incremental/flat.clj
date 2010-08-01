@@ -1,9 +1,8 @@
 (ns angelic.test.search.incremental.flat
   (:use clojure.test
-        angelic.domains.nav-switch)
+        angelic.search.incremental.flat)
   (:require [angelic.env :as env]
-            [angelic.hierarchy.util :as hierarchy-util]
-            [angelic.search.incremental.flat :as ucs]))
+            [angelic.domains.nav-switch :as nav-switch]))
 
 
 (def ^:private *nav-switch-test-domains*
@@ -21,8 +20,8 @@
 (deftest incremental-ucs-nav-switch
   (doseq [[args reward] *nav-switch-test-domains*]
     (is (= (->> args
-                (apply make-nav-switch-env)
-                ucs/uniform-cost-search
+                (apply nav-switch/make-nav-switch-env)
+                uniform-cost-search
                 second)
            reward))))
 
