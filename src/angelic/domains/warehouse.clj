@@ -302,7 +302,7 @@
         tops  (for [x (range 1 (inc w))] 
                 [x (last (take-while #(and (<= % h) (state/get-var state ['someblockat x %])) (range 1 (inc h))))])]
     (util/cons-when
-     (when (goal-fn state) [])
+     (when (goal-fn state) [(env-util/make-finish-action env)])
      (for [[bx by] tops
            :let [b (state/get-var state ['blockat bx by])]
            :when (and (> by 1) (not (= b block-off-limits))) 
