@@ -50,39 +50,6 @@
 
 
 ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
-;;;;;;;;;;;;;;;;;;;;;;;;;;;; Explicit angelic actions ;;;;;;;;;;;;;;;;;;;;;;;;;;
-;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
-
-
-;; TODO: better to have single map from state to range ?
-(defprotocol ExplicitAngelicAction
-  (optimistic-map- [a s])
-  (pessimistic-map- [a s]))
-
-
-(defn optimistic-map [a s]
-  (util/sref-set! *optimistic-counter* (inc (util/sref-get *optimistic-counter*)))
-  (optimistic-map- a s))
-
-(defn pessimistic-map [a s]
-  (util/sref-set! *pessimistic-counter* (inc (util/sref-get *pessimistic-counter*)))
-  (pessimistic-map- a s))
-
-(extend angelic.env.util.FactoredPrimitive
-  ExplicitAngelicAction
-  {:optimistic-map- 
-     (fn optimistic-map- [this s]
-       (if (env/applicable? this s) 
-         (let [[s r] (env/next-state-and-reward this s)] {s r}) 
-         {}))
-   :pessimistic-map- 
-     (fn pessimistic-map- [this s]
-       (if (env/applicable? this s) 
-         (let [[s r] (env/next-state-and-reward this s)] {s r}) 
-         {}))})
-
-
-;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
 ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;; Hierarchical Envs ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
 ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
 
