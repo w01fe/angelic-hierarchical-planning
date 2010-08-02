@@ -50,5 +50,44 @@
                       s4))
        #{{:a 3 :b 2 :c 7 :d 3} {:a 4 :b 2 :c 7 :d 3}})))
 
+(deftest implicit->explicit
+  (let [ss   (state/set-vars
+              (state/get-logger
+               (make-singleton-logging-factored-state-set {:a 1 :b 2 :c 3 :d 4})
+               #{:a :b})
+              {:a #{2 3} :c #{3 6}})
+        ess  (explicit-logging-set ss)
+        states  (set (map state/as-map ess))
+        effects (set (map state/extract-effects ess))
+        ooc     (set (map state/ooc-effects ess))]
+    (is (every? #(= % #{:a :b}) (map state/current-context ess)))
+    (is (= states #{{:a 2 :b 2 :c 3 :d 4} {:a 3 :b 2 :c 3 :d 4}
+                    {:a 2 :b 2 :c 6 :d 4} {:a 3 :b 2 :c 6 :d 4}}))
+    (is (= effects #{{:a 2 :c 3} {:a 3 :c 3}
+                     {:a 2 :c 6} {:a 3 :c 6}}))
+    (is (= ooc     #{{:c 3} {:c 6}}))))
+
+(deftest explicit->implicit
+  (is (thrown? AssertionError (implicit-logging-set
+                               #{(state/get-logger {:a 1} #{:a})
+                                 (state/get-logger {:a 1} #{})})))
+  (is (thrown? AssertionError (implicit-logging-set
+                               #{(with-meta (state/get-logger {:a 1} #{}) {:a :b})
+                                 (state/get-logger {:a 2} #{})})))
+  (let [base (state/get-logger {:a 1 :b 2 :c 3 :d 4} #{:a :b})
+        ss   (implicit-logging-set
+              (set (for [s [(state/set-vars base {:a 2 :c 5})
+                            (state/set-vars base {:a 5})
+                            (state/set-vars base {:c 6})                
+                            base]]
+                     (with-meta s {:f :g}))))]
+    (is (= (meta ss) {:f :g}))
+    (is (= (state/as-map ss) {:a #{1 2 5} :b #{2} :c #{3 5 6} :d #{4}}))
+    (is (= (state/extract-effects ss) {:a #{1 2 5} :c #{3 5 6}}))
+    (is (= (state/ooc-effects ss)     {:c #{3 5 6}}))))
+
+
+
+
 
 

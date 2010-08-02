@@ -11,9 +11,9 @@
 
 (defprotocol ImplicitStateSet
   (empty?    [s] "Is this set empty")
-  (singleton [s] "Return the singleton element making up this set, or nil if cardinality != 1")
-  (some-element [s] "Return an arbitrary element of this set, or throw if empty.")
-  (explicit-set [s] "Return an explicit outcome set")
+  (singleton [s] "Return the singleton element making up this set, or nil if cardinality != 1.  Non-logging-preserving.")
+  (some-element [s] "Return an arbitrary element of this set, or throw if empty. Non-logging-preserving.")
+  (explicit-set [s] "Return an explicit outcome set. Non-logging-preserving.")
   (constrain [ss constraint] "Apply a constraint."))
 
 
@@ -87,8 +87,44 @@
    (apply-effects   [ss e] (state/set-vars ss e))
    (get-logger      [ss c] (LoggingFactoredStateSet. (state/as-map init) c {} {} {})))
 
+(def empty-lfss (LoggingFactoredStateSet. {:dummy #{}} #{:dummy} {} {} {}))
+
 (defn make-singleton-logging-factored-state-set
   ([init-state] (make-singleton-logging-factored-state-set init-state (util/to-set (state/list-vars init-state))))
   ([init-state context] (LoggingFactoredStateSet. (util/map-vals (fn [x] #{x}) init-state) context {} {} {})))
+
+(defn explicit-logging-set "Like explicit-set, but returns logging-states"
+  [^LoggingFactoredStateSet ss]
+  (let [kvs (seq (.init ss))
+        ks  (map key kvs)
+        vss (map val kvs)
+        m   (meta ss)]
+    (set
+     (for [vs (apply combos/cartesian-product vss)
+           :let [ s (zipmap ks vs)]]
+       (angelic.env.state.LoggingFactoredState.
+        s
+        (.context ss)
+        (state/fast-select-keys s (keys (state/extract-effects ss)))
+        (state/fast-select-keys s (keys (state/ooc-effects ss)))
+        m)))))
+
+(defn implicit-logging-set "Make an implicit logging set from a set of LoggingFactoredStates."
+  [lfss]
+  (assert (apply = (map state/current-context lfss)))
+  (assert (apply = (map meta lfss)))  
+  (if (clojure.core/empty? lfss) empty-lfss
+      (let [effect-vars (set (apply concat (map (comp keys state/extract-effects) lfss)))
+            ooc-vars    (set (apply concat (map (comp keys state/ooc-effects) lfss)))
+            implicit-ss (into {} (for [v (state/list-vars (first lfss))]
+                                   [v (set (map #(state/get-var % v) lfss))]))]
+        (LoggingFactoredStateSet.
+         implicit-ss
+         (state/current-context (first lfss))
+         (state/fast-select-keys implicit-ss effect-vars)
+         (state/fast-select-keys implicit-ss ooc-vars)
+         (meta (first lfss))))))
+
+
 
 

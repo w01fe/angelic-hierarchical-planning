@@ -91,9 +91,18 @@
      :pessimistic-set-and-reward- exact}))
 
 
-(comment 
-  (def implicit->explicit-fns
-       {:optimistic-map- (fn implicit-optimistic-map [a s] )}))
+;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
+;;;;;;;;;;;;;;;;;;;;;;;;;;;;; Automatic conversions ;;;;;;;;;;;;;;;;;;;;;;;;;;;;
+;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
+
+;; Default implementations for use with extend, for types that implement one protocol
+; and not the other.
+
+(defn explode-implicit-pair [[implicit-set reward]]
+  (into {} (for [s (state-set/explicit-map implicit-set)])))
+
+(def explicit-from-implicit
+  {:optimistic-map- (fn implicit-optimistic-map [a s] )})
 
 
 
