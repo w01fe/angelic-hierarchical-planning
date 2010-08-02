@@ -30,7 +30,16 @@
   (optimistic-map- [_ s]
     {(state/set-vars s (envutil/make-finish-goal-state env)) 
      Double/POSITIVE_INFINITY})
-  (pessimistic-map- [_ s] {}))
+  (pessimistic-map- [_ s] {})
+
+  angelic/ImplicitAngelicAction
+  (can-refine-from-set? [a ss] true)
+  (immediate-refinements-set- [a ss] (for [p initial-plans] [{} p]))
+  (optimistic-set-and-reward- [a ss]
+    [(state/set-vars ss (util/map-vals (fn [x] #{x}) (envutil/make-finish-goal-state env)))
+     (Double/POSITIVE_INFINITY)])
+  (pessimistic-set-and-reward- [a ss] nil))
+
 
 (defn make-top-level-action [env initial-plans]
   (TopLevelAction. env initial-plans))

@@ -4,6 +4,7 @@
             [angelic.env.state :as state]            
             [angelic.env.util :as env-util]
             [angelic.hierarchy :as hierarchy]
+            [angelic.hierarchy.state-set :as state-set]
             [angelic.hierarchy.angelic :as angelic]
             [angelic.hierarchy.util :as hierarchy-util])
   (:import [java.util Random]))
@@ -93,6 +94,15 @@
   (let [[xc yc] (if (state/get-var s '[h]) [-2 -4] [-4 -2])]
     (nav-outcome-map s dx dy xc yc)))
 
+(defn nav-reward-from-set [ss dx dy]
+  (let [cx (util/safe-singleton (state/get-var ss '[x]))
+        cy (util/safe-singleton (state/get-var ss '[y]))]
+    (apply min
+           (for [h? (state/get-var ss '[h])
+                 :let [[xc yc] (if h? [-2 -4] [-4 -2])]]
+             (+ (* xc (util/abs (- dx cx))) (* yc (util/abs (- dy cy))))))))
+
+
 (defrecord SimpleNavHLA [dx dy]
   env/Action 
   (action-name [_] ['nav dx dy])
@@ -113,7 +123,18 @@
 
   angelic/ExplicitAngelicAction
   (optimistic-map-  [_ s] (exact-nav-map s dx dy))
-  (pessimistic-map- [_ s] (exact-nav-map s dx dy)))
+  (pessimistic-map- [_ s] (exact-nav-map s dx dy))
+
+  angelic/ImplicitAngelicAction
+  (can-refine-from-set? [a ss] true)
+  (immediate-refinements-set- [a ss]
+    (for [p (hierarchy/immediate-refinements- a (state-set/some-element ss))] [{} p]))
+  (optimistic-set-and-reward- [a ss]
+    [(state/set-vars ss [['[x] #{dx}] ['[y] #{dy}]])
+     (nav-reward-from-set ss dx dy)])
+  (pessimistic-set-and-reward- [a ss] (angelic/optimistic-set-and-reward- a ss)))
+
+
 
 
 (defrecord NavDHLA [h? dest]
@@ -140,7 +161,21 @@
           cost (if (util/truth= (state/get-var s '[h]) h?) -2 -4)]
       {(state/set-var s dir dest)
        (* cost (util/abs (- cur dest)))}))
-  (pessimistic-map- [this s] (angelic/optimistic-map- this s)))
+  (pessimistic-map- [this s] (angelic/optimistic-map- this s))
+
+  angelic/ImplicitAngelicAction
+  (can-refine-from-set? [a ss] true)
+  (immediate-refinements-set- [a ss]
+    (for [p (hierarchy/immediate-refinements- a (state-set/some-element ss))] [{} p]))
+  (optimistic-set-and-reward- [a ss]
+    (let [dir  (if h? '[x] '[y])
+          cur  (state/get-var ss dir)]
+      [(state/set-var ss dir #{dest})
+       (for [ch? (state/get-var ss '[h])
+             cost (if (util/truth= ch? h?) -2 -4)]
+         (* cost (util/abs (- cur dest))))]))
+  (pessimistic-set-and-reward- [a ss] (angelic/optimistic-set-and-reward- a ss)))
+
 
 
 (defrecord SplitNavHLA [dx dy] 
@@ -157,7 +192,16 @@
 
   angelic/ExplicitAngelicAction
   (optimistic-map- [_ s] (exact-nav-map s dx dy))
-  (pessimistic-map- [_ s] (exact-nav-map s dx dy)))
+  (pessimistic-map- [_ s] (exact-nav-map s dx dy))
+
+  angelic/ImplicitAngelicAction
+  (can-refine-from-set? [a ss] true)
+  (immediate-refinements-set- [a ss]
+    (for [p (hierarchy/immediate-refinements- a (state-set/some-element ss))] [{} p]))
+  (optimistic-set-and-reward- [a ss]
+    [(state/set-vars ss [['[x] #{dx}] ['[y] #{dy}]])
+     (nav-reward-from-set ss dx dy)])
+  (pessimistic-set-and-reward- [a ss] (angelic/optimistic-set-and-reward- a ss)))
 
 ; Does not work with null vals
 (defn merge-map-keys [map-fn merge-fn m]
@@ -189,7 +233,19 @@
 
   angelic/ExplicitAngelicAction
   (optimistic-map-  [_ s] (merge-map-keys #(state/set-vars % finish) max (nav-outcome-map s gx gy 2 2)))
-  (pessimistic-map- [_ s] (merge-map-keys #(state/set-vars % finish) max (exact-nav-map s gx gy))))
+  (pessimistic-map- [_ s] (merge-map-keys #(state/set-vars % finish) max (exact-nav-map s gx gy)))
+
+  angelic/ImplicitAngelicAction
+  (can-refine-from-set? [a ss] true)
+  (immediate-refinements-set- [a ss]
+    (for [p (hierarchy/immediate-refinements- a (state-set/some-element ss))] [{} p]))
+  (optimistic-set-and-reward- [a ss]
+    [(state/set-vars ss (util/map-vals (fn [x] #{x}) finish))
+     (* -2 (+ (- gx (util/safe-singleton (state/get-var ss '[x])))
+              (- gy (util/safe-singleton (state/get-var ss '[y])))))])
+  (pessimistic-set-and-reward- [a ss]
+    [(state/set-vars ss (util/map-vals (fn [x] #{x}) finish))
+     (nav-reward-from-set ss gx gy)]))
 
 
 (defn- make-nav-switch-tla [env split-nav?]

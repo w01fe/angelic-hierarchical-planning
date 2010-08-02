@@ -12,6 +12,7 @@
 (defprotocol ImplicitStateSet
   (empty?    [s] "Is this set empty")
   (singleton [s] "Return the singleton element making up this set, or nil if cardinality != 1")
+  (some-element [s] "Return an arbitrary element of this set, or throw if empty.")
   (explicit-set [s] "Return an explicit outcome set")
   (constrain [ss constraint] "Apply a constraint."))
 
@@ -45,6 +46,9 @@
    (singleton [ss] 
      (when (every? util/singleton? (vals init))
        (util/map-vals util/safe-singleton init)))
+   (some-element [ss]
+     (assert (not (empty? ss)))
+     (util/map-vals first init))
    (explicit-set [ss]
      (let [kvs (seq init)
            ks  (map key kvs)
