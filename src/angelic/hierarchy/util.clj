@@ -4,6 +4,7 @@
             [angelic.env.state :as state]
             [angelic.env.util :as envutil]            
             [angelic.hierarchy :as hierarchy]
+            [angelic.hierarchy.angelic :as angelic]
             ))
 
 ;; Collection of various unrelated utils for making hierarchies.
@@ -25,7 +26,7 @@
   (immediate-refinements- [_ s] initial-plans)
   (cycle-level- [_ s] nil)
 
-  hierarchy/ExplicitAngelicAction
+  angelic/ExplicitAngelicAction
   (optimistic-map- [_ s]
     {(state/set-vars s (envutil/make-finish-goal-state env)) 
      Double/POSITIVE_INFINITY})

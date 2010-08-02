@@ -4,6 +4,7 @@
             [angelic.env.state :as state]
             [angelic.env.util :as env-util] 
             [angelic.hierarchy :as hierarchy]
+            [angelic.hierarchy.angelic :as angelic]
             [angelic.hierarchy.util :as hierarchy-util]            
             [angelic.search.incremental.core :as is]
 
@@ -120,9 +121,9 @@
 (defn hfs-optimistic-map [hfs]
   (let [{:keys [state remaining-actions]} hfs]
 #_    (apply println "Optimistic map for " (hfs-first-sub-name hfs) "is\n"
-             (for [[s r] (hierarchy/optimistic-map (util/safe-singleton remaining-actions) state)]
+             (for [[s r] (angelic/optimistic-map (util/safe-singleton remaining-actions) state)]
                (str "  " (env/extract-effects s) ": " r "\n")))
-    (hierarchy/optimistic-map (util/safe-singleton remaining-actions) state)))
+    (angelic/optimistic-map (util/safe-singleton remaining-actions) state)))
 
 ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;; HFS & Nodes ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
 
@@ -340,7 +341,7 @@
       (util/cache-with *problem-cache* [state remaining-actions]
         (let [[f & r] remaining-actions]
           (apply max is/neg-inf
-            (for [[ss sr] (hierarchy/optimistic-map f state)]
+            (for [[ss sr] (angelic/optimistic-map f state)]
               (+ sr (compute-heuristic ss r))))))))
 
 
@@ -361,7 +362,7 @@
    (if (empty? remaining-actions) 0
        (let [[f & r] remaining-actions]
          (apply max is/neg-inf
-                (for [[ss sr] (hierarchy/optimistic-map f state)]
+                (for [[ss sr] (angelic/optimistic-map f state)]
                   (do (println pad (select-keys (state/as-map state) [ [:base] [:gripper-offset]]) (env/action-name f) sr)
                       (+ sr (print-heuristic* ss r (str pad "  ")))))))))
 

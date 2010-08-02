@@ -2,6 +2,7 @@
   (:require [edu.berkeley.ai.util :as util]
             [angelic.env :as env] 
             [angelic.hierarchy :as hierarchy]
+            [angelic.hierarchy.angelic :as angelic]
             [angelic.incremental-search :as is]
             [angelic.hierarchical-incremental-search :as his])
   (:import  [java.util HashMap]))
@@ -193,10 +194,8 @@
 
 
 (defn hfs-angelic-map [hfs]
-  (let [{:keys [state remaining-actions]} hfs
-        opt  (hierarchy/optimistic-map (util/safe-singleton remaining-actions) state)
-        pess (hierarchy/pessimistic-map (util/safe-singleton remaining-actions) state)]
-    (into {} (for [[s r] opt] [s [(get pess s is/neg-inf) r]]))))
+  (let [{:keys [state remaining-actions]} hfs]
+	  (next-explicit-map-and-reward-bounds (util/safe-singleton remaining-actions) state)))
 
 (declare get-explicit-sw-dash-sps-search)
 

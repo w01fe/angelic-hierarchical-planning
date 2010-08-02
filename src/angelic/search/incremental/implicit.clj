@@ -2,6 +2,7 @@
   (:require [edu.berkeley.ai.util :as util]
             [angelic.env :as env] 
             [angelic.hierarchy :as hierarchy]
+            [angelic.hierarchy.angelic :as angelic]
             [angelic.incremental-search :as is]
             [angelic.hierarchical-incremental-search :as his])
   (:import  [java.util HashMap]))
@@ -117,9 +118,9 @@
 (defn ahs-optimistic-map [ahs]
   (let [{:keys [state remaining-actions]} ahs]
 #_    (apply println "Optimistic map for " (ahs-first-sub-name ahs) "is\n"
-             (for [[s r] (hierarchy/optimistic-map (util/safe-singleton remaining-actions) state)]
+             (for [[s r] (angelic/optimistic-map (util/safe-singleton remaining-actions) state)]
                (str "  " (env/extract-effects s) ": " r "\n")))
-    (hierarchy/optimistic-map (util/safe-singleton remaining-actions) state)))
+    (angelic/optimistic-map (util/safe-singleton remaining-actions) state)))
 
 
 ;;;;;;;;;;;;;;;;;;;;;;;; Simple Weighted Summary & Node ;;;;;;;;;;;;;;;;;;;;;;;;

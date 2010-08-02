@@ -4,6 +4,7 @@
             [angelic.env.state :as state]            
             [angelic.env.util :as env-util]
             [angelic.hierarchy :as hierarchy]
+            [angelic.hierarchy.angelic :as angelic]
             [angelic.hierarchy.util :as hierarchy-util])
   (:import [java.util Random]))
 
@@ -110,7 +111,7 @@
         [a this])))
   (cycle-level- [_ s] 1)
 
-  hierarchy/ExplicitAngelicAction
+  angelic/ExplicitAngelicAction
   (optimistic-map-  [_ s] (exact-nav-map s dx dy))
   (pessimistic-map- [_ s] (exact-nav-map s dx dy)))
 
@@ -132,14 +133,14 @@
         [a this])))
   (cycle-level-           [_ s] 1)
   
-  hierarchy/ExplicitAngelicAction
+  angelic/ExplicitAngelicAction
   (optimistic-map-  [_ s]
     (let [dir  (if h? '[x] '[y])
           cur  (state/get-var s dir)
           cost (if (util/truth= (state/get-var s '[h]) h?) -2 -4)]
       {(state/set-var s dir dest)
        (* cost (util/abs (- cur dest)))}))
-  (pessimistic-map- [this s] (hierarchy/optimistic-map- this s)))
+  (pessimistic-map- [this s] (angelic/optimistic-map- this s)))
 
 
 (defrecord SplitNavHLA [dx dy] 
@@ -154,7 +155,7 @@
   (immediate-refinements- [_ s] [[(NavDHLA. true dx) (NavDHLA. false dy)]])
   (cycle-level- [_ s] nil)
 
-  hierarchy/ExplicitAngelicAction
+  angelic/ExplicitAngelicAction
   (optimistic-map- [_ s] (exact-nav-map s dx dy))
   (pessimistic-map- [_ s] (exact-nav-map s dx dy)))
 
@@ -186,7 +187,7 @@
              this]))) 
   (cycle-level- [_ s] 2)
 
-  hierarchy/ExplicitAngelicAction
+  angelic/ExplicitAngelicAction
   (optimistic-map-  [_ s] (merge-map-keys #(state/set-vars % finish) max (nav-outcome-map s gx gy 2 2)))
   (pessimistic-map- [_ s] (merge-map-keys #(state/set-vars % finish) max (exact-nav-map s gx gy))))
 

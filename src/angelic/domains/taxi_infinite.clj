@@ -5,6 +5,7 @@
             [angelic.sas :as sas]
             [angelic.env.util :as env-util]
             [angelic.hierarchy :as hierarchy]
+            [angelic.hierarchy.angelic :as angelic]
             [angelic.hierarchy.util :as hierarchy-util])
   (:import [java.util Random]))
 
@@ -119,13 +120,13 @@
                                [a this])))
    (cycle-level- [_ s] 1)
 
-   hierarchy/ExplicitAngelicAction
+   angelic/ExplicitAngelicAction
    (optimistic-map- [_ s]
                     (let [cx (state/get-var s ['atx])
                           cy (state/get-var s ['aty])]
                       {(state/set-var (state/set-var s ['atx] dx) ['aty] dy)
                        (- 0 (util/abs (- dx cx)) (util/abs (- dy cy)))}))
-   (pessimistic-map- [this s] (hierarchy/optimistic-map- this s)))
+   (pessimistic-map- [this s] (angelic/optimistic-map- this s)))
 
  (defrecord InfiniteTaxiTLA [env context] 
    env/Action
@@ -147,7 +148,7 @@
                                (map #(conj (vec %1) this) all-nxt))))
    (cycle-level- [_ s] nil)
 
-   hierarchy/ExplicitAngelicAction
+   angelic/ExplicitAngelicAction
    (optimistic-map- [_ s] {(state/set-vars s (env-util/make-finish-goal-state env))})
    (pessimistic-map- [_ s] {}))
 

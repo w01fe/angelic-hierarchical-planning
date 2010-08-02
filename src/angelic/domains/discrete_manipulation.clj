@@ -4,6 +4,7 @@
             [angelic.env.state :as state]            
             [angelic.env.util :as env-util]
             [angelic.hierarchy :as hierarchy]
+            [angelic.hierarchy.angelic :as angelic]
             [angelic.hierarchy.util :as hierarchy-util])
   (:import [java.util Random]))
 
@@ -322,7 +323,7 @@
            [a this])))
      (cycle-level-           [_ s] 1)
 
-     hierarchy/ExplicitAngelicAction
+     angelic/ExplicitAngelicAction
      (optimistic-map-  [_ s]
        {(state/set-var s [:gripper-offset] dst-go)
         (move-gripper-reward (state/get-var s [:gripper-offset]) dst-go)})
@@ -364,7 +365,7 @@
         [a (make-pickup dirname base go o opos)])))
   (cycle-level-           [_ s] nil)
 
-  hierarchy/ExplicitAngelicAction
+  angelic/ExplicitAngelicAction
   (optimistic-map-  [_ s]
     (let [opos (state/get-var s [:pos o])]
       (into {}
@@ -405,7 +406,7 @@
         [a (make-putdown dirname base go o dst) (make-reach-hla env s [0 0])])))
   (cycle-level- [_ s] nil)
 
-  hierarchy/ExplicitAngelicAction
+  angelic/ExplicitAngelicAction
   (optimistic-map- [_ s]
     {(state/set-vars s [[[:gripper-offset] [0 0]]
                         [[:pos o] dst] [[:holding] nil]
@@ -439,7 +440,7 @@
         [a this])))
   (cycle-level- [_ s] 1)
 
-  hierarchy/ExplicitAngelicAction
+  angelic/ExplicitAngelicAction
   (optimistic-map- [_ s]
     {(state/set-var s [:base] dst)
      (nav-reward (state/get-var s [:base]) dst)})
@@ -479,7 +480,7 @@
           (make-nav-hla env dst) (make-park s)]])))
   (cycle-level- [_ s] nil)
 
-  hierarchy/ExplicitAngelicAction
+  angelic/ExplicitAngelicAction
   (optimistic-map- [_ s]
     (let [base (state/get-var s [:base])]
       (if (= base dst)
@@ -530,7 +531,7 @@
       [(make-move-base-hla env dst) (make-grasp-hla env o)]))
   (cycle-level- [_ s] nil)
 
-  hierarchy/ExplicitAngelicAction
+  angelic/ExplicitAngelicAction
   (optimistic-map- [_ s]
     (let [base (state/get-var s [:base])
           opos (state/get-var s [:pos o])]
@@ -579,7 +580,7 @@
       [(make-move-base-hla env dst) (make-drop-at-hla env o o-dst)]))
   (cycle-level- [_ s] nil)
 
-  hierarchy/ExplicitAngelicAction
+  angelic/ExplicitAngelicAction
   (optimistic-map- [_ s] (go-drop-at-opt s o o-dst))
   (pessimistic-map- [_ s] {})))
 
@@ -603,7 +604,7 @@
       [(make-go-drop-at-hla env o o-dst)]))
   (cycle-level- [_ s] nil)
 
-  hierarchy/ExplicitAngelicAction
+  angelic/ExplicitAngelicAction
   (optimistic-map- [_ s]
     (reduce util/merge-disjoint
             (map #(go-drop-at-opt s o %)
@@ -664,7 +665,7 @@
   (immediate-refinements- [_ s] [[(make-go-grasp-hla env o) (make-go-drop-hla env o)]])
   (cycle-level- [_ s] nil)
 
-  hierarchy/ExplicitAngelicAction
+  angelic/ExplicitAngelicAction
   (optimistic-map- [_ s] #_ (println (util/map-keys state-str (move-to-goal-opt s o))) (move-to-goal-opt s o))
   (pessimistic-map- [_ s] {})))
 
@@ -745,7 +746,7 @@
         (for [o remaining] [(make-move-to-goal-hla env o) this]))))
   (cycle-level- [_ s] 2)
 
-  hierarchy/ExplicitAngelicAction
+  angelic/ExplicitAngelicAction
   (optimistic-map- [_ s]
     {(state/set-vars s finish)
      (let [objects (remaining-objects s), 

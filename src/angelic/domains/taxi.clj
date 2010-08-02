@@ -5,6 +5,7 @@
             [angelic.env.util :as env-util]
             [angelic.sas :as sas]
             [angelic.hierarchy :as hierarchy]
+            [angelic.hierarchy.angelic :as angelic]
             [angelic.hierarchy.util :as hierarchy-util])
   (:import [java.util Random]))
 
@@ -118,14 +119,14 @@
         [a this])))
   (cycle-level- [_ s] 1)
   
-  hierarchy/ExplicitAngelicAction
+  angelic/ExplicitAngelicAction
   (optimistic-map- [_ s]
     (let [cx (state/get-var s ['atx])
           cy (state/get-var s ['aty])]
       {(state/set-var (state/set-var s ['atx] dx) ['aty] dy)
        (- 0 (util/abs (- dx cx)) (util/abs (- dy cy)))}))
   (pessimistic-map- [this s] 
-    (hierarchy/optimistic-map- this s)))
+    (angelic/optimistic-map- this s)))
 
 (defrecord GGNavHLA [env]
   env/Action
@@ -167,7 +168,7 @@
       [[(NavHLA. env sx sy) pu (NavHLA. env dx dy) pd]]))
   (cycle-level- [_ s] nil)
 
-  hierarchy/ExplicitAngelicAction
+  angelic/ExplicitAngelicAction
   (optimistic-map- [_ s]
     (let [const (state/get-var s :const)
           [cx cy] (map #(state/get-var s [%]) '[atx aty])
@@ -177,7 +178,7 @@
           (util/abs (- sx cx)) (util/abs (- sy cy))
           (util/abs (- sx dx)) (util/abs (- sy dy)))}))
   (pessimistic-map- [this s] 
-    (hierarchy/optimistic-map- this s)))
+    (angelic/optimistic-map- this s)))
 
 (defn- taxi-hungarian-heuristic [env s] "destination-to-destination."
   (let [[cx cy] (map #(state/get-var s [%]) '[atx aty])
@@ -217,7 +218,7 @@
           [(ServeHLA. env pass) this]))))
   (cycle-level- [_ s] nil)
   
-  hierarchy/ExplicitAngelicAction
+  angelic/ExplicitAngelicAction
   (optimistic-map- [_ s]
     {(state/set-vars s (env-util/make-finish-goal-state env))
      (taxi-hungarian-heuristic env s)})
