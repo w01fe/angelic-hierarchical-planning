@@ -11,9 +11,9 @@
 
 (defprotocol ImplicitStateSet
   (empty?    [s] "Is this set empty")
-  (singleton [s] "Return the singleton element making up this set, or nil if cardinality != 1.  Non-logging-preserving.")
-  (some-element [s] "Return an arbitrary element of this set, or throw if empty. Non-logging-preserving.")
-  (explicit-set [s] "Return an explicit outcome set. Non-logging-preserving.")
+  (singleton [s] "Return the singleton element making up this set, or nil if cardinality != 1.")
+  (some-element [s] "Return an arbitrary element of this set, or throw if empty. ")
+  (explicit-set [s] "Return an explicit outcome set. ")
   (constrain [ss constraint] "Apply a constraint."))
 
 
@@ -27,6 +27,8 @@
 ; semantics so values are now sets of admissible values. 
 
 (declare make-logging-factored-state-set)
+
+(declare extract-logging-state)
 
 (deftype LoggingFactoredStateSet [init #^java.util.Set context puts ooc meta] 
   Object 
@@ -45,15 +47,15 @@
    (empty? [ss] (some clojure.core/empty? (vals init)))
    (singleton [ss] 
      (when (every? util/singleton? (vals init))
-       (util/map-vals util/safe-singleton init)))
+       (extract-logging-state ss (util/map-vals util/safe-singleton init))))
    (some-element [ss]
      (assert (not (empty? ss)))
-     (util/map-vals first init))
+     (extract-logging-state ss (util/map-vals first init)))
    (explicit-set [ss]
      (let [kvs (seq init)
            ks  (map key kvs)
            vss (map val kvs)]
-       (set (for [vs (apply combos/cartesian-product vss)] (zipmap ks vs)))))
+       (set (for [vs (apply combos/cartesian-product vss)] (extract-logging-state ss (zipmap ks vs))))))
    (constrain    [ss constraint] 
      (assert (every? context (keys constraint)))     
      (state/set-vars ss
@@ -87,30 +89,19 @@
    (apply-effects   [ss e] (state/set-vars ss e))
    (get-logger      [ss c] (LoggingFactoredStateSet. (state/as-map init) c {} {} {})))
 
+(defn extract-logging-state [^LoggingFactoredStateSet ss concrete-map]
+  (angelic.env.state.LoggingFactoredState.
+   concrete-map
+   (.context ss)
+   (state/fast-select-keys concrete-map (keys (state/extract-effects ss)))
+   (state/fast-select-keys concrete-map (keys (state/ooc-effects ss)))   
+   (meta ss)))
+
+
 (def empty-lfss (LoggingFactoredStateSet. {:dummy #{}} #{:dummy} {} {} {}))
 
-(defn make-singleton-logging-factored-state-set
-  ([init-state] (make-singleton-logging-factored-state-set init-state (util/to-set (state/list-vars init-state))))
-  ([init-state context] (LoggingFactoredStateSet. (util/map-vals (fn [x] #{x}) init-state) context {} {} {})))
 
-(defn explicit-logging-set "Like explicit-set, but returns logging-states"
-  [^LoggingFactoredStateSet ss]
-  (let [kvs (seq (.init ss))
-        ks  (map key kvs)
-        vss (map val kvs)
-        m   (meta ss)]
-    (set
-     (for [vs (apply combos/cartesian-product vss)
-           :let [ s (zipmap ks vs)]]
-       (angelic.env.state.LoggingFactoredState.
-        s
-        (.context ss)
-        (state/fast-select-keys s (keys (state/extract-effects ss)))
-        (state/fast-select-keys s (keys (state/ooc-effects ss)))
-        m)))))
-
-(defn implicit-logging-set "Make an implicit logging set from a set of LoggingFactoredStates."
-  [lfss]
+(defn make-logging-factored-state-set [lfss]
   (assert (apply = (map state/current-context lfss)))
   (assert (apply = (map meta lfss)))  
   (if (clojure.core/empty? lfss) empty-lfss
@@ -124,6 +115,7 @@
          (state/fast-select-keys implicit-ss effect-vars)
          (state/fast-select-keys implicit-ss ooc-vars)
          (meta (first lfss))))))
+
 
 
 
