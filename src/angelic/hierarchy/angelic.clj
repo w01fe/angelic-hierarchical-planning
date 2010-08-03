@@ -99,11 +99,40 @@
 ; and not the other.
 
 (defn explode-implicit-pair [[implicit-set reward]]
-  (into {} (for [s (state-set/explicit-map implicit-set)])))
+  (into {} (for [s (when implicit-set (state-set/explicit-set implicit-set))] [s reward])))
 
 (def explicit-from-implicit
-  {:optimistic-map- (fn implicit-optimistic-map [a s] )})
+     {:optimistic-map-  (fn o-m- [a s]
+                          (explode-implicit-pair
+                           (optimistic-set-and-reward- a (state-set/make-logging-factored-state-set [s]))))
+      :pessimistic-map- (fn p-m- [a s]
+                          (explode-implicit-pair
+                           (optimistic-set-and-reward- a (state-set/make-logging-factored-state-set [s]))))})
+
+(defn implode-explicit-map [reward-combiner m]
+  (when-let [rel-pairs (seq (filter #(> (val %) Double/NEGATIVE_INFINITY) (seq m)))]
+    [(state-set/make-logging-factored-state-set (map key rel-pairs))
+     (apply reward-combiner (map val rel-pairs))]))
+
+; Note: assumes no constraints on refinements, can be wrong...
+(def implicit-from-explicit
+     {:can-refine-from-set?        (constantly true)
+      :immediate-refinements-set-  (fn immediate-refinements-set- [a ss]
+                                     (when-not (state-set/empty? ss)
+                                       (for [ref (hierarchy/immediate-refinements a (state-set/some-element ss))]
+                                         [{} ref])))
+      :optimistic-set-and-reward-  (fn optimistic-set-and-reward- [a ss]
+                                     (implode-explicit-map max
+                                      (apply merge-with max (map (partial optimistic-map- a) (state-set/explicit-set ss)))))
+      :pessimistic-set-and-reward- (fn pessimistic-set-and-reward- [a ss]
+                                     (implode-explicit-map min
+                                      (apply merge-with max (map (partial pessimistic-map- a) (state-set/explicit-set ss)))))})
 
 
 
+(defprotocol ImplicitAngelicAction
+  (can-refine-from-set? [a ss] "Return true if set has enough information to refine.")
+  (immediate-refinements-set- [a ss] "Return seq of [constraint ref] pairs from this set")
+  (optimistic-set-and-reward- [a ss] "Return pair of implicit outcome set and reward, or nil")
+  (pessimistic-set-and-reward- [a ss] "Return pair of implicit outcome set and reward, or nil"))
 
