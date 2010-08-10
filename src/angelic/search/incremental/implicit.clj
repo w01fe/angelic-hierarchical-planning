@@ -2,26 +2,21 @@
   (:require [edu.berkeley.ai.util :as util]
             [angelic.env :as env] 
             [angelic.hierarchy :as hierarchy]
+            [angelic.hierarchy.state-set :as state-set]
             [angelic.hierarchy.angelic :as angelic]
-            [angelic.incremental-search :as is]
-            [angelic.hierarchical-incremental-search :as his])
+            [angelic.search.incremental.core :as is]
+            [angelic.search.incremental.hierarchical :as his])
   (:import  [java.util HashMap]))
 
 
-; Hierarchical algorithms that can use angelic valuations.
+; Hierarchical algorithms that use implicit, set-based angelic valuations.
 ; Included are algorithms for explicit valuations, as well as implicit set-vased ones. 
 
-; (require optimistic & pessimistic in line, by single map from clauses to [p o] pairs) ?
-; Still have correspondence problem.
-; unless: require single "region"/clause.  All existing hierarchies had this anyway ?  
+; Still have correspondence problem between pess & opt; for now, just do optimistic.
 
-; nil is a valid clause, meaning "empty" ?
-; States can be used as-is with these functions? 
-(declare hierarchy/clause-is-state?) ;; Clause is also a state
-(declare hierarchy/can-refine-from-clause?) ; Is clause concrete enough to meaningfully refine this action?
-(declare hierarchy/immediate-refinements-clause) ; Returns seq of [constraint ref] pairs from this clause.
-(declare hierarchy/next-clause-and-rewards) ; takes action & clause, returns [result-clause [pess-rew opt-rew]]
-(declare hierarchy/restrict-clause) ;; Takes clause & constraint; returns nil for invalid.
+; build on primitives:
+; state-set/constrain
+; angelic/can-refine-from-set? immediate-refinements-set optimistic-set-and-reward
 
 ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
 ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;; Utilities ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
@@ -29,22 +24,26 @@
 
 ;;;;;;;;;;;;;;;;;;;;;;;;;; Angelic Hierarchical State ;;;;;;;;;;;;;;;;;;;;;;;;;;
 
-(deftype AngelicHierarchicalState [in-clause actions reward-bounds out-clause primitive?])
+
+(defrecord AngelicSAS )
+
+(defn make-angelic-sas [])
+
+(deftype AngelicHierarchicalState [in-clause actions opt-reward out-clause primitive?])
 
 (defn ahs-name 
-  ([ahs] [(:in-clause ahs) (map env/action-name actions) (:out-clause ahs)])
+  ([ahs] [(:in-clause ahs) (map env/action-name (:actions ahs)) (:out-clause ahs)])
   ([ahs more-name] (conj (ahs-name ahs) more-name)))
 
 (defn ahs-solution-pair [ahs]
   (when ahs
    (assert (:primitive? ahs))
-   (assert (apply = (:reward-bounds ahs)))
-   [(:actions ahs) (first (:reward-bounds ahs))]))
+   [(:actions ahs) (:opt-reward ahs)]))
 
-(defn make-root-ahs [in action out]
-  (AngelicHierarchicalState state 0 [] [action]))
+;(defn make-root-ahs [in-state action out-state]
+;  (AngelicHierarchicalState. state 0 [] [action]))
 
-(defn ahs-children [ahs]
+(defn singleton-ahs-children [ahs]
   (let [{:keys [state reward opt-sol remaining-actions]} ahs]
     (when-let [[f & r] (seq remaining-actions)]      
       (if (env/primitive? f)
@@ -304,16 +303,59 @@
 
 ;; TODO: need gap in refinement criteria ? Otherwise, may refine stupid thing if thing we wanted already refined.
 
+;; TODO: watch when we abstract-away constraints?! 
 
-(declare get-saha-cpc-search)
+;; What is purpose of "bottom-up" node?  
+; annoying issue with primitive solutions from abstract states.
+;; Basic problem is: would like sAs to have either:
+;;  - one optimal primitive solution, iff both s concrete, OR
+;;  - a set of refined outcome sets, OR
+;;  - be stalled, since cannot refine action from a set.
+;; But, as soon as we lift up a primitive solution, we can break this assumption.
+;; Even more troublesome is if sAs has both types of solutions.
+;; Can we unify these things somehow?
+;; If we allow CPC to have primitive prefix, this solves the "first part" problem.
+;; "Second part" is a bit more subtle?
+;; In particular, we don't want to muddy higher-levels with details of solutions to lower-levels.  Neither constituent algorithm had to do this.
+;; can either deal with these 
+
+;; What do we do if outcome set does not match expected?  This presents
+;; a need for yet another type of SAS.?!
+
+;; OK, seems like we need to take another step back here before trying to implement
+;; anything.
+
+;; What are real entities here, and their relationships?
+;; Seems that they are: state-abstracted SAS nodes.
+;; For such a node, we could in principle compute all optimal
+;; solutions for all inputs to all outputs, then use DP to connect a seq.
+;; Can use recursive-opt bound to guide this in A*-style alg.
+;; Problem: if initial angelic sets are bad, we are hosed.
+
+;; Or, can do this forward-only, + heuristics.
+;; This solves above problem, but means we must always fully refine front,
+;; even of probably bad plans.
+
+;; Goal here is to get best of both worlds.
+;; Nodes are again state-abstracted, SAS things.
+;; Solutions to node are from refs, seqs of SAS things.
+;; But, we can split.  
+
+(declare get-implicit-dash-sps-search)
 
 ;; TODO: where do we use opt desc ??  Should we cache nodes as well as searches ? 
  ; Or cache searches in nodes, or what ? 
-(defn get-saha-cac-search [cac-node]
-  (is/get-cached-search *problem-cache* (node-name cac-node)
-    (is/make-recursive-sr-search cac-node cac-refinements get-saha-cpc-search)))
 
-(defn get-saha-cpc-search [cpc-node]
+(defn searchify-sas-child [sas-child]
+  (cond ())
+  )
+
+(defn get-implicit-dash-sas-search [sas-node]
+  (is/get-cached-search *problem-cache* (node-name sas-node)
+    (is/make-recursive-sr-search sas-node sas-refinements searchify-sas-child)))
+
+
+(defn get-implicit-dash-sps-search [sps-node]
   (is/get-cached-search *problem-cache* (node-name cpc-node)
     (let [[cac-node rest-cpc-node] (cpc-split cpc-node)]
       (is/make-and-search cpc-node
