@@ -20,7 +20,16 @@
     (is (= best-status (max-status s1 s2 s3 s4 s5 s6 s7 best-status)))    
     (is (= s2 (min-status s1 s2 s3)))
     (is (= s6 (min-status s1 s2 s3 s4 s5 s6 s7)))
-    (is (= worst-status (min-status s1 s2 s3 s4 s5 s6 s7 worst-status)))))
+    (is (= worst-status (min-status s1 s2 s3 s4 s5 s6 s7 worst-status)))
+    (doseq [s [s1 s2 s3 s4 s5 s6 s7]]
+      (is (= (add-statuses s zero-status) s))
+      (is (= (add-statuses zero-status s) s)))
+
+    (is (= (add-statuses s4 s5) (Status. 2 :live)))
+    (is (= (add-statuses s4 s3) (Status. 1 :live)))    
+    (is (= (add-statuses s2 s5) (Status. 1 :blocked)))
+    (is (= (add-statuses s7 s3) (Status. -1 :solved)))))
+
 
 
 
