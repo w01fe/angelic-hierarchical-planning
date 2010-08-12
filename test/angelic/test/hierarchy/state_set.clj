@@ -74,17 +74,22 @@
   (is (thrown? AssertionError (make-logging-factored-state-set
                                #{(with-meta (state/get-logger {:a 1} #{}) {:a :b})
                                  (state/get-logger {:a 2} #{})})))
-  (let [base (state/get-logger {:a 1 :b 2 :c 3 :d 4} #{:a :b})
+  (let [base (state/get-logger {:a 1 :b 2 :c 7 :d 4} #{:a :b})
         ss   (make-logging-factored-state-set
               (set (for [s [(state/set-vars base {:a 2 :c 5})
-                            (state/set-vars base {:a 5})
+                            (state/set-vars base {:a 5 :c 3})
                             (state/set-vars base {:c 6})                
-                            base]]
+                            (state/set-vars base {:c 3})]]
                      (with-meta s {:f :g}))))]
     (is (= (meta ss) {:f :g}))
     (is (= (state/as-map ss) {:a #{1 2 5} :b #{2} :c #{3 5 6} :d #{4}}))
     (is (= (state/extract-effects ss) {:a #{1 2 5} :c #{3 5 6}}))
     (is (= (state/ooc-effects ss)     {:c #{3 5 6}}))))
+
+(deftest ooc-sets
+  (let [s (state/get-logger {:a 1 :b 2} #{:a})]
+    (is (thrown? AssertionError
+                 (make-logging-factored-state-set [(state/set-var s :a 4) (state/set-var s :b 2)])))))
 
 
 

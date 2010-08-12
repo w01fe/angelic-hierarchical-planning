@@ -26,6 +26,13 @@
 ; For now, we abuse the interfaces form ordinary states, simply changing the 
 ; semantics so values are now sets of admissible values. 
 
+;; TODO:Note: we have to be really careful about OOC-effects here.
+;; for now, we can just require that these be unconditional.
+;; If we add unions, etc later, worry about details.
+
+
+;(def no-effect ::no-effect)
+
 (declare make-logging-factored-state-set)
 
 (declare extract-logging-state)
