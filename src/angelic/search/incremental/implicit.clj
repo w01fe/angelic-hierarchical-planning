@@ -10,6 +10,14 @@
   (:import  [java.util HashMap]))
 
 
+;; For now, we'll assume "output trees" -- makes many things simpler.
+;; Two options:
+;; include ancestor reward in output-set reward
+;; This preserves consistency across the board.  Seems like only sane option.
+;; But then, have to keep parent links, be willing to refine parent through node.
+;;  OR, have blocked-to-reduction.
+
+
 ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
 ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;; Data Structures ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
 ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
@@ -18,16 +26,17 @@
 
 
 ; status is: :blocked, :solved, or :live
+;; blocked is "better" than live, since it is contagious over live w.r.t. max. 
 (defn status-val [s]
   (case s
-        :blocked -1
         :live    0
-        :solved  1))
+        :blocked 1
+        :solved  2))
 
 (defrecord Status [max-reward status])
 
-(def worst-status (Status. is/neg-inf :blocked))
-(def best-status  (Status. is/pos-inf :live))
+(def +worst-status+ (Status. is/neg-inf :live))
+(def +best-status+  (Status. is/pos-inf :solved))
 
 (defn better-status? [s1 s2]
   (or (> (:max-reward s1)
@@ -42,17 +51,14 @@
     (recur cf (if (cf f arg1) f arg1) r)
     arg1))
 
-(defn max-status [& stats] (apply max-compare better-status? (cons worst-status stats) ))
-(defn min-status [& stats] (apply max-compare (complement better-status?) (cons best-status stats)))
+(defn max-status [& stats] (apply max-compare better-status? (cons +worst-status+ stats) ))
+(defn min-status [& stats] (apply max-compare (complement better-status?) (cons +best-status+ stats)))
 
-;; TODO: is blocked contagious, or not?
 (def zero-status (Status. 0 :solved))
 (defn add-statuses [s1 s2]
   (Status. (+ (:max-reward s1)
               (:max-reward s2))
-           (cond (or (= (:status s1) :live) (= (:status s2) :live)) :live
-                 (or (= (:status s1) :blocked) (= (:status s2) :blocked)) :blocked
-                 :else (do (assert (and (= (:status s1) :solved) (= (:status s2) :solved))) :solved))))
+           (min-key status-val (:status s1) (:status s2))))
 
 (defn refinable-status? [stat min-reward]
   (and (= (:status stat) :live)
@@ -75,7 +81,7 @@
 
 (defn max-thing-and-status [status-fn & things]
   (if (empty? things)
-    [nil worst-status]
+    [nil +worst-status+]
     (loop [best-thing (first things)
            best-status (status-fn (first things))
            more-things (rest things)]
@@ -107,7 +113,7 @@
 (defrecord Subproblem [input-set action ^HashMap output-set-cache])
 
 
-(declare osp-status refine-osp!)
+(declare osp-status refine-osp! refine-plan)
 
 ;; TODO: put back status caching!
 (defrecord OutputSetNode    [plans child-pointers])
@@ -123,7 +129,7 @@
 
 ;; TODO: must add tricky bit here about increasing child reward.
 (defn merge-children [subproblem child-pointers plans-by-output-set]
-  ...
+;  ...
   )
 
 (defn refined-osn [osn min-reward excluded-child-set subproblem output-set]
@@ -134,7 +140,7 @@
       osn
       (if (better-status? child-status plan-status)
         (do (refine-osp! best-child (next-min-reward plan-status min-reward))
-            (recur osn min-reward exluded-child-set subproblem output-set))
+            (recur osn min-reward excluded-child-set subproblem output-set))
         (let [{:keys [plans child-pointers]} osn
               new-plans   (group-by :output-set (refine-plan best-plan (next-min-reward child-status min-reward)))
               other-plans (remove-id best-plan plans)]
@@ -150,7 +156,7 @@
   (min-status (:alt-status osp) (osn-status @(:node-atom osp))))
 
 (defn refine-osp! "Refine and return new status (blocked, solved, or worse than min-reward.)"
-  ([osp min-reward] (refine-osp osp min-reward #{}))
+  ([osp min-reward] (refine-osp! osp min-reward #{}))
   ([osp min-reward excluded-child-set]
      (when (refinable-status? (:alt-status osp) min-reward)
        (assert-unrefinable
@@ -168,7 +174,7 @@
   (OutputSetNode.
    (lazy-seq (for [[_ ref] (angelic/immediate-refinements-set)] (make-initial-plan init-set ref)))
    (Status. opt-reward :live)
-   worst-status
+   +worst-status+
    nil))
 
 
@@ -204,7 +210,7 @@
                next-remaining-actions
                (conj nodes (PlanNode. root-ptr #{} next-output-set action-status))))
 
-      (Plan. nodes next-output-set status))))
+      (Plan. nodes last-output-set status))))
 
 
 
