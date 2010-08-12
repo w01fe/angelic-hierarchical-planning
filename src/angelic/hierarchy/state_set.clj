@@ -29,7 +29,7 @@
 ;; TODO:Note: we have to be really careful about OOC-effects here.
 ;; for now, we can just require that these be unconditional.
 ;; If we add unions, etc later, worry about details.
-
+;; TODO: constraint is not the same as set-vars ?  ???
 
 ;(def no-effect ::no-effect)
 
@@ -110,6 +110,7 @@
 
 (defn make-logging-factored-state-set [lfss]
   (assert (apply = (map state/current-context lfss)))
+  (assert (apply = (map (comp keys state/ooc-effects) lfss)))  
   (assert (apply = (map meta lfss)))  
   (if (clojure.core/empty? lfss) empty-lfss
       (let [effect-vars (set (apply concat (map (comp keys state/extract-effects) lfss)))
