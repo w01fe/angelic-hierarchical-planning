@@ -80,6 +80,9 @@
               (:max-reward s2))
            (min-key status-val (:status s1) (:status s2))))
 
+(defn viable-status? [status]
+  (> (:max-reward status) is/neg-inf))
+
 (defn refinable-status? [stat min-reward]
   (and (= (:status stat) :live)
        (>= (:max-reward stat) min-reward)))
@@ -284,54 +287,64 @@
 ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
 
 
-(defrecord PlanNode [input-set input-status sub-output-set-pointer excluded-child-set output-constraint status-bound])
+(defrecord PlanNode [sub-output-set-pointer excluded-child-set output-constraint status-bound output-set output-status])
 
-(defn make-plan-node [input-set input-status sub-output-set-pointer excluded-child-set ouptut-constraint status-bound]
-  (PlanNode. input-set input-status sub-output-set-pointer excluded-child-set ouptut-constraint status-bound))
+(defn compute-plan-node-output-set [input-set sub-output-set-pointer output-constraint]
+  (state-set/constrain (state/transfer-effects input-set (:output-set sub-output-set-pointer)) output-constraint))
+
+(defn compute-plan-node-output-status [input-status sub-output-set-pointer status-bound]
+  (add-statuses input-status (min-status status-bound (osp-status sub-output-set-pointer))))
+
+(defn make-plan-node [input-set input-status sub-output-set-pointer excluded-child-set output-constraint status-bound]
+  (PlanNode. sub-output-set-pointer excluded-child-set output-constraint status-bound
+             (compute-plan-node-output-set input-set sub-output-set-pointer output-constraint)
+             (compute-plan-node-output-status input-status sub-output-set-pointer status-bound)))
 
 (defn make-initial-plan-node [action [input-set input-status]]
   (let [sub (get-subproblem-root-pointer input-status action (constantly is/pos-inf))]
-    (make-plan-node input-set input-status #{} {} +best-status+)))
-
+    (make-plan-node input-set input-status sub #{} {} +best-status+)))
 
 
 (defn plan-node-output-set-and-status [pn]
-  [(state-set/constrain
-    (state/transfer-effects (:input-set pn) (:output-set (:sub-output-set-pointer pn)))
-    (:output-constraint pn))
-   (add-statuses
-    (:input-status pn)
-    (min-status (:status-bound pn) (osp-status (:sub-output-set-pointer pn))))])
+  [(:output-set pn) (:output-status pn)])
 
 (defn viable-output-set-and-status? [[set status]]
   (and (not (state-set/empty? set))
-       (> (:max-reward status) is/neg-inf)))
+       (viable-status? status)))
 
 
 (defn refine-pn! [pn min-reward]
   (refine-osp! (:sub-output-set-pointer pn) min-reward (:excluded-child-set pn)))
 
-(defn split-pn-output [pn min-reward-prefix]
-  (let [{:keys [input-status sub-output-set-pointer excluded-child-set]} pn]
-    (let [split-children (split-osp sub-output-set-pointer (- min-reward-prefix (:max-reward input-status)) excluded-child-set)
+(defn split-pn-output [pn min-step-reward]
+  (let [{:keys [sub-output-set-pointer excluded-child-set]} pn]
+    (let [split-children (split-osp sub-output-set-pointer min-step-reward excluded-child-set)
           new-ecs        (into excluded-child-set split-children)
           new-status     (osp-status sub-output-set-pointer new-ecs)]
       (concat
-       (when (> (:max-reward new-status) is/neg-inf) [(assoc pn :excluded-child-set new-ecs)])
+       (when (viable-status? new-status) [(assoc pn :excluded-child-set new-ecs)])
        (for [child split-children] (assoc pn :sub-output-set-pointer child :excluded-child-set nil))))))
 
+(defn patch-pn-status-tuple- [pn new-input-status]
+  (let [{:keys [sub-output-set-pointer status-bound output-set]} pn
+        new-output-status (compute-plan-node-output-status new-input-status sub-output-set-pointer status-bound)]
+    (when (viable-status? new-output-status)
+      [[false output-set new-output-status] (assoc pn :output-status new-output-status)])))
+
+
 (defn update-pn-input [[set-changed? new-input-set new-input-status] pn]
-  (let [{:keys [input-set input-status sub-output-set-pointer]} pn]
-    (if (or (not set-changed?) (= new-input-set input-set))
-      (if (= new-input-status input-status)
-        pn
-        (assoc pn :input-status new-input-status))
+  (let [{:keys [sub-output-set-pointer output-constraint status-bound output-set]} pn]
+    (if set-changed?
       (let [new-osp (refine-osp-input sub-output-set-pointer new-input-set)]
         (if (identical? new-osp sub-output-set-pointer)
-          (assoc pn :input-set new-input-set :input-status new-input-status)
-          (make-plan-node new-input-set new-input-status new-osp nil
-                          (:output-set sub-output-set-pointer)
-                          (Status. (:max-reward (osp-status sub-output-set-pointer)) :blocked)))))))
+          (patch-pn-status-tuple- pn new-input-status)
+          (let [new-pn (make-plan-node new-input-set new-input-status new-osp nil
+                                (:output-set sub-output-set-pointer)
+                                (Status. (:max-reward (osp-status sub-output-set-pointer)) :blocked))
+                new-output-pair (plan-node-output-set-and-status new-pn)]
+            (when (viable-output-set-and-status? new-output-pair)
+              [(cons (not (= (:output-set new-pn) output-set)) new-output-pair) new-pn]))))      
+      (patch-pn-status-tuple- pn new-input-status))))
 
 
 
@@ -368,16 +381,11 @@
   "Returns a plan by propagating changes starting at the last node in prefix through remaining-nodes.
    Returns nil if the plan becomes infeasible, otherwise a plan."
   [input-constraint prefix-nodes remaining-nodes set-changed?]
-  (when-let [chain
-             (map-chain
+  (when-let [[[_ out-set out-status] out-nodes]
+             (map-state
               update-pn-input
-              (cons set-changed? (plan-node-ouptut-set-and-status  (last prefix-nodes)))
-              (comp viable-output-set-and-status? next)
-              (fn [old-pn new-pn]
-                (cons ()))
-              remaining-nodes)]
-    (let [[_ out-set out-status] (last chain)]
-      (Plan. input-constraint (concat prefix-nodes (butlast chain)) out-set out-status))))
+              (cons set-changed? (plan-node-output-set-and-status (last prefix-nodes))))]
+    (Plan. input-constraint (concat prefix-nodes out-nodes) out-set out-status)))
 
 
 
