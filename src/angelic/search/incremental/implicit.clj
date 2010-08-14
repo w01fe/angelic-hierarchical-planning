@@ -313,17 +313,20 @@
        (viable-status? status)))
 
 
-(defn refine-pn! [pn min-reward]
-  (refine-osp! (:sub-output-set-pointer pn) min-reward (:excluded-child-set pn)))
+(defn refine-pn [pn input-status min-reward]
+  (let [{:keys [sub-output-set-pointer excluded-child-set status-bound]} pn]
+    (refine-osp! sub-output-set-pointer min-reward excluded-child-set)
+    (assoc pn :output-status (compute-plan-node-output-status input-status sub-output-set-pointer status-bound))))
 
-(defn split-pn-output [pn min-step-reward]
+
+(defn split-pn-output [pn input-set input-status min-step-reward]
   (let [{:keys [sub-output-set-pointer excluded-child-set]} pn]
     (let [split-children (split-osp sub-output-set-pointer min-step-reward excluded-child-set)
           new-ecs        (into excluded-child-set split-children)
           new-status     (osp-status sub-output-set-pointer new-ecs)]
       (concat
-       (when (viable-status? new-status) [(assoc pn :excluded-child-set new-ecs)])
-       (for [child split-children] (assoc pn :sub-output-set-pointer child :excluded-child-set nil))))))
+       (when (viable-status? new-status) [(assoc pn :excluded-child-set new-ecs :output-status new-status)])
+       (for [child split-children] (make-plan-node input-set input-status child nil {} +best-status+))))))
 
 (defn patch-pn-status-tuple- [pn new-input-status]
   (let [{:keys [sub-output-set-pointer status-bound output-set]} pn
@@ -349,7 +352,7 @@
 
 
 
-(defrecord Plan     [input-constraint plan-nodes output-set status])
+(defrecord Plan     [input-constraint input-set plan-nodes output-set status])
 
 (defn map-state
   "Transform a sequence via a state-machine.  transition-fn takes a state and input item,
@@ -364,35 +367,42 @@
 
 
 (defn make-initial-plan [init-set ref-constraint act-seq]
-  (when-let [[[out-set out-status] plan]
-             (map-state (fn [in-pair a]
-                          (let [pn (make-initial-plan-node a in-pair)
-                                out-pair (plan-node-output-set-and-status pn)]
-                            (when (viable-output-set-and-status? out-pair)
-                              [out-pair pn])))
-                        [(state-set/constrain init-set ref-constraint) zero-status]
-                        act-seq)]
-    (Plan. ref-constraint plan out-set out-status)))
+  (let [constrained-set (state-set/constrain init-set ref-constraint)]
+    (when-let [[[out-set out-status] plan]
+              (map-state (fn [in-pair a]
+                           (let [pn (make-initial-plan-node a in-pair)
+                                 out-pair (plan-node-output-set-and-status pn)]
+                             (when (viable-output-set-and-status? out-pair)
+                               [out-pair pn])))
+                         [constrained-set zero-status]
+                         act-seq)]
+     (Plan. ref-constraint constrained-set plan out-set out-status))))
 
 
 
-;; Remove dead plans, detect quiescense in output sets. 
 (defn propagate-plan-changes
   "Returns a plan by propagating changes starting at the last node in prefix through remaining-nodes.
    Returns nil if the plan becomes infeasible, otherwise a plan."
-  [input-constraint prefix-nodes remaining-nodes set-changed?]
+  [input-constraint input-set prefix-nodes remaining-nodes set-changed?]
   (when-let [[[_ out-set out-status] out-nodes]
              (map-state
               update-pn-input
               (cons set-changed? (plan-node-output-set-and-status (last prefix-nodes))))]
-    (Plan. input-constraint (concat prefix-nodes out-nodes) out-set out-status)))
+    (Plan. input-constraint input-set (concat prefix-nodes out-nodes) out-set out-status)))
 
-
-
-
+;; Need some meta-level basis to choose what to do...
+;; For now, just pick a node at random, try to refine it, then try to split on its output.
 (defn expand-plan [plan min-reward]
-  ; remove dead plans
-  )
+  (let [{:keys [input-constraint input-set plan-nodes output-set status]} plan
+        [pre-nodes [ref-node & post-nodes]] (split-at (rand-int (count plan-nodes)) plan-nodes)
+        [pre-set pre-status]  (if (seq pre-nodes) (plan-node-output-set-and-status (last pre-nodes)) [input-set zero-status])
+        sub-min-reward (- min-reward
+                          (- (:max-reward status)
+                             (- (:max-reward (:out-status ref-node)) (:max-reward pre-status))))]
+    (filter identity
+            (for [next-pn (split-pn-output (refine-pn ref-node pre-status sub-min-reward) pre-set pre-status sub-min-reward)]
+              (propagate-plan-changes input-constraint input-set (concat pre-nodes [next-pn]) post-nodes)))))
+
 
 
 
