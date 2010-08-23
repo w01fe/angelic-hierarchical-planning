@@ -405,6 +405,17 @@
 
 
 
+;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
+;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;; Top Level ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
+;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
+
+
+(defn implicit-random-dash-a* [henv]
+  (let [e    (hierarchy/env henv)
+        init (env-util/initial-logging-state e)
+        tla  (hierarchy-util/make-top-level-action e [(hierarchy/initial-plan henv)])]
+    (binding [*subproblem-cache*    (HashMap.)]
+      (get-subproblem-root-pointer (state-set/make-logging-factored-state-set [init]) tla (constantly is/pos-inf)))))
 
 
 
