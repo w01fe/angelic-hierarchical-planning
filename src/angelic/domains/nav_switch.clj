@@ -94,14 +94,17 @@
   (let [[xc yc] (if (state/get-var s '[h]) [-2 -4] [-4 -2])]
     (nav-outcome-map s dx dy xc yc)))
 
-(defn nav-reward-from-set [ss dx dy]
+(defn nav-reward-from-set [ss dx dy combiner]
   (let [cx (util/safe-singleton (state/get-var ss '[x]))
         cy (util/safe-singleton (state/get-var ss '[y]))]
-    (apply min
+    (apply combiner
            (for [h? (state/get-var ss '[h])
                  :let [[xc yc] (if h? [-2 -4] [-4 -2])]]
              (+ (* xc (util/abs (- dx cx))) (* yc (util/abs (- dy cy))))))))
 
+(defn nav-set-and-reward [ss dx dy combiner]
+  [(state/set-vars ss [['[x] #{dx}] ['[y] #{dy}]])
+   (nav-reward-from-set ss dx dy combiner)])
 
 (defrecord SimpleNavHLA [dx dy]
   env/Action 
@@ -129,13 +132,17 @@
   (can-refine-from-set? [a ss] true)
   (immediate-refinements-set- [a ss]
     (for [p (hierarchy/immediate-refinements- a (state-set/some-element ss))] [{} p]))
-  (optimistic-set-and-reward- [a ss]
-    [(state/set-vars ss [['[x] #{dx}] ['[y] #{dy}]])
-     (nav-reward-from-set ss dx dy)])
-  (pessimistic-set-and-reward- [a ss] (angelic/optimistic-set-and-reward- a ss)))
+  (optimistic-set-and-reward- [a ss]  (nav-set-and-reward ss dx dy max))
+  (pessimistic-set-and-reward- [a ss] (nav-set-and-reward ss dx dy max)))
 
 
-
+(defn nav-d-set-and-reward [ss h? dest combiner]
+  (let [dir  (if h? '[x] '[y])
+        cur  (state/get-var ss dir)]
+    [(state/set-var ss dir #{dest})
+     (apply combiner
+            (for [ch? (state/get-var ss '[h])]
+              (* (if (util/truth= ch? h?) -2 -4) (util/abs (- cur dest)))))]))
 
 (defrecord NavDHLA [h? dest]
   env/Action
@@ -167,14 +174,8 @@
   (can-refine-from-set? [a ss] true)
   (immediate-refinements-set- [a ss]
     (for [p (hierarchy/immediate-refinements- a (state-set/some-element ss))] [{} p]))
-  (optimistic-set-and-reward- [a ss]
-    (let [dir  (if h? '[x] '[y])
-          cur  (state/get-var ss dir)]
-      [(state/set-var ss dir #{dest})
-       (for [ch? (state/get-var ss '[h])
-             cost (if (util/truth= ch? h?) -2 -4)]
-         (* cost (util/abs (- cur dest))))]))
-  (pessimistic-set-and-reward- [a ss] (angelic/optimistic-set-and-reward- a ss)))
+  (optimistic-set-and-reward- [a ss] (nav-d-set-and-reward ss h? dest max))
+  (pessimistic-set-and-reward- [a ss] (nav-d-set-and-reward ss h? dest min)))
 
 
 
@@ -198,10 +199,8 @@
   (can-refine-from-set? [a ss] true)
   (immediate-refinements-set- [a ss]
     (for [p (hierarchy/immediate-refinements- a (state-set/some-element ss))] [{} p]))
-  (optimistic-set-and-reward- [a ss]
-    [(state/set-vars ss [['[x] #{dx}] ['[y] #{dy}]])
-     (nav-reward-from-set ss dx dy)])
-  (pessimistic-set-and-reward- [a ss] (angelic/optimistic-set-and-reward- a ss)))
+  (optimistic-set-and-reward- [a ss]  (nav-set-and-reward ss dx dy max))
+  (pessimistic-set-and-reward- [a ss] (nav-set-and-reward ss dx dy min)))
 
 ; Does not work with null vals
 (defn merge-map-keys [map-fn merge-fn m]
@@ -245,7 +244,7 @@
               (- gy (util/safe-singleton (state/get-var ss '[y])))))])
   (pessimistic-set-and-reward- [a ss]
     [(state/set-vars ss (util/map-vals (fn [x] #{x}) finish))
-     (nav-reward-from-set ss gx gy)]))
+     (nav-reward-from-set ss gx gy min)]))
 
 
 (defn- make-nav-switch-tla [env split-nav?]

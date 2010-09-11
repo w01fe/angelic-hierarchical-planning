@@ -120,7 +120,7 @@
 
 
 
-(defn max-thing-summary-and-next [summary-fn & things]
+(defn max-thing-summary-and-next [summary-fn things]
   (if (empty? things)
     [nil +worst-summary+ +worst-summary+]
     (loop [best-thing (first things)
@@ -196,10 +196,10 @@
   (OutputSetNode.
    (lazy-seq (for [[constraint ref] (angelic/immediate-refinements-set action init-set)]
                (make-initial-plan init-set constraint ref)))
-   (make-live-summary opt-reward)
-   +worst-summary+
+;   (make-live-summary opt-reward)
+;   +worst-summary+
    nil))
-
+;; TODO: summaries making it into child-pointers
 
 
 (defn osn-plan-summary [osn] (apply max-summary (map :summary (:plans osn))))
@@ -224,7 +224,7 @@
   [parent-osp osn best-plan min-reward subproblem output-set]
   (let [{:keys [plans child-pointers]} osn
         new-plans   (group-by :output-set (expand-plan best-plan min-reward))
-        other-plans (remove-id #(identical? % best-plan) best-plan plans)]
+        other-plans (remove #(identical? % best-plan) best-plan plans)]
     (OutputSetNode.
      (concat (new-plans output-set) other-plans)
      (merge-children parent-osp osn (dissoc new-plans output-set)))))
@@ -268,7 +268,7 @@
   (when-let [p (:parent-pointer osp)]
     (cons p (lazy-seq (osp-ancestors osp)))))
 
-(defn osp-plan-summary [osp] (osn-plan-summary @(:node-atom osp)))
+(defn osp-plan-summary [osp] (println osp) (osn-plan-summary @(:node-atom osp)))
 
 (defn active-osp-summary [osp excluded-child-set]
   (min-summary (:alt-summary osp)
@@ -281,7 +281,8 @@
   [osp min-reward excluded-child-set]
   (operate-on-best
    osp-plan-summary osp-ancestors refine-osp!
-   #(osp-summary % excluded-child-set) [osp] #(swap! (:node-atom osp) refined-osn %2 excluded-child-set (:subproblem osp) (:output-set osp))))
+   #(osp-summary % excluded-child-set) (constantly [osp]) #(swap! (:node-atom osp) refined-osn %2 excluded-child-set (:subproblem osp) (:output-set osp))
+   osp identity min-reward))
 
 (defn add-plans-osp!
   "Add plans from map and return map with them removed"
@@ -315,8 +316,8 @@
            (state-set/make-logging-factored-state-set [ss])))
         +worst-osp+)
       (let [[opt rew]    (angelic/optimistic-set-and-reward action logged-input-set)
-            rew          (min rew (reward-bound-fn))]
-        (if (or prim? (not (angelic/can-refine-from-set? action logged-input-set)))
+            rew          (min (or rew is/neg-inf) (reward-bound-fn))]
+        (if (or (= rew is/neg-inf) prim? (not (angelic/can-refine-from-set? action logged-input-set)))
           (TerminalOutputSetPointer. (make-blocked-summary rew) opt)
           (let [subproblem   (Subproblem. logged-input-set state-context action (HashMap.))
                 init-node    (make-initial-output-set-node logged-input-set action rew)
@@ -326,10 +327,11 @@
 
 
 (defn get-subproblem-root-pointer [input-set action reward-bound-fn]
-  (let [context (env/precondition-context action input-set)
+  (let [context       (env/precondition-context action input-set)
         state-context (state/extract-context input-set context)]
-    (util/cache-with *subproblem-cache* [state-context (env/action-name action)]
-      (make-subproblem (state/get-logger input-set context) state-context action reward-bound-fn))))
+    ;    (println *subproblem-cache* input-set (env/action-name action) (state/get-logger input-set context) (hash [state-context (env/action-name action)]))
+    (util/cache-with *subproblem-cache* [state-context (env/action-name action)] 
+       (make-subproblem (state/get-logger input-set context) state-context action reward-bound-fn))))
 
 (defn refine-osp-input [osp new-input-set]
   (let [root-osp         (-> osp osp-ancestors last)
@@ -345,15 +347,20 @@
 ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
 
 
-(defrecord PlanNode [sub-output-set-pointer excluded-child-set output-constraint summary-bound output-set output-summary])
+(defrecord PlanNode [sub-output-set-pointer excluded-child-set output-constraint
+                     summary-bound output-set output-summary])
 
 (defn compute-plan-node-output-set [input-set sub-output-set-pointer output-constraint]
-  (state-set/constrain (state/transfer-effects input-set (osp-output-set sub-output-set-pointer)) output-constraint))
+  (state-set/constrain (state/transfer-effects input-set (osp-output-set sub-output-set-pointer))
+                       output-constraint))
 
 (defn compute-plan-node-output-summary [input-summary sub-output-set-pointer summary-bound]
-  (add-summaries input-summary (min-summary summary-bound (full-osp-summary sub-output-set-pointer))))
+  (->> (full-osp-summary sub-output-set-pointer)
+       (min-summary summary-bound )
+       (add-summaries input-summary)))
 
-(defn make-plan-node [input-set input-summary sub-output-set-pointer excluded-child-set output-constraint summary-bound]
+(defn make-plan-node [input-set input-summary sub-output-set-pointer
+                      excluded-child-set output-constraint summary-bound]
   (PlanNode. sub-output-set-pointer excluded-child-set output-constraint summary-bound
              (compute-plan-node-output-set input-set sub-output-set-pointer output-constraint)
              (compute-plan-node-output-summary input-summary sub-output-set-pointer summary-bound)))
@@ -473,10 +480,16 @@
         init (env-util/initial-logging-state e)
         tla  (hierarchy-util/make-top-level-action e [(hierarchy/initial-plan henv)])]
     (binding [*subproblem-cache*    (HashMap.)]
-      (get-subproblem-root-pointer (state-set/make-logging-factored-state-set [init]) tla (constantly is/pos-inf)))))
+      (let [root (get-subproblem-root-pointer (state-set/make-logging-factored-state-set [init]) tla (constantly is/pos-inf))]
+        (refine-osp! root is/neg-inf nil)
+        (let [sum (osp-summary root nil)]
+          (assert (not (refinable-summary? sum is/neg-inf)))
+          (when-let [sol (optimal-solution sum)]
+            [sol (max-reward sum)]))))))
+
 
 
 
 
 ; (use 'edu.berkeley.ai.util '[angelic env hierarchy] 'angelic.domains.nav-switch 'angelic.search.incremental.implicit)
-; (implicit-random-dash-a* (make-nav-switch-hierarchy (make-random-nav-switch-env 5 2) true))
+; 
