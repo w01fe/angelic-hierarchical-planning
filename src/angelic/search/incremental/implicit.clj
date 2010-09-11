@@ -25,7 +25,7 @@
 ;; and how would this comm work, exactly?
 ;; Whenever refinement is done, must notify somehow about excluded children
 ;; whose reward has increased since last refinement done
-;; (although their reward may currently be lower, having passed it on further, if caching.)
+;; (although their reward may currently be lower, having passed it on furthers, if caching.)
 
 
 ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
@@ -79,10 +79,10 @@
 (def +best-summary+  (make-solved-summary is/pos-inf []))
 
 (defn better-summary? [s1 s2]
-  (or (> (:max-reward s1)
-         (:max-reward s2))
-      (and (= (:max-reward s1)
-              (:max-reward s2))
+  (or (> (max-reward s1)
+         (max-reward s2))
+      (and (= (max-reward s1)
+              (max-reward s2))
            (> (status-val (:status s1))
               (status-val (:status s2))))))
 
@@ -96,19 +96,19 @@
 
 (def zero-summary (SimpleSummary. 0 :solved []))
 (defn add-summaries [s1 s2]
-  (SimpleSummary. (+ (:max-reward s1)
-              (:max-reward s2))
+  (SimpleSummary. (+ (max-reward s1)
+              (max-reward s2))
            (min-key status-val (:status s1) (:status s2))
            (when (and (= (:status s1) :solved) (= (:status s2) :solved))
              (concat (:opt-sol s1) (:opt-sol s2)))))
 
 
 (defn viable-summary? [summary]
-  (> (:max-reward summary) is/neg-inf))
+  (> (max-reward summary) is/neg-inf))
 
 (defn refinable-summary? [stat min-reward]
   (and (= (:status stat) :live)
-       (>= (:max-reward stat) min-reward)))
+       (>= (max-reward stat) min-reward)))
 
 (defn summary-solution [stat]
   (when (= (:status stat) :solved)
@@ -116,7 +116,7 @@
 
 
 (defn next-min-reward [stat min-reward]
-  (min min-reward (:max-reward stat)))
+  (min min-reward (max-reward stat)))
 
 
 
@@ -131,7 +131,8 @@
         (let [next-summary (summary-fn next-thing)]
           (if (better-summary? next-summary best-summary)
             (recur next-thing next-summary best-summary even-more-things)
-            (recur best-thing best-summary (max-summary next-summary next-best-summary) even-more-things)))))))
+            (recur best-thing best-summary (max-summary next-summary next-best-summary) even-more-things)))
+        [best-thing best-summary next-best-summary]))))
 
 (defn one-operation-on-best [summary-fn1 s1 op1 summary-fn2 s2 op2 min-reward default]
   (let [[best1 summary1 ns1] (max-thing-summary-and-next summary-fn1 s1)
@@ -194,8 +195,9 @@
 
 (defn make-initial-output-set-node [init-set action opt-reward]
   (OutputSetNode.
-   (lazy-seq (for [[constraint ref] (angelic/immediate-refinements-set action init-set)]
-               (make-initial-plan init-set constraint ref)))
+   (lazy-seq (for [[constraint ref] (angelic/immediate-refinements-set action init-set)
+                   :let [p (make-initial-plan init-set constraint ref)] :when p]
+               p))
 ;   (make-live-summary opt-reward)
 ;   +worst-summary+
    nil))
@@ -224,7 +226,7 @@
   [parent-osp osn best-plan min-reward subproblem output-set]
   (let [{:keys [plans child-pointers]} osn
         new-plans   (group-by :output-set (expand-plan best-plan min-reward))
-        other-plans (remove #(identical? % best-plan) best-plan plans)]
+        other-plans (remove #(identical? % best-plan) plans)]
     (OutputSetNode.
      (concat (new-plans output-set) other-plans)
      (merge-children parent-osp osn (dissoc new-plans output-set)))))
@@ -268,7 +270,7 @@
   (when-let [p (:parent-pointer osp)]
     (cons p (lazy-seq (osp-ancestors osp)))))
 
-(defn osp-plan-summary [osp] (println osp) (osn-plan-summary @(:node-atom osp)))
+(defn osp-plan-summary [osp] (osn-plan-summary @(:node-atom osp)))
 
 (defn active-osp-summary [osp excluded-child-set]
   (min-summary (:alt-summary osp)
@@ -483,6 +485,7 @@
       (let [root (get-subproblem-root-pointer (state-set/make-logging-factored-state-set [init]) tla (constantly is/pos-inf))]
         (refine-osp! root is/neg-inf nil)
         (let [sum (osp-summary root nil)]
+          (println sum)
           (assert (not (refinable-summary? sum is/neg-inf)))
           (when-let [sol (optimal-solution sum)]
             [sol (max-reward sum)]))))))

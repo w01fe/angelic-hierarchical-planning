@@ -138,7 +138,7 @@
 
 (defn nav-d-set-and-reward [ss h? dest combiner]
   (let [dir  (if h? '[x] '[y])
-        cur  (state/get-var ss dir)]
+        cur  (util/safe-singleton (state/get-var ss dir))]
     [(state/set-var ss dir #{dest})
      (apply combiner
             (for [ch? (state/get-var ss '[h])]
@@ -245,7 +245,7 @@
   (pessimistic-set-and-reward- [a ss]
     [(state/set-vars ss (util/map-vals (fn [x] #{x}) finish))
      (nav-reward-from-set ss gx gy min)]))
-
+;; TODO: is the gap necessary?
 
 (defn- make-nav-switch-tla [env split-nav?]
   (NavSwitchTLA. env (:switch-set env) (:gx env) (:gy env)

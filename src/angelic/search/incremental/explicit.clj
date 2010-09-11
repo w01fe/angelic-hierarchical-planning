@@ -1,10 +1,13 @@
 (ns angelic.search.incremental.explicit
   (:require [edu.berkeley.ai.util :as util]
-            [angelic.env :as env] 
+            [angelic.env :as env]
+            [angelic.env.util :as env-util]
+            [angelic.env.state :as state]             
             [angelic.hierarchy :as hierarchy]
+            [angelic.hierarchy.util :as hierarchy-util]
             [angelic.hierarchy.angelic :as angelic]
-            [angelic.incremental-search :as is]
-            [angelic.hierarchical-incremental-search :as his])
+            [angelic.search.incremental.core :as is]
+            [angelic.search.incremental.hierarchical :as his])
   (:import  [java.util HashMap]))
 
 
@@ -25,15 +28,15 @@
 (defprotocol ConspiracyNumbered
   (conspiracy-number [n]))
 
-(deftype CNSummary [reward cn]
-  Comparable         (compareTo  [x] (- (is/max-reward x) reward))
-  is/Summary         (max-reward       [] reward)
-  ConspiracyNumbered (conspiracy-number [] cn))
+(defrecord CNSummary [reward cn]
+  Comparable         (compareTo         [this x] (- (is/max-reward x) reward))
+  is/Summary         (max-reward        [this] reward)
+  ConspiracyNumbered (conspiracy-number [this] cn))
 
-(def worst-cn-summary (CNSummary is/neg-inf 1))
+(def worst-cn-summary (CNSummary. is/neg-inf 1))
 (def failed-cn-search (is/make-failed-search worst-cn-summary))
 
-(extend angelic.search.incremental.Node
+(extend angelic.search.incremental.core.Node
   ConspiracyNumbered {:conspiracy-number (constantly 1)})
 
 (defn min-cn-summaries
@@ -43,19 +46,19 @@
     (cond (> (is/max-reward s1) (is/max-reward s2)) s1
           (> (is/max-reward s2) (is/max-reward s1)) s2
           (= (is/max-reward s1) is/neg-inf)         s1
-          :else (CNSummary (is/max-reward s1) (+ (conspiracy-number s1) (conspiracy-number s2)))))
+          :else (CNSummary. (is/max-reward s1) (+ (conspiracy-number s1) (conspiracy-number s2)))))
   ([s1 s2 & more] (reduce min-cn-summaries s1 (cons s2 more))))
 
 (defn add-cn-summaries [s1 s2]
   (let [rew (+ (is/max-reward s1) (is/max-reward s2))]
     (if (= rew is/neg-inf) worst-cn-summary   
-        (CNSummary rew (min (conspiracy-number s1) (conspiracy-number s2))))))
+        (CNSummary. rew (min (conspiracy-number s1) (conspiracy-number s2))))))
 
 (declare get-explicit-cn-dash-sps-search)
 
 (defn get-explicit-cn-dash-sas-map "Get a map from outer final states to SAS nodes/" [hfs]
   (util/cache-with his/*problem-cache* (his/hfs-name hfs) ; unabstracted state SA cache
-    (util/map-keys #(env/transfer-effects (:state hfs) %)
+    (util/map-keys #(state/transfer-effects (:state hfs) %)
       (util/cache-with his/*problem-cache* (his/hfs-first-sub-name hfs) ; abstracted state SA cache
         (let [inner-hfs (his/hfs-first-sub hfs)
               next-hfs (lazy-seq (his/hfs-children inner-hfs))]
@@ -147,61 +150,61 @@
   (pess-reward [n])
   (max-gap [n]))
 
-(deftype SWSummary [wtd-reward pes-reward mx-gap]
-  Comparable      (compareTo [x] 
+(defrecord SWSummary [wtd-reward pes-reward mx-gap]
+  Comparable      (compareTo [this x] 
                     (let [d (- (is/max-reward x) wtd-reward)]
                       (if (zero? d) (- (pess-reward x) pes-reward) d)))
-  is/Summary      (max-reward       [] wtd-reward)
-  SimpleWeighted  (pess-reward [] pes-reward)
-                  (max-gap [] mx-gap))
+  is/Summary      (max-reward       [this] wtd-reward)
+  SimpleWeighted  (pess-reward [this] pes-reward)
+                  (max-gap [this] mx-gap))
 
-(def worst-sw-summary (SWSummary is/neg-inf is/neg-inf 0))
+(def worst-sw-summary (SWSummary. is/neg-inf is/neg-inf 0))
 (def failed-sw-search (is/make-failed-search worst-sw-summary))
 
 
 (defn add-sw-summaries [s1 s2]
   (let [rew (+ (is/max-reward s1) (is/max-reward s2))]
     (if (= rew is/neg-inf) worst-sw-summary   
-        (SWSummary rew (+ (pess-reward s1) (pess-reward s2)) (max (max-gap s1) (max-gap s2))))))
+        (SWSummary. rew (+ (pess-reward s1) (pess-reward s2)) (max (max-gap s1) (max-gap s2))))))
 
-(deftype SWNode [name wtd-reward pes-reward gap goal? data]
-  Comparable (compareTo  [x] 
+(defrecord SWNode [name wtd-reward pes-reward gap goal? data]
+  Comparable (compareTo  [this x] 
                (let [c  (- (is/max-reward x) wtd-reward)]
                  (if (not (zero? c)) c
                    (cond goal? -1 
-                         (and (instance? angelic.search.incremental.Node x) (is/node-goal? x)) 1
+                         (and (instance? angelic.search.incremental.core.Node x) (is/node-goal? x)) 1
                          :else (- (pess-reward x) pes-reward)))))
-  is/Summary (max-reward [] wtd-reward)   
-  is/Node    (node-name  [] name)
-          (node-goal? [] goal?)
-  SimpleWeighted (pess-reward [] pes-reward)
-                 (max-gap     [] gap))
+  is/Summary (max-reward [this] wtd-reward)   
+  is/Node    (node-name  [this] name)
+          (node-goal? [this] goal?)
+  SimpleWeighted (pess-reward [this] pes-reward)
+                 (max-gap     [this] gap))
 
 (defn hfs->leaf-sw-node [hfs ss pes-reward opt-reward]
 ;  (println pes-reward (max pes-reward (* opt-reward (*sw-weight-fn* (util/safe-singleton (:remaining-actions hfs))))) opt-reward)
-  (SWNode (conj (his/hfs-name hfs) ss)
+  (SWNode. (conj (his/hfs-name hfs) ss)
           (max pes-reward (* opt-reward (*sw-weight-fn* (util/safe-singleton (:remaining-actions hfs)))))
           pes-reward (- opt-reward pes-reward) false [hfs ss]))
 
 (defn hfs->goal-sw-node [hfs ss]
-  (SWNode (conj (his/hfs-name hfs) ss) (:reward hfs) (:reward hfs) 0 true [hfs ss]))
+  (SWNode. (conj (his/hfs-name hfs) ss) (:reward hfs) (:reward hfs) 0 true [hfs ss]))
 
 (defn hfs->temp-sw-node [hfs ss]
   (if (empty? (:remaining-actions hfs))
       (hfs->goal-sw-node hfs ss)
-      (SWNode (conj (his/hfs-name hfs) ss) is/pos-inf is/pos-inf 0 false [hfs ss])))
+      (SWNode. (conj (his/hfs-name hfs) ss) is/pos-inf is/pos-inf 0 false [hfs ss])))
 
 
 
 (defn hfs-angelic-map [hfs]
   (let [{:keys [state remaining-actions]} hfs]
-	  (next-explicit-map-and-reward-bounds (util/safe-singleton remaining-actions) state)))
+	  (angelic/next-explicit-map-and-reward-bounds (util/safe-singleton remaining-actions) state)))
 
 (declare get-explicit-sw-dash-sps-search)
 
 (defn get-explicit-sw-dash-sas-map "Get a map from outer final states to SAS nodes" [hfs]
   (util/cache-with his/*problem-cache* (his/hfs-name hfs) ; unabstracted state SA cache
-    (util/map-keys #(env/transfer-effects (:state hfs) %)
+    (util/map-keys #(state/transfer-effects (:state hfs) %)
       (util/cache-with his/*problem-cache* (his/hfs-first-sub-name hfs) ; abstracted state SA cache
         (let [inner-hfs (his/hfs-first-sub hfs)
               next-hfs (lazy-seq (his/hfs-children inner-hfs))]
@@ -300,42 +303,42 @@
   (best-pess-plan   [n] "Corresponding leaf node sequence")
   (best-opt-reward  [n] "Best optimistic reward."))
 
-(deftype GWSummary [wtd-reward pes-reward mx-gap best-pr best-pp best-or]
-  Comparable      (compareTo [x] 
+(defrecord GWSummary [wtd-reward pes-reward mx-gap best-pr best-pp best-or]
+  Comparable      (compareTo [this x] 
                     (let [d (- (is/max-reward x) wtd-reward)]
                       (if (zero? d) (- (pess-reward x) pes-reward) d)))
-  is/Summary      (max-reward       [] wtd-reward)
-  SimpleWeighted  (pess-reward [] pes-reward)
-                  (max-gap [] mx-gap)
-  GreedyWeighted  (best-pess-reward [] best-pr)
-                  (best-pess-plan   [] best-pp)
-                  (best-opt-reward  [] best-or))
+  is/Summary      (max-reward       [this] wtd-reward)
+  SimpleWeighted  (pess-reward [this] pes-reward)
+                  (max-gap [this] mx-gap)
+  GreedyWeighted  (best-pess-reward [this] best-pr)
+                  (best-pess-plan   [this] best-pp)
+                  (best-opt-reward  [this] best-or))
 
-(def worst-gw-summary (GWSummary is/neg-inf is/neg-inf 0 is/neg-inf nil is/neg-inf))
+(def worst-gw-summary (GWSummary. is/neg-inf is/neg-inf 0 is/neg-inf nil is/neg-inf))
 (def failed-gw-search (is/make-failed-search worst-gw-summary))
 
-(deftype GWNode [name wtd-reward pes-reward opt-reward gap goal? data] :as this
-  Comparable (compareTo  [x] 
+(defrecord GWNode [name wtd-reward pes-reward opt-reward gap goal? data]
+  Comparable (compareTo  [this x] 
                (let [c  (- (is/max-reward x) wtd-reward)]
                  (if (not (zero? c)) c
                    (cond goal? -1 
-                         (and (instance? angelic.search.incremental.Node x) (is/node-goal? x)) 1
+                         (and (instance? angelic.search.incremental.core.Node x) (is/node-goal? x)) 1
                          :else (- (pess-reward x) pes-reward)))))
-  is/Summary (max-reward [] wtd-reward)   
-  is/Node    (node-name  [] name)
-             (node-goal? [] goal?)
-  SimpleWeighted (pess-reward [] pes-reward)
-                 (max-gap     [] gap)
-  GreedyWeighted  (best-pess-reward [] pes-reward)
-                  (best-pess-plan   [] (when (> pes-reward is/neg-inf) [this]))
-                  (best-opt-reward  [] opt-reward))
+  is/Summary (max-reward [this] wtd-reward)   
+  is/Node    (node-name  [this] name)
+             (node-goal? [this] goal?)
+  SimpleWeighted (pess-reward [this] pes-reward)
+                 (max-gap     [this] gap)
+  GreedyWeighted  (best-pess-reward [this] pes-reward)
+                  (best-pess-plan   [this] (when (> pes-reward is/neg-inf) [this]))
+                  (best-opt-reward  [this] opt-reward))
 
 
 (defn add-gw-summaries [s1 s2]
   (let [rew (+ (is/max-reward s1) (is/max-reward s2))]
     (if (= rew is/neg-inf) worst-gw-summary   
       (let [prew (+ (best-pess-reward s1) (best-pess-reward s2))]
-        (GWSummary rew (+ (pess-reward s1) (pess-reward s2)) (max (max-gap s1) (max-gap s2))
+        (GWSummary. rew (+ (pess-reward s1) (pess-reward s2)) (max (max-gap s1) (max-gap s2))
                    prew (when (> prew is/neg-inf) (concat (best-pess-plan s1) (best-pess-plan s2)))
                    (+ (best-opt-reward s1) (best-opt-reward s2)))))))
 
@@ -344,24 +347,24 @@
    (if (empty? summaries) worst-gw-summary
        (let [best-wtd (apply max-key is/max-reward summaries)
              best-pess (apply max-key best-pess-reward summaries)]
-         (GWSummary 
+         (GWSummary. 
           (is/max-reward best-wtd) (pess-reward best-wtd) (max-gap best-wtd)
           (best-pess-reward best-pess) (best-pess-plan best-pess) 
           (apply max (map best-opt-reward summaries)))))))
 
 
 (defn hfs->leaf-gw-node [hfs ss pes-reward opt-reward]
-  (GWNode (conj (his/hfs-name hfs) ss)
+  (GWNode. (conj (his/hfs-name hfs) ss)
           (max pes-reward (* opt-reward (*gw-weight-fn* (util/safe-singleton (:remaining-actions hfs)))))
           pes-reward opt-reward (- opt-reward pes-reward) false [hfs ss]))
 
 (defn hfs->goal-gw-node [hfs ss]
-  (GWNode (conj (his/hfs-name hfs) ss) (:reward hfs) (:reward hfs) (:reward hfs) 0 true [hfs ss]))
+  (GWNode. (conj (his/hfs-name hfs) ss) (:reward hfs) (:reward hfs) (:reward hfs) 0 true [hfs ss]))
 
 (defn hfs->temp-gw-node [hfs ss]
   (if (empty? (:remaining-actions hfs))
       (hfs->goal-gw-node hfs ss)
-      (GWNode (conj (his/hfs-name hfs) ss) is/pos-inf is/neg-inf is/pos-inf 0 false [hfs ss])))
+      (GWNode. (conj (his/hfs-name hfs) ss) is/pos-inf is/neg-inf is/pos-inf 0 false [hfs ss])))
 
 
 
@@ -369,7 +372,7 @@
 
 (defn get-explicit-gw-dash-sas-map "Get a map from outer final states to SAS nodes" [hfs]
   (util/cache-with his/*problem-cache* (his/hfs-name hfs) ; unabstracted state SA cache
-    (util/map-keys #(env/transfer-effects (:state hfs) %)
+    (util/map-keys #(state/transfer-effects (:state hfs) %)
       (util/cache-with his/*problem-cache* (his/hfs-first-sub-name hfs) ; abstracted state SA cache
         (let [inner-hfs (his/hfs-first-sub hfs)
               next-hfs (lazy-seq (his/hfs-children inner-hfs))]
@@ -446,7 +449,7 @@
         (env/action-name (first (:remaining-actions hfs))))))
   (->> (best-pess-plan greedy-summary)
        (map extract-simple-greedy-solution-from-node)
-       (apply env/concat-solution-pairs)))
+       (apply env-util/concat-solution-pairs)))
 
 (defn explicit-gw-dash-a* 
   ([henv weight] (explicit-gw-dash-a* henv weight (constantly 1)))
