@@ -67,8 +67,8 @@
   (live?            [s] (= status :live))
   (optimal-solution [s] (when (= status :solved) (assert opt-sol) opt-sol)))
 
-(defn make-live-summary [max-reward] (SimpleSummary. max-reward :live nil))
-(defn make-blocked-summary [max-reward] (SimpleSummary. max-reward :blocked nil))
+(defn make-live-summary [max-reward plan] (SimpleSummary. max-reward :live plan))
+(defn make-blocked-summary [max-reward plan] (SimpleSummary. max-reward :blocked plan))
 (defn make-solved-summary [max-reward opt-sol] (SimpleSummary. max-reward :solved opt-sol))
 
 (defn blocked? [summary]
@@ -79,7 +79,7 @@
 ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;; Common Ops ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
 
 
-(def +worst-summary+ (make-live-summary is/neg-inf))
+(def +worst-summary+ (make-live-summary is/neg-inf []))
 (def +best-summary+  (make-solved-summary is/pos-inf []))
 
 (defn better-summary? [s1 s2]
@@ -96,15 +96,20 @@
     arg1))
 
 (defn max-summary [& stats] (apply max-compare better-summary? (cons +worst-summary+ stats) ))
-(defn min-summary [& stats] (apply max-compare (complement better-summary?) (cons +best-summary+ stats)))
+;(defn min-summary [& stats] (apply max-compare (complement better-summary?) (cons +best-summary+ stats)))
+
+(defn bound-summary [summary max-rew]
+  (when (optimal-solution summary) (assert (<= (max-reward summary) max-rew)))
+  (SimpleSummary. (min max-rew (:max-rew summary)) (:status summary) (:opt-sol summary)))
+
 
 (def zero-summary (SimpleSummary. 0 :solved []))
 (defn add-summaries [s1 s2]
   (SimpleSummary. (+ (max-reward s1)
               (max-reward s2))
            (min-key status-val (:status s1) (:status s2))
-           (when (and (= (:status s1) :solved) (= (:status s2) :solved))
-             (concat (:opt-sol s1) (:opt-sol s2)))))
+           #_(when (and (= (:status s1) :solved) (= (:status s2) :solved)))
+           (concat (:opt-sol s1) (:opt-sol s2))))
 
 
 (defn viable-summary? [summary]
@@ -197,6 +202,8 @@
 
 (defrecord OutputSetNode    [plans child-pointers])
 
+(def osn-child-pointers :child-pointers)
+
 (defn make-initial-output-set-node [init-set action opt-reward]
   (OutputSetNode.
    (lazy-seq (for [[constraint ref] (angelic/immediate-refinements-set action init-set)
@@ -208,12 +215,22 @@
 ;; TODO: summaries making it into child-pointers
 
 
-(defn osn-plan-summary [osn] (apply max-summary (map :summary (:plans osn))))
-(defn osn-child-summary [osn ecs] (apply max-summary (map full-osp-summary (remove ecs (:child-pointers osn)))))
-(defn osn-summary [osn ecs] (max-summary (osn-plan-summary osn) (osn-child-summary osn ecs)))
+(defn osn-plan-summary 
+  "Summary of the plans stored directly at this osn"
+  [osn] (apply max-summary (map :summary (:plans osn))))
 
-(def osn-child-pointers :child-pointers)
-(defn osn-add-plans [osn plans] (update-in osn [:plans] concat plans))
+(defn osn-child-summary
+  "Summary of non-excluded descendents of this osn"
+  [osn ecs] (apply max-summary (map full-osp-summary (remove ecs (:child-pointers osn)))))
+
+(defn osn-summary [osn ecs]
+  "Summary of direct plans plus non-excluded descendents."
+  (max-summary (osn-plan-summary osn) (osn-child-summary osn ecs)))
+
+
+(defn osn-add-plans [osn plans]
+  "Return a new OSN with the new plans added.  Presumed mutex output sets."
+  (update-in osn [:plans] concat plans))
 
 ;; osn/osp
 (defn merge-children
@@ -261,14 +278,14 @@
 (def +worst-osp+ (TerminalOutputSetPointer. +worst-summary+ state-set/empty-lfss))
 
 (declare active-osp-summary)
-(defrecord OutputSetPointer [subproblem parent-pointer output-set node-atom alt-summary]
+(defrecord OutputSetPointer [subproblem parent-pointer output-set node-atom reward-bound]
   OSP
   (osp-summary [osp ecs] (active-osp-summary osp ecs))
   (osp-output-set [osp] output-set))
 
 
 (defn make-child-osp [parent-osp output-set plans]
-  (OutputSetPointer. (:subproblem parent-osp) parent-osp output-set (OutputSetNode. plans nil) +best-summary+))
+  (OutputSetPointer. (:subproblem parent-osp) parent-osp output-set (OutputSetNode. plans nil) is/pos-inf))
 
 (defn osp-ancestors [osp]
   (when-let [p (:parent-pointer osp)]
@@ -278,17 +295,16 @@
 
 ;; Used when deciding when to split.
 (defn osp-descendent-summary [osp excluded-child-set]
-  (min-summary (:alt-summary osp)
-               (osn-summary @(:node-atom osp) excluded-child-set)))
+  (bound-summary (osn-summary @(:node-atom osp) excluded-child-set) (:reward-bound osp)))
 
 (defn osp-ancestor-summary [osp]
   (apply max-summary (map osn-plan-summary (osp-ancestors osp))))
 
 
 (defn active-osp-summary [osp excluded-child-set]
-  (min-summary (:alt-summary osp)
-              (max-summary (osp-descendent-summary osp excluded-child-set)
-                           (osp-ancestor-summary osp))))
+  (bound-summary
+   (max-summary (osp-descendent-summary osp excluded-child-set) (osp-ancestor-summary osp))
+   (:reward-bound osp)))
 
 
 (defn refine-osp!
@@ -324,7 +340,9 @@
 
 ;;;;;;;;;;;;;;;;;;;;;;; Making and Splitting Subproblems ;;;;;;;;;;;;;;;;;;;;;;;
 
-;; TODO: terminal (solution) if concrete & primitive,
+;; TODO: nothing is ever live ? everything is eager ? 
+
+;;       terminal (solution) if concrete & primitive,
 ;;       termianl (blocked) if primitive or cannot refine from current set.
 (defn make-subproblem [logged-input-set state-context action reward-bound-fn]
   (let [prim?        (env/primitive? action)]
@@ -338,10 +356,10 @@
       (let [[opt rew]    (angelic/optimistic-set-and-reward action logged-input-set)
             rew          (min (or rew is/neg-inf) (reward-bound-fn))]
         (if (or (= rew is/neg-inf) prim? (not (angelic/can-refine-from-set? action logged-input-set)))
-          (TerminalOutputSetPointer. (make-blocked-summary rew) opt)
+          (TerminalOutputSetPointer. (make-blocked-summary rew [:z action]) opt)
           (let [subproblem   (Subproblem. logged-input-set state-context action (HashMap.))
                 init-node    (make-initial-output-set-node logged-input-set action rew)
-                init-pointer (OutputSetPointer. subproblem nil opt (atom init-node) (make-blocked-summary rew))]
+                init-pointer (OutputSetPointer. subproblem nil opt (atom init-node) rew)]
 ;           (.put ^HashMap (:output-set-cache subproblem) opt init-pointer)
             init-pointer))))))
 
@@ -366,10 +384,9 @@
 ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;; Plans ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
 ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
 
-; TODO: available splits must contribute to live status.
 
 (defrecord PlanNode [sub-output-set-pointer excluded-child-set output-constraint
-                     summary-bound output-set output-summary])
+                     reward-bound output-set output-summary])
 
 (defn compute-plan-node-output-set [input-set sub-output-set-pointer output-constraint]
   (state-set/constrain (state/transfer-effects input-set (osp-output-set sub-output-set-pointer))
@@ -378,25 +395,25 @@
 
 (defn make-live-for-split [sub-osp ecs summary]
   (if (and (blocked? summary) (can-split-osp? sub-osp ecs))
-    (make-live-summary (max-reward summary))
+    (make-live-summary (max-reward summary) [(:action (:subproblem sub-osp))])
     summary))
 
 
-(defn compute-plan-node-output-summary [input-summary sub-output-set-pointer ecs summary-bound]
+(defn compute-plan-node-output-summary [input-summary sub-output-set-pointer ecs reward-bound]
   (->> (full-osp-summary sub-output-set-pointer)
-       (min-summary summary-bound)
+       (#(bound-summary % reward-bound))
        (make-live-for-split sub-output-set-pointer ecs)
        (add-summaries input-summary)))
 
 (defn make-plan-node [input-set input-summary sub-output-set-pointer
-                      excluded-child-set output-constraint summary-bound]
-  (PlanNode. sub-output-set-pointer excluded-child-set output-constraint summary-bound
+                      excluded-child-set output-constraint reward-bound]
+  (PlanNode. sub-output-set-pointer excluded-child-set output-constraint reward-bound
              (compute-plan-node-output-set input-set sub-output-set-pointer output-constraint)
-             (compute-plan-node-output-summary input-summary sub-output-set-pointer excluded-child-set summary-bound)))
+             (compute-plan-node-output-summary input-summary sub-output-set-pointer excluded-child-set reward-bound)))
 
 (defn make-initial-plan-node [action [input-set input-summary]]
   (let [sub (get-subproblem-root-pointer input-set action (constantly is/pos-inf))]
-    (make-plan-node input-set input-summary sub #{} {} +best-summary+)))
+    (make-plan-node input-set input-summary sub #{} {} is/pos-inf)))
 
 (defn plan-node-output-set-and-summary [pn]
   [(:output-set pn) (:output-summary pn)])
@@ -407,9 +424,9 @@
 
 
 (defn refine-pn [pn input-summary min-reward]
-  (let [{:keys [sub-output-set-pointer excluded-child-set summary-bound]} pn]
+  (let [{:keys [sub-output-set-pointer excluded-child-set reward-bound]} pn]
     (refine-osp! sub-output-set-pointer min-reward excluded-child-set)
-    (assoc pn :output-summary (compute-plan-node-output-summary input-summary sub-output-set-pointer excluded-child-set summary-bound))))
+    (assoc pn :output-summary (compute-plan-node-output-summary input-summary sub-output-set-pointer excluded-child-set reward-bound))))
 
 
 (defn split-pn-output [pn input-set input-summary min-step-reward]
@@ -419,24 +436,24 @@
           new-summary     (osp-summary sub-output-set-pointer new-ecs)]
       (concat
        (when (viable-summary? new-summary) [(assoc pn :excluded-child-set new-ecs :output-summary new-summary)])
-       (for [child split-children] (make-plan-node input-set input-summary child nil {} +best-summary+))))))
+       (for [child split-children] (make-plan-node input-set input-summary child nil {} is/pos-inf))))))
 
 (defn patch-pn-summary-tuple- [pn new-input-summary]
-  (let [{:keys [sub-output-set-pointer excluded-child-set summary-bound output-set]} pn
-        new-output-summary (compute-plan-node-output-summary new-input-summary sub-output-set-pointer excluded-child-set summary-bound)]
+  (let [{:keys [sub-output-set-pointer excluded-child-set reward-bound output-set]} pn
+        new-output-summary (compute-plan-node-output-summary new-input-summary sub-output-set-pointer excluded-child-set reward-bound)]
     (when (viable-summary? new-output-summary)
       [[false output-set new-output-summary] (assoc pn :output-summary new-output-summary)])))
 
 
 (defn update-pn-input [[set-changed? new-input-set new-input-summary] pn]
-  (let [{:keys [sub-output-set-pointer output-constraint summary-bound output-set]} pn]
+  (let [{:keys [sub-output-set-pointer output-constraint reward-bound output-set]} pn]
     (if set-changed?
       (let [new-osp (refine-osp-input sub-output-set-pointer new-input-set)]
         (if (identical? new-osp sub-output-set-pointer)
           (patch-pn-summary-tuple- pn new-input-summary)
           (let [new-pn (make-plan-node new-input-set new-input-summary new-osp nil
                                 (osp-output-set sub-output-set-pointer)
-                                (make-blocked-summary (max-reward (full-osp-summary sub-output-set-pointer)))) ;; This is just the bound, equal to the initial thing.                
+                                (max-reward (full-osp-summary sub-output-set-pointer)))
                 new-output-pair (plan-node-output-set-and-summary new-pn)]
             (when (viable-output-set-and-summary? new-output-pair)
               [(cons (not (= (:output-set new-pn) output-set)) new-output-pair) new-pn]))))      
