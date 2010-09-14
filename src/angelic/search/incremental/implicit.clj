@@ -102,6 +102,7 @@
   (when (optimal-solution summary) (assert (<= (max-reward summary) max-rew)))
   (SimpleSummary. (min max-rew (:max-rew summary)) (:status summary) (:opt-sol summary)))
 
+(defn next-min-reward [stat min-reward] (min min-reward (max-reward stat)))
 
 (def zero-summary (SimpleSummary. 0 :solved []))
 (defn add-summaries [s1 s2]
@@ -124,43 +125,24 @@
     (:opt-sol stat)))
 
 
-(defn next-min-reward [stat min-reward]
-  (min min-reward (max-reward stat)))
 
-
-
-(defn max-thing-summary-and-next [summary-fn things]
-  (if (empty? things)
-    [nil +worst-summary+ +worst-summary+]
-    (loop [best-thing (first things)
-           best-summary (summary-fn (first things))
-           next-best-summary +worst-summary+
-           more-things (rest things)]
+(defn extract-best-and-summaries
+  "Return [best-item best-summary rest-items rest-summary]"
+  [summary-fn things]
+  (assert (seq things))
+  (loop [best-thing   (first things)
+         best-summary (summary-fn (first things))
+         rest-things  []
+         rest-summary  +worst-summary+
+         more-things  (rest things)]
       (if-let [[next-thing & even-more-things] (seq more-things)]
         (let [next-summary (summary-fn next-thing)]
           (if (better-summary? next-summary best-summary)
-            (recur next-thing next-summary best-summary even-more-things)
-            (recur best-thing best-summary (max-summary next-summary next-best-summary) even-more-things)))
-        [best-thing best-summary next-best-summary]))))
-
-(defn one-operation-on-best [summary-fn1 s1 op1 summary-fn2 s2 op2 min-reward default]
-  (let [[best1 summary1 ns1] (max-thing-summary-and-next summary-fn1 s1)
-        [best2 summary2 ns2] (max-thing-summary-and-next summary-fn2 s2)
-        best-summary     (max-summary summary1 summary2)]
-    (if (not (refinable-summary? best-summary min-reward))
-      default
-      (if (better-summary? summary2 summary1)
-        (op2 best2 (next-min-reward (max-summary ns2 summary1) min-reward))
-        (op1 best1 (next-min-reward (max-summary ns1 summary2) min-reward))))))
-
-(defn operate-on-best [summary-fn1 seq-fn1 op1 summary-fn2 seq-fn2 op2 init next-fn min-reward]
-  (last
-   (util/iterate-while
-    #(when-let [x (one-operation-on-best summary-fn1 (seq-fn1 %) op1 summary-fn2 (seq-fn2 %) op2 min-reward nil)]
-       (next-fn x))
-    init)))
-
-
+            (recur next-thing next-summary
+                   (conj rest-things best-thing) best-summary even-more-things)
+            (recur best-thing best-summary
+                   (conj rest-things next-thing) (max-summary next-summary rest-summary) even-more-things)))
+        [best-thing best-summary rest-things rest-summary])))
 
 ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
 ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;; Subproblems ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
@@ -168,216 +150,194 @@
 
 ;; TODO: Ideally, would use effect sets rather than outcome sets?  
 ;; TODO: make sure we are actually lazy about refinements.
-;; TODO: add value caching, for plan seqs, children, ancestors.
 ;; TODO: think about loops.  In particular, loop safety.
 ;; TODO: think about final split.  It is probably *not* always optimal, depending on which ops you count.
 
 ;; A subproblem represents an input-set, action pair.  All of its actual computations are organized
-;; by the output set lattice.  For now, output-set-cache is not used.
+;; by the output set lattice.  
 
 (def #^HashMap *subproblem-cache* nil)
 
-;; output-set-cache currently not used. 
-(defrecord Subproblem [input-set input-context action ^HashMap output-set-cache])
-
-
-
-;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
-;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;; Output Set Trees ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
-;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
-
-;; OSP trees contain pointers, which are permenant things representing a SAS combo,
-;; and nodes, which contain the current state of the search (including links to child pointers).
-
-;; TODO: put back summary caching!
-
 ; Dependencies on plans
-(declare make-initial-plan expand-plan)
-
+(declare make-initial-plan plan-summary expand-plan)
 
 ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;; Output Set Nodes ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
 
-; Dependencies on pointers
-(declare full-osp-summary refine-osp! add-plans-osp! make-child-osp )
-
-(defrecord OutputSetNode    [plans child-pointers])
-
-(def osn-child-pointers :child-pointers)
-
-(defn make-initial-output-set-node [init-set action opt-reward]
-  (OutputSetNode.
-   (lazy-seq (for [[constraint ref] (angelic/immediate-refinements-set action init-set)
-                   :let [p (make-initial-plan init-set constraint ref)] :when p]
-               p))
-;   (make-live-summary opt-reward)
-;   +worst-summary+
-   nil))
-;; TODO: summaries making it into child-pointers
+(defrecord OutputSetNode
+  [input-pair     output-set              ; input-pair preserved (id) within a tree.
+   reward-bound                           ; Outside upper bound on reward- on what TODO ???
+   parent-node    ancestor-summary-atom   ; Plans directly at ancestors
+   plans-atom     plan-summary-atom       ; Plans directly at node
+   child-map-atom descendant-summary-atom ; Plans at descendants
+   ])
 
 
-(defn osn-plan-summary 
-  "Summary of the plans stored directly at this osn"
-  [osn] (apply max-summary (map :summary (:plans osn))))
+;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;; Creating ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
 
-(defn osn-child-summary
-  "Summary of non-excluded descendents of this osn"
-  [osn ecs] (apply max-summary (map full-osp-summary (remove ecs (:child-pointers osn)))))
+(defn make-terminal-root-osn [input-pair output-set terminal-summary]
+  (assert (not (live? terminal-summary)))
+  (OutputSetNode. input-pair output-set is/pos-inf nil (atom +worst-summary+)
+                  :terminal (atom terminal-summary) :terminal (atom +worst-summary+)))
 
-(defn osn-summary [osn ecs]
-  "Summary of direct plans plus non-excluded descendents."
-  (max-summary (osn-plan-summary osn) (osn-child-summary osn ecs)))
+(def +worst-osn+ (make-terminal-root-osn state-set/empty-lfss +worst-summary+))
 
+(defn make-nonterminal-root-osn [input-pair output-set reward-bound init-summary init-plans]
+  (assert (live? init-summary))
+  (OutputSetNode. input-pair outputsetnode. reward-bound nil (atom +worst-summary+)
+                  (atom init-plans) (atom init-summary) (atom {}) (atom +worst-summary+)))
 
-(defn osn-add-plans [osn plans]
-  "Return a new OSN with the new plans added.  Presumed mutex output sets."
-  (update-in osn [:plans] concat plans))
-
-;; osn/osp
-(defn merge-children
-  "Merge a map from output sets to plans with the current children of osn."
-  [parent-osp osn plans-by-output-set]
-  (concat
-   (:child-pointers osn)
-   (for [[os plans] (reduce (fn [pos c] (add-plans-osp! c pos)) plans-by-output-set (:child-pointers osn))]
-     (make-child-osp parent-osp os plans))))
-
-
-(defn refine-osn-plan
-  "Refine a single plan stored at this osn."
-  [parent-osp osn best-plan min-reward subproblem output-set]
-  (let [{:keys [plans child-pointers]} osn
-        new-plans   (group-by :output-set (expand-plan best-plan min-reward))
-        other-plans (remove #(identical? % best-plan) plans)]
-    (OutputSetNode.
-     (concat (new-plans output-set) other-plans)
-     (merge-children parent-osp osn (dissoc new-plans output-set)))))
-
-(defn refined-osn
-  "Repeatedly refine plans stored at this osn or below."
-  [osn min-reward excluded-child-set subproblem output-set]
-  (operate-on-best
-   :summary    :plans                     #(refine-osn-plan osn %1 %2 subproblem output-set)
-   full-osp-summary #(remove excluded-child-set (:child-pointers %)) #(do (refine-osp! %1 %2) %1)
-   osn identity min-reward))
-
-
-;;;;;;;;;;;;;;;;;;;;;;;;;;;;; Output Set Pointers ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
-
-(defprotocol OSP
-  (osp-summary [osp excluded-child-set])
-  (osp-output-set [osp]))
-
-(defn full-osp-summary [osp]
-  (osp-summary osp nil))
-
-(defrecord TerminalOutputSetPointer [summary output-set]
-  OSP
-  (osp-summary [osp ecs] (assert (empty? ecs)) summary)
-  (osp-output-set [osp] output-set))
-
-(def +worst-osp+ (TerminalOutputSetPointer. +worst-summary+ state-set/empty-lfss))
-
-(declare active-osp-summary)
-(defrecord OutputSetPointer [subproblem parent-pointer output-set node-atom reward-bound]
-  OSP
-  (osp-summary [osp ecs] (active-osp-summary osp ecs))
-  (osp-output-set [osp] output-set))
-
-
-(defn make-child-osp [parent-osp output-set plans]
-  (OutputSetPointer. (:subproblem parent-osp) parent-osp output-set (OutputSetNode. plans nil) is/pos-inf))
-
-(defn osp-ancestors [osp]
-  (when-let [p (:parent-pointer osp)]
-    (cons p (lazy-seq (osp-ancestors osp)))))
-
-(defn osp-plan-summary [osp] (osn-plan-summary @(:node-atom osp)))
-
-;; Used when deciding when to split.
-(defn osp-descendent-summary [osp excluded-child-set]
-  (bound-summary (osn-summary @(:node-atom osp) excluded-child-set) (:reward-bound osp)))
-
-(defn osp-ancestor-summary [osp]
-  (apply max-summary (map osn-plan-summary (osp-ancestors osp))))
-
-
-(defn active-osp-summary [osp excluded-child-set]
-  (bound-summary
-   (max-summary (osp-descendent-summary osp excluded-child-set) (osp-ancestor-summary osp))
-   (:reward-bound osp)))
-
-
-(defn refine-osp!
-  "Repeatedly refine an ancestor or descendent of this node."
-  [osp min-reward excluded-child-set]
-  (operate-on-best
-   osp-plan-summary osp-ancestors refine-osp!
-   #(osp-summary % excluded-child-set) (constantly [osp]) #(swap! (:node-atom osp) refined-osn %2 excluded-child-set (:subproblem osp) (:output-set osp))
-   osp identity min-reward))
-
-(defn add-plans-osp!
-  "Add plans from map and return map with them removed"
-  [osp plans-by-output-set]
-  (if-let [plans (get plans-by-output-set (:output-set osp))]
-    (do (swap! (:node-atom osp) osn-add-plans plans)
-        (dissoc plans-by-output-set (:output-set osp)))
-    plans-by-output-set))
-
-(defn split-osp
-  "Return new-child-osps.  Currently splits children >= min-reward when parent < min-reward."
-  [osp min-reward excluded-child-set]
-  (when (< (max-reward (max-summary (osp-plan-summary osp) (osp-ancestor-summary osp))) min-reward)
-    (filter #(>= (max-reward (full-osp-summary %)) min-reward)
-            (remove excluded-child-set (osn-child-pointers @(:node-atom osp))))))
-
-(defn can-split-osp? [osp excluded-child-set]
-  (> (apply max is/neg-inf (map (comp max-reward #(osp-descendent-summary % #{}))
-                                (remove excluded-child-set (osn-child-pointers @(:node-atom osp)))))
-     (max-reward (max-summary (osp-plan-summary osp) (osp-ancestor-summary osp)))))
+(defn make-child-osn [parent-osn child-output-set]
+  (OutputSetNode. (:input-pair parent-osn) child-output-set is/pos-inf parent-osn +best-summary+
+                  (atom nil) (atom +worst-summary+) (atom {}) (atom +worst-summary+)))
 
 
 
-
-;;;;;;;;;;;;;;;;;;;;;;; Making and Splitting Subproblems ;;;;;;;;;;;;;;;;;;;;;;;
-
-;; TODO: nothing is ever live ? everything is eager ? 
-
-;;       terminal (solution) if concrete & primitive,
-;;       termianl (blocked) if primitive or cannot refine from current set.
-(defn make-subproblem [logged-input-set state-context action reward-bound-fn]
-  (let [prim?        (env/primitive? action)]
-    (if-let [s (and prim? (state-set/singleton logged-input-set))]
+(defn make-root-osn [input-pair logged-input-set action reward-bound-fn]
+  (let [prim? (env/primitive? action)]
+    (if-let [s (and prim? (state-set/singleton logged-input-set))] 
+      ;; terminal (solution or inapplicable) if input concrete & action primitive,
       (if (env/applicable? action s)
         (let [[ss rew] (env/successor action s)]
-          (TerminalOutputSetPointer.
-           (make-solved-summary rew [action])
-           (state-set/make-logging-factored-state-set [ss])))
+          (make-terminal-root-osn
+           input-pair
+           (state-set/make-logging-factored-state-set [ss])
+           (make-solved-summary rew [action])))        
         +worst-osp+)
       (let [[opt rew]    (angelic/optimistic-set-and-reward action logged-input-set)
             rew          (min (or rew is/neg-inf) (reward-bound-fn))]
         (if (or (= rew is/neg-inf) prim? (not (angelic/can-refine-from-set? action logged-input-set)))
-          (TerminalOutputSetPointer. (make-blocked-summary rew [:z action]) opt)
-          (let [subproblem   (Subproblem. logged-input-set state-context action (HashMap.))
-                init-node    (make-initial-output-set-node logged-input-set action rew)
-                init-pointer (OutputSetPointer. subproblem nil opt (atom init-node) rew)]
-;           (.put ^HashMap (:output-set-cache subproblem) opt init-pointer)
-            init-pointer))))))
+          ;; terminal (blocked) if primitive & non-concrete, or cannot refine, or opt. failure
+          (make-terminal-root-osn
+           input-pair
+           opt (make-blocked-summary rew [:z action]))
+          ;; finally, nonterminal if high-level, can refine, not trivially failed.
+          (make-nonterminal-root-osn
+           input-pair
+           opt rew (make-live-summary rew nil)
+           (lazy-seq (for [[constraint ref] (angelic/immediate-refinements-set action init-set)
+                           :let [p (make-initial-plan init-set constraint ref)] :when p] p))))))))
+
+(defn get-root-osn [input-set action reward-bound-fn]
+  (let [context    (env/precondition-context action input-set)]
+    (util/cache-with *subproblem-cache* [(state/extract-context input-set context) (env/action-name action)]
+       (make-root-osn [input-set action] (state/get-logger input-set context) action reward-bound-fn))))
+
+;;    (println *subproblem-cache* input-set (env/action-name action) (state/get-logger input-set context) (hash [state-context (env/action-name action)]))
 
 
-(defn get-subproblem-root-pointer [input-set action reward-bound-fn]
-  (let [context       (env/precondition-context action input-set)
-        state-context (state/extract-context input-set context)]
-    ;    (println *subproblem-cache* input-set (env/action-name action) (state/get-logger input-set context) (hash [state-context (env/action-name action)]))
-    (util/cache-with *subproblem-cache* [state-context (env/action-name action)] 
-       (make-subproblem (state/get-logger input-set context) state-context action reward-bound-fn))))
 
-(defn refine-osp-input [osp new-input-set]
-  (let [root-osp         (-> osp osp-ancestors last)
-        refined-root-osp (get-subproblem-root-pointer new-input-set (-> osp :subproblem :action)
-                                                      #(-> root-osp full-osp-summary max-reward))]
-    (if (identical? root-osp refined-root-osp)
-      osp
-      refined-root-osp)))
+
+;;;;;;;;;;;;;;;;;;;;;; Computing and updating summaries ;;;;;;;;;;;;;;;;;;;;;;;;
+
+;; Accessing mutex sets of plans.
+(defn ancestor-summary   [osn] @(:ancestor-summary-atom osn))
+(defn plan-summary       [osn] @(:plan-summary-atom osn))
+(defn descendant-summary [osn] @(:descendant-summary-atom osn))
+(defn sub-descendant-summary [osn excluded-child-set]
+  (if (empty? excluded-child-set) (descendant-summary osn)
+      (->> osn :child-map-atom deref vals
+           (remove excluded-child-set) (map tree-summary) (apply max-summary))))
+
+;; Collections of plans
+(defn tree-summary [osn]
+  (max-summary (plan-summary osn) (descendant-summary osn)))
+
+(defn subtree-summary [osn excluded-child-set]
+  (max-summary (plan-summary osn) (sub-descendant-summary sn excluded-child-set)))
+
+(defn handle-summary [osn]
+  (max-summary (ancestor-summary osn) (plan-summary osn)))
+
+(defn broom-summary [osn excluded-child-set]
+    (max-summary (ancestor-summary osn) (subtree-summary osn excluded-child-set)))
+
+;; Updating mutable fields
+(defn refresh-ancestor-summary! [osn]
+  (reset! (:ancestor-summary-atom osn)
+          (if-let [p (:parent-node osn)]
+            (max-summary (ancestor-summary p) (plan-summary p))
+            +worst-summary+)))
+
+(defn refresh-plan-summary! [osn]
+  (reset! (:plan-summary-atom osn)
+          (->> osn :plans-atom deref (map plan-summary) (apply max-summary))))
+
+(defn refresh-descendant-summary! [osn]
+  (reset! (:descendant-summary-atom osn)
+          (->> osn :child-map-atom deref vals (map tree-summary) (apply max-summary))))
+
+
+;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;; Refining Plans ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
+
+(defn get-osn-child!
+  "Get or create child osn corresponding to this output-set."
+  [osn child-output-set]
+  (or (-> osn :child-map-atom deref child-output-set)
+      (swap! (:child-map-atom osn) assoc child-output-set (make-child-own osn child-output-set))))
+
+(defn add-plans! "Add plans, refresh summary." [osn new-plans]
+  (swap! (:plans-atom osn) concat new-plans)
+  (swap! (:plan-summary-atom osn) #(apply max-summary % (map plan-summary new-plans))))
+
+(defn refine-osn-plan!
+  "Refine a single plan stored at this osn."
+  [osn min-reward]
+  (let [[best-plan best-summary rest-plans rest-summary]
+          (extract-best-and-summaries plan-summary @(:plans-atom osn))
+        new-plans (group-by plan-output-set
+                            (expand-plan best-plan (next-min-reward rest-summary min-reward)))]
+    (reset! (:plans-atom osn) (concat (get new-plans (:output-set osn)) rest-plans))
+    (refresh-plan-summary! osn)
+    (doseq [[child-output-set more-plans] (dissoc new-plans (:output-set osn))]
+      (add-plans! (get-osn-child! osn child-output-set) plans))))
+
+(defn refine-osn-child!
+  "Refine a single child osn."
+  [osn min-reward excluded-child-set]
+  (let [[best-child _ _ next-summary]
+          (max-thing-summary-and-next tree-summary (vals @(:child-map-atom osn)))]
+    (refine-osn! best-child (next-min-reward next-summary min-reward) nil)
+    (refresh-descendant-summary! best-child)))
+
+(defn refine-osn!
+  "Repeatedly refine shallowest best plan covered by osn until solved or below min-reward."
+  [osn min-reward excluded-child-set]
+  (while (refinable-summary? (broom-summary osn excluded-child-set) min-reward)
+    (let [[[best-op] _ _ next-summary]
+          (max-thing-summary-and-next
+           second
+           [[#(do (refine-osn! (:parent-node osn) % nil) (refresh-ancestor-summary! osn))
+               (ancestor-summary   osn)]
+            [#(refine-osn-plan!  osn %)
+               (plan-summary       osn)]
+            [#(refine-osn-child! osn % excluded-child-set)
+             (descendant-summary osn excluded-child-set)]])]
+      (best-op (next-min-reward next-summary min-reward)))))
+
+
+;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;; Splitting ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
+
+(defn split-osn
+  "Return a seq of child osn's (i.e., subset output sets) to split off from osn.
+   Currently splits children >= min-reward when parent < min-reward."
+  [osp min-reward excluded-child-set]
+  (when (< (max-reward (handle-summary osn)) min-reward)
+    (filter #(>= (max-reward (tree-summary %)) min-reward)
+            (remove excluded-child-set (vals @(:child-map-atom osn))))))
+
+(defn can-split-osn?
+  "Can this OSN possibly be effectively split, at any min-reward.
+   I.e., does the best plan live at a strict descendant?"
+  [osn excluded-child-set]
+  (> (max-reward (sub-descendant-summary osn excluded-child-set))
+     (max-reward (handle-summary osn))))
+
+
+(defn refine-osn-input
+  "Produce a new OSN, where the input set has been restricted."
+  [osn new-input-set]
+  (let [new-root-osn (get-root-osn new-input-set (second (:input-pair osn)) (broom-summary osn))]
+    (if (identical? (:input-pair new-root-osn) (:input-pair osn)) osn new-root-osn)))
 
 
 ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
