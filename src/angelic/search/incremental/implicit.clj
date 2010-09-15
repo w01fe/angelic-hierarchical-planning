@@ -432,6 +432,7 @@
   [pn input-set input-summary min-step-reward]
   (let [{:keys [sub-osn excluded-child-set]} pn
         split-children (split-osn sub-osn min-step-reward excluded-child-set)
+        _  (when (seq split-children) (println "SPLIT" pn (count split-children)))
 ;        _   (println "split" pn (count excluded-child-set) (count split-children))    
         new-ecs        (into excluded-child-set split-children)
         new-summary    (add-summaries input-summary (broom-summary sub-osn new-ecs))]

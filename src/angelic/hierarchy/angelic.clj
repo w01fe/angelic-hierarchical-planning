@@ -58,6 +58,7 @@
 (defn immediate-refinements-set [a ss]  
   ;(println "Refs for " (env/action-name a) "from" (map #(state/get-var s %) '[[atx] [aty]]))
   (util/timeout)
+  (assert (can-refine-from-set? a ss))
   (let [refs (immediate-refinements-set- a ss)]
     (util/sref-set! hierarchy/*ref-counter*  (+ 1            (util/sref-get hierarchy/*ref-counter*)))
     (util/sref-set! hierarchy/*plan-counter* (+ (count refs) (util/sref-get hierarchy/*plan-counter*)))
@@ -128,11 +129,11 @@
                                      (implode-explicit-map min
                                       (apply merge-with max (map (partial pessimistic-map- a) (state-set/explicit-set ss)))))})
 
+(comment 
 
-
-(defprotocol ImplicitAngelicAction
-  (can-refine-from-set? [a ss] "Return true if set has enough information to refine.")
-  (immediate-refinements-set- [a ss] "Return seq of [constraint ref] pairs from this set")
-  (optimistic-set-and-reward- [a ss] "Return pair of implicit outcome set and reward, or nil")
-  (pessimistic-set-and-reward- [a ss] "Return pair of implicit outcome set and reward, or nil"))
+ (defprotocol ImplicitAngelicAction
+   (can-refine-from-set? [a ss] "Return true if set has enough information to refine.")
+   (immediate-refinements-set- [a ss] "Return seq of [constraint ref] pairs from this set")
+   (optimistic-set-and-reward- [a ss] "Return pair of implicit outcome set and reward, or nil")
+   (pessimistic-set-and-reward- [a ss] "Return pair of implicit outcome set and reward, or nil")))
 

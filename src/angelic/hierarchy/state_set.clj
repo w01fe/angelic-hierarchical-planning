@@ -11,6 +11,7 @@
 
 (defprotocol ImplicitStateSet
   (empty?    [s] "Is this set empty")
+;  (singleton-val [s v] "Return single possible value for far, or nil if not singleton")
   (singleton [s] "Return the singleton element making up this set, or nil if cardinality != 1.")
   (some-element [s] "Return an arbitrary element of this set, or throw if empty. ")
   (explicit-set [s] "Return an explicit outcome set. ")
@@ -124,7 +125,10 @@
          (state/fast-select-keys implicit-ss ooc-vars)
          (meta (first lfss))))))
 
+(defn vars-known? [ss vars]
+  (every? #(util/singleton? (state/get-var ss %)) vars))
 
+(defn get-known-var [ss var] (util/safe-singleton (state/get-var ss var)))
 
 
 
