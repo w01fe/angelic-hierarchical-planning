@@ -144,6 +144,15 @@
                    (conj rest-things next-thing) (max-summary next-summary rest-summary) even-more-things)))
         [best-thing best-summary rest-things rest-summary])))
 
+(defn summary-str [s] (str (max-reward s) (:status s) (vec (:opt-sol s))))
+(defmethod print-method SimpleSummary [s o] (print-method (summary-str s) o))
+
+(defn assert-valid-summary-change [old-summary new-summary]
+  (util/assert-is (<= (max-reward new-summary) (max-reward old-summary)) "%s" [old-summary new-summary])
+  (when-not (live? old-summary) (assert (= old-summary new-summary))))
+
+
+
 ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
 ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;; Subproblems ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
 ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
@@ -170,6 +179,10 @@
    plans-atom     plan-summary-atom       ; Plans directly at node
    child-map-atom descendant-summary-atom ; Plans at descendants
    ])
+
+(defn osn-str [osn]
+  (str "OSN: " (env/action-name (second (:input-pair osn))) " " (clojure.string/join ", " (map #(summary-str (deref (% osn))) [:ancestor-summary-atom :plan-summary-atom :descendant-summary-atom]))))
+(defmethod print-method OutputSetNode [osn o] (print-method (osn-str osn) o))
 
 
 ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;; Creating ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
@@ -272,7 +285,7 @@
 
 ;; misc accessors
 (def osn-output-set :output-set)
-(def osn-action     (comp first :input-pair))
+(def osn-action     (comp second :input-pair))
 
 
 
@@ -355,6 +368,10 @@
 (defrecord PlanNode [sub-osn excluded-child-set output-constraint
                      reward-bound output-set output-summary])
 
+(defn plan-node-str [pn]
+  (str (env/action-name (osn-action (:sub-osn pn))) " (" (summary-str (:output-summary pn)) ")"))
+(defmethod print-method PlanNode [pn o] (print-method (plan-node-str pn) o))
+
 
 ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;; Creating ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
 
@@ -400,8 +417,11 @@
 (defn refine-pn [pn input-summary min-reward]
   (let [{:keys [sub-osn excluded-child-set reward-bound]} pn]
     (refine-osn! sub-osn min-reward excluded-child-set)
-    (assoc pn :output-summary
-           (compute-plan-node-output-summary input-summary sub-osn excluded-child-set reward-bound))))
+    (let [new-summary (compute-plan-node-output-summary input-summary sub-osn
+                                                        excluded-child-set reward-bound)]
+      (assert-valid-summary-change (:output-summary pn) new-summary)
+      (assoc pn :output-summary new-summary))))
+
 
 
 ;;;;;;;;;;;;;;;;;;;;;;;;;;; Splitting Plan Nodes ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
@@ -410,15 +430,18 @@
   "Split this plan node into a seq of plan nodes, all but 0-1 of which will have
    refined output sets."
   [pn input-set input-summary min-step-reward]
-  (let [{:keys [sub-osn excluded-child-set]} pn]
-    (let [split-children (split-osn sub-osn min-step-reward excluded-child-set)
-          new-ecs        (into excluded-child-set split-children)
-          new-summary    (broom-summary sub-osn new-ecs)]
-      (concat
-       (when (viable-summary? new-summary)
-         [(assoc pn :excluded-child-set new-ecs :output-summary new-summary)])
-       (for [child split-children]
-         (make-plan-node input-set input-summary child nil {} is/pos-inf))))))
+  (let [{:keys [sub-osn excluded-child-set]} pn
+        split-children (split-osn sub-osn min-step-reward excluded-child-set)
+;        _   (println "split" pn (count excluded-child-set) (count split-children))    
+        new-ecs        (into excluded-child-set split-children)
+        new-summary    (add-summaries input-summary (broom-summary sub-osn new-ecs))]
+    (concat
+     (when (viable-summary? new-summary)
+       (assert-valid-summary-change (:output-summary pn) new-summary)
+       [(assoc pn :excluded-child-set new-ecs :output-summary new-summary)])
+     (for [child split-children]
+       (do ;         (println "SC"  sub-osn child )
+           (make-plan-node input-set input-summary child nil {} is/pos-inf))))))
 
 
 (defn update-pn-input
@@ -430,12 +453,14 @@
     (if (identical? new-osn sub-osn)
       (let [new-output-summary (compute-plan-node-output-summary
                                 new-input-summary sub-osn excluded-child-set reward-bound)]
+        (assert-valid-summary-change (:output-summary pn) new-output-summary)
         (when (viable-summary? new-output-summary)
           [[false output-set new-output-summary] (assoc pn :output-summary new-output-summary)]))
       (let [new-pn (make-plan-node new-input-set new-input-summary new-osn nil
                                    (osn-output-set sub-osn)
                                    (max-reward (broom-summary sub-osn)))
             new-output-pair (plan-node-output-set-and-summary new-pn)]
+        (assert-valid-summary-change (:output-summary pn) (second new-output-pair))
         (when (viable-output-set-and-summary? new-output-pair)
           [(cons (not (= (:output-set new-pn) output-set)) new-output-pair) new-pn])))))
 
@@ -448,8 +473,14 @@
 
 (defrecord Plan     [input-constraint input-set plan-nodes output-set summary])
 
+(defn plan-str [p]
+  (clojure.string/join ", " (map plan-node-str (:plan-nodes p))))
+(defmethod print-method Plan [p o] (print-method (plan-str p) o))
+
 (def plan-summary :summary)
 (def plan-output-set :output-set)
+
+
 
 (defn map-state
   "Transform a sequence via a state-machine.  transition-fn takes a state and input item,
@@ -492,16 +523,18 @@
 (defn expand-plan [plan min-reward]
   (if (not (refinable-summary? (:summary plan) min-reward)) [plan]
       (let [{:keys [input-constraint input-set plan-nodes output-set summary]} plan
-            [pre-nodes [ref-node & post-nodes]] (split-at (rand-int (count plan-nodes)) plan-nodes)
-;            _ (println summary (count pre-nodes) (class ref-node) (count post-nodes))       
+            ref-index                           (rand-int (count plan-nodes))
+            [pre-nodes [ref-node & post-nodes]] (split-at ref-index plan-nodes)
+;            _ (println plan  (count pre-nodes) (class ref-node) (count post-nodes))       
             [pre-set pre-summary]  (if (seq pre-nodes) (plan-node-output-set-and-summary (last pre-nodes)) [input-set zero-summary])
             sub-min-reward (- min-reward
                               (- (max-reward summary)
                                  (- (max-reward (:output-summary ref-node)) (max-reward pre-summary))))]
         (filter identity
                 (for [next-pn (split-pn-output (refine-pn ref-node pre-summary sub-min-reward) pre-set pre-summary sub-min-reward)]
-                  (propagate-plan-changes input-constraint input-set (concat pre-nodes [next-pn]) post-nodes
-                                          (not= (:output-set next-pn) (:output-set ref-node))))))))
+                  (do (assert-valid-summary-change (:output-summary ref-node) (:output-summary next-pn))
+                   (propagate-plan-changes input-constraint input-set (concat pre-nodes [next-pn]) post-nodes
+                                           (not= (:output-set next-pn) (:output-set ref-node)))))))))
 
 
 
@@ -521,6 +554,7 @@
         (let [sum (broom-summary root nil)]
           (println sum)
           (assert (not (refinable-summary? sum is/neg-inf)))
+          (def *root* root)
           (when-let [sol (optimal-solution sum)]
             [sol (max-reward sum)]))))))
 
