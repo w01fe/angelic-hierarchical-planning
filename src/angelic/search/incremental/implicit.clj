@@ -410,7 +410,7 @@
 (defn viable-output-set-and-summary? [[set summary]]
   (and (not (state-set/empty? set))
        (viable-summary? summary)))
-
+ 
 
 ;;;;;;;;;;;;;;;;;;;;;;;;;;;; Refining Plan Nodes ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
 
