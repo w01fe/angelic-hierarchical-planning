@@ -763,8 +763,8 @@
 
   hierarchy/HighLevelAction
   (immediate-refinements- [_ s]
-    (for [o-dst (get (state/get-var s :const) [:goal o])
-          :when (#{nil o} (state/get-var s [:object-at o-dst]))]
+    (for [o-dst (util/safe-get (state/get-var s :const) [:goal o])
+          :when (not (state/get-var s [:object-at o-dst]))]
       [(make-go-drop-at-hla o o-dst)]))
   (cycle-level- [_ s] nil)
 
@@ -779,7 +779,7 @@
   (can-refine-from-set? [a ss] true)
   (immediate-refinements-set- [a ss]
     (for [o-dst (get (state-set/get-known-var ss :const) [:goal o])]
-      [{[:object-at o-dst] #{nil o}} (make-go-drop-at-hla o o-dst)]))
+      [{[:object-at o-dst] #{nil}} (make-go-drop-at-hla o o-dst)]))
   (optimistic-set-and-reward- [a ss]
     ;; Cost = if possible stay, min dist from gripper to drop loc.  
     ;; Otherwise, min dist to a dst. 
@@ -1054,6 +1054,7 @@
 
 ; (use '[angelic discrete-manipulation env hierarchy hierarchical-incremental-search] 'edu.berkeley.ai.util)
 
+; (make-discrete-manipulation-env [5 3] [1 1] [ [ [2 2] [3 2] ] ] [ [:a [2 2] [ [3 2] [3 2] ] ] ] 1)
 ; (print-state (initial-state (make-discrete-manipulation-env [10 10] [1 1] [ [ [4 4] [6 6] ] ] [ [:a [5 5] [ [4 4] [4 4] ] ] ] 2))) 
 
 ; (sahucs-flat )

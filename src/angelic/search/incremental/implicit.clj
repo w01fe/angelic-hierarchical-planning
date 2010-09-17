@@ -1,5 +1,6 @@
 (ns angelic.search.incremental.implicit
-  (:require [edu.berkeley.ai.util :as util]
+  (:require clojure.string
+            [edu.berkeley.ai.util :as util]
             [angelic.env :as env]
             [angelic.env.util :as env-util]            
             [angelic.env.state :as state]             
@@ -373,17 +374,6 @@
 (defmethod print-method PlanNode [pn o] (print-method (plan-node-str pn) o))
 
 
-;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;; Creating ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
-
-(defn make-plan-node [input-set input-summary sub-osn
-                      excluded-child-set output-constraint reward-bound]
-  (PlanNode. sub-osn excluded-child-set output-constraint reward-bound
-             (compute-plan-node-output-set input-set sub-osn output-constraint)
-             (compute-plan-node-output-summary input-summary sub-osn excluded-child-set reward-bound)))
-
-(defn make-initial-plan-node [action [input-set input-summary]]
-  (let [sub (get-root-osn input-set action (constantly is/pos-inf))]
-    (make-plan-node input-set input-summary sub #{} {} is/pos-inf)))
 
 ;;;;;;;;;;;;;;;;;;;;;;; Progressing sets and summaries ;;;;;;;;;;;;;;;;;;;;;;;;;
 
@@ -410,7 +400,19 @@
 (defn viable-output-set-and-summary? [[set summary]]
   (and (not (state-set/empty? set))
        (viable-summary? summary)))
- 
+
+;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;; Creating ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
+
+(defn make-plan-node [input-set input-summary sub-osn
+                      excluded-child-set output-constraint reward-bound]
+  (PlanNode. sub-osn excluded-child-set output-constraint reward-bound
+             (compute-plan-node-output-set input-set sub-osn output-constraint)
+             (compute-plan-node-output-summary input-summary sub-osn excluded-child-set reward-bound)))
+
+(defn make-initial-plan-node [action [input-set input-summary]]
+  (let [sub (get-root-osn input-set action (constantly is/pos-inf))]
+    (make-plan-node input-set input-summary sub #{} {} is/pos-inf)))
+
 
 ;;;;;;;;;;;;;;;;;;;;;;;;;;;; Refining Plan Nodes ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
 
@@ -567,3 +569,8 @@
 ; user> (require '[ angelic.search.incremental.explicit :as eis ])
 ;user> (eis/explicit-cn-dash-a* (make-nav-switch-hierarchy (make-random-nav-switch-env 5 2 0) true))
 ;  (implicit-random-dash-a* (make-nav-switch-hierarchy (make-random-nav-switch-env 5 2 0) true))
+
+
+ ; (do (use 'edu.berkeley.ai.util '[angelic env hierarchy] 'angelic.domains.nav-switch 'angelic.search.incremental.implicit 'angelic.domains.discrete-manipulation) (require '[angelic.search.incremental.hierarchical :as his]))
+
+;(let [h (make-discrete-manipulation-hierarchy (make-random-discrete-manipulation-env 1 3))] (println (run-counted #(his/interactive-hierarchical-search h))) #_ (println (run-counted #(implicit-random-dash-a* h))))
