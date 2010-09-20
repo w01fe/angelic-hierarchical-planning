@@ -50,6 +50,7 @@
 ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
 
 (defprotocol ImplicitAngelicAction
+  (precondition-context-set [a ss])
   (can-refine-from-set? [a ss] "Return true if set has enough information to refine.")
   (immediate-refinements-set- [a ss] "Return seq of [constraint ref] pairs from this set")
   (optimistic-set-and-reward- [a ss] "Return pair of implicit outcome set and reward, or nil")
@@ -88,7 +89,8 @@
                 restrict (state-set/constrain ss (util/map-vals (fn [x] #{x}) precond-map))]
             (when-not (state-set/empty? restrict)
               [(state/set-vars ss (util/map-vals (fn [x] #{x}) effect-map)) reward])))]    
-    {:optimistic-set-and-reward- exact
+    {:precondition-context-set (fn [this ss] (util/keyset (:precond-map this)))
+     :optimistic-set-and-reward- exact
      :pessimistic-set-and-reward- exact}))
 
 
@@ -128,12 +130,4 @@
       :pessimistic-set-and-reward- (fn pessimistic-set-and-reward- [a ss]
                                      (implode-explicit-map min
                                       (apply merge-with max (map (partial pessimistic-map- a) (state-set/explicit-set ss)))))})
-
-(comment 
-
- (defprotocol ImplicitAngelicAction
-   (can-refine-from-set? [a ss] "Return true if set has enough information to refine.")
-   (immediate-refinements-set- [a ss] "Return seq of [constraint ref] pairs from this set")
-   (optimistic-set-and-reward- [a ss] "Return pair of implicit outcome set and reward, or nil")
-   (pessimistic-set-and-reward- [a ss] "Return pair of implicit outcome set and reward, or nil")))
 

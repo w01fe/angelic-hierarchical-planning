@@ -339,6 +339,7 @@
            {})))
 
      angelic/ImplicitAngelicAction 
+     (precondition-context-set [a ss] (env/precondition-context a (state-set/some-element ss)))  
      (can-refine-from-set? [a ss] (state-set/vars-known? ss [[:gripper-offset]]))
      (immediate-refinements-set- [a ss]
        (for [p (hierarchy/immediate-refinements- a (state-set/some-element ss))]
@@ -399,6 +400,7 @@
   (pessimistic-map- [_ s] {})
 
   angelic/ImplicitAngelicAction 
+  (precondition-context-set [a ss] (env/precondition-context a (state-set/some-element ss)))  
   (can-refine-from-set? [a ss] true)
   (immediate-refinements-set- [a ss]
    (for [p (hierarchy/immediate-refinements- a (state-set/some-element ss))][{} p]))
@@ -459,6 +461,7 @@
   (pessimistic-map- [_ s] {})
 
   angelic/ImplicitAngelicAction 
+  (precondition-context-set [a ss] (env/precondition-context a (state-set/some-element ss)))  
   (can-refine-from-set? [a ss] true)
   (immediate-refinements-set- [a ss]
    (for [p (hierarchy/immediate-refinements- a (state-set/some-element ss))] [{} p]))
@@ -510,6 +513,7 @@
          {})))
 
   angelic/ImplicitAngelicAction 
+  (precondition-context-set [a ss] (env/precondition-context a :dummy))  
   (can-refine-from-set? [a ss] true)
   (immediate-refinements-set- [a ss]
     (for [p (hierarchy/immediate-refinements- a (state-set/some-element ss))] [{} p]))
@@ -557,6 +561,7 @@
   (pessimistic-map- [_ s] {})
 
   angelic/ImplicitAngelicAction 
+  (precondition-context-set [a ss] (env/precondition-context a :dummy))  
   (can-refine-from-set? [a ss] (state-set/vars-known? ss [[:base]]))
   (immediate-refinements-set- [a ss]
     (for [p (hierarchy/immediate-refinements- a (state-set/some-element ss))] [{} p]))
@@ -643,6 +648,7 @@
   (pessimistic-map- [_ s] {})
 
   angelic/ImplicitAngelicAction 
+  (precondition-context-set [a ss] (env/precondition-context a (state-set/some-element ss)))  
   (can-refine-from-set? [a ss] true)
   (immediate-refinements-set- [a ss]
     (let [const (state-set/get-known-var ss :const)
@@ -662,9 +668,9 @@
           allbases  (clojure.set/union stays goes)
           gos       (possible-grasp-gos-ss const allbases opos)]
       [(state/set-vars ss [[[:base] allbases] [[:gripper-offset] gos]
-                           [[:pos o] #{nil} [[:holding] #{o}] [[:object-at opos] #{nil}]]])
+                           [[:pos o] #{nil}] [[:holding] #{o}] [[:object-at opos] #{nil}]])
        (+ pickup-reward
-          (max
+          (apply max
             (+ (apply max (for [go cgos] (move-gripper-reward go [0 0])))
                park-reward unpark-reward
                (let [d (dec (apply min (for [base bases] (manhattan-distance base opos))))
@@ -713,6 +719,7 @@
   (pessimistic-map- [_ s] {})
 
   angelic/ImplicitAngelicAction 
+  (precondition-context-set [a ss] (env/precondition-context a (state-set/some-element ss)))  
   (can-refine-from-set? [a ss] true)
   (immediate-refinements-set- [a ss]
     (let [const (state-set/get-known-var ss :const)
@@ -731,7 +738,7 @@
 ;          gos       (possible-grasp-gos-ss const allbases o-dst)
           ]
       [(state/set-vars ss [[[:base] allbases] [[:gripper-offset] #{[0 0]}]
-                           [[:pos o] #{o-dst} [[:holding] #{nil}] [[:object-at o-dst] #{o}]]])
+                           [[:pos o] #{o-dst}] [[:holding] #{nil}] [[:object-at o-dst] #{o}]])
        (+ putdown-reward
           (apply max
             (+ (apply max (for [go cgos] (move-gripper-reward go [0 0])))
@@ -740,7 +747,7 @@
 ;                     max-go (util/safe-get const [:max-go])
 ;                     gd     (min d max-go)
                      ]
-                 (assert (= (* 2 move-base-step-reward) move-gripper-step-reward ))
+                 (assert (= (* 2 move-gripper-step-reward) move-base-step-reward ))
                  (* move-base-step-reward d)))
             (for [stay stays, go cgos]
               (* move-gripper-step-reward (max 0 (dec (manhattan-distance (add-pos stay go) o-dst)))))))]))
@@ -776,6 +783,7 @@
   (pessimistic-map- [_ s] {})
 
   angelic/ImplicitAngelicAction 
+  (precondition-context-set [a ss] (env/precondition-context a (state-set/some-element ss)))  
   (can-refine-from-set? [a ss] true)
   (immediate-refinements-set- [a ss]
     (for [o-dst (get (state-set/get-known-var ss :const) [:goal o])]
@@ -793,7 +801,7 @@
           allbases  (clojure.set/union stays goes)]
       (assert (seq dsts))
       [(state/set-vars ss (concat [[[:base] allbases] [[:gripper-offset] #{[0 0]}]
-                                   [[:pos o] dsts [[:holding] #{nil}]]]
+                                   [[:pos o] dsts] [[:holding] #{nil}]]
                                   (if-let [s (util/singleton dsts)]
                                     [[[:object-at s] #{o}]]
                                     (for [o-dst dsts]
@@ -804,7 +812,7 @@
             (+ (apply max (for [go cgos] (move-gripper-reward go [0 0])))
                park-reward unpark-reward
                (let [d (dec (apply min (for [base bases, o-dst dsts] (manhattan-distance base o-dst))))]
-                 (assert (= (* 2 move-base-step-reward) move-gripper-step-reward ))
+                 (assert (= (* 2 move-gripper-step-reward) move-base-step-reward ))
                  (* move-base-step-reward d)))
             (for [stay stays, go cgos, o-dst dsts]
               (* move-gripper-step-reward (max 0 (dec (manhattan-distance (add-pos stay go) o-dst)))))))]))
@@ -871,6 +879,7 @@
   (pessimistic-map- [_ s] {})
 
   angelic/ImplicitAngelicAction
+  (precondition-context-set [a ss] (env/precondition-context a (state-set/some-element ss)))  
   (can-refine-from-set? [_ ss] true)
   (immediate-refinements-set- [a ss]
     (for [p (hierarchy/immediate-refinements- a (state-set/some-element ss))] [{} p]))
@@ -889,7 +898,7 @@
           bothstays     (clojure.set/intersection mstays fstays)]
       (assert (= (seq sgos) [[0 0]]))
       [(state/set-vars ss (concat [[[:base] allfbases] [[:gripper-offset] #{[0 0]}]
-                                   [[:pos o] o-dsts [[:holding] #{nil}]]]
+                                   [[:pos o] o-dsts] [[:holding] #{nil}]]
                                   (if-let [s (util/singleton o-dsts)]
                                     [[[:object-at s] #{o}]]
                                     (for [o-dst o-dsts] [[:object-at o-dst] #{o nil}]))))       
@@ -1033,6 +1042,7 @@
   (pessimistic-map- [_ s] {})
 
   angelic/ImplicitAngelicAction
+  (precondition-context-set [a ss] context)  
   (can-refine-from-set? [a ss] true)
   (immediate-refinements-set- [a ss]
     (for [p (hierarchy/immediate-refinements- a (state-set/some-element ss))] [{} p]))

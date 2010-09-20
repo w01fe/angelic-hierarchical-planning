@@ -232,7 +232,8 @@
                            :let [p (make-initial-plan logged-input-set constraint ref)] :when p] p))))))))
 
 (defn get-root-osn [input-set action reward-bound-fn]
-  (let [context    (env/precondition-context action input-set)]
+;  (println (class action) (env/action-name action))
+  (let [context    (angelic/precondition-context-set action input-set)]
     (util/cache-with *subproblem-cache* [(state/extract-context input-set context) (env/action-name action)]
        (make-root-osn [input-set action] (state/get-logger input-set context) action reward-bound-fn))))
 
@@ -295,7 +296,7 @@
 (defn get-osn-child!
   "Get or create child osn corresponding to this output-set."
   [osn child-output-set]
-  (or (-> osn :child-map-atom deref child-output-set)
+  (or (-> osn :child-map-atom deref (get child-output-set))
       (swap! (:child-map-atom osn) assoc child-output-set (make-child-osn osn child-output-set))))
 
 (defn add-plans! "Add plans, refresh summary." [osn new-plans]

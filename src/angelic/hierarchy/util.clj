@@ -33,6 +33,7 @@
   (pessimistic-map- [_ s] {})
 
   angelic/ImplicitAngelicAction
+  (precondition-context-set [_ ss] (state/current-context (env/initial-state env)))  
   (can-refine-from-set? [a ss] true)
   (immediate-refinements-set- [a ss] (for [p initial-plans] [{} p]))
   (optimistic-set-and-reward- [a ss]

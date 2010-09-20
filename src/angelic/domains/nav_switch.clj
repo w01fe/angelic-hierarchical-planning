@@ -129,6 +129,7 @@
   (pessimistic-map- [_ s] (exact-nav-map s dx dy))
 
   angelic/ImplicitAngelicAction
+  (precondition-context-set [_ ss] '#{[x] [y] [h]})
   (can-refine-from-set? [a ss] true)
   (immediate-refinements-set- [a ss]
     (for [p (hierarchy/immediate-refinements- a (state-set/some-element ss))] [{} p]))
@@ -171,6 +172,7 @@
   (pessimistic-map- [this s] (angelic/optimistic-map- this s))
 
   angelic/ImplicitAngelicAction
+  (precondition-context-set [_ ss] (if h? '#{[x] [h]} '#{[y] [h]}))
   (can-refine-from-set? [a ss] true)
   (immediate-refinements-set- [a ss]
     (for [p (hierarchy/immediate-refinements- a (state-set/some-element ss))] [{} p]))
@@ -196,6 +198,7 @@
   (pessimistic-map- [_ s] (exact-nav-map s dx dy))
 
   angelic/ImplicitAngelicAction
+  (precondition-context-set [_ ss] '#{[x] [y] [h]})  
   (can-refine-from-set? [a ss] true)
   (immediate-refinements-set- [a ss]
     (for [p (hierarchy/immediate-refinements- a (state-set/some-element ss))] [{} p]))
@@ -235,6 +238,7 @@
   (pessimistic-map- [_ s] (merge-map-keys #(state/set-vars % finish) max (exact-nav-map s gx gy)))
 
   angelic/ImplicitAngelicAction
+  (precondition-context-set [_ ss] '#{[x] [y] [h]})  
   (can-refine-from-set? [a ss] true)
   (immediate-refinements-set- [a ss]
     (for [p (hierarchy/immediate-refinements- a (state-set/some-element ss))] [{} p]))
