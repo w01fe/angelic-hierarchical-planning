@@ -297,9 +297,12 @@
   "Get or create child osn corresponding to this output-set."
   [osn child-output-set]
   (or (-> osn :child-map-atom deref (get child-output-set))
-      (swap! (:child-map-atom osn) assoc child-output-set (make-child-osn osn child-output-set))))
+      (let [child (make-child-osn osn child-output-set)]
+        (swap! (:child-map-atom osn) assoc child-output-set child)
+        child)))
 
 (defn add-plans! "Add plans, refresh summary." [osn new-plans]
+;  (println (class osn))
   (swap! (:plans-atom osn) concat new-plans)
   (swap! (:plan-summary-atom osn) #(apply max-summary % (map plan-summary new-plans))))
 

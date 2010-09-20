@@ -469,7 +469,7 @@
     (assert (state-set/vars-known? ss [[:base]]))
     [(state/set-vars ss [[[:gripper-offset] #{[0 0]}]
                          [[:pos o] #{dst}] [[:holding] #{nil}]
-                         [[:object-at dst] #{o}] [[:at-goal? o] true]])
+                         [[:object-at dst] #{o}] [[:at-goal? o] #{true}]])
      (drop-reward-ss (state-set/get-known-var ss [:base]) (state/get-var ss [:gripper-offset]) dst)])
   (pessimistic-set-and-reward- [a ss] nil)))
 
@@ -787,7 +787,7 @@
   (can-refine-from-set? [a ss] true)
   (immediate-refinements-set- [a ss]
     (for [o-dst (get (state-set/get-known-var ss :const) [:goal o])]
-      [{[:object-at o-dst] #{nil}} (make-go-drop-at-hla o o-dst)]))
+      [{[:object-at o-dst] #{nil}} [(make-go-drop-at-hla o o-dst)]]))
   (optimistic-set-and-reward- [a ss]
     ;; Cost = if possible stay, min dist from gripper to drop loc.  
     ;; Otherwise, min dist to a dst. 

@@ -52,7 +52,7 @@
    (withMeta [this new-meta] (LoggingFactoredStateSet. init context puts ooc new-meta))
 
   ImplicitStateSet
-   (empty? [ss] (some clojure.core/empty? (vals init)))
+   (empty? [ss] #_(println "AAA" init) (some clojure.core/empty? (vals init)))
    (singleton [ss] 
      (when (every? util/singleton? (vals init))
        (extract-logging-state ss (util/map-vals util/safe-singleton init))))
@@ -71,14 +71,19 @@
    
   state/FactoredState
    (get-var [ss var]
-     (state/get-var init var))
+     (let [x (state/get-var init var)]
+       (util/assert-is (set? x) "%s" [var])
+       x))
+   
    (set-var [ss var val]
+       (util/assert-is (set? val) "%s" [var])
        (LoggingFactoredStateSet. (state/set-var init var val) ; init
                               context
                               (assoc puts var val)
                               (if (.contains context var) ooc (assoc ooc var val))
                               {}))
    (set-vars [ss vv-pairs]
+       (doseq [[var val] vv-pairs] (util/assert-is (set? val) "%s" [var]))
        (LoggingFactoredStateSet. (state/set-vars init vv-pairs)
                               context
                               (into puts vv-pairs)
