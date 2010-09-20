@@ -19,6 +19,8 @@
 (defn make-factored-primitive [name precond-map effect-map reward]
   (FactoredPrimitive. name precond-map effect-map reward))
 
+(def +factored-noop+ (FactoredPrimitive. [:noop] {} {} 0))
+
 (defmethod print-method FactoredPrimitive [a o] (print-method (env/action-name a) o))
 
 

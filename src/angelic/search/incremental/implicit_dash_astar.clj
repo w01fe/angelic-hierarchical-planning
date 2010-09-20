@@ -1,4 +1,4 @@
-(ns angelic.search.incremental.implicit
+(ns angelic.search.incremental.implicit-dash-astar
   (:require clojure.string
             [edu.berkeley.ai.util :as util]
             [angelic.env :as env]
@@ -8,8 +8,7 @@
             [angelic.hierarchy.util :as hierarchy-util]            
             [angelic.hierarchy.state-set :as state-set]
             [angelic.hierarchy.angelic :as angelic]
-            [angelic.search.incremental.core :as is]
-            [angelic.search.incremental.hierarchical :as his])
+            [angelic.search.incremental.core :as is])
   (:import  [java.util HashMap]))
 
 
