@@ -19,7 +19,7 @@
              (or (and (goal s) [(reverse (:act-seq (meta s))) (:reward (meta s))])
                  (do
                    (let [acts (actions s)]
-                     (util/print-debug 4 "Actions are:" acts "\n")
+                     (util/print-debug 4 "Actions are:" (map env/action-name acts) "\n")
                      (doseq [a acts :when (env/applicable? a s)]
                        (let [[ss sc] (env/successor a s)]
                          (queues/pq-add! q ss (- c sc)))))
