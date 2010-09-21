@@ -14,7 +14,7 @@
 ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
 
 
-(defrecord TopLevelAction [env initial-plans]
+(defrecord TopLevelAction [env initial-plans reward]
   env/Action
   (action-name [_] ['act])
   (primitive?  [_] false)  
@@ -29,7 +29,7 @@
   angelic/ExplicitAngelicAction
   (optimistic-map- [_ s]
     {(state/set-vars s (envutil/make-finish-goal-state env)) 
-     Double/POSITIVE_INFINITY})
+     reward})
   (pessimistic-map- [_ s] {})
 
   angelic/ImplicitAngelicAction
@@ -38,12 +38,14 @@
   (immediate-refinements-set- [a ss] (for [p initial-plans] [{} p]))
   (optimistic-set-and-reward- [a ss]
     [(state/set-vars ss (util/map-vals (fn [x] #{x}) (envutil/make-finish-goal-state env)))
-     (Double/POSITIVE_INFINITY)])
+     reward])
   (pessimistic-set-and-reward- [a ss] nil))
 
 
-(defn make-top-level-action [env initial-plans]
-  (TopLevelAction. env initial-plans))
+(defn make-top-level-action
+  ([env initial-plans] (make-top-level-action env initial-plans Double/POSITIVE_INFINITY))
+  ([env initial-plans reward]
+     (TopLevelAction. env initial-plans reward)))
 
 (defrecord SimpleHLA [name pc refs]
   env/Action

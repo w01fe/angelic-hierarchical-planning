@@ -135,5 +135,8 @@
 
 (defn get-known-var [ss var] (util/safe-singleton (state/get-var ss var)))
 
+(defn ss-str [ss] "LFSS" #_(print-str (dissoc (state/as-map ss) :const)))
+(defmethod print-method LoggingFactoredStateSet [ss o] (print-method (ss-str ss) o))
+
 
 

@@ -13,6 +13,7 @@
 
 ;; Simple implicit version of AHA* with implicit descritpions.
 ;; TODO: improved caching, et.c  This is jsut quick and dirty.
+;; TODO: add pruning.
 
 ;(def ^HashMap *heuristic-cache* nil)
 
@@ -94,7 +95,7 @@
   (initial-state [_]
     (let [e    (hierarchy/env henv)
           init (env-util/initial-logging-state e)
-          tla  (hierarchy-util/make-top-level-action e [(hierarchy/initial-plan henv)])]
+          tla  (hierarchy-util/make-top-level-action e [(hierarchy/initial-plan henv)] 0)]
       (-> (make-action-node [(state-set/make-logging-factored-state-set [init]) 0 true] {} tla)
                        vector
                        make-plan)))
@@ -108,8 +109,9 @@
          (applicable? [_ s] (assert (identical? s shp)) true)
          (next-state-and-reward [_ s]
            (let [old-rew (second (:output-tuple shp))
-                 new-rew (second (:output-tuple s))]
-             (assert (<= new-rew old-rew))
+                 new-rew (second (:output-tuple ref))]
+                                        ;             (println old-rew shp new-rew)
+             (util/assert-is (<= new-rew old-rew) "%s" (print-str shp ref))
              [ref (- new-rew old-rew)]))))))
   (goal-fn [_] (fn [s] (nth (util/safe-get s :output-tuple) 2))))
 

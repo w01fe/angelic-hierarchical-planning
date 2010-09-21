@@ -144,7 +144,7 @@
                    (conj rest-things next-thing) (max-summary next-summary rest-summary) even-more-things)))
         [best-thing best-summary rest-things rest-summary])))
 
-(defn summary-str [s] (str (max-reward s) (:status s) (vec (:opt-sol s))))
+(defn summary-str [s] (str "Summary:" (max-reward s) (:status s) (vec (:opt-sol s))))
 (defmethod print-method SimpleSummary [s o] (print-method (summary-str s) o))
 
 (defn assert-valid-summary-change [old-summary new-summary]
@@ -373,7 +373,7 @@
                      reward-bound output-set output-summary])
 
 (defn plan-node-str [pn]
-  (str (env/action-name (osn-action (:sub-osn pn))) " (" (summary-str (:output-summary pn)) ")"))
+  (str "PN: " (env/action-name (osn-action (:sub-osn pn))) " (" (summary-str (:output-summary pn)) ")"))
 (defmethod print-method PlanNode [pn o] (print-method (plan-node-str pn) o))
 
 
@@ -480,7 +480,7 @@
 (defrecord Plan     [input-constraint input-set plan-nodes output-set summary])
 
 (defn plan-str [p]
-  (clojure.string/join ", " (map plan-node-str (:plan-nodes p))))
+  (str "Plan: " (clojure.string/join ", " (map plan-node-str (:plan-nodes p)))))
 (defmethod print-method Plan [p o] (print-method (plan-str p) o))
 
 (def plan-summary :summary)

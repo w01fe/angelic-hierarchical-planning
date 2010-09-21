@@ -738,7 +738,8 @@
 ;          gos       (possible-grasp-gos-ss const allbases o-dst)
           ]
       [(state/set-vars ss [[[:base] allbases] [[:gripper-offset] #{[0 0]}]
-                           [[:pos o] #{o-dst}] [[:holding] #{nil}] [[:object-at o-dst] #{o}]])
+                           [[:pos o] #{o-dst}] [[:holding] #{nil}]
+                           [[:object-at o-dst] #{o}] [[:at-goal? o] #{true}]])
        (+ putdown-reward
           (apply max
             (+ (apply max (for [go cgos] (move-gripper-reward go [0 0])))
@@ -801,7 +802,8 @@
           allbases  (clojure.set/union stays goes)]
       (assert (seq dsts))
       [(state/set-vars ss (concat [[[:base] allbases] [[:gripper-offset] #{[0 0]}]
-                                   [[:pos o] dsts] [[:holding] #{nil}]]
+                                   [[:pos o] dsts] [[:holding] #{nil}]
+                                    [[:at-goal? o] #{true}]]
                                   (if-let [s (util/singleton dsts)]
                                     [[[:object-at s] #{o}]]
                                     (for [o-dst dsts]
@@ -898,7 +900,8 @@
           bothstays     (clojure.set/intersection mstays fstays)]
       (assert (= (seq sgos) [[0 0]]))
       [(state/set-vars ss (concat [[[:base] allfbases] [[:gripper-offset] #{[0 0]}]
-                                   [[:pos o] o-dsts] [[:holding] #{nil}]]
+                                   [[:pos o] o-dsts] [[:holding] #{nil}]
+                                   [[:at-goal? o] #{true}]]
                                   (if-let [s (util/singleton o-dsts)]
                                     [[[:object-at s] #{o}]]
                                     (for [o-dst o-dsts] [[:object-at o-dst] #{o nil}]))))       
