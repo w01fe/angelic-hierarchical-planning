@@ -65,9 +65,14 @@
            vss (map val kvs)]
        (set (for [vs (apply combos/cartesian-product vss)] (extract-logging-state ss (zipmap ks vs))))))
    (constrain    [ss constraint] 
-     (assert (every? context (keys constraint)))     
+;    (util/assert-is (every? context (keys constraint)))     
      (state/set-vars ss
-      (for [[var vals] constraint] [var (clojure.set/intersection vals (state/get-var ss var))])))
+     (for [[var vals] constraint
+           :let [cur-vals (state/get-var ss var)
+                 isect    (clojure.set/intersection vals cur-vals)]
+           :when (not (= (count isect) (count cur-vals)))]
+       (do (assert (contains? context var))
+           [var isect]))))
    
   state/FactoredState
    (get-var [ss var]
@@ -151,4 +156,4 @@
                  (filter   #(util/proper-subset? (m1 % ) (m2 %)) ks)
                  ))))
 
-
+(defn as-constraint [ss]#_ (println (state/extract-effects ss) (state/current-context ss)) (state/extract-effects ss))

@@ -80,7 +80,7 @@
 
 
 (def +worst-summary+ (make-blocked-summary is/neg-inf []))
-(def +best-summary+  (make-solved-summary is/pos-inf []))
+(def +best-summary+  (make-live-summary is/pos-inf [])) ;; don't be too optimistic
 
 (defn better-summary? [s1 s2]
   (or (> (max-reward s1)
@@ -187,6 +187,8 @@
 
 ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;; Creating ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
 
+(declare handle-summary)
+
 (defn make-terminal-root-osn [input-pair output-set terminal-summary]
   (assert (not (live? terminal-summary)))
   (OutputSetNode. input-pair output-set is/pos-inf nil (atom +worst-summary+)
@@ -201,7 +203,7 @@
 
 (defn make-child-osn [parent-osn child-output-set]
   (OutputSetNode. (:input-pair parent-osn) child-output-set (:reward-bound parent-osn) parent-osn
-                  (atom +best-summary+) (atom nil) (atom +worst-summary+) (atom {}) (atom +worst-summary+)))
+                  (atom (handle-summary parent-osn)) (atom nil) (atom +worst-summary+) (atom {}) (atom +worst-summary+)))
 
 
 
@@ -313,64 +315,85 @@
   (swap! (:plan-summary-atom osn) #(apply max-summary % (map plan-summary new-plans))))
 
 
-
+;; TODO: can still go up-then-down if new children created.  Fix it.
 (defn refine-osn!
   "Repeatedly refine shallowest best plan covered by osn until solved or below min-reward."
   [osn min-reward excluded-child-set]
+  (util/print-debug 2 "OHAI" (broom-summary osn excluded-child-set) min-reward)
   (while (refinable-summary? (broom-summary osn excluded-child-set) min-reward)
-    #_(println "REFINE OSN" osn) #_(Thread/sleep 10)
+    (util/print-debug 2 "REFINE OSN" osn min-reward) #_(Thread/sleep 100)
     (let [[[best-op] _ _ next-summary]
           (extract-best-and-summaries
            second
-           [;; Ancestor
-            [#(do (refine-osn! (:parent-node osn) % nil) (refresh-ancestor-summary! osn))
+           [;; Ancestor 
+            [#(do (refine-osn! (:parent-node osn) % (set (vals @(:child-map-atom (:parent-node osn)))))
+                  (refresh-ancestor-summary! osn))
              (ancestor-summary   osn)]
             ;; Direct plan
             [#(let [[best-plan best-summary rest-plans rest-summary]
                       (extract-best-and-summaries plan-summary @(:plans-atom osn))
-                    new-plans (expand-plan best-plan (next-min-reward rest-summary %))]
-                (when-not (identical? (util/singleton new-plans) best-plan)
+                      new-plans (expand-plan best-plan (next-min-reward rest-summary %))]
+                (util/print-debug 2 "GOT PLANS" best-summary rest-summary (map plan-summary new-plans))
+                (if (identical? (util/singleton new-plans) best-plan)
+                  (refresh-local-summary! osn)
                   (let [grouped-plans (group-by plan-output-set new-plans)]
-                   (reset! (:plans-atom osn) (concat (get grouped-plans (:output-set osn)) rest-plans))
+                    (reset! (:plans-atom osn) (concat (get grouped-plans (:output-set osn)) rest-plans))
+                    (refresh-local-summary! osn) ;; Updated vals for get-child-osn
                    (doseq [[child-output-set plans] (dissoc grouped-plans (:output-set osn))]
                      (let [child-osn (get-osn-child! osn child-output-set)]
                        (add-plans! child-osn plans)
-                       (swap! (:descendant-summary-atom osn) max-summary (local-summary child-osn))))))
-                (refresh-local-summary! osn)) 
+                       (swap! (:descendant-summary-atom osn) max-summary (local-summary child-osn)))))))
+             
              (local-summary       osn)]
             ;; Descendant
             [#(let [[best-child _ _ next-summary]
                     (extract-best-and-summaries
                      tree-summary (remove excluded-child-set (vals @(:child-map-atom osn))))]
-                (refine-osn! best-child (next-min-reward next-summary %) nil)
-                (refresh-descendant-summary! best-child))
+                ;                (println "???" (next-min-reward next-summary %))
+                (refine-osn! best-child (next-min-reward next-summary %) #{})
+                (refresh-descendant-summary! osn))
              (sub-descendant-summary osn excluded-child-set)]])]
       (best-op (next-min-reward next-summary min-reward)))
-    #_(println "GOT " osn)))
+    (util/print-debug 2 "GOT " osn)))
 
 
 ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;; Splitting ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
 
+;; TODO: figure out right things for here.
+
 (defn split-osn
   "Return a seq of child osn's (i.e., subset output sets) to split off from osn.
-   Currently splits children >= min-reward when parent < min-reward."
+   Currently splits children >= min-reward when parent < min-reward.
+   Actually, currently splits strictly better children."
   [osn min-reward excluded-child-set]
-  (when (< (max-reward (handle-summary osn)) min-reward)
+#_  (println osn min-reward (max-reward (handle-summary osn))
+           (map #(max-reward (tree-summary %))
+            (remove excluded-child-set (vals @(:child-map-atom osn))))
+           )
+ #_ (when (< (max-reward (handle-summary osn)) min-reward)
     (filter #(>= (max-reward (tree-summary %)) min-reward)
-            (remove excluded-child-set (vals @(:child-map-atom osn))))))
+            (remove excluded-child-set (vals @(:child-map-atom osn)))))
+ (let [bar (max-reward (handle-summary osn))]
+   (filter #(> (max-reward (tree-summary %)) bar)
+           (remove excluded-child-set (vals @(:child-map-atom osn))))))
 
 (defn can-split-osn?
   "Can this OSN possibly be effectively split, at any min-reward.
    I.e., does the best plan live at a strict descendant?"
   [osn excluded-child-set]
-  (> (max-reward (sub-descendant-summary osn excluded-child-set))
-     (max-reward (handle-summary osn))))
+ (let [child-summary (sub-descendant-summary osn excluded-child-set)
+       handle-summary (handle-summary osn)]
+   (> (max-reward child-summary) (max-reward handle-summary))
+   #_ (println (second (:input-pair osn)) child-summary handle-summary)
+ #_   (or (> (max-reward child-summary) (max-reward handle-summary))
+        (and (= (max-reward child-summary) (max-reward handle-summary))
+             (optimal-solution child-summary)))))
 
 
 (defn refine-osn-input
   "Produce a new OSN, where the input set has been restricted."
   [osn new-input-set]
-  (let [new-root-osn (get-root-osn new-input-set (osn-action osn) (root-summary osn))]
+  (let [new-root-osn (get-root-osn new-input-set (osn-action osn) #(max-reward (root-summary osn)))]
     (if (identical? (:input-pair new-root-osn) (:input-pair osn)) osn new-root-osn)))
 
 
@@ -397,9 +420,9 @@
 
 
 (defn make-live-for-split [sub-osn ecs summary]
-  (if (and (blocked? summary) (can-split-osn? sub-osn ecs))
-    (make-live-summary (max-reward summary) [(osn-action sub-osn)])
-    summary))
+#_  (util/prln) (if (and (not (live? summary)) (can-split-osn? sub-osn ecs))
+                (make-live-summary (max-reward summary) [(osn-action sub-osn)])
+                summary))
 
 (defn compute-plan-node-output-summary [input-summary sub-osn ecs reward-bound]
   (->> (broom-summary sub-osn ecs)
@@ -436,6 +459,7 @@
     (let [new-summary (compute-plan-node-output-summary input-summary sub-osn
                                                         excluded-child-set reward-bound)]
       (assert-valid-summary-change (:output-summary pn) new-summary)
+     #_ (println (second (:input-pair (:sub-osn pn))) new-summary)
       (assoc pn :output-summary new-summary))))
 
 
@@ -446,19 +470,19 @@
   "Split this plan node into a seq of plan nodes, all but 0-1 of which will have
    refined output sets."
   [pn input-set input-summary min-step-reward]
-  (let [{:keys [sub-osn excluded-child-set]} pn
+  (let [{:keys [sub-osn excluded-child-set reward-bound]} pn
         split-children (split-osn sub-osn min-step-reward excluded-child-set)
-        _  (when (seq split-children) (println "SPLIT" pn (count split-children)))
+;        _  (when (seq split-children) (println "SPLIT" pn (count split-children)))
 ;        _   (println "split" pn (count excluded-child-set) (count split-children))    
         new-ecs        (into excluded-child-set split-children)
-        new-summary    (add-summaries input-summary (broom-summary sub-osn new-ecs))]
+        new-summary    (compute-plan-node-output-summary input-summary sub-osn new-ecs reward-bound)]
     (concat
      (when (viable-summary? new-summary)
        (assert-valid-summary-change (:output-summary pn) new-summary)
        [(assoc pn :excluded-child-set new-ecs :output-summary new-summary)])
      (for [child split-children]
        (do ;         (println "SC"  sub-osn child )
-           (make-plan-node input-set input-summary child nil {} is/pos-inf))))))
+           (make-plan-node input-set input-summary child #{} {} is/pos-inf))))))
 
 
 (defn update-pn-input
@@ -473,9 +497,9 @@
         (assert-valid-summary-change (:output-summary pn) new-output-summary)
         (when (viable-summary? new-output-summary)
           [[false output-set new-output-summary] (assoc pn :output-summary new-output-summary)]))
-      (let [new-pn (make-plan-node new-input-set new-input-summary new-osn nil
-                                   (osn-output-set sub-osn)
-                                   (max-reward (broom-summary sub-osn)))
+      (let [new-pn (make-plan-node new-input-set new-input-summary new-osn #{}
+                                   (state-set/as-constraint (osn-output-set sub-osn))
+                                   (max-reward (broom-summary sub-osn excluded-child-set)))
             new-output-pair (plan-node-output-set-and-summary new-pn)]
         (assert-valid-summary-change (:output-summary pn) (second new-output-pair))
         (when (viable-output-set-and-summary? new-output-pair)
@@ -540,7 +564,7 @@
 (defn expand-plan [plan min-reward]
   (if (not (refinable-summary? (:summary plan) min-reward)) [plan]
       (let [{:keys [input-constraint input-set plan-nodes output-set summary]} plan
-            ref-index       (util/position-if #(not (optimal-solution (:output-summary %))) plan-nodes)
+            ref-index       (util/position-if #(live? (:output-summary %)) plan-nodes)
                             #_ (rand-int (count plan-nodes)) ;TODO: put back
             [pre-nodes [ref-node & post-nodes]] (split-at ref-index plan-nodes)
 ;            _ (println plan  (count pre-nodes) (class ref-node) (count post-nodes))       
@@ -548,6 +572,7 @@
             sub-min-reward (- min-reward
                               (- (max-reward summary)
                                  (- (max-reward (:output-summary ref-node)) (max-reward pre-summary))))]
+;        (println plan ref-index)
         (filter identity
                 (for [next-pn (split-pn-output (refine-pn ref-node pre-summary sub-min-reward) pre-set pre-summary sub-min-reward)]
                   (do (assert-valid-summary-change (:output-summary ref-node) (:output-summary next-pn))
@@ -568,9 +593,9 @@
         tla  (hierarchy-util/make-top-level-action e [(hierarchy/initial-plan henv)])]
     (binding [*subproblem-cache*    (HashMap.)]
       (let [root (get-root-osn (state-set/make-logging-factored-state-set [init]) tla (constantly is/pos-inf))]
-        (refine-osn! root is/neg-inf nil)
-        (let [sum (broom-summary root nil)]
-          (println sum)
+        (refine-osn! root is/neg-inf #{})
+        (let [sum (broom-summary root #{})]
+ #_         (println sum)
           (assert (not (refinable-summary? sum is/neg-inf)))
           (def *root* root)
           (when-let [sol (optimal-solution sum)]

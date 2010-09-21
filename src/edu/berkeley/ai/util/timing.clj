@@ -62,7 +62,7 @@
    :warmup-time, :min-runs, :min-time."
   ([form & body]
      (let [defaults {:warmup-time 1 :min-runs 3 :min-time 2}
-           [params body] (if (map? form) [(merge form defaults) body] [defaults (cons form body)])
+           [params body] (if (map? form) [(merge defaults form) body] [defaults (cons form body)])
            body-fn `(fn [] ~@body)]
         
        `(microbench* ~params ~body-fn))))
