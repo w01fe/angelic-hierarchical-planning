@@ -143,7 +143,12 @@
         m2 (state/as-map ss2)
         ks (util/keyset m1)]
     (assert (= ks (util/keyset m2)))
-    (and (every? #(clojure.set/subset? (m1 %) (m2 %)) ks)
-         (some   #(util/proper-subset? (m1 % ) (m2 %)) ks))))
+    (and (every? #(util/subset? (m1 %) (m2 %)) ks)
+         (some   #(util/proper-subset? (m1 % ) (m2 %)) ks))
+    #_ (or 
+        
+        (println (filter #(not (clojure.set/subset? (nth % 1) (nth % 2))) (map #(vector % (m1 %) (m2 %)) ks))
+                 (filter   #(util/proper-subset? (m1 % ) (m2 %)) ks)
+                 ))))
 
 

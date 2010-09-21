@@ -10,23 +10,25 @@
   
 (defn subset? [s1 s2]
   "Is s1 a subset of s2?"
-  (every? (to-set s2) s1))
+  (let [s2 (to-set s2)]
+    (every? #(contains? s2 %) s1)))
   
 (defn superset? [s1 s2]
   "Is s1 a superset of s2?"
-  (every? (to-set s1) s2))
+  (let [s1 (to-set s1)]
+    (every? #(contains? s1 %) s2)))
   
 (defn proper-subset? [s1 s2]
   "Is s1 a proper subset of s2?"
   (let [s1 (to-set s1) s2 (to-set s2)]
     (and (not= (count s1) (count s2))
-      (every? s2 s1))))
+         (every? #(contains? s2 %) s1))))
       
 (defn proper-superset? [s1 s2]
   "Is s1 a proper superset of s2?"
   (let [s1 (to-set s1) s2 (to-set s2)]
     (and (not= (count s1) (count s2))
-      (every? s1 s2))))
+         (every? #(contains? s1 %) s2))))
 
 
 

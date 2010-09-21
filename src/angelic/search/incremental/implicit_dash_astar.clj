@@ -297,7 +297,11 @@
   [osn child-output-set]
 ;  (println "making child" (util/differences [ (state/as-map (:output-set osn)) (state/as-map child-output-set)]))
   (util/assert-is (= (state/current-context child-output-set) (state/current-context (:output-set osn))))
-  (util/assert-is (state-set/proper-subset? child-output-set (:output-set osn)) "%s" [(= child-output-set (:output-set osn))  (print-str (util/differences [(state/ooc-effects (:output-set osn)) (state/ooc-effects child-output-set)])) (print-str (util/differences [ (state/as-map (:output-set osn)) (state/as-map child-output-set)])) (:input-pair osn)]) ;; TODO: slow check, remove
+  (util/assert-is (state-set/proper-subset? child-output-set (:output-set osn)) "%s"
+                  [(= child-output-set (:output-set osn))
+                   (print-str (util/differences [(state/ooc-effects (:output-set osn)) (state/ooc-effects child-output-set)]))
+                   (print-str (util/differences [ (state/as-map (:output-set osn)) (state/as-map child-output-set)]))
+                   (:input-pair osn)]) ;; TODO: slow check, remove
   (or (-> osn :child-map-atom deref (get child-output-set))
       (let [child (make-child-osn osn child-output-set)]
         (swap! (:child-map-atom osn) assoc child-output-set child)
@@ -314,7 +318,7 @@
   "Repeatedly refine shallowest best plan covered by osn until solved or below min-reward."
   [osn min-reward excluded-child-set]
   (while (refinable-summary? (broom-summary osn excluded-child-set) min-reward)
-    #_(println "REFINE OSN" osn) (Thread/sleep 10)
+    #_(println "REFINE OSN" osn) #_(Thread/sleep 10)
     (let [[[best-op] _ _ next-summary]
           (extract-best-and-summaries
            second
