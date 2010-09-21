@@ -315,8 +315,9 @@
               ds)
           (set? f)
             (if (every? set? ds)
-                (let [kernel (apply intersection ds)]
-                  (map #(difference % kernel) ds))
+              (let [kernel (apply intersection ds)
+                    res (map #(difference % kernel) ds)]
+                (when (some seq res) res))
               ds)        
           (instance? clojure.lang.Seqable f)
             (if (every? #(instance? clojure.lang.Seqable %) ds)

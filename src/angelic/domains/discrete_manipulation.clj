@@ -532,7 +532,7 @@
        (nav-reward src dst))))
 
 
-
+;; TODO: how can we get rid of huge reach contexts?
 (defn make-move-base-hla [dst]
  (reify 
   env/Action
@@ -540,7 +540,7 @@
   (primitive?  [_] false)
 
   env/ContextualAction
-  (precondition-context [_ s] #{[:base] [:parked?] [:gripper-offset]})
+  (precondition-context [_ s] (conj (reach-context s) [:base] [:parked?] [:gripper-offset])) ;; TODO: reaching !!
 
   hierarchy/HighLevelAction
   (immediate-refinements- [_ s]
@@ -561,7 +561,11 @@
   (pessimistic-map- [_ s] {})
 
   angelic/ImplicitAngelicAction 
-  (precondition-context-set [a ss] (env/precondition-context a :dummy))  
+  (precondition-context-set [a ss]
+    (let [const (state-set/get-known-var ss :const)
+          bases (state/get-var ss [:base])]
+      (conj (apply clojure.set/union (for [b bases] (reach-context const b)))
+            [:base] [:parked?] [:gripper-offset])))  
   (can-refine-from-set? [a ss] (state-set/vars-known? ss [[:base]]))
   (immediate-refinements-set- [a ss]
     (for [p (hierarchy/immediate-refinements- a (state-set/some-element ss))] [{} p]))
@@ -901,6 +905,7 @@
       (assert (= (seq sgos) [[0 0]]))
       [(state/set-vars ss (concat [[[:base] allfbases] [[:gripper-offset] #{[0 0]}]
                                    [[:pos o] o-dsts] [[:holding] #{nil}]
+                                   [[:object-at o-src] #{nil}]
                                    [[:at-goal? o] #{true}]]
                                   (if-let [s (util/singleton o-dsts)]
                                     [[[:object-at s] #{o}]]

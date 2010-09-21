@@ -135,8 +135,15 @@
 
 (defn get-known-var [ss var] (util/safe-singleton (state/get-var ss var)))
 
-(defn ss-str [ss] "LFSS" #_(print-str (dissoc (state/as-map ss) :const)))
+(defn ss-str [ss] "LFSS" (print-str (dissoc (state/as-map ss) :const)))
 (defmethod print-method LoggingFactoredStateSet [ss o] (print-method (ss-str ss) o))
 
+(defn proper-subset? [ss1 ss2]
+  (let [m1 (state/as-map ss1)
+        m2 (state/as-map ss2)
+        ks (util/keyset m1)]
+    (assert (= ks (util/keyset m2)))
+    (and (every? #(clojure.set/subset? (m1 %) (m2 %)) ks)
+         (some   #(util/proper-subset? (m1 % ) (m2 %)) ks))))
 
 

@@ -144,7 +144,7 @@
                    (conj rest-things next-thing) (max-summary next-summary rest-summary) even-more-things)))
         [best-thing best-summary rest-things rest-summary])))
 
-(defn summary-str [s] (str "Summary:" (max-reward s) (:status s) (vec (:opt-sol s))))
+(defn summary-str [s] (str "Summary:" (max-reward s) (:status s) #_ (vec (:opt-sol s))))
 (defmethod print-method SimpleSummary [s o] (print-method (summary-str s) o))
 
 (defn assert-valid-summary-change [old-summary new-summary]
@@ -201,7 +201,7 @@
 
 (defn make-child-osn [parent-osn child-output-set]
   (OutputSetNode. (:input-pair parent-osn) child-output-set (:reward-bound parent-osn) parent-osn
-                  +best-summary+ (atom nil) (atom +worst-summary+) (atom {}) (atom +worst-summary+)))
+                  (atom +best-summary+) (atom nil) (atom +worst-summary+) (atom {}) (atom +worst-summary+)))
 
 
 
@@ -295,6 +295,9 @@
 (defn get-osn-child!
   "Get or create child osn corresponding to this output-set."
   [osn child-output-set]
+;  (println "making child" (util/differences [ (state/as-map (:output-set osn)) (state/as-map child-output-set)]))
+  (util/assert-is (= (state/current-context child-output-set) (state/current-context (:output-set osn))))
+  (util/assert-is (state-set/proper-subset? child-output-set (:output-set osn)) "%s" [(= child-output-set (:output-set osn))  (print-str (util/differences [(state/ooc-effects (:output-set osn)) (state/ooc-effects child-output-set)])) (print-str (util/differences [ (state/as-map (:output-set osn)) (state/as-map child-output-set)])) (:input-pair osn)]) ;; TODO: slow check, remove
   (or (-> osn :child-map-atom deref (get child-output-set))
       (let [child (make-child-osn osn child-output-set)]
         (swap! (:child-map-atom osn) assoc child-output-set child)
@@ -311,6 +314,7 @@
   "Repeatedly refine shallowest best plan covered by osn until solved or below min-reward."
   [osn min-reward excluded-child-set]
   (while (refinable-summary? (broom-summary osn excluded-child-set) min-reward)
+    #_(println "REFINE OSN" osn) (Thread/sleep 10)
     (let [[[best-op] _ _ next-summary]
           (extract-best-and-summaries
            second
@@ -325,8 +329,10 @@
                   (let [grouped-plans (group-by plan-output-set new-plans)]
                    (reset! (:plans-atom osn) (concat (get grouped-plans (:output-set osn)) rest-plans))
                    (doseq [[child-output-set plans] (dissoc grouped-plans (:output-set osn))]
-                     (add-plans! (get-osn-child! osn child-output-set) plans))))
-                (refresh-local-summary! osn))
+                     (let [child-osn (get-osn-child! osn child-output-set)]
+                       (add-plans! child-osn plans)
+                       (swap! (:descendant-summary-atom osn) max-summary (local-summary child-osn))))))
+                (refresh-local-summary! osn)) 
              (local-summary       osn)]
             ;; Descendant
             [#(let [[best-child _ _ next-summary]
@@ -335,7 +341,8 @@
                 (refine-osn! best-child (next-min-reward next-summary %) nil)
                 (refresh-descendant-summary! best-child))
              (sub-descendant-summary osn excluded-child-set)]])]
-      (best-op (next-min-reward next-summary min-reward)))))
+      (best-op (next-min-reward next-summary min-reward)))
+    #_(println "GOT " osn)))
 
 
 ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;; Splitting ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
@@ -529,7 +536,8 @@
 (defn expand-plan [plan min-reward]
   (if (not (refinable-summary? (:summary plan) min-reward)) [plan]
       (let [{:keys [input-constraint input-set plan-nodes output-set summary]} plan
-            ref-index                           (rand-int (count plan-nodes))
+            ref-index       (util/position-if #(not (optimal-solution (:output-summary %))) plan-nodes)
+                            #_ (rand-int (count plan-nodes)) ;TODO: put back
             [pre-nodes [ref-node & post-nodes]] (split-at ref-index plan-nodes)
 ;            _ (println plan  (count pre-nodes) (class ref-node) (count post-nodes))       
             [pre-set pre-summary]  (if (seq pre-nodes) (plan-node-output-set-and-summary (last pre-nodes)) [input-set zero-summary])
