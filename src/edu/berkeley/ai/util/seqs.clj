@@ -194,6 +194,19 @@
   (assert-is (singleton? c))
   (first c))
 
+(defn map-state
+  "Transform a sequence via a state-machine.  transition-fn takes a state and input item,
+   and returns a [state output-item] pair.   Returns a pair of the final state and output seq.
+   Terminates when input-seq is consumed, or the terminal state (nil by default) is reached."
+  ([init-state transition-fn input-seq]
+     (map-state init-state nil transition-fn input-seq))
+  ([init-state terminal-state transition-fn input-seq]
+     (loop [state init-state, in-seq input-seq, out-seq []]    
+       (if-let [[in-elt & more-in-seq] (when-not (= terminal-state state) (seq in-seq))]
+         (let [[next-state out-elt] (transition-fn state in-elt)]
+           (recur next-state more-in-seq (conj out-seq out-elt)))
+         [state out-seq]))))
+
 ;(defn find-first [p c]
 ;  (when-first [x c]
 ;     (if (p x) x (recur p (next c)))))

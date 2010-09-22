@@ -548,14 +548,12 @@
                   ;;Returns a plan by propagating changes starting at the last node in prefix through remaining-nodes.
                   ;;                   Returns nil if the plan becomes infeasible, otherwise a plan.
                   (let [prefix-nodes (concat pre-nodes [next-pn])
-                        set-changed? (not= (:output-set next-pn) (:output-set ref-node))]
+                        set-changed? (not= (:output-set next-pn) (:output-set ref-node))
+                        input-state  (cons set-changed? (plan-node-output-set-and-summary (last prefix-nodes)))
+                        [final-state out-nodes] (util/map-state input-state update-pn-input post-nodes)]
                     (assert-valid-summary-change (:output-summary ref-node) (:output-summary next-pn))
-                    (when-let [[[_ out-set out-summary] out-nodes]
-                               (map-state
-                                update-pn-input
-                                (cons set-changed? (plan-node-output-set-and-summary (last prefix-nodes)))
-                                post-nodes)]
-                      (Plan. input-constraint input-set (concat prefix-nodes out-nodes) out-set out-summary)))))))))
+                    (when-let [[_ out-set out-summary] final-state]
+                       (Plan. input-constraint input-set (concat prefix-nodes out-nodes) out-set out-summary)))))))))
 
 
 (defn plan-str [p]
@@ -567,30 +565,19 @@
 
 
 
-(defn map-state
-  "Transform a sequence via a state-machine.  transition-fn takes a state and input item,
-   and returns a [state output-item] pair, or nil for reject.  Returns nil for failure,
-   or a pair of the final state and output seq."
-  [transition-fn init-state input-seq]
-  (loop [state init-state, in-seq input-seq, out-seq []]    
-    (if-let [[in-elt & more-in-seq] (seq in-seq)]
-      (when-let [[next-state out-elt] (transition-fn state in-elt)]
-        (recur next-state more-in-seq (conj out-seq out-elt)))
-      [state out-seq])))
-
-
 (defn make-initial-plan [init-set ref-constraint act-seq]
   (let [constrained-set (state-set/constrain init-set ref-constraint)]
     (when-not (state-set/empty? constrained-set)
-     (when-let [[[out-set out-summary] plan]
-                (map-state (fn [in-pair a]
-                             (let [pn (make-initial-plan-node a in-pair)
-                                   out-pair (plan-node-output-set-and-summary pn)]
-                               (when (viable-output-set-and-summary? out-pair)
-                                 [out-pair pn])))
-                           [constrained-set zero-summary]
-                           act-seq)]
-       (Plan. ref-constraint constrained-set plan out-set out-summary)))))
+     (let [[[out-set out-summary :as final-state] plan]
+             (util/map-state
+              [constrained-set zero-summary]
+              (fn [in-pair a]
+                (let [pn (make-initial-plan-node a in-pair)
+                      out-pair (plan-node-output-set-and-summary pn)]
+                  (when (viable-output-set-and-summary? out-pair)
+                    [out-pair pn])))
+              act-seq)]
+       (when final-state (Plan. ref-constraint constrained-set plan out-set out-summary))))))
 
 
 
