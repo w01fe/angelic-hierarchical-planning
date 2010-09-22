@@ -168,10 +168,10 @@
 (def #^HashMap *subproblem-cache* nil)
 
 ; Dependencies on plans
-(declare make-initial-plan plan-summary plan-output-set expand-plan)
+(declare make-dummy-root-plan make-initial-plan plan-summary plan-output-set expand-plan)
 
 ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;; Output Set Nodes ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
-
+; TODO: does reward-bound make sense?
 (defrecord OutputSetNode
   [input-pair     output-set              ; input-pair preserved (id) within a tree.
    reward-bound                           ; Outside upper bound on reward- on what TODO ???
@@ -189,51 +189,21 @@
 
 (declare handle-summary)
 
-(defn make-terminal-root-osn [input-pair output-set terminal-summary]
-  (assert (not (live? terminal-summary)))
-  (assert output-set)
-  (OutputSetNode. input-pair output-set is/pos-inf nil (atom +worst-summary+)
-                  :terminal (atom terminal-summary) :terminal (atom +worst-summary+)))
-
-(def +worst-osn+ (make-terminal-root-osn :dummy state-set/empty-lfss +worst-summary+))
-
-(defn make-nonterminal-root-osn [input-pair output-set reward-bound init-summary init-plans]
-  (assert (live? init-summary))
-    (assert output-set)
-  (OutputSetNode. input-pair output-set reward-bound nil (atom +worst-summary+)
-                  (atom init-plans) (atom init-summary) (atom {}) (atom +worst-summary+)))
-
 (defn make-child-osn [parent-osn child-output-set]
   (assert child-output-set)
   (OutputSetNode. (:input-pair parent-osn) child-output-set (:reward-bound parent-osn) parent-osn
                   (atom (handle-summary parent-osn)) (atom nil) (atom +worst-summary+) (atom {}) (atom +worst-summary+)))
 
 
-
+;; TODO: all of this can move to the plan side, with make-root-plan.
 (defn make-root-osn [input-pair logged-input-set action reward-bound-fn]
-  (let [prim? (env/primitive? action)]
-    (if-let [s (and prim? (state-set/singleton logged-input-set))] 
-      ;; terminal (solution or inapplicable) if input concrete & action primitive,
-      (if (env/applicable? action s)
-        (let [[ss rew] (env/successor action s)]
-          (make-terminal-root-osn
-           input-pair
-           (state-set/make-logging-factored-state-set [ss])
-           (make-solved-summary rew [action])))        
-        +worst-osn+)
-      (let [[opt rew]    (angelic/optimistic-set-and-reward action logged-input-set)
-            rew          (min (or rew is/neg-inf) (reward-bound-fn))]
-        (if (or (= rew is/neg-inf) prim? (not (angelic/can-refine-from-set? action logged-input-set)))
-          ;; terminal (blocked) if primitive & non-concrete, or cannot refine, or opt. failure
-          (make-terminal-root-osn
-           input-pair
-           (or opt state-set/empty-lfss) (make-blocked-summary rew [:z action]))
-          ;; finally, nonterminal if high-level, can refine, not trivially failed.
-          (make-nonterminal-root-osn
-           input-pair
-           opt rew (make-live-summary rew nil)
-           (lazy-seq (for [[constraint ref] (angelic/immediate-refinements-set action logged-input-set)
-                           :let [p (make-initial-plan logged-input-set constraint ref)] :when p] p))))))))
+  (let [root-plan (make-dummy-root-plan logged-input-set action reward-bound-fn)
+        root-summary (plan-summary root-plan)]
+    (OutputSetNode.
+     input-pair (plan-output-set root-plan) (max-reward root-summary)
+     nil (atom +worst-summary+)
+     (atom [root-plan]) (atom root-summary)
+     (atom {}) (atom +worst-summary+))))
 
 (defn get-root-osn [input-set action reward-bound-fn]
 ;  (println (class action) (env/action-name action))
@@ -334,20 +304,20 @@
                   (refresh-ancestor-summary! osn))
              (ancestor-summary   osn)]
             ;; Direct plan
-            [#(if (empty? @(:plans-atom osn)) (refresh-local-summary! osn)
-               (let [[best-plan best-summary rest-plans rest-summary]
-                     (extract-best-and-summaries plan-summary @(:plans-atom osn))
-                     new-plans (expand-plan best-plan (next-min-reward rest-summary %))]
-                 (util/print-debug 2 "GOT PLANS" best-summary rest-summary (map plan-summary new-plans))
-                 (if (identical? (util/singleton new-plans) best-plan)
-                   (refresh-local-summary! osn)
-                   (let [grouped-plans (group-by plan-output-set new-plans)]
-                     (reset! (:plans-atom osn) (concat (get grouped-plans (:output-set osn)) rest-plans))
-                     (refresh-local-summary! osn) ;; Updated vals for get-child-osn
-                     (doseq [[child-output-set plans] (dissoc grouped-plans (:output-set osn))]
-                       (let [child-osn (get-osn-child! osn child-output-set)]
-                         (add-plans! child-osn plans)
-                         (swap! (:descendant-summary-atom osn) max-summary (local-summary child-osn))))))))
+            [#_ #(if (empty? @(:plans-atom osn)) (refresh-local-summary! osn))
+             #(let [[best-plan best-summary rest-plans rest-summary]
+                   (extract-best-and-summaries plan-summary @(:plans-atom osn))
+                   new-plans (expand-plan best-plan (next-min-reward rest-summary %))]
+               (util/print-debug 2 "GOT PLANS" best-summary rest-summary (map plan-summary new-plans))
+               (if (identical? (util/singleton new-plans) best-plan)
+                 (refresh-local-summary! osn)
+                 (let [grouped-plans (group-by plan-output-set new-plans)]
+                   (reset! (:plans-atom osn) (concat (get grouped-plans (:output-set osn)) rest-plans))
+                   (refresh-local-summary! osn) ;; Updated vals for get-child-osn
+                   (doseq [[child-output-set plans] (dissoc grouped-plans (:output-set osn))]
+                     (let [child-osn (get-osn-child! osn child-output-set)]
+                       (add-plans! child-osn plans)
+                       (swap! (:descendant-summary-atom osn) max-summary (local-summary child-osn)))))))
              
              (local-summary       osn)]
             ;; Descendant
@@ -516,8 +486,77 @@
 ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
 
 ;; Plan is effectively a sequence of plan nodes.
+;; Have a special root plan that expands into refinements, 
+;; so all the plan insertion logic can go together (and laziness be preserved).
 
-(defrecord Plan     [input-constraint input-set plan-nodes output-set summary])
+(defprotocol Expandable (expand-plan [plan min-reward]))
+
+(defrecord DummyRootPlan [input-constraint input-set expansions output-set summary]
+  Expandable
+  (expand-plan [this min-reward]
+    (if (>= (max-reward summary) min-reward)
+      expansions
+      [this])))
+
+(def +worst-plan+ (DummyRootPlan. {} :dummy :dummy state-set/empty-lfss +worst-summary+))
+
+(defn make-dummy-root-plan [logged-input-set action reward-bound-fn]
+  (let [prim? (env/primitive? action)]
+    (if-let [s (and prim? (state-set/singleton logged-input-set))] 
+      ;; terminal (solution or inapplicable) if input concrete & action primitive,
+      (if (env/applicable? action s)
+        (let [[ss rew] (env/successor action s)]
+          (DummyRootPlan.
+           {} logged-input-set :dummy
+           (state-set/make-logging-factored-state-set [ss])
+           (make-solved-summary rew [action])))        
+        +worst-plan+)
+      (let [[opt rew]    (angelic/optimistic-set-and-reward action logged-input-set)
+            rew          (min (or rew is/neg-inf) (reward-bound-fn))]
+        (if (or (= rew is/neg-inf) prim? (not (angelic/can-refine-from-set? action logged-input-set)))
+          ;; terminal (blocked) if primitive & non-concrete, or cannot refine, or opt. failure
+          (DummyRootPlan. {} logged-input-set :dummy (or opt state-set/empty-lfss)
+                          (make-blocked-summary rew [:z]))
+          ;; finally, nonterminal if high-level, can refine, not trivially failed.
+          
+          (DummyRootPlan. {} logged-input-set 
+           (lazy-seq (for [[constraint ref] (angelic/immediate-refinements-set action logged-input-set)
+                           :let [p (make-initial-plan logged-input-set constraint ref)] :when p] p))
+           opt (make-live-summary rew nil)))))))
+
+
+;; Need some meta-level basis to choose what to do...
+;; For now, just pick a node at random, try to refine it, then try to split on its output.
+
+(defrecord Plan [input-constraint input-set plan-nodes output-set summary]
+  Expandable
+  (expand-plan [plan min-reward]
+   (if (not (refinable-summary? (:summary plan) min-reward)) [plan]
+      (let [{:keys [input-constraint input-set plan-nodes output-set summary]} plan
+            ref-index       (util/position-if #(live? (:output-summary %)) plan-nodes)
+                            #_ (rand-int (count plan-nodes)) ;TODO: put back
+            [pre-nodes [ref-node & post-nodes]] (split-at ref-index plan-nodes)
+;            _ (println plan  (count pre-nodes) (class ref-node) (count post-nodes))       
+            [pre-set pre-summary]  (if (seq pre-nodes) (plan-node-output-set-and-summary (last pre-nodes)) [input-set zero-summary])
+            sub-min-reward (- min-reward
+                              (- (max-reward summary)
+                                 (- (max-reward (:output-summary ref-node)) (max-reward pre-summary))))]
+;        (println plan ref-index)
+        (filter identity
+                (for [next-pn (split-pn-output (refine-pn ref-node pre-summary sub-min-reward) pre-set pre-summary sub-min-reward)]
+                  ;; Propagate plan changes
+                  ;;Returns a plan by propagating changes starting at the last node in prefix through remaining-nodes.
+                  ;;                   Returns nil if the plan becomes infeasible, otherwise a plan.
+                  (let [prefix-nodes (concat pre-nodes [next-pn])
+                        set-changed? (not= (:output-set next-pn) (:output-set ref-node))]
+                    (assert-valid-summary-change (:output-summary ref-node) (:output-summary next-pn))
+                    (when-let [[[_ out-set out-summary] out-nodes]
+                               (map-state
+                                update-pn-input
+                                (cons set-changed? (plan-node-output-set-and-summary (last prefix-nodes)))
+                                post-nodes)]
+                      (Plan. input-constraint input-set (concat prefix-nodes out-nodes) out-set out-summary)))))))))
+
 
 (defn plan-str [p]
   (str "Plan: " (clojure.string/join ", " (map plan-node-str (:plan-nodes p)))))
@@ -554,36 +593,7 @@
        (Plan. ref-constraint constrained-set plan out-set out-summary)))))
 
 
-(defn propagate-plan-changes
-  "Returns a plan by propagating changes starting at the last node in prefix through remaining-nodes.
-   Returns nil if the plan becomes infeasible, otherwise a plan."
-  [input-constraint input-set prefix-nodes remaining-nodes set-changed?]
-  (when-let [[[_ out-set out-summary] out-nodes]
-             (map-state
-              update-pn-input
-              (cons set-changed? (plan-node-output-set-and-summary (last prefix-nodes)))
-              remaining-nodes)]
-    (Plan. input-constraint input-set (concat prefix-nodes out-nodes) out-set out-summary)))
 
-;; Need some meta-level basis to choose what to do...
-;; For now, just pick a node at random, try to refine it, then try to split on its output.
-(defn expand-plan [plan min-reward]
-  (if (not (refinable-summary? (:summary plan) min-reward)) [plan]
-      (let [{:keys [input-constraint input-set plan-nodes output-set summary]} plan
-            ref-index       (util/position-if #(live? (:output-summary %)) plan-nodes)
-                            #_ (rand-int (count plan-nodes)) ;TODO: put back
-            [pre-nodes [ref-node & post-nodes]] (split-at ref-index plan-nodes)
-;            _ (println plan  (count pre-nodes) (class ref-node) (count post-nodes))       
-            [pre-set pre-summary]  (if (seq pre-nodes) (plan-node-output-set-and-summary (last pre-nodes)) [input-set zero-summary])
-            sub-min-reward (- min-reward
-                              (- (max-reward summary)
-                                 (- (max-reward (:output-summary ref-node)) (max-reward pre-summary))))]
-;        (println plan ref-index)
-        (filter identity
-                (for [next-pn (split-pn-output (refine-pn ref-node pre-summary sub-min-reward) pre-set pre-summary sub-min-reward)]
-                  (do (assert-valid-summary-change (:output-summary ref-node) (:output-summary next-pn))
-                   (propagate-plan-changes input-constraint input-set (concat pre-nodes [next-pn]) post-nodes
-                                           (not= (:output-set next-pn) (:output-set ref-node)))))))))
 
 
 
@@ -601,7 +611,7 @@
       (let [root (get-root-osn (state-set/make-logging-factored-state-set [init]) tla (constantly is/pos-inf))]
         (refine-osn! root is/neg-inf #{})
         (let [sum (broom-summary root #{})]
- #_         (println sum)
+          (println sum)
           (assert (not (refinable-summary? sum is/neg-inf)))
           (def *root* root)
           (when-let [sol (optimal-solution sum)]
