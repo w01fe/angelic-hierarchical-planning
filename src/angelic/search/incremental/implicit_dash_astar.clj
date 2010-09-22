@@ -191,6 +191,7 @@
 
 (defn make-terminal-root-osn [input-pair output-set terminal-summary]
   (assert (not (live? terminal-summary)))
+  (assert output-set)
   (OutputSetNode. input-pair output-set is/pos-inf nil (atom +worst-summary+)
                   :terminal (atom terminal-summary) :terminal (atom +worst-summary+)))
 
@@ -198,10 +199,12 @@
 
 (defn make-nonterminal-root-osn [input-pair output-set reward-bound init-summary init-plans]
   (assert (live? init-summary))
+    (assert output-set)
   (OutputSetNode. input-pair output-set reward-bound nil (atom +worst-summary+)
                   (atom init-plans) (atom init-summary) (atom {}) (atom +worst-summary+)))
 
 (defn make-child-osn [parent-osn child-output-set]
+  (assert child-output-set)
   (OutputSetNode. (:input-pair parent-osn) child-output-set (:reward-bound parent-osn) parent-osn
                   (atom (handle-summary parent-osn)) (atom nil) (atom +worst-summary+) (atom {}) (atom +worst-summary+)))
 
@@ -224,7 +227,7 @@
           ;; terminal (blocked) if primitive & non-concrete, or cannot refine, or opt. failure
           (make-terminal-root-osn
            input-pair
-           opt (make-blocked-summary rew [:z action]))
+           (or opt state-set/empty-lfss) (make-blocked-summary rew [:z action]))
           ;; finally, nonterminal if high-level, can refine, not trivially failed.
           (make-nonterminal-root-osn
            input-pair
@@ -304,6 +307,7 @@
                    (print-str (util/differences [(state/ooc-effects (:output-set osn)) (state/ooc-effects child-output-set)]))
                    (print-str (util/differences [ (state/as-map (:output-set osn)) (state/as-map child-output-set)]))
                    (:input-pair osn)]) ;; TODO: slow check, remove
+  (util/assert-is (not (state-set/empty? child-output-set)))
   (or (-> osn :child-map-atom deref (get child-output-set))
       (let [child (make-child-osn osn child-output-set)]
         (swap! (:child-map-atom osn) assoc child-output-set child)
@@ -330,19 +334,20 @@
                   (refresh-ancestor-summary! osn))
              (ancestor-summary   osn)]
             ;; Direct plan
-            [#(let [[best-plan best-summary rest-plans rest-summary]
-                      (extract-best-and-summaries plan-summary @(:plans-atom osn))
-                      new-plans (expand-plan best-plan (next-min-reward rest-summary %))]
-                (util/print-debug 2 "GOT PLANS" best-summary rest-summary (map plan-summary new-plans))
-                (if (identical? (util/singleton new-plans) best-plan)
-                  (refresh-local-summary! osn)
-                  (let [grouped-plans (group-by plan-output-set new-plans)]
-                    (reset! (:plans-atom osn) (concat (get grouped-plans (:output-set osn)) rest-plans))
-                    (refresh-local-summary! osn) ;; Updated vals for get-child-osn
-                   (doseq [[child-output-set plans] (dissoc grouped-plans (:output-set osn))]
-                     (let [child-osn (get-osn-child! osn child-output-set)]
-                       (add-plans! child-osn plans)
-                       (swap! (:descendant-summary-atom osn) max-summary (local-summary child-osn)))))))
+            [#(if (empty? @(:plans-atom osn)) (refresh-local-summary! osn)
+               (let [[best-plan best-summary rest-plans rest-summary]
+                     (extract-best-and-summaries plan-summary @(:plans-atom osn))
+                     new-plans (expand-plan best-plan (next-min-reward rest-summary %))]
+                 (util/print-debug 2 "GOT PLANS" best-summary rest-summary (map plan-summary new-plans))
+                 (if (identical? (util/singleton new-plans) best-plan)
+                   (refresh-local-summary! osn)
+                   (let [grouped-plans (group-by plan-output-set new-plans)]
+                     (reset! (:plans-atom osn) (concat (get grouped-plans (:output-set osn)) rest-plans))
+                     (refresh-local-summary! osn) ;; Updated vals for get-child-osn
+                     (doseq [[child-output-set plans] (dissoc grouped-plans (:output-set osn))]
+                       (let [child-osn (get-osn-child! osn child-output-set)]
+                         (add-plans! child-osn plans)
+                         (swap! (:descendant-summary-atom osn) max-summary (local-summary child-osn))))))))
              
              (local-summary       osn)]
             ;; Descendant
@@ -537,15 +542,16 @@
 
 (defn make-initial-plan [init-set ref-constraint act-seq]
   (let [constrained-set (state-set/constrain init-set ref-constraint)]
-    (when-let [[[out-set out-summary] plan]
-              (map-state (fn [in-pair a]
-                           (let [pn (make-initial-plan-node a in-pair)
-                                 out-pair (plan-node-output-set-and-summary pn)]
-                             (when (viable-output-set-and-summary? out-pair)
-                               [out-pair pn])))
-                         [constrained-set zero-summary]
-                         act-seq)]
-     (Plan. ref-constraint constrained-set plan out-set out-summary))))
+    (when-not (state-set/empty? constrained-set)
+     (when-let [[[out-set out-summary] plan]
+                (map-state (fn [in-pair a]
+                             (let [pn (make-initial-plan-node a in-pair)
+                                   out-pair (plan-node-output-set-and-summary pn)]
+                               (when (viable-output-set-and-summary? out-pair)
+                                 [out-pair pn])))
+                           [constrained-set zero-summary]
+                           act-seq)]
+       (Plan. ref-constraint constrained-set plan out-set out-summary)))))
 
 
 (defn propagate-plan-changes

@@ -799,31 +799,32 @@
     ;; Cost = if possible stay, min dist from gripper to drop loc.  
     ;; Otherwise, min dist to a dst. 
     (let [const (state-set/get-known-var ss :const)
-          dsts  (util/safe-get const [:goal o])
+          dsts  (set (filter #(contains? (state/get-var ss [:object-at %]) nil)
+                         (util/safe-get const [:goal o])))         
           bases (state/get-var ss [:base])
           cgos  (state/get-var ss [:gripper-offset])
           sgs   (for [o-dst dsts] (possible-grasp-base-pos-ss const bases o-dst))
           stays (apply clojure.set/union (map first sgs))
           goes  (apply clojure.set/union (map second sgs))          
           allbases  (clojure.set/union stays goes)]
-      (assert (seq dsts))
-      [(state/set-vars ss (concat [[[:base] allbases] [[:gripper-offset] #{[0 0]}]
-                                   [[:pos o] dsts] [[:holding] #{nil}]
-                                    [[:at-goal? o] #{true}]]
-                                  (if-let [s (util/singleton dsts)]
-                                    [[[:object-at s] #{o}]]
-                                    (for [o-dst dsts]
-                                      [[:object-at o-dst] #{o nil}]))))
+      (when (seq dsts)
+        [(state/set-vars ss (concat [[[:base] allbases] [[:gripper-offset] #{[0 0]}]
+                                     [[:pos o] dsts] [[:holding] #{nil}]
+                                     [[:at-goal? o] #{true}]]
+                                    (if-let [s (util/singleton dsts)]
+                                      [[[:object-at s] #{o}]]
+                                      (for [o-dst dsts]
+                                        [[:object-at o-dst] (conj (state/get-var ss [:object-at o-dst]) o)]))))
        
-       (+ putdown-reward
-          (apply max
-            (+ (apply max (for [go cgos] (move-gripper-reward go [0 0])))
-               park-reward unpark-reward
-               (let [d (dec (apply min (for [base bases, o-dst dsts] (manhattan-distance base o-dst))))]
-                 (assert (= (* 2 move-gripper-step-reward) move-base-step-reward ))
-                 (* move-base-step-reward d)))
-            (for [stay stays, go cgos, o-dst dsts]
-              (* move-gripper-step-reward (max 0 (dec (manhattan-distance (add-pos stay go) o-dst)))))))]))
+         (+ putdown-reward
+            (apply max
+                   (+ (apply max (for [go cgos] (move-gripper-reward go [0 0])))
+                      park-reward unpark-reward
+                      (let [d (dec (apply min (for [base bases, o-dst dsts] (manhattan-distance base o-dst))))]
+                        (assert (= (* 2 move-gripper-step-reward) move-base-step-reward ))
+                        (* move-base-step-reward d)))
+                   (for [stay stays, go cgos, o-dst dsts]
+                     (* move-gripper-step-reward (max 0 (dec (manhattan-distance (add-pos stay go) o-dst)))))))])))
   (pessimistic-set-and-reward- [a ss] nil)
 ))
 
@@ -896,7 +897,8 @@
           sbases (state/get-var ss [:base])
           sgos   (state/get-var ss [:gripper-offset])
           o-src  (state-set/get-known-var ss [:pos o])
-          o-dsts (util/safe-get const [:goal o])
+          o-dsts (set (filter #(seq (clojure.set/intersection (state/get-var ss [:object-at %]) #{nil o}))
+                          (util/safe-get const [:goal o])))
           [mstays mgoes] (possible-grasp-base-pos-ss const sbases o-src)
           allmbases      (clojure.set/union mstays mgoes)
           fsgs   (for [o-dst o-dsts] (possible-grasp-base-pos-ss const allmbases o-dst))
@@ -905,49 +907,51 @@
           allfbases  (clojure.set/union fstays fgoes)
           bothstays     (clojure.set/intersection mstays fstays)]
       (assert (= (seq sgos) [[0 0]]))
-      [(state/set-vars ss (concat [[[:base] allfbases] [[:gripper-offset] #{[0 0]}]
-                                   [[:pos o] o-dsts] [[:holding] #{nil}]
-                                   [[:object-at o-src] #{nil}]
-                                   [[:at-goal? o] #{true}]]
-                                  (if-let [s (util/singleton o-dsts)]
-                                    [[[:object-at s] #{o}]]
-                                    (for [o-dst o-dsts] [[:object-at o-dst] #{o nil}]))))       
-       (+ pickup-reward putdown-reward
-          (apply max
-           (concat
-            ; no base movement
-            (for [base bothstays, go sgos, o-dst o-dsts]
-              (* move-gripper-step-reward
-                 (+ (max 0 (- (manhattan-distance go o-src) 1))
-                    (max 0 (- (manhattan-distance o-src o-dst) 2))
-                    (max 0 (- (manhattan-distance o-dst base) 1)))))
+      (when (seq o-dsts)
+       [(state/set-vars ss (concat [[[:base] allfbases] [[:gripper-offset] #{[0 0]}]
+                                    [[:pos o] o-dsts] [[:holding] #{nil}]
+                                    [[:object-at o-src] #{nil}]
+                                    [[:at-goal? o] #{true}]]
+                                   (if-let [s (util/singleton o-dsts)]
+                                     [[[:object-at s] #{o}]]
+                                     (for [o-dst o-dsts]
+                                       [[:object-at o-dst] (conj (state/get-var ss [:object-at o-dst]) o)]))))       
+        (+ pickup-reward putdown-reward
+           (apply max
+                  (concat
+                                        ; no base movement
+                   (for [base bothstays, go sgos, o-dst o-dsts]
+                     (* move-gripper-step-reward
+                        (+ (max 0 (- (manhattan-distance go o-src) 1))
+                           (max 0 (- (manhattan-distance o-src o-dst) 2))
+                           (max 0 (- (manhattan-distance o-dst base) 1)))))
 
-            ; no first base movement
-            (for [mbase mstays, fbase allfbases, go sgos, o-dst o-dsts]
-              (+ park-reward unpark-reward
-                 (* move-base-step-reward (manhattan-distance mbase fbase))
-                 (* move-gripper-step-reward
-                    (+ (max 0 (- (manhattan-distance go o-src) 1))
-                       (max 0 (- (manhattan-distance o-src mbase) 1))
-                       (* 2 (max 0 (- (manhattan-distance fbase o-dst) 1)))))))
+                                        ; no first base movement
+                   (for [mbase mstays, fbase allfbases, go sgos, o-dst o-dsts]
+                     (+ park-reward unpark-reward
+                        (* move-base-step-reward (manhattan-distance mbase fbase))
+                        (* move-gripper-step-reward
+                           (+ (max 0 (- (manhattan-distance go o-src) 1))
+                              (max 0 (- (manhattan-distance o-src mbase) 1))
+                              (* 2 (max 0 (- (manhattan-distance fbase o-dst) 1)))))))
 
-            ; no second base movement
-            (for [sbase sbases, fbase fstays, go sgos, o-dst o-dsts]
-              (+ park-reward unpark-reward
-                 (* move-base-step-reward (manhattan-distance sbase fbase))
-                 (* move-gripper-step-reward
-                    (+ (manhattan-distance go [0 0])
-                       (max 0 (- (manhattan-distance fbase o-src) 1))
-                       (max 0 (- (manhattan-distance o-src o-dst) 2))                       
-                       (max 0 (- (manhattan-distance o-dst fbase) 1))))))
+                                        ; no second base movement
+                   (for [sbase sbases, fbase fstays, go sgos, o-dst o-dsts]
+                     (+ park-reward unpark-reward
+                        (* move-base-step-reward (manhattan-distance sbase fbase))
+                        (* move-gripper-step-reward
+                           (+ (manhattan-distance go [0 0])
+                              (max 0 (- (manhattan-distance fbase o-src) 1))
+                              (max 0 (- (manhattan-distance o-src o-dst) 2))                       
+                              (max 0 (- (manhattan-distance o-dst fbase) 1))))))
 
-            ; both base movements -- TODO: speed up ?
-            (for [sbase sbases, mbase allmbases, fbase allfbases, go sgos, o-dst o-dsts]
-              (+ (move-base-reward sbase mbase go)                 
-                 (move-base-reward sbase mbase [0 0])
-                 (* move-gripper-step-reward
-                    (* 2 (max 0 (- (manhattan-distance mbase o-src) 1)))
-                    (* 2 (max 0 (- (manhattan-distance fbase o-dst) 1)))))))))]))
+                                        ; both base movements -- TODO: speed up ?
+                   (for [sbase sbases, mbase allmbases, fbase allfbases, go sgos, o-dst o-dsts]
+                     (+ (move-base-reward sbase mbase go)                 
+                        (move-base-reward sbase mbase [0 0])
+                        (* move-gripper-step-reward
+                           (* 2 (max 0 (- (manhattan-distance mbase o-src) 1)))
+                           (* 2 (max 0 (- (manhattan-distance fbase o-dst) 1)))))))))])))
   (pessimistic-set-and-reward- [_ ss] nil)))
 
 (defn remaining-objects [s] 
@@ -1076,7 +1080,8 @@
 
 ; (make-discrete-manipulation-env [3 3] [1 1] [ [ [1 2] [2 2] ] ] [ [:a [1 2] [ [2 2] [2 2] ] ] ] 0)
 ; (make-discrete-manipulation-env [5 3] [1 1] [ [ [2 2] [3 2] ] ] [ [:a [2 2] [ [3 2] [3 2] ] ] ] 1)
-; (print-state (initial-state (make-discrete-manipulation-env [10 10] [1 1] [ [ [4 4] [6 6] ] ] [ [:a [5 5] [ [4 4] [4 4] ] ] ] 2))) 
+;;  (make-discrete-manipulation-env [4 3] [1 1] [ [ [1 2] [3 2] ] ] [ [:a [1 2] [ [2 2] [3 2] ] ] [:b [3 2] [ [1 2] [2 2] ] ] ] 0)
+;; (print-state (initial-state (make-discrete-manipulation-env [10 10] [1 1] [ [ [4 4] [6 6] ] ] [ [:a [5 5] [ [4 4] [4 4] ] ] ] 2))) 
 
 ; (sahucs-flat )
 
