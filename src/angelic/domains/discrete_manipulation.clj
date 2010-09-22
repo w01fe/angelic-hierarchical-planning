@@ -45,7 +45,9 @@
 ; unpark, u/d/l/r, park (for base)
 ; gu/gl/gr/gl
 ; pickup-l/r/d/u
-; drop-l/r/d/u
+                                        ; drop-l/r/d/u
+
+; TODO: implicit descriptions not consistent! in particular, top vs move-to-goal top
 
 (def dirs [[:l [-1 0]] [:r [1 0]] [:u [0 -1]] [:d [0 1]]])
 
@@ -1077,6 +1079,8 @@
 ; (print-state (initial-state (make-discrete-manipulation-env [10 10] [1 1] [ [ [4 4] [6 6] ] ] [ [:a [5 5] [ [4 4] [4 4] ] ] ] 2))) 
 
 ; (sahucs-flat )
+
+;; (interactive-search (make-implicit-first-ah-a*-env (make-discrete-manipulation-hierarchy (make-discrete-manipulation-env-regions [7 4] [1 1] [[[2 2] [3 3]] [[5 2] [6 3]] ]  [[:a [2 2] [[5 2] [6 3]]] [:b [5 2] [[2 2] [3 3]]]] 1 2 2 1))))
 
 ; (let [e (make-discrete-manipulation-env-regions [10 10] [1 1] [ [ [4 4] [7 7] ] ] [ [:a [5 5] [ [4 4] [4 4 ] ] ] ] 1 2 2 1) h (make-discrete-manipulation-hierarchy e)] (println (time (run-counted #(uniform-cost-search e)))) (println (time (run-counted #(sahucs-flat h)))))
 

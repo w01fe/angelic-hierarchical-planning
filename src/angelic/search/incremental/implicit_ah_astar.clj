@@ -56,7 +56,7 @@
   (assert (action-node-refinable? an))
   (let [{:keys [input-tuple constraint action]} an
         [ss rew solved?] input-tuple]
-    (remove #{nil}
+    (filter identity
       (for [[new-constraint ref] (angelic/immediate-refinements-set action ss)
             :let [first-constraint     (merge-with clojure.set/intersection constraint new-constraint)]]
         (make-action-node-seq
@@ -111,7 +111,7 @@
            (let [old-rew (second (:output-tuple shp))
                  new-rew (second (:output-tuple ref))]
                                         ;             (println old-rew shp new-rew)
-             (util/assert-is (<= new-rew old-rew) "%s" (print-str shp ref))
+             #_(util/assert-is (<= new-rew old-rew) "%s" (print-str shp ref))
              [ref (- new-rew old-rew)]))))))
   (goal-fn [_] (fn [s] (nth (util/safe-get s :output-tuple) 2))))
 
