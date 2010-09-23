@@ -1075,6 +1075,9 @@
 (defn make-discrete-manipulation-hierarchy [env]
   (hierarchy-util/make-simple-hierarchical-env env [(make-tla env)]))
 
+                                        ; (do  (use 'edu.berkeley.ai.util '[angelic env hierarchy] 'angelic.domains.nav-switch 'angelic.search.incremental.implicit-dash-astar 'angelic.domains.discrete-manipulation) (require '[angelic.search.incremental.implicit-ah-astar :as aha]) (require '[ angelic.search.incremental.hierarchical :as his ]) (require '[ mycroft.main :as mm] ) (run 8081))
+
+;(let [h (make-discrete-manipulation-hierarchy (make-discrete-manipulation-env [5 5] [1 1] [ [ [2 2] [3 4] ] ] [ [:a [2 2] [ [3 2] [3 3] ] ] [:b [3 2] [ [2 3] [3 3] ] ] [:c [3 3] [ [2 2] [2 3] ] ] [:d [2 4] [ [3 4] [3 4] ] ] ] 1))] (println (time (run-counted #(his/h-ucs h))))#_  (println (run-counted #(aha/implicit-first-ah-a* h)))  (println (time (run-counted #(dotrace [refine-pn] (implicit-random-dash-a* h))))))
 
 ; (use '[angelic discrete-manipulation env hierarchy hierarchical-incremental-search] 'edu.berkeley.ai.util)
 
@@ -1083,7 +1086,7 @@
 ;; (make-discrete-manipulation-env [4 3] [1 1] [ [ [1 2] [3 2] ] ] [ [:a [1 2] [ [2 2] [3 2] ] ] [:b [3 2] [ [1 2] [2 2] ] ] ] 1)
 ;;  (make-discrete-manipulation-env [4 3] [1 1] [ [ [1 2] [3 2] ] ] [ [:a [1 2] [ [2 2] [3 2] ] ] [:b [3 2] [ [1 2] [2 2] ] ] ] 0)
 ;; (print-state (initial-state (make-discrete-manipulation-env [10 10] [1 1] [ [ [4 4] [6 6] ] ] [ [:a [5 5] [ [4 4] [4 4] ] ] ] 2))) 
-
+;;; (make-discrete-manipulation-env [5 5] [1 1] [ [ [2 2] [3 4] ] ] [ [:a [2 2] [ [3 2] [3 3] ] ] [:b [3 2] [ [2 3] [3 3] ] ] [:c [3 3] [ [2 2] [2 3] ] ] [:d [2 4] [ [3 4] [3 4] ] ] ] 1)
 ; (sahucs-flat )
 
 ;; (interactive-search (make-implicit-first-ah-a*-env (make-discrete-manipulation-hierarchy (make-discrete-manipulation-env-regions [7 4] [1 1] [[[2 2] [3 3]] [[5 2] [6 3]] ]  [[:a [2 2] [[5 2] [6 3]]] [:b [5 2] [[2 2] [3 3]]]] 1 2 2 1))))

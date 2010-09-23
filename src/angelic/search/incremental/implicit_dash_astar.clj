@@ -102,7 +102,7 @@
   (when (optimal-solution summary) (assert (<= (max-reward summary) max-rew)))
   (SimpleSummary. (min max-rew (:max-rew summary)) (:status summary) (:opt-sol summary)))
 
-(defn next-min-reward [stat min-reward] (min min-reward (max-reward stat)))
+(defn next-min-reward [stat min-reward] (max min-reward (max-reward stat)))
 
 (def zero-summary (SimpleSummary. 0 :solved []))
 (defn add-summaries [s1 s2]
@@ -147,9 +147,11 @@
 (defn summary-str [s] (str "Summary:" (max-reward s) (:status s) #_ (vec (:opt-sol s))))
 (defmethod print-method SimpleSummary [s o] (print-method (summary-str s) o))
 
-(defn assert-valid-summary-change [old-summary new-summary]
-  (util/assert-is (<= (max-reward new-summary) (max-reward old-summary)) "%s" [old-summary new-summary])
-  (when-not (live? old-summary) (assert (= old-summary new-summary))))
+(defmacro assert-valid-summary-change
+  ([old-summary new-summary] ( assert-valid-summary-change old-summary new-summary ""))
+  ([old-summary new-summary msg]
+     `(do (util/assert-is (<= (max-reward ~new-summary) (max-reward ~old-summary)) "%s" [~old-summary ~new-summary ~msg])
+        (when-not (live? ~old-summary) (assert (= ~old-summary ~new-summary))))))
 
 
 
@@ -276,7 +278,8 @@
                   [(= child-output-set (:output-set osn))
                    (print-str (util/differences [(state/ooc-effects (:output-set osn)) (state/ooc-effects child-output-set)]))
                    (print-str (util/differences [ (state/as-map (:output-set osn)) (state/as-map child-output-set)]))
-                   (:input-pair osn)]) ;; TODO: slow check, remove
+                   (:input-pair osn)
+                   (def *osn* osn)]) ;; TODO: slow check, remove
   (util/assert-is (not (state-set/empty? child-output-set)))
   (or (-> osn :child-map-atom deref (get child-output-set))
       (let [child (make-child-osn osn child-output-set)]
@@ -312,9 +315,15 @@
                (if (identical? (util/singleton new-plans) best-plan)
                  (refresh-local-summary! osn)
                  (let [grouped-plans (group-by plan-output-set new-plans)]
+;                   (def *gp* grouped-plans)
+;                   (def *rp* best-plan)
                    (reset! (:plans-atom osn) (concat (get grouped-plans (:output-set osn)) rest-plans))
                    (refresh-local-summary! osn) ;; Updated vals for get-child-osn
                    (doseq [[child-output-set plans] (dissoc grouped-plans (:output-set osn))]
+#_                     (when (state-set/empty? child-output-set)
+                         (println plans)
+                         (println osn best-plan)
+                         (assert nil))
                      (let [child-osn (get-osn-child! osn child-output-set)]
                        (add-plans! child-osn plans)
                        (swap! (:descendant-summary-atom osn) max-summary (local-summary child-osn)))))))
@@ -336,11 +345,20 @@
 
 ;; TODO: figure out right things for here.
 
+(defn can-split-child? [parent-summary child-summary]
+  (or (< (max-reward parent-summary) (max-reward child-summary))
+      (and (= (max-reward parent-summary) (max-reward child-summary))
+           (optimal-solution child-summary))))
+
+
 (defn split-osn
   "Return a seq of child osn's (i.e., subset output sets) to split off from osn.
    Currently splits children >= min-reward when parent < min-reward.
    Actually, currently splits strictly better children."
   [osn min-reward excluded-child-set]
+  (let [bar (handle-summary osn)]
+    (filter #(can-split-child? bar (tree-summary %))
+            (remove excluded-child-set (vals @(:child-map-atom osn)))))
 #_  (println osn min-reward (max-reward (handle-summary osn))
            (map #(max-reward (tree-summary %))
             (remove excluded-child-set (vals @(:child-map-atom osn))))
@@ -348,7 +366,7 @@
  #_ (when (< (max-reward (handle-summary osn)) min-reward)
     (filter #(>= (max-reward (tree-summary %)) min-reward)
             (remove excluded-child-set (vals @(:child-map-atom osn)))))
- (let [bar (max-reward (handle-summary osn))]
+ #_ (let [bar (max-reward (handle-summary osn))]
    (filter #(> (max-reward (tree-summary %)) bar)
            (remove excluded-child-set (vals @(:child-map-atom osn))))))
 
@@ -356,11 +374,17 @@
   "Can this OSN possibly be effectively split, at any min-reward.
    I.e., does the best plan live at a strict descendant?"
   [osn excluded-child-set]
+  (seq (split-osn osn :dummy excluded-child-set)))
+
+#_(defn can-split-osn?
+  "Can this OSN possibly be effectively split, at any min-reward.
+   I.e., does the best plan live at a strict descendant?"
+  [osn excluded-child-set]
  (let [child-summary (sub-descendant-summary osn excluded-child-set)
        handle-summary (handle-summary osn)]
-   (> (max-reward child-summary) (max-reward handle-summary))
+  (> (max-reward child-summary) (max-reward handle-summary))
    #_ (println (second (:input-pair osn)) child-summary handle-summary)
- #_   (or (> (max-reward child-summary) (max-reward handle-summary))
+   #_ (or (> (max-reward child-summary) (max-reward handle-summary))
         (and (= (max-reward child-summary) (max-reward handle-summary))
              (optimal-solution child-summary)))))
 
@@ -428,14 +452,23 @@
 
 ;;;;;;;;;;;;;;;;;;;;;;;;;;;; Refining Plan Nodes ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
 
+;; TODO TODO TODO: figure out consistency.
+
+(defn assert-valid-pn-successor
+  "Assert consistency, then return new-pn"
+  [old-pn new-pn]
+;  (assert-valid-summary-change (:output-summary old-pn) (:output-summary new-pn) (do (def *old-pn* old-pn) (def *new-pn* new-pn) (print-str old-pn new-pn)))
+  new-pn)
+
+
 (defn refine-pn [pn input-summary min-reward]
+;  (Thread/sleep 20)
   (let [{:keys [sub-osn excluded-child-set reward-bound]} pn]
     (refine-osn! sub-osn min-reward excluded-child-set)
     (let [new-summary (compute-plan-node-output-summary input-summary sub-osn
                                                         excluded-child-set reward-bound)]
-      (assert-valid-summary-change (:output-summary pn) new-summary)
-     #_ (println (second (:input-pair (:sub-osn pn))) new-summary)
-      (assoc pn :output-summary new-summary))))
+      (assert-valid-pn-successor pn (assoc pn :output-summary new-summary)))))
+
 
 
 
@@ -443,21 +476,21 @@
 
 (defn split-pn-output
   "Split this plan node into a seq of plan nodes, all but 0-1 of which will have
-   refined output sets."
+   refined output sets, and all of which will be viable.."
   [pn input-set input-summary min-step-reward]
-  (let [{:keys [sub-osn excluded-child-set reward-bound]} pn
+  (let [{:keys [sub-osn excluded-child-set reward-bound output-constraint]} pn
         split-children (split-osn sub-osn min-step-reward excluded-child-set)
 ;        _  (when (seq split-children) (println "SPLIT" pn (count split-children)))
 ;        _   (println "split" pn (count excluded-child-set) (count split-children))    
         new-ecs        (into excluded-child-set split-children)
         new-summary    (compute-plan-node-output-summary input-summary sub-osn new-ecs reward-bound)]
     (concat
-     (when (viable-summary? new-summary)
-       (assert-valid-summary-change (:output-summary pn) new-summary)
-       [(assoc pn :excluded-child-set new-ecs :output-summary new-summary)])
-     (for [child split-children]
-       (do ;         (println "SC"  sub-osn child )
-           (make-plan-node input-set input-summary child #{} {} is/pos-inf))))))
+     (when (viable-summary? new-summary)       
+       [(assert-valid-pn-successor pn (assoc pn :excluded-child-set new-ecs :output-summary new-summary))])
+     (for [child split-children
+           :let [child-pn (make-plan-node input-set input-summary child #{} output-constraint is/pos-inf)]
+           :when (viable-output-set-and-summary? (plan-node-output-set-and-summary child-pn))]
+       child-pn))))
 
 
 (defn update-pn-input
@@ -469,16 +502,20 @@
     (if (identical? new-osn sub-osn)
       (let [new-output-summary (compute-plan-node-output-summary
                                 new-input-summary sub-osn excluded-child-set reward-bound)]
-        (assert-valid-summary-change (:output-summary pn) new-output-summary)
+        
         (when (viable-summary? new-output-summary)
-          [[false output-set new-output-summary] (assoc pn :output-summary new-output-summary)]))
-      (let [new-pn (make-plan-node new-input-set new-input-summary new-osn #{}
-                                   (state-set/as-constraint (osn-output-set sub-osn))
-                                   (max-reward (broom-summary sub-osn excluded-child-set)))
-            new-output-pair (plan-node-output-set-and-summary new-pn)]
-        (assert-valid-summary-change (:output-summary pn) (second new-output-pair))
+          [[false output-set new-output-summary]
+           (assert-valid-pn-successor pn (assoc pn :output-summary new-output-summary))]))
+      (let [new-pn (make-plan-node
+                    new-input-set new-input-summary new-osn #{}
+                    (merge-with clojure.set/intersection
+                                (:output-constraint pn)
+                                (state-set/as-constraint (osn-output-set sub-osn)))
+                    (max-reward (broom-summary sub-osn excluded-child-set)))
+            new-output-pair (plan-node-output-set-and-summary new-pn)]        
         (when (viable-output-set-and-summary? new-output-pair)
-          [(cons (not (= (:output-set new-pn) output-set)) new-output-pair) new-pn])))))
+          [(cons (not (= (:output-set new-pn) output-set)) new-output-pair)
+           (assert-valid-pn-successor pn new-pn)])))))
 
 
 ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
@@ -495,7 +532,7 @@
   Expandable
   (expand-plan [this min-reward]
     (if (>= (max-reward summary) min-reward)
-      expansions
+      (remove #(not (viable-output-set-and-summary? ((juxt :output-set :summary) %))) expansions)
       [this])))
 
 (def +worst-plan+ (DummyRootPlan. {} :dummy :dummy state-set/empty-lfss +worst-summary+))
@@ -533,8 +570,8 @@
   (expand-plan [plan min-reward]
    (if (not (refinable-summary? (:summary plan) min-reward)) [plan]
       (let [{:keys [input-constraint input-set plan-nodes output-set summary]} plan
-            ref-index       (util/position-if #(live? (:output-summary %)) plan-nodes)
-                            #_ (rand-int (count plan-nodes)) ;TODO: put back
+            ref-index       #_ (util/position-if #(live? (:output-summary %)) plan-nodes)
+                             (rand-int (count plan-nodes)) ;TODO: put back
             [pre-nodes [ref-node & post-nodes]] (split-at ref-index plan-nodes)
 ;            _ (println plan  (count pre-nodes) (class ref-node) (count post-nodes))       
             [pre-set pre-summary]  (if (seq pre-nodes) (plan-node-output-set-and-summary (last pre-nodes)) [input-set zero-summary])
@@ -549,9 +586,10 @@
                   ;;                   Returns nil if the plan becomes infeasible, otherwise a plan.
                   (let [prefix-nodes (concat pre-nodes [next-pn])
                         set-changed? (not= (:output-set next-pn) (:output-set ref-node))
-                        input-state  (cons set-changed? (plan-node-output-set-and-summary (last prefix-nodes)))
+                        input-state  (cons set-changed? (plan-node-output-set-and-summary next-pn))
                         [final-state out-nodes] (util/map-state input-state update-pn-input post-nodes)]
-                    (assert-valid-summary-change (:output-summary ref-node) (:output-summary next-pn))
+                    (assert-valid-pn-successor ref-node next-pn)
+                    (util/assert-is  (viable-output-set-and-summary? (plan-node-output-set-and-summary next-pn)) "%s" [ref-node next-pn] )
                     (when-let [[_ out-set out-summary] final-state]
                        (Plan. input-constraint input-set (concat prefix-nodes out-nodes) out-set out-summary)))))))))
 
