@@ -539,7 +539,7 @@
 
 (defn make-dummy-root-plan [logged-input-set action reward-bound-fn]
   (let [prim? (env/primitive? action)]
-    (if-let [s (and prim? (state-set/singleton logged-input-set))] 
+    (if-let [s (and prim? (every? util/singleton? (vals (state/extract-context logged-input-set (state/current-context logged-input-set)))) (state-set/some-element logged-input-set))] 
       ;; terminal (solution or inapplicable) if input concrete & action primitive,
       (if (env/applicable? action s)
         (let [[ss rew] (env/successor action s)]
