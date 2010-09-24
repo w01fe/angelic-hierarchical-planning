@@ -71,7 +71,7 @@
            :let [cur-vals (state/get-var ss var)
                  isect    (clojure.set/intersection vals cur-vals)]
            :when (not (= (count isect) (count cur-vals)))]
-       (do (assert (contains? context var))
+       (do #_ (util/assert-is (contains? context var)) ;; TODO: can't actually assert this without stronger conditions on what must be reported in precondition contexts, unfortunately.  I.e., how to do it may not depend on initial value, but operation may still constrain it ?!
            [var isect]))))
    
   state/FactoredState
@@ -155,5 +155,10 @@
         (println (filter #(not (clojure.set/subset? (nth % 1) (nth % 2))) (map #(vector % (m1 %) (m2 %)) ks))
                  (filter   #(util/proper-subset? (m1 % ) (m2 %)) ks)
                  ))))
+;; TODO: can we do tis better?
+;; Note difficulties: must capture all of context (even unset parts), plus set parts of non-context.
+(defn as-constraint [ss]#_ (println (state/extract-effects ss) (state/current-context ss))
+  (state/as-map ss)
+ #_  (state/extract-effects ss))
 
-(defn as-constraint [ss]#_ (println (state/extract-effects ss) (state/current-context ss)) (state/extract-effects ss))
+

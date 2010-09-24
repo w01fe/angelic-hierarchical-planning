@@ -287,7 +287,6 @@
       (let [child (make-child-osn osn child-output-set)]
         (swap! (:child-map-atom osn) assoc child-output-set child)
         child)))
-
 (defn add-plans! "Add plans, refresh summary." [osn new-plans]
 ;  (println (class osn))
   (swap! (:plans-atom osn) concat new-plans)
@@ -295,6 +294,8 @@
 
 
 ;; TODO: can still go up-then-down if new children created.  Fix it.
+;; TODO TODO: can also error when plan moves down to child.
+;; What's the right way to fix this? 
 (defn refine-osn!
   "Repeatedly refine shallowest best plan covered by osn until solved or below min-reward."
   [osn min-reward excluded-child-set]
@@ -317,8 +318,7 @@
                (if (identical? (util/singleton new-plans) best-plan)
                  (refresh-local-summary! osn)
                  (let [grouped-plans (group-by plan-output-set new-plans)]
-;                   (def *gp* grouped-plans)
-;                   (def *rp* best-plan)
+#_                 (do  (def *osn* osn) (def *gp* grouped-plans) (def *rp* best-plan))
                    (reset! (:plans-atom osn) (concat (get grouped-plans (:output-set osn)) rest-plans))
                    (refresh-local-summary! osn) ;; Updated vals for get-child-osn
                    (doseq [[child-output-set plans] (dissoc grouped-plans (:output-set osn))]
@@ -415,7 +415,7 @@
 
 ;;;;;;;;;;;;;;;;;;;;;;; Progressing sets and summaries ;;;;;;;;;;;;;;;;;;;;;;;;;
 
-(defn compute-plan-node-output-set [input-set sub-osn output-constraint]
+(defn #_util/defn-debug compute-plan-node-output-set [input-set sub-osn output-constraint]
   (state-set/constrain (state/transfer-effects input-set (osn-output-set sub-osn))
                        output-constraint))
 
@@ -466,7 +466,7 @@
   new-pn)
 
 
-(util/defn-debug refine-pn [pn input-summary min-reward]
+(defn #_util/defn-debug refine-pn [pn input-summary min-reward]
 ;  (Thread/sleep 20)
   (let [{:keys [sub-osn excluded-child-set reward-bound]} pn]
     (refine-osn! sub-osn min-reward excluded-child-set)
@@ -514,7 +514,7 @@
       (let [new-pn (make-plan-node
                     new-input-set new-input-summary new-osn #{}
                     (merge-with clojure.set/intersection
-                                (:output-constraint pn)
+                                output-constraint
                                 (state-set/as-constraint (osn-output-set sub-osn)))
                     (max-reward (broom-summary sub-osn #{} #_excluded-child-set))) ;; TODO: cannot enforce ECS, so we fail assertions later...
             new-output-pair (plan-node-output-set-and-summary new-pn)]        
