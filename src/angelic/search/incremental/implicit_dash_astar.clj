@@ -27,6 +27,8 @@
 ;; whose reward has increased since last refinement done
 ;; (although their reward may currently be lower, having passed it on furthers, if caching.)
 
+;; TODO: note that we cannot use solutions from a child OSN directly --
+;; since we are associating it with too broad of an output set.  
 
 ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
 ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;; Misc. Utils ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
@@ -99,7 +101,7 @@
 ;(defn min-summary [& stats] (apply max-compare (complement better-summary?) (cons +best-summary+ stats)))
 
 (defn bound-summary [summary max-rew]
-  (when (optimal-solution summary) (assert (<= (max-reward summary) max-rew)))
+  (when (optimal-solution summary) (util/assert-is (<= (max-reward summary) max-rew)))
   (SimpleSummary. (min max-rew (:max-rew summary)) (:status summary) (:opt-sol summary)))
 
 (defn next-min-reward [stat min-reward] (max min-reward (max-reward stat)))
@@ -419,14 +421,15 @@
 
 
 (defn make-live-for-split [sub-osn ecs summary]
-#_  (util/prln) (if (and (not (live? summary)) (can-split-osn? sub-osn ecs))
-                (make-live-summary (max-reward summary) [(osn-action sub-osn)])
-                summary))
+  #_  (util/prln)
+  (if (and (not (live? summary)) (can-split-osn? sub-osn ecs))
+    (make-live-summary (max-reward summary) [(osn-action sub-osn)])
+    summary))
 
 (defn compute-plan-node-output-summary [input-summary sub-osn ecs reward-bound]
   (->> (broom-summary sub-osn ecs)
-       (#(bound-summary % reward-bound))
        (make-live-for-split sub-osn ecs)
+       (#(bound-summary % reward-bound)) ;; Note: must come after above.
        (add-summaries input-summary)))
 
 
@@ -441,9 +444,11 @@
 
 (defn make-plan-node [input-set input-summary sub-osn
                       excluded-child-set output-constraint reward-bound]
-  (PlanNode. sub-osn excluded-child-set output-constraint reward-bound
-             (compute-plan-node-output-set input-set sub-osn output-constraint)
-             (compute-plan-node-output-summary input-summary sub-osn excluded-child-set reward-bound)))
+  (let [output-set (compute-plan-node-output-set input-set sub-osn output-constraint)]
+   (PlanNode. sub-osn excluded-child-set output-constraint reward-bound
+              output-set
+              (if (state-set/empty? output-set) +worst-summary+ ;; Prevent assertion in cpn-os
+                  (compute-plan-node-output-summary input-summary sub-osn excluded-child-set reward-bound)))))
 
 (defn make-initial-plan-node [action [input-set input-summary]]
   (let [sub (get-root-osn input-set action (constantly is/pos-inf))]
@@ -461,7 +466,7 @@
   new-pn)
 
 
-(defn refine-pn [pn input-summary min-reward]
+(util/defn-debug refine-pn [pn input-summary min-reward]
 ;  (Thread/sleep 20)
   (let [{:keys [sub-osn excluded-child-set reward-bound]} pn]
     (refine-osn! sub-osn min-reward excluded-child-set)
@@ -511,7 +516,7 @@
                     (merge-with clojure.set/intersection
                                 (:output-constraint pn)
                                 (state-set/as-constraint (osn-output-set sub-osn)))
-                    (max-reward (broom-summary sub-osn excluded-child-set)))
+                    (max-reward (broom-summary sub-osn #{} #_excluded-child-set))) ;; TODO: cannot enforce ECS, so we fail assertions later...
             new-output-pair (plan-node-output-set-and-summary new-pn)]        
         (when (viable-output-set-and-summary? new-output-pair)
           [(cons (not (= (:output-set new-pn) output-set)) new-output-pair)
@@ -540,7 +545,7 @@
 (defn make-dummy-root-plan [logged-input-set action reward-bound-fn]
   (let [prim? (env/primitive? action)]
     (if-let [s (and prim? (every? util/singleton? (vals (state/extract-context logged-input-set (state/current-context logged-input-set)))) (state-set/some-element logged-input-set))] 
-      ;; terminal (solution or inapplicable) if input concrete & action primitive,
+      ;; terminal (solution or inapplicable) if input concrete (in context!) & action primitive,
       (if (env/applicable? action s)
         (let [[ss rew] (env/successor action s)]
           (DummyRootPlan.

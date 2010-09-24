@@ -94,3 +94,9 @@
   ([] nil)
   ([x] x)
   ([x y & args] `(when-let [~'it ~x] (aand ~y ~@args))))
+
+(def *bad-args* (atom nil))
+(defmacro defn-debug
+  "Record args in *bad-args*"
+  [name args & body]
+  `(defn ~name ~args (reset! *bad-args* ~args) ~@body))
