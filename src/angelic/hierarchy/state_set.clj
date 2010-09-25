@@ -155,10 +155,12 @@
         (println (filter #(not (clojure.set/subset? (nth % 1) (nth % 2))) (map #(vector % (m1 %) (m2 %)) ks))
                  (filter   #(util/proper-subset? (m1 % ) (m2 %)) ks)
                  ))))
+
 ;; TODO: can we do tis better?
 ;; Note difficulties: must capture all of context (even unset parts), plus set parts of non-context.
 (defn as-constraint [ss]#_ (println (state/extract-effects ss) (state/current-context ss))
-  (state/as-map ss)
+  (into (state/extract-context ss (state/current-context ss)) (state/ooc-effects ss))
+#_  (state/as-map ss)
  #_  (state/extract-effects ss))
 
 

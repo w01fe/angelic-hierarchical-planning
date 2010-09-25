@@ -497,7 +497,7 @@
   (primitive?  [_] false)
 
   env/ContextualAction
-  (precondition-context [_ s] #{[:base]})
+  (precondition-context [_ s] #{[:base] [:parked?]})
 
   hierarchy/HighLevelAction
   (immediate-refinements- [this s]
