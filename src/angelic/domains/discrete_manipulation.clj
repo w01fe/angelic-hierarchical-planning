@@ -915,7 +915,8 @@
                                    (if-let [s (util/singleton o-dsts)]
                                      [[[:object-at s] #{o}]]
                                      (for [o-dst o-dsts]
-                                       [[:object-at o-dst] (conj (state/get-var ss [:object-at o-dst]) o)]))))       
+                                       [[:object-at o-dst] (conj (state/get-var ss [:object-at o-dst]) o
+                                                                 (if (= o-dst o-src) nil o))]))))       
         (+ pickup-reward putdown-reward
            (apply max
                   (concat
