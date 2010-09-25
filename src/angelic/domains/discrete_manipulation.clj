@@ -176,7 +176,8 @@
         freespace      (clojure.set/difference all-cells border-cells obstacle-cells)
         legal-go       (set (spiral-to g-rad))]
     (env-util/make-simple-factored-env
-     (into {:const (into {[:size] size [:freespace] freespace [:legal-go] legal-go [:objects] objects
+     (into {:const (into {[:size] size [:freespace] freespace [:objects] objects
+                          [:legal-go] legal-go  [:reachable-go] (set (spiral-to (inc (* 2 g-rad))))
                           [:max-go] g-rad
                           [:base-offsets] (pseudo-shuffle random (spiral-to (inc g-rad)) )
                           [:n-base-samples] n-base-samples
@@ -282,6 +283,12 @@
     (into #{[:base] [:gripper-offset]}
       (for [go (util/safe-get const [:legal-go])]
         [:object-at (add-pos base go)]))))
+
+(defn reach-to-context 
+  ([const dst]
+    (into #{[:base] [:gripper-offset]}
+      (for [go (util/safe-get const [:reachable-go])]
+        [:object-at (add-pos dst go)]))))
 
 (defn manhattan-distance [[x1 y1] [x2 y2]]
   (+ (util/abs (- x1 x2)) (util/abs (- y1 y2))))
@@ -626,7 +633,7 @@
 
   env/ContextualAction
   (precondition-context [_ s] -
-    (conj (reach-context (state/get-var s :const) (state/get-var s [:pos o])) 
+    (conj (reach-to-context (state/get-var s :const) (state/get-var s [:pos o])) 
           [:pos o] [:at-goal? o] [:holding]))
 
   hierarchy/HighLevelAction
@@ -712,7 +719,7 @@
 
   env/ContextualAction
   (precondition-context [_ s]
-    (conj (reach-context (state/get-var s :const) o-dst) [:holding] [:object-at o-dst]))
+    (conj (reach-to-context (state/get-var s :const) o-dst) [:holding] [:object-at o-dst]))
 
   hierarchy/HighLevelAction
   (immediate-refinements- [_ s]
@@ -771,7 +778,7 @@
   env/ContextualAction
   (precondition-context [_ s] 
     (conj (apply clojure.set/union 
-                 (map #(conj (reach-context (state/get-var s :const) %) [:object-at %]) 
+                 (map #(conj (reach-to-context (state/get-var s :const) %) [:object-at %]) 
                       (get (state/get-var s :const) [:goal o]))) 
           [:holding]))
 
@@ -830,7 +837,7 @@
 
 (defn move-to-goal-context [s o]
   (conj (apply clojure.set/union 
-               (map #(conj (reach-context (state/get-var s :const) %) [:object-at %]) 
+               (map #(conj (reach-to-context (state/get-var s :const) %) [:object-at %]) 
                     (cons (state/get-var s [:pos o])
                           (get (state/get-var s :const) [:goal o])))) 
         [:holding]))
