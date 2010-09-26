@@ -39,7 +39,7 @@
 
 (deftype LoggingFactoredState [init #^java.util.Set context puts ooc meta] 
   Object 
-   (equals   [state lfs]
+  (equals   [state lfs]
      (let [lfs ^LoggingFactoredState lfs]
        (and (= init (.init lfs)) (= context (.context lfs)) (= (ooc-effects state) (ooc-effects lfs)))))
    (hashCode [state]

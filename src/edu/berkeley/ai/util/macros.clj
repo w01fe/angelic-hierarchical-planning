@@ -16,13 +16,27 @@
   [& args]
   `(concat-elts (for ~@args)))
 
-(defmacro assert-is
-  "Like assert, but prints some more info about the offending form (may multiple eval on error)"
-  ([form] `(assert-is ~form ""))
-  ([form format-str & args]
-     `(when-not ~form
-	(throw (Exception. (str (format ~format-str ~@args) 
-				": Got " '~form " as " (cons '~(first form) (list ~@(next form)))))))))
+(def *assert-is-bindings* (atom nil))
+(if (find-ns 'swank.core)
+  (defmacro assert-is
+   "Like assert, but prints some more info about the offending form (may multiple eval on error).
+   Starts a debug REPL if swank is loaded."
+   ([form] `(assert-is ~form ""))
+   ([form format-str & args]
+      `(when-not ~form
+         (println (str (format ~format-str ~@args) 
+                       ": Got " '~form " as " (cons '~(first form) (list ~@(next form)))))
+         (reset! *assert-is-bindings* (swank.core/local-bindings))
+         (swank.core/break))))
+  (defmacro assert-is
+   "Like assert, but prints some more info about the offending form (may multiple eval on error).
+   Starts a debug REPL if swank is loaded."
+   ([form] `(assert-is ~form ""))
+   ([form format-str & args]
+      `(when-not ~form
+         (throw (Exception. (str (format ~format-str ~@args) 
+                                 ": Got " '~form " as " (cons '~(first form) (list ~@(next form))))))))))
+
 (def *bad-form* (atom nil))
 (defmacro make-safe 
   ([x] `(make-safe ~x ""))

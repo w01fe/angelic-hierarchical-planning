@@ -956,7 +956,7 @@
                                         ; both base movements -- TODO: speed up ?
                    (for [sbase sbases, mbase allmbases, fbase allfbases, go sgos, o-dst o-dsts]
                      (+ (move-base-reward sbase mbase go)                 
-                        (move-base-reward sbase mbase [0 0])
+                        (move-base-reward mbase fbase [0 0])
                         (* move-gripper-step-reward
                            (* 2 (max 0 (- (manhattan-distance mbase o-src) 1)))
                            (* 2 (max 0 (- (manhattan-distance fbase o-dst) 1)))))))))])))

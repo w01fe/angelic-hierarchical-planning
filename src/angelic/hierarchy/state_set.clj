@@ -38,9 +38,29 @@
 
 (declare extract-logging-state)
 
+;; To work around bug in c-c version for now.
+(defn cartesian-product
+  "All the ways to take one item from each sequence"
+  [& seqs]
+  (let [v-original-seqs (vec seqs)
+        step
+        (fn step [v-seqs]
+(let [increment
+(fn [v-seqs]
+(loop [i (dec (count v-seqs)), v-seqs v-seqs]
+(if (= i -1) nil
+(if-let [rst (next (v-seqs i))]
+(assoc v-seqs i rst)
+(recur (dec i) (assoc v-seqs i (v-original-seqs i)))))))]
+(when v-seqs
+(cons (map first v-seqs)
+(lazy-seq (step (increment v-seqs)))))))]
+    (when (every? seq seqs)
+      (lazy-seq (step v-original-seqs)))))
+
 (deftype LoggingFactoredStateSet [init #^java.util.Set context puts ooc meta] 
   Object 
-   (equals   [ss lfs]
+  (equals   [ss lfs]
      (let [lfs ^LoggingFactoredStateSet lfs]
        (and (= init (.init lfs)) (= context (.context lfs)) (= (state/ooc-effects ss) (state/ooc-effects lfs)))))
    (hashCode [ss]
@@ -63,7 +83,7 @@
      (let [kvs (seq init)
            ks  (map key kvs)
            vss (map val kvs)]
-       (set (for [vs (apply combos/cartesian-product vss)] (extract-logging-state ss (zipmap ks vs))))))
+       (set (for [vs (apply cartesian-product vss)] (extract-logging-state ss (zipmap ks vs))))))
    (constrain    [ss constraint] 
 ;    (util/assert-is (every? context (keys constraint)))     
      (state/set-vars ss
@@ -158,6 +178,7 @@
 
 ;; TODO: can we do tis better?
 ;; Note difficulties: must capture all of context (even unset parts), plus set parts of non-context.
+;; Must not be too large to mess up SA.
 (defn as-constraint [ss]#_ (println (state/extract-effects ss) (state/current-context ss))
   (into (state/extract-context ss (state/current-context ss)) (state/ooc-effects ss))
 #_  (state/as-map ss)

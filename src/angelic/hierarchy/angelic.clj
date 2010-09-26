@@ -65,8 +65,17 @@
     (util/sref-set! hierarchy/*plan-counter* (+ (count refs) (util/sref-get hierarchy/*plan-counter*)))
     refs))
 
+(defn verify-optimistic-descriptions [a ss]
+  (let [[implicit-output ir]     (optimistic-set-and-reward- a ss)
+        explicit-implicit-output (state-set/explicit-set implicit-output)]
+    (doseq [in (state-set/explicit-set ss), [out r] (optimistic-map- a in)]
+      (util/assert-is (<= r ir) "%s" [(env/action-name a) in out ss])
+      (util/assert-is (contains? explicit-implicit-output out)))))
+
+
 (defn optimistic-set-and-reward [a ss]
   (util/sref-set! hierarchy/*optimistic-counter* (inc (util/sref-get hierarchy/*optimistic-counter*)))
+#_  (verify-optimistic-descriptions a ss)
   (optimistic-set-and-reward- a ss))
 
 (defn pessimistic-set-and-reward [a ss]

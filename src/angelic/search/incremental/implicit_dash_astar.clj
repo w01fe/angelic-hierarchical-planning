@@ -575,8 +575,8 @@
   (expand-plan [plan min-reward]
    (if (not (refinable-summary? (:summary plan) min-reward)) [plan]
       (let [{:keys [input-constraint input-set plan-nodes output-set summary]} plan
-            ref-index        (util/position-if #(live? (:output-summary %)) plan-nodes)
-                            #_  (rand-int (count plan-nodes)) ;TODO: put back
+            ref-index      #_  (util/position-if #(live? (:output-summary %)) plan-nodes)
+                             (rand-int (count plan-nodes)) ;TODO: put back
             [pre-nodes [ref-node & post-nodes]] (split-at ref-index plan-nodes)
 ;            _ (println plan  (count pre-nodes) (class ref-node) (count post-nodes))       
             [pre-set pre-summary]  (if (seq pre-nodes) (plan-node-output-set-and-summary (last pre-nodes)) [input-set zero-summary])
