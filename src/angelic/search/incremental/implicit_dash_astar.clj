@@ -28,7 +28,11 @@
 ;; (although their reward may currently be lower, having passed it on furthers, if caching.)
 
 ;; TODO: note that we cannot use solutions from a child OSN directly --
-;; since we are associating it with too broad of an output set.  
+;; since we are associating it with too broad of an output set.
+
+;; NOTE: apparent difference in reported # of primitive evaluations from
+;; explicit version is that here we don't bother to call optimistic description on
+;; primitive from known set first -- jump right to evaluation.
 
 ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
 ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;; Misc. Utils ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
