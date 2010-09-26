@@ -286,9 +286,12 @@
 
 (defn reach-to-context 
   ([const dst]
-    (into #{[:base] [:gripper-offset]}
-      (for [go (util/safe-get const [:reachable-go])]
-        [:object-at (add-pos dst go)]))))
+     (let [[w h] (util/safe-get const [:size])]
+      (into #{[:base] [:gripper-offset]}
+            (for [go (util/safe-get const [:reachable-go])
+                  :let [[x y :as pos] (add-pos dst go)]
+                  :when (and (<= 0 x w) (<= 0 y h))]
+              [:object-at pos])))))
 
 (defn manhattan-distance [[x1 y1] [x2 y2]]
   (+ (util/abs (- x1 x2)) (util/abs (- y1 y2))))
@@ -1096,6 +1099,8 @@
 ;; (print-state (initial-state (make-discrete-manipulation-env [10 10] [1 1] [ [ [4 4] [6 6] ] ] [ [:a [5 5] [ [4 4] [4 4] ] ] ] 2))) 
 ;;; (make-discrete-manipulation-env [5 5] [1 1] [ [ [2 2] [3 4] ] ] [ [:a [2 2] [ [3 2] [3 3] ] ] [:b [3 2] [ [2 3] [3 3] ] ] [:c [3 3] [ [2 2] [2 3] ] ] [:d [2 4] [ [3 4] [3 4] ] ] ] 1)
 ; (sahucs-flat )
+
+; (make-discrete-manipulation-env-regions [15 6] [1 1] [ [ [2 2] [12 4] ] ] [ [:a [2 2] [ [3 2] [6 4] ] ] [:b [7 2] [ [8 2] [12 4] ] ] ] 1 15 15 )
 
 ;; (interactive-search (make-implicit-first-ah-a*-env (make-discrete-manipulation-hierarchy (make-discrete-manipulation-env-regions [7 4] [1 1] [[[2 2] [3 3]] [[5 2] [6 3]] ]  [[:a [2 2] [[5 2] [6 3]]] [:b [5 2] [[2 2] [3 3]]]] 1 2 2 1))))
 
