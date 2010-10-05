@@ -579,17 +579,19 @@
   (expand-plan [plan min-reward]
    (if (not (refinable-summary? (:summary plan) min-reward)) [plan]
       (let [{:keys [input-constraint input-set plan-nodes output-set summary]} plan
-            ref-index      #_  (util/position-if #(live? (:output-summary %)) plan-nodes)
+            ref-index     #_   (util/position-if #(live? (:output-summary %)) plan-nodes)
                              (rand-int (count plan-nodes)) ;TODO: put back
             [pre-nodes [ref-node & post-nodes]] (split-at ref-index plan-nodes)
 ;            _ (println plan  (count pre-nodes) (class ref-node) (count post-nodes))       
             [pre-set pre-summary]  (if (seq pre-nodes) (plan-node-output-set-and-summary (last pre-nodes)) [input-set zero-summary])
             sub-min-reward (- min-reward
                               (- (max-reward summary)
-                                 (- (max-reward (:output-summary ref-node)) (max-reward pre-summary))))]
+                                 (- (max-reward (:output-summary ref-node)) (max-reward pre-summary))))
+            refined-pn (refine-pn ref-node pre-summary sub-min-reward)]
 ;        (println plan ref-index)
         (filter identity
-                (for [next-pn (split-pn-output (refine-pn ref-node pre-summary sub-min-reward) pre-set pre-summary sub-min-reward)]
+                (for [next-pn (if true #_ (= (rand-int 5) 0) (split-pn-output refined-pn pre-set pre-summary sub-min-reward)
+                                  [refined-pn])]
                   ;; Propagate plan changes
                   ;;Returns a plan by propagating changes starting at the last node in prefix through remaining-nodes.
                   ;;                   Returns nil if the plan becomes infeasible, otherwise a plan.

@@ -30,12 +30,12 @@
   {:optimistic-map- 
      (fn optimistic-map- [this s]
        (if (env/applicable? this s) 
-         (let [[s r] (#_ env/successor env/next-state-and-reward this s)] {s r}) 
+         (let [[s r] ( env/successor #_ env/next-state-and-reward this s)] {s r}) 
          {}))
    :pessimistic-map- 
      (fn pessimistic-map- [this s]
        (if (env/applicable? this s) 
-         (let [[s r] (#_ env/successor env/next-state-and-reward this s)] {s r}) 
+         (let [[s r] ( env/successor #_ env/next-state-and-reward this s)] {s r}) 
          {}))})
 
 (defn next-explicit-map-and-reward-bounds [a state]

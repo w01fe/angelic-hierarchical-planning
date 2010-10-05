@@ -27,8 +27,8 @@
 ;(defn uniform-cost-search        "Tree uniform-cost search" [node]
 ;  (first-optimal-solution node (queues/make-tree-search-pq)  #(- (reward-so-far %))))
 
-;(defn uniform-cost-graph-search "Tree uniform-cost search"  [node]
-;  (first-optimal-solution node (queues/make-graph-search-pq) #(- (reward-so-far %))))
+(defn uniform-cost-graph-search "Tree uniform-cost search"  [node]
+  (first-optimal-solution node (queues/make-graph-search-pq) #(- (reward-so-far %))))
 
 (defn a-star-priority-fn [x] ;(util/prln 
   [(- (upper-reward-bound x))

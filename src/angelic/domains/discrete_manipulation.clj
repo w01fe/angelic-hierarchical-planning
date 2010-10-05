@@ -1100,7 +1100,10 @@
 ;;; (make-discrete-manipulation-env [5 5] [1 1] [ [ [2 2] [3 4] ] ] [ [:a [2 2] [ [3 2] [3 3] ] ] [:b [3 2] [ [2 3] [3 3] ] ] [:c [3 3] [ [2 2] [2 3] ] ] [:d [2 4] [ [3 4] [3 4] ] ] ] 1)
 ; (sahucs-flat )
 
+;; In a row, high-level plan should be fairly obvious
 ; (make-discrete-manipulation-env-regions [15 6] [1 1] [ [ [2 2] [12 4] ] ] [ [:a [2 2] [ [3 2] [6 4] ] ] [:b [7 2] [ [8 2] [12 4] ] ] ] 1 15 15 )
+;; (make-discrete-manipulation-env-regions [19 6] [1 1] [ [ [2 2] [16 4] ] ] [ [:a [2 2] [ [3 2] [6 4] ] ] [:b [7 2] [ [8 2] [11 4] ] ] [:c [12 2] [ [13 2] [16 4] ] ] ] 1 15 15 )
+;; (make-discrete-manipulation-env-regions [24 6] [1 1] [ [ [2 2] [21 4] ] ] [ [:a [2 2] [ [3 2] [6 4] ] ] [:b [7 2] [ [8 2] [11 4] ] ] [:c [12 2] [ [13 2] [16 4] ] ] [:d [17 2] [ [18 2] [21 4] ] ] ] 1 15 15 )
 
 ;; (interactive-search (make-implicit-first-ah-a*-env (make-discrete-manipulation-hierarchy (make-discrete-manipulation-env-regions [7 4] [1 1] [[[2 2] [3 3]] [[5 2] [6 3]] ]  [[:a [2 2] [[5 2] [6 3]]] [:b [5 2] [[2 2] [3 3]]]] 1 2 2 1))))
 
