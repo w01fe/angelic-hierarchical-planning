@@ -1,4 +1,4 @@
-(ns angelic.search.incremental.implicit-fah-astar
+(ns angelic.search.incremental.implicit-dash-astar2
   (:require clojure.string
             [edu.berkeley.ai.util :as util]
             [clojure.contrib.core :as ccc]
@@ -13,6 +13,7 @@
   (:import  [java.util HashMap]))
 
 
+;; Revamp of fah_astar, try to unify the whole mess ! 
 ;; Factored abstract lookahead trees
 ;; I.e., the real DASH-A* should be reached by adding DS to this.
 ;; Much copied from previous ipmlicit-dash-a*.
@@ -159,6 +160,47 @@
 ;; - assume set of refinements fixed in advance, so we can use superstructure
 ;; - assume we always evaluate supers first
 ;; - switch back to refine model from evaluate model. (but must deal with propagation)
+
+;; Note: if we want to be able to drive entirely from separate summaries,
+;; action can't keep track of pending input sets -- this must happen
+;; in ActionInRefinement. ?
+;; But, this means we have to notice when action becomes unblocked?  maybe ok
+;; Refinements keep a watch on input sets
+;; Following nodes keep watch on ??
+
+;; WrappedLattice -- maintains node-by-node connection
+;; ActionInRefinement input is simple delta-wrapper of previous input
+;; OutputLattice of action watches OutputLattices of final AIRs ?
+;; OutputLattice of AIR is contextifying wrapper of sub-output.
+;; Only remaining question is how to collect final outputs.
+;; Options: actually connect them,
+;; Or just provide a mechanism to add watchers to all.
+
+
+(defprotocol PLatticeNode
+  (add-child [node child-set])
+  (add-watch [node notify-fn]))
+
+(defrecord LatticeNode
+  [input-set
+   child-map])
+
+(defrecord OutputLatticeNode
+  [output-set
+   child-map])
+
+(defrecord Action
+  [a
+   input-lattice-root])
+
+(defrecord ActionInRefinement
+  [sub-action
+   input-set->output-lattice
+   input-lattice
+   pending-inputs ;; eventually gone
+   final-output-set
+   input->output-   
+   ])
 
 (defrecord ActionInstance
   [parent-ai
