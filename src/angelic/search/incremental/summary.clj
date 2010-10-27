@@ -10,6 +10,13 @@
 ;; a status -- :live, :blocked, or :solved, and sources -- an
 ;; ordered list of source nodes.
 
+;; We assume :solved > :blocked > :live, since this is the order
+;; that we actually want plans to appear at the top-level.
+;; BUT, note that this can lead to apparent INCREASES in summary,
+;; as a plan goes from, e.g., live to solved.
+
+;; TODO: this could be fixed by separating opt and pess summaries ?
+
 
 ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
 ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;; Summary ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
@@ -22,6 +29,7 @@
   (status           [s] "Status: :blocked, :solved, or :live")
   (sources          [s] "Nil or optimal solution, if solved")
 
+  (adjust-reward [f & args])
   (>=  [s other])
   (+   [s other]))
 
@@ -49,7 +57,41 @@
 (defn refinable? [summary summary-bound]
   (and (live? summary) (>= summary summary-bound)))
 
-;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;; Combinations ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
+
+
+;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
+;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;; SimpleSummary ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
+;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
+
+(defrecord SimpleSummary [max-rew stat srcs]
+  Summary
+  (max-reward       [s] max-rew)
+  (status           [s] stat)
+  (sources          [s] srcs)
+  (adjust-reward    [f & args] (SimpleSummary. (apply f max-rew args) stat srcs))
+  (>=               [s other] (default->= s other))
+  (+                [s other]
+    (SimpleSummary.
+     (clojure.core/+ max-rew (max-reward other))
+     (min-key status-val stat (status other))
+     (concat srcs (sources other)))))
+
+(defn make-live-simple-summary [max-reward source] (SimpleSummary. max-reward :live [source]))
+(defn make-blocked-simple-summary [max-reward source] (SimpleSummary. max-reward :blocked [source]))
+(defn make-solved-simple-summary [max-reward source] (SimpleSummary. max-reward :solved [source]))
+
+(def +worst-simple-summary+ (make-blocked-simple-summary Double/NEGATIVE_INFINITY :worst))
+(def +best-simple-summary+  (make-live-simple-summary Double/POSITIVE_INFINITY :best)) ;; don't be too optimistic
+(def +zero-simple-summary+  (SimpleSummary. 0 :solved []))
+
+(defn simple-summary-str [s] (str "Summary:" (max-reward s) (status s) #_ (vec (:opt-sol s))))
+(defmethod print-method SimpleSummary [s o] (print-method (simple-summary-str s) o))
+
+
+;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
+;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;; Helpers ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
+;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
+
 
 (defn default->= [s1 s2]
   (let [r1 (max-reward s1) r2 (max-reward s2)]
@@ -64,10 +106,12 @@
     arg1))
 
 ;; TODO: can we safely handle empty case here?
-(defn max [& stats] (apply max-compare >= stats))
-(defn min [& stats] (apply max-compare (complement >=) stats))
+(defn max [& stats] (apply max-compare >= (cons +worst-simple-summary+ stats)))
+(defn min [& stats] (apply max-compare (complement >=) (cons +best-simple-summary+ stats)))
 ;(defn sum [& stats] )
 
+(defn bound [summary reward-bound]
+  (adjust-reward summary min reward-bound))
 
 ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;; Misc. Helpers ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
 
@@ -88,39 +132,12 @@
                   (conj rest-things best-thing) best-summary even-more-things)
            (recur best-thing best-summary
                   (conj rest-things next-thing) (max-summary next-summary rest-summary) even-more-things)))
-       [best-thing best-summary rest-things rest-summary]))))
+       [best-thing best-summary rest-things rest-summary])))
 
 
-(defmacro assert-valid-summary-change
-  ([old-summary new-summary] ( assert-valid-summary-change old-summary new-summary ""))
-  ([old-summary new-summary msg]
-     `(do (util/assert-is (<= (max-reward ~new-summary) (max-reward ~old-summary)) "%s" [~old-summary ~new-summary ~msg])
-        (when-not (live? ~old-summary) (assert (= ~old-summary ~new-summary))))))
+  (defmacro assert-valid-summary-change
+    ([old-summary new-summary] ( assert-valid-summary-change old-summary new-summary ""))
+    ([old-summary new-summary msg]
+       `(do (util/assert-is (<= (max-reward ~new-summary) (max-reward ~old-summary)) "%s" [~old-summary ~new-summary ~msg])
+            (when-not (live? ~old-summary) (assert (= ~old-summary ~new-summary)))))))
 
-
-;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
-;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;; SimpleSummary ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
-;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
-
-(defrecord SimpleSummary [max-rew stat srcs]
-  Summary
-  (max-reward       [s] max-rew)
-  (status           [s] stat)
-  (sources          [s] srcs)
-  (>=               [s other] (default->= s other))
-  (+                [s other]
-    (SimpleSummary.
-     (clojure.core/+ max-rew (max-reward other))
-     (min-key status-val stat (status other))
-     (concat srcs (sources other)))))
-
-(defn make-live-simple-summary [max-reward source] (SimpleSummary. max-reward :live [source]))
-(defn make-blocked-simple-summary [max-reward source] (SimpleSummary. max-reward :blocked [source]))
-(defn make-solved-simple-summary [max-reward source] (SimpleSummary. max-reward :solved [source]))
-
-(def +worst-simple-summary+ (make-blocked-summary is/neg-inf :worst))
-(def +best-simple-summary+  (make-live-summary is/pos-inf) :best) ;; don't be too optimistic
-(def +zero-simple-summary+  (SimpleSummary. 0 :solved []))
-
-(defn summary-str [s] (str "Summary:" (max-reward s) (status s) #_ (vec (:opt-sol s))))
-(defmethod print-method SimpleSummary [s o] (print-method (summary-str s) o))
