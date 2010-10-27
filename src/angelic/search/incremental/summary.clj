@@ -29,7 +29,7 @@
   (status           [s] "Status: :blocked, :solved, or :live")
   (sources          [s] "Nil or optimal solution, if solved")
 
-  (adjust-reward [f & args])
+  (adjust-reward [s f])
   (>=  [s other])
   (+   [s other]))
 
@@ -57,6 +57,12 @@
 (defn refinable? [summary summary-bound]
   (and (live? summary) (>= summary summary-bound)))
 
+(defn default->= [s1 s2]
+  (let [r1 (max-reward s1) r2 (max-reward s2)]
+    (or (> r1 r2)
+        (and (= r1 r2)
+             (clojure.core/>= (status-val (status s1))
+                              (status-val (status s2)))))))
 
 
 ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
@@ -68,7 +74,7 @@
   (max-reward       [s] max-rew)
   (status           [s] stat)
   (sources          [s] srcs)
-  (adjust-reward    [f & args] (SimpleSummary. (apply f max-rew args) stat srcs))
+  (adjust-reward    [s f] (SimpleSummary. (f max-rew) stat srcs))
   (>=               [s other] (default->= s other))
   (+                [s other]
     (SimpleSummary.
@@ -93,12 +99,7 @@
 ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
 
 
-(defn default->= [s1 s2]
-  (let [r1 (max-reward s1) r2 (max-reward s2)]
-    (or (> r1 r2)
-        (and (= r1 r2)
-             (clojure.core/>= (status-val (:status s1))
-                              (status-val (:status s2)))))))
+
 
 (defn- max-compare [cf arg1 & args]
   (if-let [[f & r] (seq args)]
@@ -111,7 +112,7 @@
 ;(defn sum [& stats] )
 
 (defn bound [summary reward-bound]
-  (adjust-reward summary min reward-bound))
+  (adjust-reward summary #(clojure.core/min % reward-bound)))
 
 ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;; Misc. Helpers ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
 

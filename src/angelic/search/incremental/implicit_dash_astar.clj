@@ -445,7 +445,7 @@
 (defrecord DummyRootPlan [input-constraint input-set expansions output-set summary]
   Expandable
   (expand-plan [this min-summary]
-    (if (summary/>= (summary/max-reward summary) min-summary)
+    (if (summary/>= summary min-summary)
       (remove #(not (viable-output-set-and-summary? ((juxt :output-set :summary) %))) expansions)
       [this])))
 
@@ -552,10 +552,9 @@
         tla  (hierarchy-util/make-top-level-action e [(hierarchy/initial-plan henv)])]
     (binding [*subproblem-cache*    (HashMap.)]
       (let [root (get-root-osn (state-set/make-logging-factored-state-set [init]) tla (constantly is/pos-inf))]
-        (refine-osn! root is/neg-inf #{})
+        (refine-osn! root summary/+worst-simple-summary+ #{})
         (let [sum (broom-summary root #{})]
           (println sum)
-          (assert (not (summary/refinable? sum is/neg-inf)))
           (def *root* root)
           (when (summary/solved? sum)
             [(summary/sources sum) (summary/max-reward sum)]))))))
