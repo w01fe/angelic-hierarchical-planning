@@ -14,7 +14,7 @@
             [angelic.search.incremental.summaries :as summaries]
             [angelic.search.incremental.lattices :as lattices]                        
             )
-  (:import  [java.util HashMap]))
+  (:import  [java.util HashMap IdentityHashMap]))
 
 
 ;; Revamp of fah_astar, try to unify the whole mess ! 
@@ -24,8 +24,6 @@
 
 ;; TODO: note pseudo-RBFS potential prloblem.
 
-
-;; Refinements all have at least one action, constraints are new primitives.
 ;; TODO: need some superstructure to take into account initial 0-reward bound.
 
 ;; Some ideas to simplify for now:
@@ -33,8 +31,6 @@
 ;; - suppose refs have at least one action?
 ;; - suppose constraints are modified to be primitives
 ;; - suppose all refinements have length 2? 
-
-
 
 ;; Note: if we want to be able to drive entirely from separate summaries,
 ;; action can't keep track of pending input sets -- this must happen
@@ -51,9 +47,136 @@
 ;; Options: actually connect them,
 ;; Or just provide a mechanism to add watchers to all.
 
+
+
+;; ActionInstance
+;;  - InputLattice - maps input sets to OutputLattices
+
+;; ActionInstanceInContext
+;;  - InputLatticeWrapper - maps input sets to OutputLatticeWrappers
+
+;; Eval = expand InputLattice, creating corresponding OL?
+
+;; Every action implicitly exists, with InputLattice mapping top to top, ....
+;; single AIIC dummy as stand-in for refinements, blocked.
+
+;; Op: AddInputSubset(AI, Parent, Child) -- just adds to IL, evaluates.
+;; AIIC can pick up new input, gives a new target.  
+;; (only allowed when Parent is already Blocked).  
+
+
+
+;; Basic idea: stop at eval of AI, for now.
+
+;; When we eval, we produce refinements, plus output.
+;; Suppose all refinements have length 2.  
+;; Then we have 2 phases -- first refining of each, then splitting -- over tree at middle.
+
+;; ActionInstance is truly independent, made to be shared. 
+;; It has single input set, output lattice,
+
+;; Not really clear what the point of the InputLattice is for now --
+;; OK, do simple factored version first, no sharing or state abstractino ?
+
+;; Still have correspondence problem from before?
+;; In particular, say we only care about one particular output.
+;; How does this propagate back ?
+
+;; This should be a proper lattice?
+;; But this requires rethinking everything; multiple parents, etc.
+;; Each AIIC watches output lattices as added.
+
 ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
 ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;; Data Structures ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
 ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
+
+(def +top-set+ :dummy)
+;(def ^HashMap *ai-cache* nil)
+
+(defn optimistic-set-and-reward-top [action input-set]
+  (if (identical? input-set +top-set+)
+    [+top-set+ 0]
+    (angelic/optimistic-set-and-reward action input-set)))
+
+(defn can-refine-from-set-top? [action input-set]
+  (and (not (identical? input-set +top-set+))
+       (angelic/can-refine-from-set? action input-set)))
+
+
+(declare make-action-instance-in-context)
+
+(defrecord ActionInstance
+  [action
+   input-lattice-root ; maps input set to output lattice -- root is always top
+   ])
+
+
+(defn make-ai-refinement-watcher [action]
+  (fn watcher [parent-node new-child-node]
+    (let [input-set      (lattices/node-key new-child-node)]
+      (if (angelic/can-refine-from-set? action input-set)
+        (doseq [[constraint ref] (angelic/immediate-refinements-set action input-set)]
+          (make-action-instance-in-context new-child-node constraint ref))
+        (lattices/add-watcher! new-child-node watcher)))))
+
+(defn make-action-instance [action parent-input-lattice-root]
+  (let [my-root (lattices/make-transformed-lattice
+                 parent-input-lattice-root
+                 node-key
+                 #(lattices/make-lattice-node 
+                   nil nil (first (optimistic-set-and-reward-top action (node-key %)))
+                   nil))]
+    (when-not (env/primitive? action) (lattices/add-watcher! my-root (make-ai-refinement-watcher action)))  
+    (ActionInstance. action my-root)))
+
+
+(defrecord ActionInstanceInContext
+  [input-lattice-root ; already evaluated pairs
+   pending-leaves     ; [parent input-set] pairs, with constraints applied
+   sub-ai
+   ])
+
+(defn make-initial-output-lattice [] (lattices/make-lattice-node nil nil +top-set+ nil))
+(defn make-initial-input-lattice []
+  (lattices/make-lattice-node nil nil +top-set+ (make-initial-output-lattice)))
+
+;; TODO: constraint
+(defn make-action-instance-in-context [input-root constraint action]
+  (let [pending-leaves (IdentityHashMap.)
+        my-root        (make-initial-input-lattice)]
+    (ActionInstanceInContext. my-root pending-leaves (make-action-instance action my-root))))
+
+(defn evaluate-pending-pair! [aiic [parent-node input-set :as pending]]
+  (let [pending-leaves ^IdentityHashMap (:pending-leaves aiic)]
+    (assert (.containsKey pending-leaves pending))
+    (.remove pending-leaves pending)
+    (lattices/add-child! parent-node input-set (make-initial-output-lattice))))
+
+
+(defn make-refinement [input-lattice constraint remaining-actions final-output-lattice]
+  (if (empty? remaining-actions)
+    (start-copy input-lattice final-output-lattice)
+    (let [first-aiic (make-action-instance-in-context input-lattice constraint (first remaining-actions))]
+      (make-refinement ... {} (next remaining-actions) final-output-lattice))))
+
+;; How do lattices get mashed ? 
+
+
+
+
+
+
+
+(comment
+  (defn make-contextualized-output-lattice [output-lattice context]
+  (lattices/make-transformed-lattice
+   output-lattice
+   (fn [output-node] (state/transfer-effects context (lattices/node-key output-node)))
+   (fn [output-node] (assert (not (lattices/node-data output-node)))))))
+
+(comment     (lattices/add-watcher! prev-output-lattice
+     (make-lattice-node-watcher (fn [parent-node child-node] (.add pending-leaves [parent-node child-node])))))
+
 
 (comment 
  (defrecord LatticeNode
