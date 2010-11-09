@@ -25,78 +25,86 @@
 
 ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;; Protocol ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
 
-(defprotocol Lattice)
+;; Need two types of links - parent and sup
+;; Either need multi-parents for DAG, or keep main thing as tree.
 
-(defprotocol PLatticeNode
-  (lattice      [ln])
-  (parent       [ln])
-  (node-key     [ln] "i.e. ,state set")
-  (node-data    [ln] "arbitrary")  
-  (child-map    [ln] "HashMap")
-  (add-watcher! [ln watcher] "A watcher is just a 2-arg fn of parent-node child-node")
-  (add-child!   [ln node-key node-data]))
+(defprotocol IOLattice)
 
-(declare make-lattice-node)
 
-(defrecord LatticeNode [lattice parent node-key node-data ^HashMap child-map ^List watchers]
-  PLatticeNode
-  (lattice      [ln]   lattice)
-  (parent       [ln]   parent)
-  (node-key     [ln]   node-key)
-  (node-data    [ln]   node-data)  
-  (child-map    [ln]   child-map)
-  (add-watcher! [ln watcher]
-    (.add watchers watcher)
-    (doseq [[data child] child-map]
-      (watcher ln child)))
-  (add-child!   [ln child-key child-data]
-    (when-not (.containsKey child-map child-key)
-      (let [child (make-lattice-node lattice ln child-key child-data)]
-        (.put child-map chid-key child)
-        (doseq [watcher (seq watchers)] (watcher ln child))
-        child))))
+(comment ; Old tree verisons.
+  (defprotocol Lattice)
 
-(defn make-lattice-node [lattice parent node-key node-data]
-  (LatticeNode. lattice parent node-key node-data (HashMap.) (ArrayList.)))
+  (defprotocol PLatticeNode
+    (lattice      [ln])
+    (parent       [ln])
+    (node-key     [ln] "i.e. ,state set")
+    (node-data    [ln] "arbitrary")  
+    (child-map    [ln] "HashMap")
+    (add-watcher! [ln watcher] "A watcher is just a 2-arg fn of parent-node child-node")
+    (add-child!   [ln node-key node-data]))
 
-(defn- add-child-transform-watch! [root transformed-root key-fn data-fn]
-  (add-watcher! root
+  (declare make-lattice-node)
+
+  (defrecord LatticeNode [lattice parent node-key node-data ^HashMap child-map ^List watchers]
+    PLatticeNode
+    (lattice      [ln]   lattice)
+    (parent       [ln]   parent)
+    (node-key     [ln]   node-key)
+    (node-data    [ln]   node-data)  
+    (child-map    [ln]   child-map)
+    (add-watcher! [ln watcher]
+                  (.add watchers watcher)
+                  (doseq [[data child] child-map]
+                    (watcher ln child)))
+    (add-child!   [ln child-key child-data]
+                  (when-not (.containsKey child-map child-key)
+                    (let [child (make-lattice-node lattice ln child-key child-data)]
+                      (.put child-map chid-key child)
+                      (doseq [watcher (seq watchers)] (watcher ln child))
+                      child))))
+
+  (defn make-lattice-node [lattice parent node-key node-data]
+    (LatticeNode. lattice parent node-key node-data (HashMap.) (ArrayList.)))
+
+  (defn- add-child-transform-watch! [root transformed-root key-fn data-fn]
+    (add-watcher! root
+                  (fn [watched new-child-node]
+                    (add-child-transform-watch!
+                     new-child-node
+                     (add-child! transformed-root (key-fn new-child-node) (data-fn new-child-node))
+                     key-fn data-fn))))
+
+  (defn make-transformed-lattice [other-root key-fn data-fn]
+    (let [new-root (make-lattice-node nil nil (key-fn other-root) (data-fn other-root))]
+      (add-child-transform-watch! other-root new-root key-fn data-fn)
+      new-root))
+
+  (defn make-lattice-watcher [node-watcher]
     (fn [watched new-child-node]
-      (add-child-transform-watch!
-         new-child-node
-         (add-child! transformed-root (key-fn new-child-node) (data-fn new-child-node))
-         key-fn data-fn))))
+      (node-watcher watched new-child-node)
+      (add-watcher! new-child-node node-watcher)))
 
-(defn make-transformed-lattice [other-root key-fn data-fn]
-  (let [new-root (make-lattice-node nil nil (key-fn other-root) (data-fn other-root))]
-    (add-child-transform-watch! other-root new-root key-fn data-fn)
-    new-root))
-
-(defn make-lattice-watcher [node-watcher]
-  (fn [watched new-child-node]
-    (node-watcher watched new-child-node)
-    (add-watcher! new-child-node node-watcher)))
-
-(defn start-copy [source-root target-root]
-  (add-watcher! source-root
-    #(start-copy %2 (add-child! target-root (node-key %2) (node-data %2)))))
+  (defn start-copy [source-root target-root]
+    (add-watcher! source-root
+                  #(start-copy %2 (add-child! target-root (node-key %2) (node-data %2)))))
 
 
-(defn make-union-lattice [#_ ???])
+  (defn make-union-lattice [#_ ???])
 
 
 
 
 
-(comment
-  ;; TODO: get rid of factory? 
-(defprotocol LatticeNodeFactory
-  (create-child [lnf parent child-data]))
-(defn make-simple-lattice-node-factory []
-  (reify LatticeNodeFactory
-    (create-child [lnf parent child-data]
-      (LatticeNode. nil parent child-data (HashMap.) (ArrayList.) lnf)))))
+  (comment
+    ;; TODO: get rid of factory? 
+    (defprotocol LatticeNodeFactory
+      (create-child [lnf parent child-data]))
+    (defn make-simple-lattice-node-factory []
+      (reify LatticeNodeFactory
+             (create-child [lnf parent child-data]
+                           (LatticeNode. nil parent child-data (HashMap.) (ArrayList.) lnf)))))
 
 
 
 
+)
