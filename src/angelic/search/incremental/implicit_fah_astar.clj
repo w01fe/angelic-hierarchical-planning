@@ -9,7 +9,10 @@
             [angelic.hierarchy.util :as hierarchy-util]            
             [angelic.hierarchy.state-set :as state-set]
             [angelic.hierarchy.angelic :as angelic]
-            [angelic.search.incremental.core :as is])
+            [angelic.search.incremental.core :as is]
+            [angelic.search.incremental.summary :as summary]
+;            [angelic.search.incremental.summaries :as summaries]
+            )
   (:import  [java.util HashMap]))
 
 
@@ -21,136 +24,192 @@
 
 ; ;What connection, if any, do pessimistic need with optimistic?  
 
-;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
-;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;; Misc. Utils ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
-;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
-
 
 ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
-;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;; Summary ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
+;;;;;;;;;;;;;;;;;;;;;;;;;;;; Subproblem Protocols ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
 ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
 
-;; Summary is the information passed upwards about a partial plan.
-;; For now, it consists of an (admissible) upper-bound on reward,
-;; a status enum -- :live, :blocked, or :solved,
-;; and if solved, an optimal solution.
+;;Clear how costs must go
+;;How should sets go -- eager or lazy ? ? ???
+;;Can forget about sets -- switch to breakout children instead.
 
-(defprotocol Summary
-  (max-reward       [s] "Admissible reward bound")
-  (live?            [s] "Can this be further refined?")
-  (optimal-solution [s] "Nil or optimal solution"))
+;; Things:
+;; Action - Input - Output
+;; ActionSeq - Input
+;; RestrictedActionSeq
 
+;; How does all this change if leaves are leaves?
+;; Restricting input
+;; Where do the breaks go?
+;; Operation always =
+;; "expand 'first' or 'rest' of seq". ?
+;; expanding on the right should be automatic ?
+;; What if thing already has children?
+;; Not allowed to expand on the left until right is blocked?
+;; But this forces right-to-left spliting ?
 
-;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;; Definition ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
+;; Think about this as subproblems, partial solutions.
+;; How do we handle case where subproblem is union, refined-output can grow over time ?
+;; Why did we need that nonsense anyway? ...
+;; ((can we get graphiness in another way?))
+;; ((what if we just allow cost decrease -- so waht ? ))
+;; Need lattice -- but it can be on the input side. 
 
+(def no-children :terminal)
 
+(defprotocol Subproblem
+  (current-summary [s])
+  (child-keys      [s] "seq or no-children")
+  (get-child       [s child-key])
+  (refine-input    [s refined-input-set]))
 
-; status is: :blocked, :solved, or :live
-;; blocked is "better" than live, since it is contagious over live w.r.t. max. 
-(defn status-val [s]
-  (case s
-        :live    0
-        :blocked 1
-        :solved  2))
-
-
-(defrecord SimpleSummary [max-rew status opt-sol]
-  Summary
-  (max-reward       [s] max-rew)
-  (live?            [s] (= status :live))
-  (optimal-solution [s] (when (= status :solved) (assert opt-sol) opt-sol)))
-
-(defn make-live-summary [max-reward plan] (SimpleSummary. max-reward :live plan))
-(defn make-blocked-summary [max-reward plan] (SimpleSummary. max-reward :blocked plan))
-(defn make-solved-summary [max-reward opt-sol] (SimpleSummary. max-reward :solved opt-sol))
-
-(defn blocked? [summary]
-  (and (not (live? summary))
-       (not (optimal-solution summary))))
-
-
-;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;; Common Ops ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
+(def input-set :input-set)
+(def output-set :output-set)
+(defn get-child-map [s] (into {} (for [k (child-keys s)] [k (get-child s k)])))
 
 
-(def +worst-summary+ (make-blocked-summary is/neg-inf []))
-(def +best-summary+  (make-live-summary is/pos-inf [])) ;; don't be too optimistic
+;; TODO: simple generic SimpleSubproblem record ? 
 
-(defn better-summary? [s1 s2]
-  (or (> (max-reward s1)
-         (max-reward s2))
-      (and (= (max-reward s1)
-              (max-reward s2))
-           (> (status-val (:status s1))
-              (status-val (:status s2))))))
-
-(defn- max-compare [cf arg1 & args]
-  (if-let [[f & r] (seq args)]
-    (recur cf (if (cf f arg1) f arg1) r)
-    arg1))
-
-(defn max-summary [& stats] (apply max-compare better-summary? (cons +worst-summary+ stats) ))
-;(defn min-summary [& stats] (apply max-compare (complement better-summary?) (cons +best-summary+ stats)))
-
-(defn bound-summary [summary max-rew]
-  (when (optimal-solution summary) (util/assert-is (<= (max-reward summary) max-rew)))
-  (SimpleSummary. (min max-rew (:max-rew summary)) (:status summary) (:opt-sol summary)))
-
-(defn next-min-reward [stat min-reward] (max min-reward (max-reward stat)))
-
-(def zero-summary (SimpleSummary. 0 :solved []))
-(defn add-summaries [s1 s2]
-  (SimpleSummary. (+ (max-reward s1)
-              (max-reward s2))
-           (min-key status-val (:status s1) (:status s2))
-           #_(when (and (= (:status s1) :solved) (= (:status s2) :solved)))
-           (concat (:opt-sol s1) (:opt-sol s2))))
-
-
-(defn viable-summary? [summary]
-  (> (max-reward summary) is/neg-inf))
-
-(defn refinable-summary? [stat min-reward]
-  (and (= (:status stat) :live)
-       (>= (max-reward stat) min-reward)))
-
-(defn summary-solution [stat]
-  (when (= (:status stat) :solved)
-    (:opt-sol stat)))
-
-
-
-(defn extract-best-and-summaries
-  "Return [best-item best-summary rest-items rest-summary]"
-  [summary-fn things]
-  (assert (seq things))
-  (loop [best-thing   (first things)
-         best-summary (summary-fn (first things))
-         rest-things  []
-         rest-summary  +worst-summary+
-         more-things  (rest things)]
-      (if-let [[next-thing & even-more-things] (seq more-things)]
-        (let [next-summary (summary-fn next-thing)]
-          (if (better-summary? next-summary best-summary)
-            (recur next-thing next-summary
-                   (conj rest-things best-thing) best-summary even-more-things)
-            (recur best-thing best-summary
-                   (conj rest-things next-thing) (max-summary next-summary rest-summary) even-more-things)))
-        [best-thing best-summary rest-things rest-summary])))
-
-(defn summary-str [s] (str "Summary:" (max-reward s) (:status s) #_ (vec (:opt-sol s))))
-(defmethod print-method SimpleSummary [s o] (print-method (summary-str s) o))
-
-(defmacro assert-valid-summary-change
-  ([old-summary new-summary] ( assert-valid-summary-change old-summary new-summary ""))
-  ([old-summary new-summary msg]
-     `(do (util/assert-is (<= (max-reward ~new-summary) (max-reward ~old-summary)) "%s" [~old-summary ~new-summary ~msg])
-        (when-not (live? ~old-summary) (assert (= ~old-summary ~new-summary))))))
-
-
-
+;; TODO: stop early on empty sets or bad rewards, etc.
 ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
-;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;; Data Structures ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
+;;;;;;;;;;;;;;;;;;;;;;;;;;;;; Planning Subproblems ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
 ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
+
+(declare make-primitive-subproblem)
+(declare make-hla-subproblem)
+(declare make-atomic-subproblem)
+(declare make-seq-subproblem)
+(declare make-wrapper-subproblem)
+
+;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;; Primitive ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
+
+;; No need to worry about supers?
+(defrecord PrimitiveSubproblem [input-set action output-set summary]
+  Subproblem
+  (current-summary [s] summary)
+  (child-keys      [s] no-children)
+  (get-child       [s child-key] (throw (RuntimeException.)))
+  (refine-input    [s refined-input-set]
+    (if (= input-set refined-input-set)
+      s
+      (make-primitive-subproblem refined-input-set action))))
+
+(defn make-primitive-subproblem [input-set action]
+  (let [[output-set rew] (angelic/optimistic-set-and-reward action input-set)]
+    (PrimitiveSubproblem. input-set action output-set (summary/make-solved-simple-summary rew action ))))
+
+
+;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;; HLA ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
+
+(defrecord HlaSubproblem [super-hs input-set action output-set
+                          summarizer child-map ^HashMap refinement-map]
+  Subproblem
+  (current-summary [s] ...?)
+  (child-keys      [s] (keys child-map))
+  (get-child       [s child-key] (force (util/safe-get child-map child-key)))
+  (refine-input    [s refined-input-set]
+    (if (= refined-input-set input-set)
+      s
+      (util/cache-with refinement-map refined-input-set
+                       (make-hla-subproblem s refined-input-set action)))))
+
+(defn make-constraint-primitive [constraint]
+  (env-util/make-factored-primitive [:noop] constraint {} 0))
+
+(defn simple-immediate-refinements-set [a input-set]
+  (for [[constraint ref] (angelic/immediate-refinements-set a input-set)]
+    (cons (make-constraint-primitive constraint) ref)))
+
+(defn make-refinement-subproblem [parent-hs input-set actions]
+  (let [[f & r] (util/make-safe actions)
+        left-sp (make-atomic-subproblem nil input-set a)]
+    (if (empty? r)
+      left-sp
+      ???....
+      left-sp
+      (make-refinement-subproblem parent-hs (output-set left-sp) r))))
+
+
+(defn make-hla-subproblem [super-hs input-set action]
+  (let [[opt-set rew] (angelic/optimistic-set-and-reward action input-set)]
+    (HlaSubproblem.
+     super-hs input-set action opt-set ??????summarizer
+     (cond (not (angelic/can-refine-from-set? action input-set))
+             no-children
+           (and super-hs (not (blocked??? super-hs)))
+             ??? ;reuse
+           :else
+             (into {}
+                   (for [ref (simple-immediate-refinements-set action input-set)]
+                     [(map env/action-name ref)
+                      (delay (make-refinement-subproblem this??? input-set ref))
+                      (ActionInstance. ai nil prev-aio full-ref (atom nil))])))
+     (HashMap.))))
+
+
+(defn make-atomic-subproblem [super-as input-set action]
+  (if (env/primitive? action)
+    (make-primitive-subproblem input-set action)
+    (make-hla-subproblem parent-as input-set action)))
+
+
+;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;; Sequence ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
+
+
+;; For now, pick the right first if possible -- fix later.
+;; TODO: unfactor ?
+;; TODO: how do we wrap partial SPs? 
+(defrecord SeqSubproblem [super-sp root-hs key-seq
+                          input-set left-sp right-sp output-constraint
+                          child-map]
+  Subproblem
+  (current-summary [s] ...?)
+  (child-keys      [s] (keys child-map))
+  (get-child       [s child-key] (force (util/safe-get child-map child-key)))
+  (refine-input    [s refined-input-set]
+    (if (= refined-input-set input-set)
+      s
+      (util/cache-with refinement-map refined-input-set
+                       (make-hla-subproblem s refined-input-set action)))))
+
+
+(defn make-seq-subproblem [super-sp root-hs key-seq])
+
+
+;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;; Wrapped Seq ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
+
+(defrecord WrappedSubproblem [input-set wrapped-sp remaining-keys output-set]
+  Subproblem
+  (current-summary [s] ...)
+  (child-keys      [s] [(first remaining-keys)])
+  (get-child       [s child-key]
+    (assert (= child-key (first remaining-keys)))
+    (let [inner-child (get-child wrapped-sp child-key)
+          more-keys   (next remaining-keys)]
+      (if more-keys
+        (make-wrapped-subproblem inner-child more-keys output-set)
+        (do (assert (state-set/subset? (:output-set inner-child) output-set))
+            inner-child))))
+  (refine-input    [s refined-input-set]
+    ...?))
+
+(defn make-wrapped-subproblem [wrapped-sp remaining-keys output-set]
+  (WrappedSubproblem. (input-set wrapped-sp) wrapped-sp remaining-keys output-set))
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
 
 ;; Refinements all have at least one action, constraints are new primitives.
 ;; TODO: need some superstructure to take into account initial 0-reward bound.
@@ -160,67 +219,70 @@
 ;; - assume we always evaluate supers first
 ;; - switch back to refine model from evaluate model. (but must deal with propagation)
 
-(defrecord ActionInstance
-  [parent-ai
-   super-ais
-   prev-aio
-   actions ; this and following in refinement.
-   output-atom ])
 
-(defrecord ActionInstanceOutput
-  [parent-aio ; Only if no more actions
-   super-aios  ; 
-   source-ai
-   output-set
-   step-reward
-   next-ai-atom
-   refinents-first-ai-atom])
+(comment
+  ;; Again, sets but not costs
+ (defrecord ActionInstance
+   [parent-ai
+    super-ais
+    prev-aio
+    actions                        ; this and following in refinement.
+    output-atom ])
 
-(def +worst-aio+ (ActionInstanceOutput. nil nil nil state-set/empty-lfss is/neg-inf nil nil))
+ (defrecord ActionInstanceOutput
+   [parent-aio                          ; Only if no more actions
+    super-aios                          ; 
+    source-ai
+    output-set
+    step-reward
+    next-ai-atom
+    refinents-first-ai-atom])
 
-(defn make-constraint-primitive [constraint]
-  (env-util/make-factored-primitive [:noop] constraint {} 0))
+ (def +worst-aio+ (ActionInstanceOutput. nil nil nil state-set/empty-lfss is/neg-inf nil nil))
 
-(defn root-aio [aio]
-  (if-let [parent (:parent-aio aio)] (root-aio parent) aio))
+ (defn make-constraint-primitive [constraint]
+   (env-util/make-factored-primitive [:noop] constraint {} 0))
+
+ (defn root-aio [aio]
+   (if-let [parent (:parent-aio aio)] (root-aio parent) aio))
 
 
 
-(defn evaluate-aio! [ai]
-  (let [{:keys [parent-ai super-ais prev-aio actions output-atom]} ai]
-    (assert (nil? @output-atom))
-    (let [input-set (:output-set prev-aio)
-          [a & r]   actions
-          prim?    (env/primitive? a)
-          [opt rew] (angelic/optimistic-set-and-reward a input-set)]
-      (if (or (not opt) (state-set/empty? opt) (= rew is/neg-inf))
-        +worst-aio+
-        (let [aio (ActionInstanceOutput.
-                   (when (empty? r) (-> parent-ai :output-atom deref))
-                   (ccc/-?> super-ai :output-atom deref)
-                   ai opt rew
-                   (atom nil) (atom nil))]
-          (reset! (:refinements-first-ai-atom aio)
-                  (lazy-seq
+ (defn evaluate-aio! [ai]
+   (let [{:keys [parent-ai super-ais prev-aio actions output-atom]} ai]
+     (assert (nil? @output-atom))
+     (let [input-set (:output-set prev-aio)
+           [a & r]   actions
+           prim?    (env/primitive? a)
+           [opt rew] (angelic/optimistic-set-and-reward a input-set)]
+       (if (or (not opt) (state-set/empty? opt) (= rew is/neg-inf))
+         +worst-aio+
+         (let [aio (ActionInstanceOutput.
+                    (when (empty? r) (-> parent-ai :output-atom deref))
+                    (ccc/-?> super-ai :output-atom deref)
+                    ai opt rew
+                    (atom nil) (atom nil))]
+           (reset! (:refinements-first-ai-atom aio)
+                   (lazy-seq
                     (let [super-fais (ccc/-?> aio :super-aio :refinements-first-ai-atom)]
                       (cond (and @super-fais (not (= @super-refs :blocked)))
-                              (for [super-fai @super-fais]
-                                (ActionInstance. ai super-fai prev-aio (:actions super-fai) (atom nil)))
+                            (for [super-fai @super-fais]
+                              (ActionInstance. ai super-fai prev-aio (:actions super-fai) (atom nil)))
                             (angelic/can-refine-from-set? a input-set)
-                              (for [[constraint ref] (angelic/immediate-refinements-set a input-set)
-                                    :let [full-ref (cons (make-constraint-primitive constraint) ref) ]]
-                                (ActionInstance. ai nil prev-aio full-ref (atom nil)))
+                            (for [[constraint ref] (angelic/immediate-refinements-set a input-set)
+                                  :let [full-ref (cons (make-constraint-primitive constraint) ref) ]]
+                              (ActionInstance. ai nil prev-aio full-ref (atom nil)))
                             :else
-                              :blocked))))
-          (reset! (:next-ai-atom aio)
-                  (let [root (root-aio aio)]
-                    (ActionInstance.
-                     (-> root :source-ai :parent-ai)
-                     (if (identical? aio root) ;; AKA this AIO has more actions
-                       (ccc/-?> ai :super-ai :output-atom deref :next-ai-atom deref)
+                            :blocked))))
+           (reset! (:next-ai-atom aio)
+                   (let [root (root-aio aio)]
+                     (ActionInstance.
+                      (-> root :source-ai :parent-ai)
+                      (if (identical? aio root) ;; AKA this AIO has more actions
+                        (ccc/-?> ai :super-ai :output-atom deref :next-ai-atom deref)
                        
-                       )
-                     aio (-> root :source-ai :actions next) (atom nil)))))))))
+                        )
+                      aio (-> root :source-ai :actions next) (atom nil))))))))))
 
 ;; Super-structure always mirrors, when it exists?
 ;; But, sub-structure can get ahead, then things get out of whack. (lose track of it)
