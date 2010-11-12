@@ -26,11 +26,215 @@
 
 
 ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
-;;;;;;;;;;;;;;;;;;;;;;;;;;;; Subproblem Protocols ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
+;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;; Function Sets ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
 ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
 
-;;Clear how costs must go
-;;How should sets go -- eager or lazy ? ? ???
+(defprotocol FunctionSet
+  (fs-name    [sk]           "Arbitrary name to identify fs")
+  (apply-opt  [sk input-set] "[output-set upper-reward-bound] or nil if empty")
+  (status     [sk input-set] ":live, :blocked, or :solved")
+  (child-seqs [sk input-set] "seq of seqs of FunctionSets. Only valid if above is :live.
+                              (= :live (status sk s)) ==>
+                                 (subset? (child-seqs sk s-subset) (child-seqs sk s)) (for names)"))
+
+;; Child-seqs must obey the containment property for subsets of input-set.
+
+;;;;;;;;;;;;;;;;;;;;;;;;;;;;;; Planning Kernels ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
+
+(defn make-primitive-fs [action]
+  (reify FunctionSet
+    (fs-name    [sk]           (env/action-name action))
+    (apply-opt  [sk input-set] (angelic/optimistic-set-and-reward action input-set))
+    (status     [sk input-set] :solved)
+    (child-seqs [sk input-set] (throw (UnsupportedOperationException.)))))
+
+(defn- simple-immediate-refinements-set [a input-set]
+  (for [[constraint ref] (angelic/immediate-refinements-set a input-set)]
+    (cons
+     (env-util/make-factored-primitive [:noop] constraint {} 0)     
+     ref)))
+
+(defn make-hla-fs [action]
+  (reify FunctionSet
+         (fs-name [sk] (env/action-name action))
+         (compute-output-set-and-reward   [sk input-set]
+            (angelic/optimistic-set-and-reward action input-set))
+         (compute-status   [sk input-set]
+            (if (angelic/can-refine-from-set? action input-set) :live :blocked))
+         (compute-child-fs-seqs [sk input-set child-key]
+            (for [ref (simple-immediate-refinements-set action input-set)]
+              (for [a ref]
+                ((if (env/primitive? action) make-primitive-fs make-hla-fs) action))))))
+
+
+
+;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
+;;;;;;;;;;;;;;;;;;;;;;;;;;;;; Subproblem Protocol ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
+;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
+
+;; For now, go with simple "complete eval" formulation.
+;; Will have "atomic" and "seq" subproblems -- separate impls..
+
+(def no-children :terminal)
+
+(defprotocol Subproblem
+  (input-set       [s])
+  (output-set      [s])
+;  (current-summary [s])
+  (child-keys      [s] "seq or no-children")
+  (get-child       [s child-key])
+  (refine-input-   [s refined-input-set] "must be a strict subset of input-set."))
+
+(defn refine-input [s maybe-refined-input-set]
+  (if (= (input-set s) maybe-refined-input-set)
+    s
+    (refine-input- s maybe-refined-input-set)))
+
+
+
+
+;;;;;;;;;;;;;;;;;;;;;;;;;;;; Simple FS Subproblem ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
+
+;; Very simple, no caching or reuse or anything.
+
+(declare make-simple-fs-seq-subproblem)
+
+(defn make-simple-atomic-subproblem [inp-set function-set]
+  (let [out-set (apply-opt function-set inp-set)
+        stat    (fs-status function-set)
+        fs-child-seqs (when (= stat :live) (child-seqs function-set inp-set))
+        fs-child-seqs-map (zipmap (map #(map fs-name %) fs-child-seqs) fs-child-seqs)]
+    (assert (= (count fs-child-seqs-map) (count fs-child-seqs))) 
+    (reify
+     Subproblem
+     (input-set       [s] inp-set)
+     (output-set      [s] out-set)
+     (child-keys      [s] (if (= stat :live) (keys fs-child-seqs-map) no-children))
+     (get-child       [s child-key]
+       (->> (util/safe-get fs-child-seqs-map child-key)
+            (make-simple-factored-seq-subproblem inp-set)))
+     (refine-input    [s refined-input-set]
+       (make-simple-atomic-subproblem refined-input-set function-set)))))
+
+
+;; NOTE: If we require that input and output match always, we just get back AHA*.
+;; (but with UP, perhaps caching?).
+
+
+(declare make-simple-pair-subproblem)
+
+(defn make-aligned-simple-pair-subproblem [sp1 sp2]
+  (make-simple-pair-subproblem sp1 (refine-input sp2 (output-set sp1))))
+
+(defn simple-pair-child-keys [sp1 sp2]
+  (let [sp2-child-keys (child-keys sp2)]
+    (if (= sp2-child-keys no-children)
+      (let [sp1-child-keys (child-keys sp1)]
+        (if (= sp1-child-keys no-children)
+          no-children
+          (map #(vector ::1 %) sp1-child-keys)))
+      (map #(vector ::2 %) sp2-child-keys))))
+
+(defn simple-pair-child [sp1 sp2 child-key]
+  (let [[which sub-key] child-key]
+    (case which
+      ::1 (make-aligned-simple-pair-subproblem (get-child sp1 sub-key) sp2)
+      ::2 (make-simple-pair-subproblem sp1 (get-child sp2 sub-key)))))
+
+
+(defn make-simple-pair-subproblem [sp1 sp2]
+  (let [child-keys (simple-pair-child-keys sp1 sp2)]
+    (reify
+     Subproblem
+     (input-set       [s] (input-set sp1))
+     (output-set      [s] (output-set sp2))
+     (child-keys      [s] child-keys)
+     (get-child       [s child-key] (simple-pair-child sp1 sp2 child-key))
+     (refine-input    [s refined-input-set]
+       (make-aligned-simple-pair-subproblem (refine-input sp1 refined-input-set) sp2)))))
+
+(defn make-simple-fs-seq-subproblem [inp-set [first-fs & rest-fs]]
+  (let [first-sp (make-simple-atomic-subproblem inp-set first-fs)]
+    (if (empty? rest-fs)
+      first-sp
+      (->> (make-simple-fs-seq-subproblem (output-set first-sp) rest-fs)
+           (make-simple-pair-subproblem first-sp)))))
+
+
+
+
+
+
+(comment ; old version- has some caching.
+ (defn make-simple-atomic-subproblem [inp-set function-set]
+   (let [child-cache (HashMap.)
+         refinement-cache (HashMap.)
+         out-set (apply-opt function-set inp-set)
+         fs-child-seqs (child-seqs function-set inp-set)
+         fs-child-seqs-map (zipmap (map #(map fs-name %) fs-child-seqs) fs-child-seqs) ]
+     (assert (= (count fs-child-seqs-map) (count fs-child-seqs))) 
+     (reify
+      Subproblem
+      (input-set       [s] inp-set)
+      (output-set      [s] out-set)
+      (child-keys      [s] (keys fs-child-seqs-map))
+      (get-child       [s child-key]
+                       (->> (util/safe-get fs-child-seqs-map child-key)
+                            (make-simple-factored-seq-subproblem inp-set)
+                            (util/cache-with child-cache child-key)))
+      (refine-input    [s refined-input-set]
+                       (make-simple-atomic-subproblem refined-input-set function-set))))))
+
+(declare make-generic-subproblem)
+
+(defrecord GenericSubproblem [; ??? summarizer
+                              kernel in-set out-set child-key-seq
+                              ^HashMap child-cache ^HashMap refinement-cache]
+  (input-set       [s] in-set)
+  (output-set      [s] out-set)
+  (current-summary [s] ...???)
+  (child-keys      [s] child-key-seq)
+  (get-child       [s child-key]
+    (util/cache-with child-cache child-key (compute-child-kernel kernel in-set child-key)))
+  (refine-input    [s refined-input-set]
+    (if (= in-set refined-input-set)
+      s
+      (util/cache-with refinement-cache refined-input-set
+                       (make-generic-subproblem kernel refined-input-set)))))
+
+(defn make-generic-subproblem [kernel input-set]
+  (GenericSubproblem.
+   kernel
+   input-set
+   (compute-output-set kernel input-set)
+   (compute-child-keys kernel input-set)
+   (HashMap.) (HashMap.)))
+
+
+
+;;;;;;;;;;;;;;;;;;;;;;;;;;; TopDown FS Subproblem ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
+
+;; Add caching, exploitation of subsumption, but no graphiness 
+
+
+
+
+
+;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
+;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;; Simple Planning ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
+;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
+
+;; Problem we run into here: splitting into plans without factored costs
+;; = potentially very expensive queue mgmt.
+
+;; Planning is defined only on Summarizer + a refinement operation.
+
+
+(defprotocol )
+
+
+
+
 ;;Can forget about sets -- switch to breakout children instead.
 
 ;; Things:
@@ -58,21 +262,83 @@
 (def no-children :terminal)
 
 (defprotocol Subproblem
+  (input-set       [s])
+  (output-set      [s])
   (current-summary [s])
   (child-keys      [s] "seq or no-children")
   (get-child       [s child-key])
   (refine-input    [s refined-input-set]))
 
-(def input-set :input-set)
-(def output-set :output-set)
-(defn get-child-map [s] (into {} (for [k (child-keys s)] [k (get-child s k)])))
+;;(def input-set :input-set)
+;;(def output-set :output-set)
+;;(defn get-child-map [s] (into {} (for [k (child-keys s)] [k (get-child s k)])))
 
+
+
+
+
+;; TODO: getting child from super ...
+(declare make-generic-subproblem)
+
+(defrecord GenericSubproblem [; ??? summarizer
+                              kernel in-set out-set child-key-seq
+                              ^HashMap child-cache ^HashMap refinement-cache]
+  (input-set       [s] in-set)
+  (output-set      [s] out-set)
+  (current-summary [s] ...???)
+  (child-keys      [s] child-key-seq)
+  (get-child       [s child-key]
+    (util/cache-with child-cache child-key (compute-child-kernel kernel in-set child-key)))
+  (refine-input    [s refined-input-set]
+    (if (= in-set refined-input-set)
+      s
+      (util/cache-with refinement-cache refined-input-set
+                       (make-generic-subproblem kernel refined-input-set)))))
+
+(defn make-generic-subproblem [kernel input-set]
+  (GenericSubproblem.
+   kernel
+   input-set
+   (compute-output-set kernel input-set)
+   (compute-child-keys kernel input-set)
+   (HashMap.) (HashMap.)))
+
+
+
+
+(declare make-generic-wrapping-subproblem)
+
+(defrecord GenericWrappingSubproblem [super-sp root-sp key-trail ; summarizer???
+                                      kernel in-set out-set child-key-seq
+                                      ^HashMap child-cache ^HashMap refinement-cache]
+  Subproblem
+  (input-set       [s] in-set)
+  (output-set      [s] out-set)
+  (current-summary [s] ...???)
+  (child-keys      [s] child-key-seq)
+  (get-child       [s] ???)
+  (refine-input    [s refined-input-set]
+    (if (= in-set refined-input-set)
+      s
+      (util/cache-with refinement-cache refined-input-set
+                       ???))))
+
+(defn make-generic-subproblem [name super-sp root-sp key-trail summary???
+                               in-set .....])
+
+
+(defn make-refinement-kernel [actions]
+  (let [[f & r] (util/make-safe actions)
+        left-k (make-action-kernel f)]
+    (if (empty? r)
+      left-k
+      (make-seq-kernel left-k (make-refinement-kernel r)))))
 
 ;; TODO: simple generic SimpleSubproblem record ? 
 
 ;; TODO: stop early on empty sets or bad rewards, etc.
 ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
-;;;;;;;;;;;;;;;;;;;;;;;;;;;;; Planning Subproblems ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
+;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;; Planning Kernels ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
 ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
 
 (declare make-primitive-subproblem)
@@ -83,97 +349,95 @@
 
 ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;; Primitive ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
 
-;; No need to worry about supers?
-(defrecord PrimitiveSubproblem [input-set action output-set summary]
-  Subproblem
-  (current-summary [s] summary)
-  (child-keys      [s] no-children)
-  (get-child       [s child-key] (throw (RuntimeException.)))
-  (refine-input    [s refined-input-set]
-    (if (= input-set refined-input-set)
-      s
-      (make-primitive-subproblem refined-input-set action))))
-
-(defn make-primitive-subproblem [input-set action]
-  (let [[output-set rew] (angelic/optimistic-set-and-reward action input-set)]
-    (PrimitiveSubproblem. input-set action output-set (summary/make-solved-simple-summary rew action ))))
-
+(defn make-primitive-kernel [action]
+  (reify SubproblemKernel
+         (compute-output-set-and-reward   [sk input-set]
+            (angelic/optimistic-set-and-reward action input-set))
+         (compute-child-keys   [sk input-set]
+            no-children)
+         (compute-child-kernel [sk input-set child-key]
+            (throw (UnsupportedOperationException.)))))
 
 ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;; HLA ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
 
-(defrecord HlaSubproblem [super-hs input-set action output-set
-                          summarizer child-map ^HashMap refinement-map]
-  Subproblem
-  (current-summary [s] ...?)
-  (child-keys      [s] (keys child-map))
-  (get-child       [s child-key] (force (util/safe-get child-map child-key)))
-  (refine-input    [s refined-input-set]
-    (if (= refined-input-set input-set)
-      s
-      (util/cache-with refinement-map refined-input-set
-                       (make-hla-subproblem s refined-input-set action)))))
-
-(defn make-constraint-primitive [constraint]
-  (env-util/make-factored-primitive [:noop] constraint {} 0))
-
 (defn simple-immediate-refinements-set [a input-set]
   (for [[constraint ref] (angelic/immediate-refinements-set a input-set)]
-    (cons (make-constraint-primitive constraint) ref)))
+    (cons
+     (env-util/make-factored-primitive [:noop] constraint {} 0)     
+     ref)))
 
-(defn make-refinement-subproblem [parent-hs input-set actions]
+(defn make-refinement-kernel [actions]
   (let [[f & r] (util/make-safe actions)
-        left-sp (make-atomic-subproblem nil input-set a)]
+        left-k (make-action-kernel f)]
     (if (empty? r)
-      left-sp
-      ???....
-      left-sp
-      (make-refinement-subproblem parent-hs (output-set left-sp) r))))
+      left-k
+      (make-seq-kernel left-k (make-refinement-kernel r)))))
+
+;; TODO: handle proper key matching ? 
+(defn make-hla-kernel [action]
+  (reify SubproblemKernel
+         (compute-output-set-and-reward   [sk input-set]
+            (angelic/optimistic-set-and-reward action input-set))
+         (compute-child-keys   [sk input-set]
+            (simple-immediate-refinements-set action input-set))
+         (compute-child-kernel [sk input-set child-key]
+            (make-refinement-kernel child-key))))
+
+(defn make-action-kernel [action]
+  ((if (env/primitive? action) make-primitive-kernel make-hla-kernel) action))
 
 
-(defn make-hla-subproblem [super-hs input-set action]
-  (let [[opt-set rew] (angelic/optimistic-set-and-reward action input-set)]
-    (HlaSubproblem.
-     super-hs input-set action opt-set ??????summarizer
-     (cond (not (angelic/can-refine-from-set? action input-set))
+(comment 
+  (defn make-hla-subproblem [super-hs input-set action]
+    (let [[opt-set rew] (angelic/optimistic-set-and-reward action input-set)]
+      (HlaSubproblem.
+       super-hs input-set action opt-set ??????summarizer
+       (cond (not (angelic/can-refine-from-set? action input-set))
              no-children
-           (and super-hs (not (blocked??? super-hs)))
-             ??? ;reuse
-           :else
+             (and super-hs (not (blocked??? super-hs)))
+             ???                        ;reuse
+             :else
              (into {}
                    (for [ref (simple-immediate-refinements-set action input-set)]
                      [(map env/action-name ref)
                       (delay (make-refinement-subproblem this??? input-set ref))
                       (ActionInstance. ai nil prev-aio full-ref (atom nil))])))
-     (HashMap.))))
+       (HashMap.)))))
 
-
-(defn make-atomic-subproblem [super-as input-set action]
-  (if (env/primitive? action)
-    (make-primitive-subproblem input-set action)
-    (make-hla-subproblem parent-as input-set action)))
 
 
 ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;; Sequence ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
 
-
-;; For now, pick the right first if possible -- fix later.
-;; TODO: unfactor ?
-;; TODO: how do we wrap partial SPs? 
-(defrecord SeqSubproblem [super-sp root-hs key-seq
-                          input-set left-sp right-sp output-constraint
-                          child-map]
-  Subproblem
-  (current-summary [s] ...?)
-  (child-keys      [s] (keys child-map))
-  (get-child       [s child-key] (force (util/safe-get child-map child-key)))
-  (refine-input    [s refined-input-set]
-    (if (= refined-input-set input-set)
-      s
-      (util/cache-with refinement-map refined-input-set
-                       (make-hla-subproblem s refined-input-set action)))))
+(defn make-seq-kernel [left-k right-k]
+  (reify SubproblemKernel
+         (compute-output-set-and-reward   [sk input-set]
+            (angelic/optimistic-set-and-reward action input-set))
+         (compute-child-keys   [sk input-set]
+            (simple-immediate-refinements-set action input-set))
+         (compute-child-kernel [sk input-set child-key]
+            (make-refinement-kernel child-key))))
 
 
-(defn make-seq-subproblem [super-sp root-hs key-seq])
+(comment
+
+ ;; For now, pick the right first if possible -- fix later.
+ ;; TODO: unfactor ?
+ ;; TODO: how do we wrap partial SPs? 
+ (defrecord SeqSubproblem [super-sp root-hs key-seq
+                           input-set left-sp right-sp output-constraint
+                           child-map]
+   Subproblem
+   (current-summary [s] ...?)
+   (child-keys      [s] (keys child-map))
+   (get-child       [s child-key] (force (util/safe-get child-map child-key)))
+   (refine-input    [s refined-input-set]
+                    (if (= refined-input-set input-set)
+                      s
+                      (util/cache-with refinement-map refined-input-set
+                                       (make-hla-subproblem s refined-input-set action)))))
+
+
+ (defn make-seq-subproblem [super-sp root-hs key-seq]))
 
 
 ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;; Wrapped Seq ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
