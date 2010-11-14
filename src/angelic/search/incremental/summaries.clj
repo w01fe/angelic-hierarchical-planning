@@ -1,5 +1,6 @@
 (ns angelic.search.incremental.summaries
   (:require [edu.berkeley.ai.util :as util]
+            [edu.berkeley.ai.util.traits :as traits]
             [angelic.search.incremental.summary :as summary]))
 
 ;; This file defines a dataflow-style API for computing and caching
@@ -11,6 +12,7 @@
 ;; Ideally, this would define a trait that lived inside Summarizables ? 
 
 
+
 ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
 ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;; Summarizer ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
 ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
@@ -18,35 +20,123 @@
 ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;; Protocol ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
 
 ;; Actually, leaves have fixed summaries?  Except "live" can change - "increase" to blocked.
-;; TODO: if we do eager propagation, how do we avoid infinite loops ? 
+;; TODO: if we do eager propagation, how do we avoid infinite loops ?
 
-(defprotocol Summarizer
-  (initialize! [s init-summary])
-  (summarize   [s])
+;; Also; regardless of caching, etc; need way to verify that an apparently-optimal
+;; plan is actually optimal before doing any refinement 
+
+;; Either summarizer needs atom for source, and stash it in summary,
+;; or source needs atom for summarizer.
+;; Either way is a bit of a pain.  Former is maybe better ?
+
+;; How do we seprate out dependence from physics ? 
+
+;; TODO: notify and extract go logically together ??
+
+;; Separation of concerns:
+;; And/OR/const. -- computing summaries
+;; Caching and notification strategy
+
+;; Main concern: how do cached values get into computing?
+;; notifier should have getChildSummaries, or some such ...
+
+;; Three types of caching behavior:
+;; None -- compute fresh, recursively, every time.
+;; full -- always fully propagate changes to the top, just use cached values as accurate.
+;; Lazy -- report cache, ...
+
+(defprotocol Node
+  (node-children   [n])
+  (node-parents    [n])
+  (add-parent!     [n parent-node])
+  (add-child!      [n child-node]))
+
+(defprotocol SummarizerNode
+  (summary [n] "Possibly cached version of summarize")
+  (child-changed!  [n child]))
+
+
+(defprotocol Summarizable
+  (summarize [s min-summary] "Extract a summary at least as good as min if possible, verified not stale, or return a valid upper bound less than min-summary."))
+
+(defprotocol Expandable
   (expanded?   [s])
   (expand!     [s children]))
 
 
 
+(defn make-node-mixin []
+  (let [children (atom nil)
+        parents  (atom nil)]
+    {:node-children (fn [n] @children)
+     :node-parents  (fn [n] @parents)
+     :add-parent!    (fn [n parent] (swap! parents conj parent))
+     :add-child!    (fn [n child] (swap! children conj child))}))
+
+
+
+(defn make-uncached-summarizer-node-mixin []
+  {:summary        (fn [n] (summarize n summary/+worst-simple-summary+))
+   :child-changed! (fn [n child] nil) })
+
+(defn make-eager-cached-summarizer-node-mixin []
+  (let [summary-cache (atom nil)
+        update! (fn [n] (reset! summary-cache (summarize n summary/+worst-simple-summary+)))]
+    {:summary        (fn [n] (or @summary-cache (update! n)))
+     :child-changed! (fn [n child]
+                       (let [old @summary-cache]
+                         (when-not (= old @summary-cache)
+                           (doseq [p (node-parents n)] (child-changed! p n)))))}))
+  
+(defn make-lazy-cached-summarizer-node-mixin []
+  (let [summary-cache (atom nil)
+        update! (fn [n] (reset! summary-cache (summarize n summary/+worst-simple-summary+)))]
+    {:summary        (fn [n] (or @summary-cache (update! n)))
+     :child-changed! (fn [n child]
+                       (let [old @summary-cache]
+                         (when-not (= old @summary-cache)
+                           (doseq [p (node-parents n)] (child-changed! p n)))))}))
+
+
+
+
+(comment (defn make-simple-or-summarizer []
+   (let [summary-atom (atom :uninitialized)
+         children-atom (atom :unexpanded)]
+     (reify
+      OrSummarizer
+      (initialize! [s init]
+                   (assert (= @summary-atom :uninitialized))
+                   (reset! summary-atom init))
+      (summarize [s]
+                 (if (= @children-atom :unexpanded)
+                   @summary-atom
+                   (summary/bound (apply summary/max (map summarize @children-atom))
+                                  (summary/max-reward @summary-atom))))
+      (expanded? [s] (not (= @children-atom :unexpanded)))
+      (expand!   [s child-summarizers]
+                 (assert (summary/live? @summary-atom))
+                 (assert (not (expanded? s)))
+                 (reset! children-atom child-summarizers))))))
+
+
+
+
+
+
+
+
+
+;; Simple version with no caching.
+;; Really want traits here again?  (Notifier, ..)
+;; Can just pass in src with each request ... easy...
+(defn make-simple-seq-summarizer [])
+
+
+;(defprotocol )
+
 ;; No caching or anything...
-(defn make-simple-summarizer []
-  (let [summary-atom (atom :uninitialized)
-        children-atom (atom :unexpanded)]
-    (reify
-     Summarizer
-     (initialize! [s init]
-       (assert (= @summary-atom :uninitialized))
-       (reset! summary-atom init))
-     (summarize [s]
-       (if (= @children-atom :unexpanded)
-         @summary-atom
-         (summary/bound (apply summary/max (map summarize @children-atom))
-                        (summary/max-reward @summary-atom))))
-     (expanded? [s] (not (= @children-atom :unexpanded)))
-     (expand!   [s child-summarizers]
-       (assert (summary/live? @summary-atom))
-       (assert (not (expanded? s)))
-       (reset! children-atom child-summarizers)))))
+
 
 
 
