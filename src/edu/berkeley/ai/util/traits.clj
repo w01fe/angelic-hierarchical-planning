@@ -16,40 +16,32 @@
     (assert (apply distinct? (cons nil (map first pairs))))
     (into {} pairs)))
 
-(defn- parse-bindings [b]
-  (let [pairs (map vec (partition-all 2 b))]
-    (assert (apply distinct? (cons nil (map first pairs))))
-    (into {} pairs)))
+(defn merge-traits [& traits]
+  (let [bindings  (vec (apply concat (map first traits)))]
+    (assert (apply distinct? (take-nth 2 bindings)))
+    [bindings
+     (reduce util/merge-disjoint {} (map second traits))]))
 
-(defmacro deftrait [name child-traits state-bindings & protocols-and-methods]
-  `(def ~name
-        '[~(set child-traits) ~(parse-bindings state-bindings) ~(parse-protocols-and-methods protocols-and-methods)]))
+(defn parse-trait-form [traits]
+  (vec (map #(if (list? %) % (list %)) traits)))
 
-;(defmacro defrecord-trait [name fields ])
-
-(defn- merge-traits [traits]
-;  (println traits)
-  (apply map (fn [f & args] (apply f args))
-         [clojure.set/union util/merge-disjoint util/merge-disjoint]
-         traits))
-
-(defn- expand-traits
-  "Expand out a set of traits into a single [binding-map impl-map]"
-  [traits]
-  (if (seq traits)  
-    (let [merged (merge-traits traits)]
-      (rest (merge-traits [merged (expand-traits (first merged))])))
-      [#{} {} {}]))
-
+;; Internal rep. of a trait is a fn from args to [binding-seq impl-map]
+;; TODO: forn ow, args may be multiple evaluated?
+(defmacro deftrait [name args state-bindings child-traits & protocols-and-methods]
+  `(defn ~name ~args
+     (apply merge-traits
+      [(concat (interleave '~args ~args) '~state-bindings)
+        '~(parse-protocols-and-methods protocols-and-methods)]
+      ~(parse-trait-form child-traits))))
 
 (defn- render-trait-methods-inline [trait-map]
   (apply concat (map (partial apply cons) trait-map)))
 
-
 (defmacro reify-traits [[& traits] & specs]
-  (println traits)
-  (let [[trait-bindings trait-methods] (expand-traits (map eval traits))]
-    `(let ~(vec (apply concat trait-bindings))
+  (println (eval (parse-trait-form traits)))
+  (let [[trait-bindings trait-methods] (apply merge-traits (eval (parse-trait-form traits)))]
+    (println trait-bindings)
+    `(let ~trait-bindings
        (reify
         ~@(render-trait-methods-inline trait-methods)
         ~@specs))))
@@ -67,7 +59,7 @@
 
  (defprotocol P0)
 
- (deftrait +foo+ [] [x 2 y (atom nil)] P2 (p21 [x y] (+ x y)) (p22 [x] (inc x)) P0)
+ (deftrait +foo+ [x] [y (atom x)] [] P2 (p21 [x z] (+ z @y)) (p22 [x] (swap! y inc)) P0)
 
- (deftrait +bar+ [] [z (atom nil) a 4] P1 (p11 [x y] (- x y))))
+ (deftrait +bar+ [w] [z (inc w)] [(+foo+ (* w 2))] P1 (p11 [x y] (- y w))))
 

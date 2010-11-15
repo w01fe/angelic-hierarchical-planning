@@ -9,10 +9,6 @@
 ;; The basic idea here is to separate these statistics and their
 ;; propagation and caching from the underlying search space.
 
-;; Ideally, this would define a trait that lived inside Summarizables ? 
-
-
-
 ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
 ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;; Summarizer ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
 ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
@@ -51,86 +47,112 @@
   (add-parent!     [n parent-node])
   (add-child!      [n child-node]))
 
-(defprotocol SummarizerNode
+(traits/deftrait simple-node [] [children (atom nil) parents  (atom nil)] []
+  Node
+  (node-children [n] @children)
+  (node-parents  [n] @parents)
+  (add-child!    [n child] (swap! children conj child))
+  (add-parent!   [n parent] (swap! parents conj parent)))
+
+(traits/deftrait fixed-node [children] [parents  (atom nil)] []
+  Node
+  (node-children [n] children)
+  (node-parents  [n] @parents)
+  (add-child!    [n child] (throw (UnsupportedOperationException.)))
+  (add-parent!   [n parent] (swap! parents conj parent)))
+
+(defn connect! [parent child] (add-parent! child parent) (add-child! parent child))
+
+(defprotocol SummaryCache
   (summary [n] "Possibly cached version of summarize")
-  (child-changed!  [n child]))
+  (summary-changed! [n])
+  (verified-summary [n min-summary] "Produce a summary that represents the current exact best summary, or
+                                     ??? if that summary is probaly worse than min ..."))
+
+;;; NOTE: These all assume that the entire tree uses the same trait.
+
+(traits/deftrait uncached-summarizer-node [] [] []
+  SummaryCache
+  (summary [n] (summarize n summary/+worst-simple-summary+))
+  (summary-changed! [n] nil)
+  (verified-summary [n min-summary] (summary n)))
+
+(traits/deftrait eager-cached-summarizer-node [] [summary-cache (atom nil)] []
+  SummaryCache
+  (summary [n] (or @summary-cache (reset! summary-cache (summarize n))))
+  (summary-changed! [n]
+    (when-not (= @summary-cache (reset! summary-cache (summarize n)))
+      (doseq [p (node-parents n)] (summary-changed! p))))
+  (verified-summary [n min-summary] (summary n)))
+
+;; Only notifies when summary increases ...
+;; Need a way to know which child(ren) summary computation depended on.
+;; How is this different from sources?
+;; Answer: for a seq, want to expand seq node, but verify against constituents.
+(traits/deftrait lazy-cached-summarizer-node [] [summary-cache (atom nil)]  []
+  SummaryCache
+  (summary [n] (or @summary-cache (reset! summary-cache (summarize n))))
+  (summary-changed! [n]
+    (when-not (summary/>= @summary-cache (reset! summary-cache (summarize n)))
+      (doseq [p (node-parents n)] (summary-changed! p))))
+  (verified-summary [n min-summary]
+    (let [cs (summary n)]
+      (if (or (not (summary/>= cs min-summary))
+              (empty? (summary/children cs)))
+        cs
+        (do (doseq [child (summary/children cs)] (verified-summary (summary/source child) child))
+            (summary-changed! n)
+            (recur min-summary))))))
 
 
-(defprotocol Summarizable
-  (summarize [s min-summary] "Extract a summary at least as good as min if possible, verified not stale, or return a valid upper bound less than min-summary."))
 
 (defprotocol Expandable
   (expanded?   [s])
   (expand!     [s children]))
 
+(traits/deftrait simple-expandable [] [expanded?-atom (atom false)] []
+  Expandable
+  (expanded? [s] @expanded?-atom)
+  (expand!   [s child-summarizers]
+    (assert (not (expanded? s)))
+    (reset! expanded?-atom true)
+    (doseq [child child-summarizer] (connect! s child))
+    (child-changed! s :all)))
+;; What should this really be ? 
 
+(defprotocol Summarizable
+  (summarize [s] "Compute a summary based on the 'summary' of children, if applicable."))
 
-(defn make-node-mixin []
-  (let [children (atom nil)
-        parents  (atom nil)]
-    {:node-children (fn [n] @children)
-     :node-parents  (fn [n] @parents)
-     :add-parent!    (fn [n parent] (swap! parents conj parent))
-     :add-child!    (fn [n child] (swap! children conj child))}))
+;; Trait or concrete ?
+(traits/deftrait const-summarizable [reward status] [] []
+  Summarizable
+  (summarize [s] (summary/make-simple-summary reward status s)))
 
+;; TODO: Need to know when to replace leaf ... . . . ...
+;; How do I get connected (and then disconnected) from init?
+;; ie Need a way to remove children 
+(traits/deftrait simple-or-summarizable [init] [] [simple-expandable]
+  Summarizable
+  (summarize [s]
+    (if @expanded?-atom
+      (summary/bound (apply summary/max (map summary (node-children s))) (summary/max-reward (summary init)))
+      (summary/make-simple-summary init-reward init-status s))))
 
-
-(defn make-uncached-summarizer-node-mixin []
-  {:summary        (fn [n] (summarize n summary/+worst-simple-summary+))
-   :child-changed! (fn [n child] nil) })
-
-(defn make-eager-cached-summarizer-node-mixin []
-  (let [summary-cache (atom nil)
-        update! (fn [n] (reset! summary-cache (summarize n summary/+worst-simple-summary+)))]
-    {:summary        (fn [n] (or @summary-cache (update! n)))
-     :child-changed! (fn [n child]
-                       (let [old @summary-cache]
-                         (when-not (= old @summary-cache)
-                           (doseq [p (node-parents n)] (child-changed! p n)))))}))
-  
-(defn make-lazy-cached-summarizer-node-mixin []
-  (let [summary-cache (atom nil)
-        update! (fn [n] (reset! summary-cache (summarize n summary/+worst-simple-summary+)))]
-    {:summary        (fn [n] (or @summary-cache (update! n)))
-     :child-changed! (fn [n child]
-                       (let [old @summary-cache]
-                         (when-not (= old @summary-cache)
-                           (doseq [p (node-parents n)] (child-changed! p n)))))}))
-
+;; This one is not expandable...
+(traits/deftrait simple-seq-summarizable [] [] []
+  Summarizable
+  (summarize [s] (summary/adjust-source (apply summary/sum (map summary (node-children s))) s)))
 
 
 
-(comment (defn make-simple-or-summarizer []
-   (let [summary-atom (atom :uninitialized)
-         children-atom (atom :unexpanded)]
-     (reify
-      OrSummarizer
-      (initialize! [s init]
-                   (assert (= @summary-atom :uninitialized))
-                   (reset! summary-atom init))
-      (summarize [s]
-                 (if (= @children-atom :unexpanded)
-                   @summary-atom
-                   (summary/bound (apply summary/max (map summarize @children-atom))
-                                  (summary/max-reward @summary-atom))))
-      (expanded? [s] (not (= @children-atom :unexpanded)))
-      (expand!   [s child-summarizers]
-                 (assert (summary/live? @summary-atom))
-                 (assert (not (expanded? s)))
-                 (reset! children-atom child-summarizers))))))
+;; Concerns:
+;; computing a summary given children
+;; When to use cached/fresh
+;; verifying that (cached) summary is good enough. --> should be above
 
 
 
 
-
-
-
-
-
-;; Simple version with no caching.
-;; Really want traits here again?  (Notifier, ..)
-;; Can just pass in src with each request ... easy...
-(defn make-simple-seq-summarizer [])
 
 
 ;(defprotocol )

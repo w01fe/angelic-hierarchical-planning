@@ -27,9 +27,11 @@
 (defprotocol Summary
   (max-reward       [s] "Admissible reward bound")
   (status           [s] "Status: :blocked, :solved, or :live")
-  (sources          [s] "Nil or optimal solution, if solved")
+  (source           [s] "Object being directly summarized")
+  (children         [s] "Child summaries that went into this, if applicable")
 
   (adjust-reward [s f])
+  (adjust-source [s src])  
   (>=  [s other])
   (+   [s other]))
 
@@ -73,27 +75,30 @@
 ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;; SimpleSummary ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
 ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
 
-(defrecord SimpleSummary [max-rew stat srcs]
+(defrecord SimpleSummary [max-rew stat src chldren]
   Summary
   (max-reward       [s] max-rew)
   (status           [s] stat)
-  (sources          [s] srcs)
-  (adjust-reward    [s f] (SimpleSummary. (f max-rew) stat srcs))
+  (source          [s] src)
+  (children        [s] children)
+  (adjust-reward    [s f] (SimpleSummary. (f max-rew) stat src chldren))
+  (adjust-source   [s new-src] (SimpleSummary. max-rew stat new-src chldren))
   (>=               [s other] (default->= s other))
   (+                [s other]
     (SimpleSummary.
      (clojure.core/+ max-rew (max-reward other))
      (min-key status-val stat (status other))
-     (concat srcs (sources other)))))
+     nil [s other]
+#_     (concat srcs (sources other)))))
 
-(defn make-live-simple-summary [max-reward source] (SimpleSummary. max-reward :live [source]))
-(defn make-blocked-simple-summary [max-reward source] (SimpleSummary. max-reward :blocked [source]))
+(defn make-live-simple-summary [max-reward source] (SimpleSummary. max-reward :live source nil))
+(defn make-blocked-simple-summary [max-reward source] (SimpleSummary. max-reward :blocked source nil))
 ;(defn make-stale-simple-summary [max-reward source] (SimpleSummary. max-reward :stale [source]))
-(defn make-solved-simple-summary [max-reward source] (SimpleSummary. max-reward :solved [source]))
+(defn make-solved-simple-summary [max-reward source] (SimpleSummary. max-reward :solved source nil))
 
 (defn make-simple-summary [max-reward status source]
   (assert (contains? statuses status))
-  (SimpleSummary. max-reward status [source]))
+  (SimpleSummary. max-reward status source nil))
 
 (comment
   (defn go-stale [summary]
@@ -102,7 +107,7 @@
 
 (def +worst-simple-summary+ (make-blocked-simple-summary Double/NEGATIVE_INFINITY :worst))
 (def +best-simple-summary+  (make-live-simple-summary Double/POSITIVE_INFINITY :best)) ;; don't be too optimistic
-(def +zero-simple-summary+  (SimpleSummary. 0 :solved []))
+(def +zero-simple-summary+  (SimpleSummary. 0 :solved nil nil))
 
 (defn simple-summary-str [s] (str "Summary:" (max-reward s) (status s) #_ (vec (:opt-sol s))))
 (defmethod print-method SimpleSummary [s o] (print-method (simple-summary-str s) o))
@@ -123,7 +128,7 @@
 ;; TODO: can we safely handle empty case here?
 (defn max [& stats] (apply max-compare >= (cons +worst-simple-summary+ stats)))
 (defn min [& stats] (apply max-compare (complement >=) (cons +best-simple-summary+ stats)))
-;(defn sum [& stats] )
+(defn sum [& stats] (if (empty? stats) +zero-simple-summary+ (reduce + (first stats) (next stats))))
 
 (defn bound [summary reward-bound]
   (adjust-reward summary #(clojure.core/min % reward-bound)))
