@@ -6,7 +6,6 @@
   (when (seq args)
     (let [[proto & rest] args
           [methods more] (split-with coll? rest)]
-      (println proto)
       (assert (symbol? proto))
       (cons [proto methods]
             (parse-protocols-and-method-pairs more)))))
@@ -18,12 +17,14 @@
 
 (defn merge-traits [& traits]
   (let [bindings  (vec (apply concat (map first traits)))]
-    (assert (apply distinct? (take-nth 2 bindings)))
+    (assert (apply distinct? (cons nil (take-nth 2 bindings))))
     [bindings
      (reduce util/merge-disjoint {} (map second traits))]))
 
 (defn parse-trait-form [traits]
-  (vec (map #(if (list? %) % (list %)) traits)))
+  (vec (map #(if (list? %)
+               (cons (first %) (map (fn [x] `'~x) (rest %)))
+               (list %)) traits)))
 
 ;; Internal rep. of a trait is a fn from args to [binding-seq impl-map]
 ;; TODO: forn ow, args may be multiple evaluated?
@@ -31,16 +32,14 @@
   `(defn ~name ~args
      (apply merge-traits
       [(concat (interleave '~args ~args) '~state-bindings)
-        '~(parse-protocols-and-methods protocols-and-methods)]
+       '~(parse-protocols-and-methods protocols-and-methods)]
       ~(parse-trait-form child-traits))))
 
 (defn- render-trait-methods-inline [trait-map]
   (apply concat (map (partial apply cons) trait-map)))
 
 (defmacro reify-traits [[& traits] & specs]
-  (println (eval (parse-trait-form traits)))
   (let [[trait-bindings trait-methods] (apply merge-traits (eval (parse-trait-form traits)))]
-    (println trait-bindings)
     `(let ~trait-bindings
        (reify
         ~@(render-trait-methods-inline trait-methods)

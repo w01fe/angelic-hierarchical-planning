@@ -41,11 +41,35 @@
 ;; full -- always fully propagate changes to the top, just use cached values as accurate.
 ;; Lazy -- report cache, ...
 
+;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
+;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;; Protocols ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
+;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
+
 (defprotocol Node
   (node-children   [n])
   (node-parents    [n])
   (add-parent!     [n parent-node])
   (add-child!      [n child-node]))
+
+(defprotocol SummaryCache
+  (summary [n] "Possibly cached version of summarize")
+  (summary-changed! [n])
+  (verified-summary [n min-summary] "Produce a summary that represents the current exact best summary, or
+                                     something workse than min-summary if not feasible."))
+
+
+(defprotocol Expandable
+  (expanded?   [s])
+  (expand!     [s children]))
+
+(defprotocol Summarizable
+  (summarize [s] "Compute a summary based on the 'summary' of children, if applicable."))
+
+;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
+;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;; Traits ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
+;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
+
+;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;; Node ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
 
 (traits/deftrait simple-node [] [children (atom nil) parents  (atom nil)] []
   Node
@@ -63,17 +87,14 @@
 
 (defn connect! [parent child] (add-parent! child parent) (add-child! parent child))
 
-(defprotocol SummaryCache
-  (summary [n] "Possibly cached version of summarize")
-  (summary-changed! [n])
-  (verified-summary [n min-summary] "Produce a summary that represents the current exact best summary, or
-                                     ??? if that summary is probaly worse than min ..."))
+
+;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;; SummaryCache ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
 
 ;;; NOTE: These all assume that the entire tree uses the same trait.
 
 (traits/deftrait uncached-summarizer-node [] [] []
   SummaryCache
-  (summary [n] (summarize n summary/+worst-simple-summary+))
+  (summary [n] (summarize n))
   (summary-changed! [n] nil)
   (verified-summary [n min-summary] (summary n)))
 
@@ -104,11 +125,7 @@
             (summary-changed! n)
             (recur min-summary))))))
 
-
-
-(defprotocol Expandable
-  (expanded?   [s])
-  (expand!     [s children]))
+;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;; Expandable ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
 
 (traits/deftrait simple-expandable [] [expanded?-atom (atom false)] []
   Expandable
@@ -120,28 +137,26 @@
     (child-changed! s :all)))
 ;; What should this really be ? 
 
-(defprotocol Summarizable
-  (summarize [s] "Compute a summary based on the 'summary' of children, if applicable."))
+;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;; Summarizable ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
+
 
 ;; Trait or concrete ?
 (traits/deftrait const-summarizable [reward status] [] []
   Summarizable
   (summarize [s] (summary/make-simple-summary reward status s)))
 
-;; TODO: Need to know when to replace leaf ... . . . ...
-;; How do I get connected (and then disconnected) from init?
-;; ie Need a way to remove children 
+;; Initially shoud be a parent of init, without having child.
 (traits/deftrait simple-or-summarizable [init] [] [simple-expandable]
   Summarizable
   (summarize [s]
     (if @expanded?-atom
       (summary/bound (apply summary/max (map summary (node-children s))) (summary/max-reward (summary init)))
-      (summary/make-simple-summary init-reward init-status s))))
+      (summary/adjust-source (summary/summary init) s))))
 
-;; This one is not expandable...
+;; This one is not expandable, needs children set from outside
 (traits/deftrait simple-seq-summarizable [] [] []
   Summarizable
-  (summarize [s] (summary/adjust-source (apply summary/sum (map summary (node-children s))) s)))
+  (summarize [s] (apply summary/sum (map summary (node-children s)))))
 
 
 
@@ -150,14 +165,12 @@
 ;; When to use cached/fresh
 ;; verifying that (cached) summary is good enough. --> should be above
 
+(defn make-const-summarizable [reward status]
+  (traits/reify-traits [simple-node uncached-summarizer-node (const-summarizable reward status)]))
 
 
 
 
-
-;(defprotocol )
-
-;; No caching or anything...
 
 
 

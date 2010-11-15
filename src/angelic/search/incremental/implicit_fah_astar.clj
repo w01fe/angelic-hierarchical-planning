@@ -1,6 +1,7 @@
 (ns angelic.search.incremental.implicit-fah-astar
   (:require clojure.string
             [edu.berkeley.ai.util :as util]
+            [edu.berkeley.ai.util.traits :as traits]            
             [clojure.contrib.core :as ccc]
             [angelic.env :as env]
             [angelic.env.util :as env-util]            
@@ -82,7 +83,6 @@
 (defprotocol Subproblem
   (input-set       [s])
   (output-set      [s])
-  (summarizer      [s])
   (expand!         [s])
   (child-keys      [s])
   (get-child       [s child-key])
@@ -93,25 +93,20 @@
     s
     (refine-input- s maybe-refined-input-set)))
 
-(defn make-simple-subproblem [input-set output-set init-bound init-status delayed-child-map refine-input-fn]
-  (let [my-summarizer (summaries/make-simple-summarizer)]
-    (doto
-        (reify
-         Subproblem
-         (input-set       [s] input-set)
-         (output-set      [s] output-set)
-         (summarizer      [s] my-summarizer)
-         (expand!         [s]
-           (summaries/expand! my-summarizer (map summarizer (vals (force delayed-child-map)))))
-         (child-keys      [s]
-           (assert (summaries/expanded? my-summarizer))
-           (keys (force delayed-child-map)))
-         (get-child       [s child-key]
-           (assert (summaries/expanded? my-summarizer))
-           (util/safe-get (force delayed-child-map) child-key))
-         (refine-input-   [s refined-input-set] (refine-input-fn refined-input-set)))
-      (->> (summary/make-simple-summary init-bound init-status)
-           (summaries/initialize! my-summarizer)))))
+(traits/deftrait simple-subproblem [input-set output-set delayed-child-map refine-input-fn] [] []
+   Subproblem
+   (input-set       [s] input-set)
+   (output-set      [s] output-set)
+   (expand!         [s]
+     (summaries/expand! s (vals (force delayed-child-map))))
+   (child-keys      [s]
+     (assert (summaries/expanded? s))
+     (keys (force delayed-child-map)))
+   (get-child       [s child-key]
+     (assert (summaries/expanded? s))
+     (util/safe-get (force delayed-child-map) child-key))
+   (refine-input-   [s refined-input-set] (refine-input-fn refined-input-set)))
+
 
 
 ;;;;;;;;;;;;;;;;;;;;;;;;;;;; Simple FS Subproblem ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
@@ -124,14 +119,16 @@
 
 (defn make-simple-atomic-subproblem [inp-set function-set]
   (let [[out-set reward] (apply-opt function-set inp-set)]
-    (make-simple-subproblem
-     inp-set
-     out-set
-     reward
-     (status function-set inp-set) 
-     (delay (let [fs-child-seqs (child-seqs function-set inp-set)]
-              (zipmap (map #(map fs-name %) fs-child-seqs) fs-child-seqs)))
-     #(make-simple-atomic-subproblem % function-set))))
+    (traits/reify-traits
+     [summaries/simple-node
+      summaries/uncached-summarizer-node
+      (simple-subproblem
+       inp-set out-set 
+       (delay (let [fs-child-seqs (child-seqs function-set inp-set)]
+               (into {} (map (juxt #(map fs-name %) make-simple-fs-seq-subproblem) fs-child-seqs))))
+       #(make-simple-atomic-subproblem % function-set))
+      (summaries/simple-or-summarizable
+       (summaries/make-const-summarizable reward (status function-set inp-set)))])))
 
 
 
@@ -152,8 +149,8 @@
 ;; sum is live in earnest itself ?
 ;; IE if sum is ever live, it is live directly (no descendants) ? IE we update the whole vertical chain?  bad news ... ?
 (defn make-simple-pair-subproblem [sp1 sp2]
-  (let [sum1 (summaries/summarize (summarizer sp1))
-        sum2 (summaries/summarize (summarizer sp2))
+  (let [sum1 (summaries/summarize sp1)
+        sum2 (summaries/summarize sp2)
         init-summary (summary/+ sum1 sum2)]
     (make-simple-subproblem
      (input-set sp1)
