@@ -1,7 +1,7 @@
-(ns angelic.search.incremental.summaries
+(ns angelic.search.summaries
   (:require [edu.berkeley.ai.util :as util]
             [edu.berkeley.ai.util.traits :as traits]
-            [angelic.search.incremental.summary :as summary]))
+            [angelic.search.summary :as summary]))
 
 ;; This file defines a dataflow-style API for computing and caching
 ;; summaries of potentially mutable objects.
@@ -175,51 +175,6 @@
 
 
 
-
-
-
-(comment
-
- (defprotocol Summarizable
-   (summary  [s] "Return a summary.  May change over time.")
-   (expand!  [s] "???"))
-
-; Always has form min(..., max(...)) or sum(...)? 
- (defprotocol Node
-   (node-type       [s] ":or, :and, or :leaf")
-   (current-summary [s] "Return the current cached summary.")
-   (compute-summary [s] "Compute a fresh summary, without interacting with cache.")
-   (notify!         [s child] "Notify that the summary of a child has changed."))
-
- (defprotocol PLeafNode
-   )
-
- (defprotocol POrNode
-   (max-child      [s] "Return child with best (possibly stale) summary.")
-   (second-summary [s] "Return the (possibly stale) summary of second-best child.")
-   #_ "add child?? expand-leaf-child??")
-
- (defprotocol PAndNode
-   (best-child     [s summary-value-fn])
-   #_ "???"
-   )
-
- (deftype OrNode
-   [upper-bound
-    ^{:unsynchronized-mutable true} children]
-   )
-
- (defn make-or-node [upper-bound init-children])
-
-
-
-
- (defn compute-sum-summary [children] (reduce summary/+ (map current-summary children)))
- (defn compute-sum-summary [children] (reduce summary/+ (map current-summary children)))
-
- (deftype SumSummarizer [^{:volatile-mutable true} cached-summary children parents]
-   (compute-summary [s] (reduce summary/+ (map current-summary children)))
-   ))
 
 
 

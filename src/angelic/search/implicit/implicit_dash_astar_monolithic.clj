@@ -1,4 +1,4 @@
-(ns angelic.search.incremental.implicit-dash-astar-monolithic
+(ns angelic.search.implicit.implicit-dash-astar-monolithic
   (:require clojure.string
             [edu.berkeley.ai.util :as util]
             [angelic.env :as env]
@@ -8,7 +8,7 @@
             [angelic.hierarchy.util :as hierarchy-util]            
             [angelic.hierarchy.state-set :as state-set]
             [angelic.hierarchy.angelic :as angelic]
-            [angelic.search.incremental.core :as is])
+            [angelic.search.explicit.core :as is])
   (:import  [java.util HashMap]))
 
 ;; Version before splitting out summaries, bounds, etc.
@@ -659,12 +659,12 @@
 
 
 
-; (use 'edu.berkeley.ai.util '[angelic env hierarchy] 'angelic.domains.nav-switch 'angelic.search.incremental.implicit)
-; user> (require '[ angelic.search.incremental.explicit :as eis ])
+; (use 'edu.berkeley.ai.util '[angelic env hierarchy] 'angelic.domains.nav-switch 'angelic.search.implicit.implicit)
+; user> (require '[ angelic.search.explicit.explicit :as eis ])
 ;user> (eis/explicit-cn-dash-a* (make-nav-switch-hierarchy (make-random-nav-switch-env 5 2 0) true))
 ;  (implicit-random-dash-a* (make-nav-switch-hierarchy (make-random-nav-switch-env 5 2 0) true))
 
 
- ; (do (use 'edu.berkeley.ai.util '[angelic env hierarchy] 'angelic.domains.nav-switch 'angelic.search.incremental.implicit 'angelic.domains.discrete-manipulation) (require '[angelic.search.incremental.hierarchical :as his]))
+ ; (do (use 'edu.berkeley.ai.util '[angelic env hierarchy] 'angelic.domains.nav-switch 'angelic.search.implicit.implicit 'angelic.domains.discrete-manipulation) (require '[angelic.search.explicit.hierarchical :as his]))
 
 ;(let [h (make-discrete-manipulation-hierarchy (make-random-discrete-manipulation-env 1 3))] (println (run-counted #(his/interactive-hierarchical-search h))) #_ (println (run-counted #(implicit-random-dash-a* h))))

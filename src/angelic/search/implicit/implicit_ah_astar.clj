@@ -1,4 +1,4 @@
-(ns angelic.search.incremental.implicit-ah-astar
+(ns angelic.search.implicit.implicit-ah-astar
   (:require [edu.berkeley.ai.util :as util]
             [angelic.env :as env]
             [angelic.env.util :as env-util]            
@@ -7,7 +7,7 @@
             [angelic.hierarchy.util :as hierarchy-util]            
             [angelic.hierarchy.state-set :as state-set]
             [angelic.hierarchy.angelic :as angelic]
-            [angelic.search.incremental.core :as is])
+            [angelic.search.explicit.core :as is])
   (:import  [java.util HashMap]))
 
 

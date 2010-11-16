@@ -2,6 +2,7 @@
   (:refer-clojure :exclude [empty?])
   (:require [edu.berkeley.ai.util :as util]
             [clojure.contrib.combinatorics :as combos]
+            [angelic.env.util :as env-util]            
             [angelic.env.state :as state]))
 
 
@@ -185,3 +186,7 @@
  #_  (state/extract-effects ss))
 
 
+
+
+(defn initial-logging-ss [env]
+  (make-logging-factored-state-set [(env-util/initial-logging-state env)]))

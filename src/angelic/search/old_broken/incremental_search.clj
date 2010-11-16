@@ -50,7 +50,7 @@
 (def pos-inf Double/POSITIVE_INFINITY)
 (def neg-inf Double/NEGATIVE_INFINITY)
 
-(defmethod queues/get-cost angelic.old.search.incremental.Summary [x] (- (max-reward x)))
+(defmethod queues/get-cost angelic.old.search.summary [x] (- (max-reward x)))
 
 (defn viable? [summary min-reward]
   (let [reward (max-reward summary)]
@@ -84,7 +84,7 @@
                (let [c  (- (max-reward x) reward)]
                  (if (not (zero? c)) c
                    (cond soln -1 
-                         (and (instance? angelic.old.search.incremental.Node x) (solution x)) 1
+                         (and (instance? angelic.old.search.explicit.Node x) (solution x)) 1
                          :else 0))))
   Summary (max-reward [] reward)   
   Node    (node-name  [] name)

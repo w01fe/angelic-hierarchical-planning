@@ -1,11 +1,11 @@
-(ns angelic.search.incremental.implicit
+(ns angelic.search.implicit.implicit
   (:require [edu.berkeley.ai.util :as util]
             [angelic.env :as env] 
             [angelic.hierarchy :as hierarchy]
             [angelic.hierarchy.state-set :as state-set]
             [angelic.hierarchy.angelic :as angelic]
-            [angelic.search.incremental.core :as is]
-            [angelic.search.incremental.hierarchical :as his])
+            [angelic.search.explicit.core :as is]
+            [angelic.search.explicit.hierarchical :as his])
   (:import  [java.util HashMap]))
 
 
@@ -162,8 +162,8 @@
 (defn compare-saha-nodes [x1 x2]
   (let [c (compare-saha-summaries x1 x2)]
     (if (zero? c)  
-        (compare (and (instance? angelic.search.incremental.Node x2) (is/node-goal? x2))
-                 (and (instance? angelic.search.incremental.Node x1) (is/node-goal? x1)))
+        (compare (and (instance? angelic.search.explicit.Node x2) (is/node-goal? x2))
+                 (and (instance? angelic.search.explicit.Node x1) (is/node-goal? x1)))
         c)))
 
 ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;; CAC Node ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;

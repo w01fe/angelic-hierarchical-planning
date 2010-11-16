@@ -1,4 +1,4 @@
-(ns angelic.search.incremental.explicit
+(ns angelic.search.explicit.explicit
   (:require [edu.berkeley.ai.util :as util]
             [angelic.env :as env]
             [angelic.env.util :as env-util]
@@ -6,8 +6,8 @@
             [angelic.hierarchy :as hierarchy]
             [angelic.hierarchy.util :as hierarchy-util]
             [angelic.hierarchy.angelic :as angelic]
-            [angelic.search.incremental.core :as is]
-            [angelic.search.incremental.hierarchical :as his])
+            [angelic.search.explicit.core :as is]
+            [angelic.search.explicit.hierarchical :as his])
   (:import  [java.util HashMap]))
 
 
@@ -36,7 +36,7 @@
 (def worst-cn-summary (CNSummary. is/neg-inf 1))
 (def failed-cn-search (is/make-failed-search worst-cn-summary))
 
-(extend angelic.search.incremental.core.Node
+(extend angelic.search.explicit.core.Node
   ConspiracyNumbered {:conspiracy-number (constantly 1)})
 
 (defn min-cn-summaries
@@ -172,7 +172,7 @@
                (let [c  (- (is/max-reward x) wtd-reward)]
                  (if (not (zero? c)) c
                    (cond goal? -1 
-                         (and (instance? angelic.search.incremental.core.Node x) (is/node-goal? x)) 1
+                         (and (instance? angelic.search.explicit.core.Node x) (is/node-goal? x)) 1
                          :else (- (pess-reward x) pes-reward)))))
   is/Summary (max-reward [this] wtd-reward)   
   is/Node    (node-name  [this] name)
@@ -322,7 +322,7 @@
                (let [c  (- (is/max-reward x) wtd-reward)]
                  (if (not (zero? c)) c
                    (cond goal? -1 
-                         (and (instance? angelic.search.incremental.core.Node x) (is/node-goal? x)) 1
+                         (and (instance? angelic.search.explicit.core.Node x) (is/node-goal? x)) 1
                          :else (- (pess-reward x) pes-reward)))))
   is/Summary (max-reward [this] wtd-reward)   
   is/Node    (node-name  [this] name)

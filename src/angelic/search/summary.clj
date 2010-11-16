@@ -1,4 +1,4 @@
-(ns angelic.search.incremental.summary
+(ns angelic.search.summary
   (:refer-clojure :exclude [min max >= +])
   (:require [edu.berkeley.ai.util :as util]))
 
@@ -140,9 +140,16 @@
 
 (defn extract-solution-pair [summary action-extractor]
   (assert (solved? summary))
-  [(map action-extractor (extract-source-seq summary))
+  [(filter identity (map action-extractor (extract-source-seq summary)))
    (max-reward summary)])
 
+(defn solve [summary-fn expand!-fn action-extractor]
+  (loop []
+    (let [summary (summary-fn)]
+      (if (solved? summary)
+        (extract-solution-pair summary action-extractor)
+        (do (expand!-fn (source summary)) 
+            (recur))))))
 
 ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;; Misc. Helpers ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
 

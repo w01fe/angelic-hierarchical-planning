@@ -1,4 +1,4 @@
-(ns angelic.search.incremental.implicit-dash-astar2
+(ns angelic.search.implicit.implicit-dash-astar2
   (:require clojure.string
             [edu.berkeley.ai.util :as util]
             [clojure.contrib.core :as ccc]
@@ -9,10 +9,10 @@
             [angelic.hierarchy.util :as hierarchy-util]            
             [angelic.hierarchy.state-set :as state-set]
             [angelic.hierarchy.angelic :as angelic]
-            [angelic.search.incremental.core :as is]
-            [angelic.search.incremental.summary :as summary]
-            [angelic.search.incremental.summaries :as summaries]
-            [angelic.search.incremental.lattices :as lattices]                        
+            [angelic.search.explicit.core :as is]
+            [angelic.search.summary :as summary]
+            [angelic.search.explicit.summaries :as summaries]
+            [angelic.search.explicit.lattices :as lattices]                        
             )
   (:import  [java.util HashMap IdentityHashMap]))
 

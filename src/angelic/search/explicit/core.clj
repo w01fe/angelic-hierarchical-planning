@@ -1,4 +1,4 @@
-(ns angelic.search.incremental.core
+(ns angelic.search.explicit.core
   (:require [edu.berkeley.ai.util :as util]
             [edu.berkeley.ai.util.queues :as queues]))
 
@@ -10,7 +10,7 @@
 
 ;; TODO: fancier info going up
 ;; TODO: fancier goals, etc. ?
-
+;; TODO: merge iwth other stuff. 
 ; May need: node merging?
 
 ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;; Summary ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
@@ -46,7 +46,7 @@
 (def pos-inf Double/POSITIVE_INFINITY)
 (def neg-inf Double/NEGATIVE_INFINITY)
 
-(defmethod queues/get-cost angelic.search.incremental.core.Summary [x] (- (max-reward x)))
+(defmethod queues/get-cost angelic.search.explicit.core.Summary [x] (- (max-reward x)))
 
 (defn viable? [summary min-reward]
   (let [reward (max-reward summary)]
@@ -84,7 +84,7 @@
                (let [c  (- (max-reward x) reward)]
                  (if (not (zero? c)) c
                    (cond goal? -1 
-                         (and (instance? angelic.search.incremental.core.Node x) (node-goal? x)) 1
+                         (and (instance? angelic.search.explicit.core.Node x) (node-goal? x)) 1
                          :else 0))))
   Summary (max-reward [_] reward)   
   Node    (node-name  [_] name)
@@ -147,7 +147,7 @@
   (sub-current-summary [ss])
   (sub-next-node       [ss min-reward]))
 
-(extend angelic.search.incremental.core.IncrementalSearch
+(extend angelic.search.explicit.core.IncrementalSearch
    SubSearch {:sub-current-summary current-summary :sub-next-node next-goal})
 
 (defrecord WrappedSubSearch [search reward-offset summary-lift-fn goal-lift-fn]

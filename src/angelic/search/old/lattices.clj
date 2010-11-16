@@ -1,6 +1,6 @@
-(ns angelic.search.incremental.lattices
+(ns angelic.search.explicit.lattices
   (:require [edu.berkeley.ai.util :as util]
-            #_  [angelic.search.incremental.summary :as summary])
+            #_  [angelic.search.summary :as summary])
   (:import [java.util HashMap List ArrayList]))
 
 ;; This file defines a declarative framework for maintaining consistency

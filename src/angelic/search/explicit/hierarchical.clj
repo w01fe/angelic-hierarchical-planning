@@ -1,4 +1,4 @@
-(ns angelic.search.incremental.hierarchical
+(ns angelic.search.explicit.hierarchical
   (:require [edu.berkeley.ai.util :as util]
             [angelic.env :as env]
             [angelic.env.state :as state]
@@ -6,7 +6,7 @@
             [angelic.hierarchy :as hierarchy]
             [angelic.hierarchy.angelic :as angelic]
             [angelic.hierarchy.util :as hierarchy-util]            
-            [angelic.search.incremental.core :as is]
+            [angelic.search.explicit.core :as is]
 
             [angelic.search.interactive :as interactive])
   
