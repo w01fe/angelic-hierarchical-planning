@@ -21,8 +21,8 @@
     (assert (apply distinct? (cons nil all-args)))
     [(symbol ns (name proto))
      `(~method-name ~method-args (~scoped-fn-name ~@all-args))
-     `(defn ~fn-name ~all-args ~@method-body)]))
-
+     `(defn ~fn-name ~all-args (loop ~(vec (interleave (next method-args) (next method-args))) ~@method-body))]))
+;; Loop allows proper recur semantics ...
 
 (defn- parse-protocols-and-methods [args specs]
   (let [methods-by-proto (parse-protocols-and-method-pairs specs)

@@ -133,7 +133,7 @@
   (expand!   [s child-summarizers]
     (assert (not (expanded? s)))
     (reset! expanded?-atom true)
-    (doseq [child child-summarizer] (connect! s child))
+    (doseq [child child-summarizers] (connect! s child))
     (child-changed! s :all)))
 ;; What should this really be ? 
 
@@ -149,9 +149,9 @@
 (traits/deftrait simple-or-summarizable [init] [] [simple-expandable]
   Summarizable
   (summarize [s]
-    (if @expanded?-atom
+    (if (expanded? s)
       (summary/bound (apply summary/max (map summary (node-children s))) (summary/max-reward (summary init)))
-      (summary/adjust-source (summary/summary init) s))))
+      (summary/adjust-source (summary init) s))))
 
 ;; This one is not expandable, needs children set from outside
 (traits/deftrait simple-seq-summarizable [] [] []
