@@ -14,16 +14,19 @@
 ;; Solves the pseudo-RBFS problem.
 ;; Uses new traits approaches.
 ;; No pessimistic for now. 
-
-;; This is where key difference comes in from earlier --
-;; sum is live in earnest itself ?
-;; IE if sum is ever live, it is live directly (no descendants) ? IE we update the whole vertical chain?  bad news ... ?
-
-;;;;;;;;;;;;;;;;;;;;;;;;;;;; Simple FS Subproblem ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
-
-;; Very simple, no caching or reuse or anything.
 ;; This yields a sort of rightmost-first AHA*,
-;; With upward propagation and caching ?
+;; With upward propagation and caching
+
+;; Right now, this works, except for lazy caching
+;; (which must be fixed to not skip over OR-levels),
+;; AND null output sets.  (In particular, for refine-input; immediate are fixed.) 
+
+;; Note: used at compile-time, cannot be dynamically rebound without recompiling ...
+#_(def cache-trait summaries/uncached-summarizer-node)
+(def cache-trait summaries/eager-cached-summarizer-node)
+#_(def cache-trait summaries/lazy-cached-summarizer-node)
+
+;;;;;;;;;;;;;;;;;;;;;;;;;;;;;; Atomic Subproblem ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
 
 (declare make-simple-fs-seq-subproblem)
 
@@ -39,11 +42,12 @@
                 (into {} (map (juxt #(map fs/fs-name %) #(make-simple-fs-seq-subproblem inp-set %)) fs-child-seqs))))
        #(make-simple-atomic-subproblem % function-set))
       summaries/simple-node
-      summaries/eager-cached-summarizer-node
+      cache-trait
       (summaries/simple-or-summarizable
        (summaries/make-const-summarizable reward (fs/status function-set inp-set)))])))
 
 
+;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;; Seq Subproblem ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
 
 (declare make-simple-pair-subproblem)
 
@@ -63,7 +67,7 @@
   (subproblem/child-keys sp))
 
 (defn make-simple-pair-subproblem [sp1 sp2]
-  (let [seq-sum (traits/reify-traits [(summaries/fixed-node [sp1 sp2]) summaries/eager-cached-summarizer-node summaries/simple-seq-summarizable])
+  (let [seq-sum (traits/reify-traits [(summaries/fixed-node [sp1 sp2]) cache-trait summaries/simple-seq-summarizable])
         ret 
         (traits/reify-traits
          [(subproblem/simple-subproblem
@@ -73,77 +77,51 @@
                     (into {} (for [k ks] [[label k] (simple-pair-child sp1 sp2 [label k])]))))
            #(make-aligned-simple-pair-subproblem (subproblem/refine-input sp1 %) sp2))
           summaries/simple-node
-          summaries/eager-cached-summarizer-node
+          cache-trait
           (summaries/simple-or-summarizable seq-sum)])]
     (summaries/add-parent! seq-sum ret)
     ret))
 
-
+;; TODO: remove viable thing here?
 (defn make-simple-fs-seq-subproblem [inp-set [first-fs & rest-fs]]
   (util/print-debug 2 "Making seq!:" (map fs/fs-name (cons first-fs rest-fs)))
   (let [first-sp (make-simple-atomic-subproblem inp-set first-fs)]
-    (if (empty? rest-fs)
+    (if (or (empty? rest-fs) (not (summary/viable? (summaries/summary first-sp))))
       first-sp
       (->> (make-simple-fs-seq-subproblem (subproblem/output-set first-sp) rest-fs)
            (make-simple-pair-subproblem first-sp)))))
 
-
-;;;;;;;;;;;;;;;;;;;;;;;;;;; TopDown FS Subproblem ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
-;; Add caching, exploitation of subsumption, but no graphiness 
-
-
-;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
-;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;; Planning ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
-;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
-
-;; At least two ways we can do it -- keeping set of leaves, or following sum structure.
-;; Do the latter for now.
-;; Problem: haven't exposed enough. In particular, no way to verify through seqs.
-
-(def make-root-node make-simple-atomic-subproblem)
+;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;; Driver ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
 
 (defn implicit-fah-a* [henv]
   (->> (function-sets/make-init-pair henv)
-       (apply make-root-node)
+       (apply make-simple-atomic-subproblem)
        subproblem/solve))
 
 
 ;; (use '[angelic env hierarchy] 'angelic.domains.nav-switch 'angelic.search.implicit.implicit-fah-astar)
 ;; (implicit-random-fah-a* (make-nav-switch-hierarchy (make-random-nav-switch-env 5 2 0) true))
 
+; (do (use 'edu.berkeley.ai.util '[angelic env hierarchy] 'angelic.domains.nav-switch 'angelic.search.implicit.implicit 'angelic.domains.discrete-manipulation) (require '[angelic.search.explicit.hierarchical :as his]))
+
+;(let [h (make-discrete-manipulation-hierarchy (make-random-discrete-manipulation-env 1 3))] (println #_ (run-counted #(his/interactive-hierarchical-search h)))  (println (run-counted #(implicit-fah-a* h))))
 
 
 
-
-
-;; TODO: getting child from super ...
-
-
-;; TODO: simple generic SimpleSubproblem record ? 
-
-;; TODO: stop early on empty sets or bad rewards, etc.
-
-
-
-
-;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;; Wrapped Seq ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
-
-(comment 
- (defrecord WrappedSubproblem [input-set wrapped-sp remaining-keys output-set]
-   Subproblem
-   (current-summary [s] ...)
-   (child-keys      [s] [(first remaining-keys)])
-   (get-child       [s child-key]
-                    (assert (= child-key (first remaining-keys)))
-                    (let [inner-child (get-child wrapped-sp child-key)
-                          more-keys   (next remaining-keys)]
-                      (if more-keys
-                        (make-wrapped-subproblem inner-child more-keys output-set)
-                        (do (assert (state-set/subset? (:output-set inner-child) output-set))
-                            inner-child))))
-   (refine-input    [s refined-input-set]
-                    ...?))
-
- (defn make-wrapped-subproblem [wrapped-sp remaining-keys output-set]
-   (WrappedSubproblem. (input-set wrapped-sp) wrapped-sp remaining-keys output-set)))
-
+(comment
+  (defmacro make-simple-atomic-subproblem [cache-trait inp-set function-set]
+   `(let [inp-set# ~inp-set function-set# ~function-set
+          [out-set# reward#] (fs/apply-opt function-set# inp-set#)]
+      (util/print-debug 3 "Making subproblem" (fs/fs-name function-set#) (fs/status function-set# inp-set#) reward)
+      (traits/reify-traits
+       [(subproblem/simple-subproblem
+         [(fs/fs-name function-set#) inp-set#]
+         inp-set# out-set# 
+         (delay (let [fs-child-seqs (fs/child-seqs function-set# inp-set#)]
+                  (util/print-debug 2 "refs of " (fs/fs-name function-set#) "are" (map #(map fs/fs-name %) fs-child-seqs))
+                  (into {} (map (juxt #(map fs/fs-name %) #(make-simple-fs-seq-subproblem inp-set# %)) fs-child-seqs))))
+         #(make-simple-atomic-subproblem ~cache-trait % function-set#))
+        summaries/simple-node
+        ~cache-trait
+        (summaries/simple-or-summarizable
+         (summaries/make-const-summarizable reward# (fs/status function-set# inp-set#)))]))))

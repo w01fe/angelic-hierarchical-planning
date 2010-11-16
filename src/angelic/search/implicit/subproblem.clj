@@ -59,5 +59,5 @@
 (defn solve [root-subproblem]
   (summary/solve
    #(summaries/verified-summary root-subproblem summary/+worst-simple-summary+)
-   expand!
+   expand! #_ #(do (println %) (expand! %))
    #(let [n (-> % subproblem-name first)] (when-not (= n [:noop]) n))))

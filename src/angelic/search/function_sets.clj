@@ -31,7 +31,11 @@
   (reify
    FunctionSet
    (fs-name    [sk]           (env/action-name action))
-   (apply-opt  [sk input-set] (angelic/optimistic-set-and-reward action input-set))
+   (apply-opt  [sk input-set]
+     (let [[opt rew :as p] (angelic/optimistic-set-and-reward action input-set)]
+       (if (and p (not (state-set/empty? opt)) (> rew Double/NEGATIVE_INFINITY))
+         p
+         [state-set/empty-lfss Double/NEGATIVE_INFINITY])))
    (status     [sk input-set] :solved)
    (child-seqs [sk input-set] (throw (UnsupportedOperationException.)))))
 

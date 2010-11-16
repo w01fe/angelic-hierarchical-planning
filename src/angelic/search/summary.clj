@@ -146,9 +146,10 @@
 (defn solve [summary-fn expand!-fn action-extractor]
   (loop []
     (let [summary (summary-fn)]
+      (util/print-debug 1 "next round: " summary)
       (if (solved? summary)
         (extract-solution-pair summary action-extractor)
-        (do (expand!-fn (source summary)) 
+        (do (expand!-fn (source summary))
             (recur))))))
 
 ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;; Misc. Helpers ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;

@@ -112,6 +112,7 @@
 ;; Need a way to know which child(ren) summary computation depended on.
 ;; How is this different from sources?
 ;; Answer: for a seq, want to expand seq node, but verify against constituents.
+;; TODO: this is broken, since updates never make it upwards along OR-nodes... 
 (traits/deftrait lazy-cached-summarizer-node [] [summary-cache (atom nil)]  []
   SummaryCache
   (summary [n] (or @summary-cache (reset! summary-cache (summarize n))))
@@ -119,13 +120,12 @@
     (when-not (summary/>= @summary-cache (reset! summary-cache (summarize n)))
       (notify-parents n)))
   (verified-summary [n min-summary]
-    (let [cs (summary n)]
+    (let [cs (reset! summary-cache (summarize n))]
+      (println (angelic.search.implicit.subproblem/subproblem-name n) (expanded? n) cs min-summary) (Thread/sleep 10)
       (if (or (not (summary/>= cs min-summary))
-              (empty? (summary/children cs)))
+              (every? #(summary/>= (verified-summary (summary/source %) %) %) (summary/children cs)))
         cs
-        (do (doseq [child (summary/children cs)] (verified-summary (summary/source child) child))
-            (summary-changed! n)
-            (recur min-summary))))))
+        (recur min-summary)))))
 
 ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;; Expandable ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
 
