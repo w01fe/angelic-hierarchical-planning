@@ -52,9 +52,12 @@
 
 (defn- simple-immediate-refinements-set [a input-set]
   (for [[constraint ref] (angelic/immediate-refinements-set a input-set)]
-    (cons
-     (env-util/make-factored-primitive [:noop] constraint {} 0)     
-     ref)))
+    (if (or (empty? ref) (seq constraint))
+      (cons
+       (env-util/make-factored-primitive [:noop] constraint {} 0)     
+       ref)
+      ref)))
+
 
 (defn make-hla-fs [action]
   (reify
@@ -65,7 +68,7 @@
    (child-seqs [sk input-set]
      (for [ref (simple-immediate-refinements-set action input-set)]
        (for [a ref]
-         ((if (env/primitive? action) make-primitive-fs make-hla-fs) action))))))
+         ((if (env/primitive? a) make-primitive-fs make-hla-fs) a))))))
 
 
 
@@ -76,11 +79,10 @@
 ;; For now, go with simple "complete eval" formulation.
 ;; Will have "atomic" and "seq" subproblems -- separate impls..
 
-(def no-children :terminal)
-
 ;; unclear if we need refined?
 ;; blocked/solved should be autohandled by summarizer? 
 (defprotocol Subproblem
+  (subproblem-name [s])
   (input-set       [s])
   (output-set      [s])
   (expand!         [s])
@@ -93,8 +95,9 @@
     s
     (refine-input- s maybe-refined-input-set)))
 
-(traits/deftrait simple-subproblem [input-set output-set delayed-child-map refine-input-fn] [] []
-   Subproblem
+(traits/deftrait simple-subproblem [name input-set output-set delayed-child-map refine-input-fn] [] []
+  Subproblem
+   (subproblem-name [s] name)
    (input-set       [s] input-set)
    (output-set      [s] output-set)
    (expand!         [s]
@@ -119,14 +122,17 @@
 
 (defn make-simple-atomic-subproblem [inp-set function-set]
   (let [[out-set reward] (apply-opt function-set inp-set)]
+    (util/print-debug 3 "Making subproblem" (fs-name function-set) (status function-set inp-set) reward)
     (traits/reify-traits
-     [summaries/simple-node
-      summaries/uncached-summarizer-node
-      (simple-subproblem
+     [(simple-subproblem
+       [(fs-name function-set) inp-set]
        inp-set out-set 
        (delay (let [fs-child-seqs (child-seqs function-set inp-set)]
-               (into {} (map (juxt #(map fs-name %) make-simple-fs-seq-subproblem) fs-child-seqs))))
+                (util/print-debug 2 "refs of " (fs-name function-set) "are" (map #(map fs-name %) fs-child-seqs))
+                (into {} (map (juxt #(map fs-name %) #(make-simple-fs-seq-subproblem inp-set %)) fs-child-seqs))))
        #(make-simple-atomic-subproblem % function-set))
+      summaries/simple-node
+      summaries/eager-cached-summarizer-node
       (summaries/simple-or-summarizable
        (summaries/make-const-summarizable reward (status function-set inp-set)))])))
 
@@ -145,23 +151,32 @@
       ::2 (make-simple-pair-subproblem sp1 (get-child sp2 sub-key)))))
 
 
+(defn force-child-keys [sp]
+  (when-not (summaries/expanded? sp) (expand! sp))
+  (child-keys sp))
+
 ;; This is where key difference comes in from earlier --
 ;; sum is live in earnest itself ?
 ;; IE if sum is ever live, it is live directly (no descendants) ? IE we update the whole vertical chain?  bad news ... ?
 (defn make-simple-pair-subproblem [sp1 sp2]
-  (let [sum1 (summaries/summarize sp1)
-        sum2 (summaries/summarize sp2)
-        init-summary (summary/+ sum1 sum2)]
-    (make-simple-subproblem
-     (input-set sp1)
-     (output-set sp2)
-     (summary/max-reward init-summary)
-     (summary/status init-summary)
-     (delay (let [[label ks] (if (summary/live? sum2) [::1 (child-keys sp2)] [::2 (child-keys sp1)])]
-              (into {} (for [k ks] [[label k] (simple-pair-child sp1 sp2 [label k])]))))     
-     #(make-aligned-simple-pair-subproblem (refine-input sp1 %) sp2))))
+  (let [seq-sum (traits/reify-traits [(summaries/fixed-node [sp1 sp2]) summaries/eager-cached-summarizer-node summaries/simple-seq-summarizable])
+        ret 
+        (traits/reify-traits
+         [(simple-subproblem
+           (gensym)
+           (input-set sp1) (output-set sp2)
+           (delay (let [[label ks] (if (summary/live? (summaries/summary sp2)) [::2 (force-child-keys sp2)] [::1 (force-child-keys sp1)])]
+                    (into {} (for [k ks] [[label k] (simple-pair-child sp1 sp2 [label k])]))))
+           #(make-aligned-simple-pair-subproblem (refine-input sp1 %) sp2))
+          summaries/simple-node
+          summaries/eager-cached-summarizer-node
+          (summaries/simple-or-summarizable seq-sum)])]
+    (summaries/add-parent! seq-sum ret)
+    ret))
+
 
 (defn make-simple-fs-seq-subproblem [inp-set [first-fs & rest-fs]]
+  (util/print-debug 2 "Making seq!:" (map fs-name (cons first-fs rest-fs)))
   (let [first-sp (make-simple-atomic-subproblem inp-set first-fs)]
     (if (empty? rest-fs)
       first-sp
@@ -188,9 +203,32 @@
 
 ;; At least two ways we can do it -- keeping set of leaves, or following sum structure.
 ;; Do the latter for now.
-;; Problem: haven't exposed enough. In particular, no way to verify through seqs. 
+;; Problem: haven't exposed enough. In particular, no way to verify through seqs.
 
-(defn )
+(defn remove-solution-noops [[a r]] [(remove #{[:noop]} a) r])
+
+(defn solve-node [root]
+  (def *root* root)
+  (loop []
+    (let [summary (summaries/verified-summary root summary/+worst-simple-summary+)]
+      (if (summary/solved? summary)
+        (remove-solution-noops (summary/extract-solution-pair summary (comp first subproblem-name)))
+        (do (expand! (summary/source summary)) ;            (println ".") (def *s* summary) #_(swank.core/break)            
+            (recur))))))
+
+(defn implicit-fah-a* [henv]
+  (let [e    (hierarchy/env henv)]
+    (solve-node
+     (make-simple-atomic-subproblem
+      (state-set/make-logging-factored-state-set [(env-util/initial-logging-state e)])
+      (make-hla-fs (hierarchy-util/make-top-level-action e [(hierarchy/initial-plan henv)]))))))
+
+;; (use '[angelic env hierarchy] 'angelic.domains.nav-switch 'angelic.search.incremental.implicit-fah-astar)
+;; (implicit-random-fah-a* (make-nav-switch-hierarchy (make-random-nav-switch-env 5 2 0) true))
+
+
+;(defn )
+
 
 
 

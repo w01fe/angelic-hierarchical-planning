@@ -80,7 +80,7 @@
   (max-reward       [s] max-rew)
   (status           [s] stat)
   (source          [s] src)
-  (children        [s] children)
+  (children        [s] chldren)
   (adjust-reward    [s f] (SimpleSummary. (f max-rew) stat src chldren))
   (adjust-source   [s new-src] (SimpleSummary. max-rew stat new-src chldren))
   (>=               [s other] (default->= s other))
@@ -97,7 +97,7 @@
 (defn make-solved-simple-summary [max-reward source] (SimpleSummary. max-reward :solved source nil))
 
 (defn make-simple-summary [max-reward status source]
-  (assert (contains? statuses status))
+  (util/assert-is (contains? statuses-set status))
   (SimpleSummary. max-reward status source nil))
 
 (comment
@@ -132,6 +132,17 @@
 
 (defn bound [summary reward-bound]
   (adjust-reward summary #(clojure.core/min % reward-bound)))
+
+(defn extract-source-seq [summary]
+  (if-let [kids (seq (children summary))]
+    (apply concat (map extract-source-seq kids))
+    [(source summary)]))
+
+(defn extract-solution-pair [summary action-extractor]
+  (assert (solved? summary))
+  [(map action-extractor (extract-source-seq summary))
+   (max-reward summary)])
+
 
 ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;; Misc. Helpers ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
 

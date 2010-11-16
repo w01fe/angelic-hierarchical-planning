@@ -79,16 +79,18 @@
   (add-parent!   [n parent] (swap! parents conj parent)))
 
 (traits/deftrait fixed-node [children] [parents  (atom nil)] []
-  Node
-  (node-children [n] children)
-  (node-parents  [n] @parents)
-  (add-child!    [n child] (throw (UnsupportedOperationException.)))
-  (add-parent!   [n parent] (swap! parents conj parent)))
+   Node
+   (node-children [n] children)
+   (node-parents  [n] @parents)
+   (add-child!    [n child] (throw (UnsupportedOperationException.)))
+   (add-parent!   [n parent] (swap! parents conj parent)))
 
 (defn connect! [parent child] (add-parent! child parent) (add-child! parent child))
 
 
 ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;; SummaryCache ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
+
+(defn notify-parents [n] (doseq [p (node-parents n)] (summary-changed! p)))
 
 ;;; NOTE: These all assume that the entire tree uses the same trait.
 
@@ -115,7 +117,7 @@
   (summary [n] (or @summary-cache (reset! summary-cache (summarize n))))
   (summary-changed! [n]
     (when-not (summary/>= @summary-cache (reset! summary-cache (summarize n)))
-      (doseq [p (node-parents n)] (summary-changed! p))))
+      (notify-parents n)))
   (verified-summary [n min-summary]
     (let [cs (summary n)]
       (if (or (not (summary/>= cs min-summary))
@@ -134,7 +136,7 @@
     (assert (not (expanded? s)))
     (reset! expanded?-atom true)
     (doseq [child child-summarizers] (connect! s child))
-    (child-changed! s :all)))
+    (summary-changed! s)))
 ;; What should this really be ? 
 
 ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;; Summarizable ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
