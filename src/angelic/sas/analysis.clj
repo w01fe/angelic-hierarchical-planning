@@ -2,7 +2,7 @@
   (:require [edu.berkeley.ai.util :as util]
             [edu.berkeley.ai.util [queues :as queues] [graphviz :as gv] [graphs :as graphs]]
             [angelic [sas :as sas] [env :as env]]
-            angelic.env.util)
+            [angelic.env.util :as env-util])
   (:import [java.util HashMap HashSet]))
 
 

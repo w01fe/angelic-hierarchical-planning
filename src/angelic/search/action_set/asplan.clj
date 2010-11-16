@@ -1,8 +1,13 @@
 (ns angelic.asplan
   (:require [edu.berkeley.ai.util :as util]
-            [edu.berkeley.ai.util  [graphs :as graphs] ]
-            [angelic [env :as env]  [hierarchy :as hierarchy] 
-                 [sas :as sas] [sas-analysis :as sas-analysis]])
+            [edu.berkeley.ai.util.graphs :as graphs]
+            [angelic.env :as env]
+            [angelic.env.util :as env-util]
+            [angelic.env.state :as state]            
+            [angelic.hierarchy :as hierarchy]
+            [angelic.hierarchy.util :as hierarchy-util]            
+            [angelic.sas :as sas]
+            [angelic.sas.analysis :as sas-analysis])
   (:import [java.util HashMap]))
 
 
@@ -67,7 +72,7 @@
 (defn make-add-action-action [{:keys [name precond-map effect-map reward] :as factored-primitive}]
   (util/sref-set! *add-count* (inc (util/sref-get *add-count*)))
   (let [[evar eval] (util/safe-singleton (seq effect-map))]
-    (env/env-util/make-factored-primitive
+    (env-util/make-factored-primitive
      [::AddAction name]
      {(action-var evar) nil, evar (precond-map evar), (free-var evar) false}
      {(action-var evar) factored-primitive}
@@ -75,7 +80,7 @@
 
 
 (defn make-set-parent-var-action [p-var c-var]
-  (env/env-util/make-factored-primitive 
+  (env-util/make-factored-primitive 
    [::SetParent p-var c-var] 
    {(free-var p-var) true} 
    {(free-var p-var) false (parent-var p-var c-var) true} 
@@ -92,7 +97,7 @@
     (when (and (state/state-matches-map? s precond-map)
                (every? #(state/get-var s (parent-var % effect-var)) unfree-pv))
         (assert (every? #(nil? (state/get-var s (action-var %))) precond-vars))
-        (env/env-util/make-factored-primitive
+        (env-util/make-factored-primitive
          [::GreedyFire name]
          (into precond-map 
                (concat [[(action-var effect-var) factored-primitive]]
@@ -201,15 +206,15 @@
 
 ; Ideally, should prefer top-most top-down, bottom-most bottom-up, or something...
 
-(deftype ASPlanEnv [init actions-fn g-map 
+(defrecord ASPlanEnv [init actions-fn g-map 
                     ; Following stuff is used by hierarchy.
                     causal-graph dtgs ancestor-var-map child-var-map acyclic-succ-fn]
   env/Env 
-    (initial-state [_] init)
-    (actions-fn    [] actions-fn)
-    (goal-fn       [] #(when (state/state-matches-map? % g-map) (env/solution-and-reward %)))
+    (initial-state [e] init)
+    (actions-fn    [e] actions-fn)
+    (goal-fn       [e] #(when (state/state-matches-map? % g-map) (env/solution-and-reward %)))
   env/FactoredEnv
-    (goal-map      [] g-map))
+    (goal-map      [e] g-map))
 
 (defn make-asplan-env [sas-problem] 
   (def *add-count* (util/sref 0))
@@ -224,7 +229,7 @@
         acyclic-succ-fn (partial possibly-acyclic-successors (HashMap.) simple-dtgs)]
     (assert (graphs/dag? causal-graph))    
 ;    (clojure.inspector/inspect-tree child-var-map)
-    (ASPlanEnv 
+    (ASPlanEnv. 
      (expand-initial-state (env/initial-state sas-problem) child-var-map (goal-action dtgs))
      (fn asplan-actions [s]
 ;      (if false ;(deadlocked? s child-var-map)
@@ -290,9 +295,11 @@
 ;; TODO: Take advantage of "greedy-chain" condition, don't assign
 
 
-; (use '[angelic env hierarchy taxi-infinite ucs asplan hierarchical-incremental-search sas-problems] 'edu.berkeley.ai.util)
+; (use '[angelic env hierarchy taxi-infinite ucs asplan #_ hierarchical-incremental-search sas-problems] 'edu.berkeley.ai.util)
 
-; (let [e (make-random-infinite-taxi-sas2 4 4 4 2)] (println (time (run-counted #(uniform-cost-search e)))) (println (time (run-counted #(asplan-solution-pair-name (uniform-cost-search (make-asplan-env e)))))))
+;; (use '[angelic env hierarchy] '[angelic.domains taxi-infinite] '[angelic.search ucs] asplan #_ sas-problems] 'edu.berkeley.ai.util)
+
+;; (let [e (make-random-infinite-taxi-sas2 4 4 4 2)] (println (time (run-counted #(uniform-cost-search e)))) (println (time (run-counted #(asplan-solution-pair-name (uniform-cost-search (make-asplan-env e)))))))
 
 ; (let [e (force (nth ipc2-logistics 3)) ] #_ (println (time (run-counted #(uniform-cost-search e)))) (println (time (run-counted #(asplan-solution-pair-name (uniform-cost-search (make-asplan-env e)))))))
 
@@ -411,14 +418,14 @@
   (let [name [:achieve-precondition var dst-val]
         av   (action-var var)
         pc   (util/safe-get-in hierarchy [:precondition-context-map var])]
-    (reify :as this
+    (reify
       env/Action
-       (action-name [_] name)
-       (primitive?  [] false)
+       (action-name [a] name)
+       (primitive?  [a] false)
       env/ContextualAction 
-       (precondition-context [_ s] pc)
+       (precondition-context [a s] pc)
       hierarchy/HighLevelAction
-       (immediate-refinements- [_ s] 
+       (immediate-refinements- [this s] 
          (cond (= (state/get-var s var) dst-val)
                  (do ;(print "!S") (flush)
                      (assert (not (state/get-var s av))) [[]])
@@ -434,7 +441,7 @@
                    ;(print "!C")
                    (for [n-val ((:acyclic-succ-fn hierarchy) var p-val dst-val), a (dtg n-val)]
                      [(make-add-action-action a) this]))))
-       (cycle-level-           [s] nil))))
+       (cycle-level-           [a s] nil))))
 
 
 
@@ -457,14 +464,14 @@
                                   (cons (parent-var p effect-var) 
                                         (get-in hierarchy [:precondition-context-map p]))))))]
 ;    (println "FA" name)
-  (reify :as this
+  (reify
     env/Action
-      (action-name [_] name)
-      (primitive?  [] false)
+      (action-name [a] name)
+      (primitive?  [a] false)
     env/ContextualAction 
-      (precondition-context [_ s] pc) ;; perhaps can do better?
+      (precondition-context [a s] pc) ;; perhaps can do better?
     hierarchy/HighLevelAction
-      (immediate-refinements- [_ s] 
+      (immediate-refinements- [this s] 
 ;        (Thread/sleep 10)
         (assert (= (state/get-var s (action-var effect-var)) a))
         (let [na-tuples         (for [nav   ancestor-vars
@@ -524,7 +531,7 @@
               (when (and (= effect-var sas/goal-var-name) (not (deadlocked? s child-var-map  nil)))
                 (def *bs* s))
               (when-not (= effect-var sas/goal-var-name) [[]])))))
-       (cycle-level-           [s] nil))))
+       (cycle-level-           [a s] nil))))
 
 ;(def *bs* nil)
 
@@ -765,7 +772,7 @@
 (comment ;; Not actually needed -- use below instead.
   (defn make-fire-action-action [{:keys [name precond-map effect-map reward] :as factored-primitive}]
    (let [[evar eval] (util/safe-singleton (seq effect-map))]
-     (env/env-util/make-factored-primitive
+     (env-util/make-factored-primitive
       [::Fire name]
       (into precond-map 
             (cons [(action-var evar) factored-primitive]
