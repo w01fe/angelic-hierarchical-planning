@@ -1,4 +1,4 @@
-(ns angelic.asplan
+(ns angelic.search.action-set.asplan
   (:require [edu.berkeley.ai.util :as util]
             [edu.berkeley.ai.util.graphs :as graphs]
             [angelic.env :as env]
@@ -297,7 +297,7 @@
 
 ; (use '[angelic env hierarchy taxi-infinite ucs asplan #_ hierarchical-incremental-search sas-problems] 'edu.berkeley.ai.util)
 
-;; (use '[angelic env hierarchy] '[angelic.domains taxi-infinite] '[angelic.search ucs] asplan #_ sas-problems] 'edu.berkeley.ai.util)
+;; (use 'angelic.search.uniform-cost 'angelic.domains.taxi-infinite 'angelic.search.action-set.asplan  'angelic.domains.sas-problems 'edu.berkeley.ai.util)
 
 ;; (let [e (make-random-infinite-taxi-sas2 4 4 4 2)] (println (time (run-counted #(uniform-cost-search e)))) (println (time (run-counted #(asplan-solution-pair-name (uniform-cost-search (make-asplan-env e)))))))
 
@@ -417,7 +417,9 @@
 (defn make-achieve-precondition-hla [hierarchy var dst-val]
   (let [name [:achieve-precondition var dst-val]
         av   (action-var var)
-        pc   (util/safe-get-in hierarchy [:precondition-context-map var])]
+        pc   (util/safe-get-in hierarchy [:precondition-context-map var])
+        pc   (:full-context hierarchy)
+        ]
     (reify
       env/Action
        (action-name [a] name)
@@ -458,12 +460,10 @@
         ancestor-vars (util/safe-get-in hierarchy [:ancestor-var-map effect-var])
         child-var-map (:child-var-map hierarchy)
         pc            (into #{(action-var effect-var)}
-                        (apply concat
-                          (for [p (keys reduced-pm)]
-                            (cons (free-var p) 
-                                  (cons (parent-var p effect-var) 
-                                        (get-in hierarchy [:precondition-context-map p]))))))]
-;    (println "FA" name)
+                        (apply concat (map (:fire-action-pc-map hierarchy) (keys reduced-pm))))
+;        pc (:full-context hierarchy)
+        ]
+;    (println "FA" name pc "\n" (clojure.set/difference (:full-context hierarchy) pc))
   (reify
     env/Action
       (action-name [a] name)
@@ -533,6 +533,11 @@
               (when-not (= effect-var sas/goal-var-name) [[]])))))
        (cycle-level-           [a s] nil))))
 
+(comment ; old, broken PC
+  (for [p (keys reduced-pm)]
+                             (cons (free-var p) 
+                                   (cons (parent-var p effect-var) 
+                                         (util/safe-get-in hierarchy [:fire-action-pc-map p])))))
 ;(def *bs* nil)
 
  ; include ancestor vars, action vars, free vars, in-pointing 'rents
@@ -548,7 +553,17 @@
                      (concat
                       (for [v as] (free-var v))
                       (for [v as] (action-var v))
-                      (for [v as, c (cvm v), :when (as c)] (parent-var v c))))]))]
+                      (for [v as, c (cvm v), :when (as c)] (parent-var v c))))]))
+        fa-map (into {} 
+                 (for [[k as] av-map] 
+                   [k 
+                    (into as
+                     (concat
+                      (for [v as] (free-var v))
+                      (for [v as] (action-var v))
+                      (for [v as, c (cvm v)] (parent-var v c))))]))
+        ]
+ ;    (println "\n" av-map "\n\n" pc-map)
     (hierarchy-util/make-simple-hierarchical-env 
      env
      [(make-fire-action-hla
@@ -558,7 +573,8 @@
         :child-var-map            cvm
         :ancestor-var-map         av-map
         :acyclic-succ-fn          (:acyclic-succ-fn env)
-        :precondition-context-map pc-map}
+        :precondition-context-map pc-map
+        :fire-action-pc-map       fa-map}
        sas/goal-var-name
        (state/get-var (env/initial-state env) (action-var sas/goal-var-name)))])))
 
@@ -575,8 +591,14 @@
 ;; TODO: detect "out-of-context" deadlock, fail immediately.
 ;; TODO: precond ordering when we activate (handled by activation-actions?)
 
+;; (use 'angelic.search.explicit.hierarchical)
 
-;  (let [e (make-random-infinite-taxi-sas2 1 2 1 2)] (println (time (run-counted #(uniform-cost-search e)))) (println (time (run-counted #(asplan-solution-pair-name (uniform-cost-search (make-asplan-env e))))))  (println (debug 0 (time (run-counted #(asplan-solution-pair-name (dsh-ucs-inverted (make-asplan-skip-henv e))))))))
+;; TODO: (let [e (make-random-infinite-taxi-sas2 3 2 5 2)] (println (time (run-counted #(uniform-cost-search e)))) (println (time (run-counted #(asplan-solution-pair-name (uniform-cost-search (make-asplan-env e))))))  (println (debug 0 (time (run-counted #(asplan-skip-solution-pair-name (dsh-ucs-inverted (make-asplan-skip-henv e)))))))) gives bad results; replacing inverted iwht regular fixes it ... ?
+
+;; minimal exmaple:
+;; (let [i 25] (let [e (make-random-infinite-taxi-sas2 3 1 2 i)] #_ (println (time (run-counted #(uniform-cost-search e)))) (println (time (run-counted #(asplan-solution-pair-name (uniform-cost-search (make-asplan-env e))))))  (println (debug 0 (time (run-counted #(asplan-skip-solution-pair-name (dsh-ucs-inverted (make-asplan-skip-henv e)))))))))
+
+;  (let [e (make-random-infinite-taxi-sas2 1 2 1 2)] (println (time (run-counted #(uniform-cost-search e)))) (println (time (run-counted #(asplan-solution-pair-name (uniform-cost-search (make-asplan-env e))))))  (println (debug 0 (time (run-counted #(asplan-skip-solution-pair-name (dsh-ucs-inverted (make-asplan-skip-henv e))))))))
 
 ; (let [e (make-random-infinite-taxi-sas2 1 2 1 2)] (interactive-hierarchical-search (make-asplan-skip-henv e)))
 
