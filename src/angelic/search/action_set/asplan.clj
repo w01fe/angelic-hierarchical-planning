@@ -418,7 +418,7 @@
   (let [name [:achieve-precondition var dst-val]
         av   (action-var var)
         pc   (util/safe-get-in hierarchy [:precondition-context-map var])
-        pc   (:full-context hierarchy)
+;        pc   (:full-context hierarchy)
         ]
     (reify
       env/Action
@@ -459,8 +459,23 @@
         reduced-pm    (dissoc (:precond-map a) effect-var)
         ancestor-vars (util/safe-get-in hierarchy [:ancestor-var-map effect-var])
         child-var-map (:child-var-map hierarchy)
-        pc            (into #{(action-var effect-var)}
-                        (apply concat (map (:fire-action-pc-map hierarchy) (keys reduced-pm))))
+        context-cvm   (util/map-vals
+                       #(filter ancestor-vars  %)
+                       (select-keys child-var-map ancestor-vars))
+        pc (into #{(action-var effect-var)}
+                 (apply concat
+                        (for [v (distinct (apply concat (for [p (keys reduced-pm)] (util/safe-get-in hierarchy [:ancestor-var-map p]))))]
+                          (concat 
+                           [v (free-var v) (action-var v)]
+                           (for [c (child-var-map v) :when (ancestor-vars c)] (parent-var v c))))))
+        
+
+           #_(into #{(action-var effect-var)}
+                            (apply concat
+                                   (for [p (keys reduced-pm)]
+                                     (cons (parent-var p effect-var)
+                                           (util/safe-get-in hierarchy [:precondition-context-map p])))))
+        ;                                   (map (:fire-action-pc-map hierarchy) (keys reduced-pm))
 ;        pc (:full-context hierarchy)
         ]
 ;    (println "FA" name pc "\n" (clojure.set/difference (:full-context hierarchy) pc))
@@ -477,7 +492,7 @@
         (let [na-tuples         (for [nav   ancestor-vars
                                       :when (not #(state/get-var s (action-var %)))
                                       :let  [child (current-child s child-var-map nav)]
-                                      :when (and child (not (state/get-var s (action-var child))))]
+                                      :when (and child (ancestor-vars child) (not (state/get-var s (action-var child))))]
                                   [nav child])]
          (util/cond-let [x]
           ;; Greedy -- all preconditions satisfied and not assigned elsewhere
@@ -485,10 +500,10 @@
             (do ;(print "g") (flush) 
               [[x]])
 
-          ;; Real deadlock - fail
-          (deadlocked? s child-var-map [])
-            (do ;(print "d") (flush) 
-                nil)
+          ;; Real deadlock - fail (for SA, must restrict context...)
+          (deadlocked? s context-cvm []) 
+            (do ;(print "d") (flush)
+               nil)
             
           ;; Deadlocked by something out-of-context -- exit  (note -- need to check for goal means
             ; we should catch these issues earlier..
