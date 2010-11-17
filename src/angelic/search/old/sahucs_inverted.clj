@@ -1,7 +1,12 @@
-(ns angelic.sahucs-inverted
+(ns angelic.search.old.sahucs-inverted
   (:require [edu.berkeley.ai.util :as util] 
             [edu.berkeley.ai.util [queues :as queues] [debug-repl :as dr]]
-            [angelic [env :as env] [hierarchy :as hierarchy]])
+            [angelic.env :as env]
+            [angelic.env.util :as env-util]
+            [angelic.env.state :as state]
+            [angelic.hierarchy :as hierarchy]
+            [angelic.hierarchy.util :as hierarchy-util]            
+            )
   (:import [java.util HashMap HashSet])
   )
 
@@ -36,21 +41,23 @@
 ;; Stores a reference to a parent of an SANode.
 ;; state is the concrete state from the parent, reward is its reward within the parent,
 ;; sanode is the parent, and remaining-actions are the remaining actions.
-  (deftype ParentEntry [state reward-to-state remaining-actions sanode hash-code]
+(deftype ParentEntry [state reward-to-state remaining-actions sanode hash-code]
     Object
-    (equals [y] (and (= (map env/action-name remaining-actions) (map env/action-name (:remaining-actions y))) (identical? sanode (:sanode y))))
-    (hashCode [] hash-code))
+    (equals [this  y]
+      (let [y ^ParentEntry y]
+        (and (= (map env/action-name remaining-actions) (map env/action-name (.remaining-actions y))) (identical? sanode (.sanode y)))))
+    (hashCode [this] hash-code))
 
   (defn make-pe [state reward-to-state remaining-actions sanode]
-    (ParentEntry state reward-to-state remaining-actions sanode
+    (ParentEntry. state reward-to-state remaining-actions sanode
                  (unchecked-add (int (hash (map env/action-name remaining-actions)))
                                 (unchecked-multiply (int 13) (System/identityHashCode sanode)))))
 
 (comment 
   (deftype ParentEntry [state reward-to-state remaining-actions sanode hash-code]
     Object
-    (equals [y] (and (= remaining-actions (:remaining-actions y)) (identical? sanode (:sanode y))))
-    (hashCode [] hash-code))
+    (equals [this y] (and (= remaining-actions (:remaining-actions y)) (identical? sanode (:sanode y))))
+    (hashCode [this] hash-code))
 
   (defn make-pe [state reward-to-state remaining-actions sanode]
     (ParentEntry state reward-to-state remaining-actions sanode
@@ -60,28 +67,29 @@
 ;; Stores abstracted results of a state-action pair.  result-map-atom maps states
 ;; to rewards (within this anode).  parent-vec-atom is a map of parent-entries to
 ;; total rewards (minimum up to current position). parent-set is set of parents.
-(deftype SANode [ action result-map-atom parent-vec-atom #^HashSet parent-set])
+(defrecord SANode [ action result-map-atom parent-vec-atom #^HashSet parent-set])
 
 (defn make-sa-node [ a init-parent-entry ip-reward]
   (let [hs (HashSet.)]
     (.add hs init-parent-entry)
-    (SANode  a (atom {}) (atom [[init-parent-entry ip-reward]]) hs )))
+    (SANode.  a (atom {}) (atom [[init-parent-entry ip-reward]]) hs )))
 
 
 (defn gq-parent-key [parent-info]
   (if (= parent-info :fresh) :fresh (first (first parent-info))))
 
-(deftype GQEntry [state reward-to-state sanode remaining-parents hash-code] :as this
+(deftype GQEntry [state reward-to-state sanode remaining-parents hash-code]
     Object
-    (equals [y] 
-      (and (= state (:state y)) 
-           (identical? sanode (:sanode y))
-           (identical? (gq-parent-key remaining-parents) 
-                       (gq-parent-key (:remaining-parents y)))))
-    (hashCode [] hash-code))
+    (equals [this  y] 
+      (let [y ^GQEntry y]
+        (and (= state (.state y)) 
+            (identical? sanode (.sanode y))
+            (identical? (gq-parent-key remaining-parents) 
+                        (gq-parent-key (.remaining-parents y))))))
+    (hashCode [this] hash-code))
 
 (defn make-gqe [state reward-to-state sanode remaining-parents]
-  (GQEntry state reward-to-state sanode remaining-parents
+  (GQEntry. state reward-to-state sanode remaining-parents
     (unchecked-add (int (hash state))
         (unchecked-multiply (int 13) 
           (unchecked-add (System/identityHashCode sanode)
@@ -93,9 +101,9 @@
 ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
 
 
-(defn get-sa-node [#^HashMap cache a parent-entry pre-reward]
+(defn get-sa-node [#^HashMap cache a ^ParentEntry parent-entry pre-reward]
   "Create a new sa-node, or returned the cached copy if it exists."
-  (let [s       (:state parent-entry)
+  (let [s       (.state parent-entry)
         context (env/precondition-context a s)
         cache-key [(env/action-name a) (state/extract-context s context)]
         cache-val (.get cache cache-key)]
@@ -108,7 +116,7 @@
                 (for [[ss sr] @(:result-map-atom cache-val)]
                   [(make-gqe ss sr cache-val [[parent-entry pre-reward]]) (- 0 pre-reward sr)]))
           :else 
-            (let [s  (env/get-logger s context) ;(vary-meta  assoc :opt (:opt (meta s)))
+            (let [s  (state/get-logger s context) ;(vary-meta  assoc :opt (:opt (meta s)))
                   nd (make-sa-node  a parent-entry pre-reward)]
               (.put cache cache-key nd)
               (if (env/primitive? a)
@@ -122,18 +130,18 @@
                         [[(make-gqe s 0 nd :fresh) (- pre-reward)]]
                       (get-sa-node cache (first ref) (make-pe s 0 (next ref) nd) pre-reward)))))))))
 
-(defn update-parent [cache parent-entry parent-pre-reward new-state new-reward child-sanode]
-  (let [new-effects (env/extract-effects new-state)
-        final-state  (vary-meta (state/apply-effects (:state parent-entry) new-effects)
-                                assoc :opt (concat (:opt (meta (:state parent-entry)))
+(defn update-parent [cache ^ParentEntry parent-entry parent-pre-reward new-state new-reward child-sanode]
+  (let [new-effects (state/extract-effects new-state)
+        final-state  (vary-meta (state/apply-effects (.state parent-entry) new-effects)
+                                assoc :opt (concat (:opt (meta (.state parent-entry)))
                                                    (:opt (meta new-state))))
-        actions      (:remaining-actions parent-entry)
-        rts          (:reward-to-state parent-entry)]
+        actions      (.remaining-actions parent-entry)
+        rts          (.reward-to-state parent-entry)]
     (if (empty? actions)
-       [[(make-gqe final-state (+ rts new-reward) (:sanode parent-entry) :fresh)
+       [[(make-gqe final-state (+ rts new-reward) (.sanode parent-entry) :fresh)
          (- 0 parent-pre-reward new-reward)]]
       (get-sa-node cache (first actions) 
-        (make-pe final-state (+ rts new-reward) (next actions) (:sanode parent-entry))
+        (make-pe final-state (+ rts new-reward) (next actions) (.sanode parent-entry))
         (+ parent-pre-reward new-reward)))))
 
 ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
@@ -146,19 +154,19 @@
   (let [e     (hierarchy/env henv)
         cache (HashMap.)
         queue (queues/make-graph-search-pq)
-        tla   (hierarchy/hierarchy-util/make-top-level-action e [(hierarchy/initial-plan henv)])]
-    (queues/pq-add-all! queue (get-sa-node cache tla (make-pe (env/initial-logging-state e) 0 nil nil) 0))
+        tla   (hierarchy-util/make-top-level-action e [(hierarchy/initial-plan henv)])]
+    (queues/pq-add-all! queue (get-sa-node cache tla (make-pe (env-util/initial-logging-state e) 0 nil nil) 0))
     (loop []
       (if (queues/g-pq-empty? queue) nil
-        (let [[best neg-rew] (queues/g-pq-remove-min-with-cost! queue)] 
-          (if (identical? (:action (:sanode best)) tla) ; solution state
-              [(:opt (meta (:state best))) (- neg-rew)]
-            (let [b-s  (:state best), b-rts (:reward-to-state best), b-sa (:sanode best)
+        (let [[^GQEntry best neg-rew] (queues/g-pq-remove-min-with-cost! queue)] 
+          (if (identical? (:action (.sanode best)) tla) ; solution state
+              [(:opt (meta (.state best))) (- neg-rew)]
+            (let [b-s  (.state best), b-rts (.reward-to-state best), b-sa (.sanode best)
                   [b-gp b-bp] (split-with #(= (second %) (- 0 neg-rew b-rts))
-                                (if (= :fresh (:remaining-parents best))
+                                (if (= :fresh (.remaining-parents best))
                                     (do (swap! (:result-map-atom b-sa) assoc-new b-s b-rts)
                                         @(:parent-vec-atom b-sa))
-                                  (:remaining-parents best)))] 
+                                  (.remaining-parents best)))] 
               (assert (seq b-gp))
               (when (seq b-bp)
                 (queues/g-pq-replace! queue (make-gqe b-s b-rts b-sa b-bp) 
