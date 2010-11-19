@@ -295,9 +295,8 @@
 ;; TODO: Take advantage of "greedy-chain" condition, don't assign
 
 
-; (use '[angelic env hierarchy taxi-infinite ucs asplan #_ hierarchical-incremental-search sas-problems] 'edu.berkeley.ai.util)
 
-;; (use 'angelic.search.uniform-cost 'angelic.domains.taxi-infinite 'angelic.search.action-set.asplan  'angelic.domains.sas-problems 'edu.berkeley.ai.util)
+;; (use 'angelic.env 'angelic.hierarchy 'angelic.search.textbook 'angelic.domains.taxi-infinite 'angelic.search.action-set.asplan  'angelic.domains.sas-problems 'edu.berkeley.ai.util 'angelic.sas.hm-heuristic)
 
 ;; (let [e (make-random-infinite-taxi-sas2 4 4 4 2)] (println (time (run-counted #(uniform-cost-search e)))) (println (time (run-counted #(asplan-solution-pair-name (uniform-cost-search (make-asplan-env e)))))))
 
