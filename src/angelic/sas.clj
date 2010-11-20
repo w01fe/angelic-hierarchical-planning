@@ -9,7 +9,7 @@
 
 (defrecord SAS-Var [name vals])
 
-;; SAS-Problem will always have a special action goal-action-name and var :goal with init [:false], desired [:true]. 
+;; SAS-Problem will always have a special action goal-action-name and var :goal with init [:goal :false], desired [:goal :true]. 
 
 (def goal-action-name [:goal])
 (def goal-var-name    [:goal :?])

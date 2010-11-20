@@ -65,7 +65,7 @@
            (concat [[(action-var var) nil] [(free-var var) true]]
                    (for [c (child-var-map var)] [(parent-var var c) false]))))
        [[(action-var sas/goal-var-name) goal-action]
-        [(free-var sas/goal-var-name) false]]))))
+        #_ [(free-var sas/goal-var-name) false]]))))
 
 (def *add-count* (util/sref 0))
 
@@ -85,6 +85,23 @@
    {(free-var p-var) true} 
    {(free-var p-var) false (parent-var p-var c-var) true} 
    0))
+
+
+(defn make-fire-action
+  "Simple version of greedy-fire, used for exhaustive action list. (No add-parent)."
+  [{:keys [name precond-map effect-map reward] :as factored-primitive}]
+  (let [effect-var (key (util/safe-singleton (seq effect-map)))
+        precond-vars (keys (dissoc precond-map effect-var))]
+    (env-util/make-factored-primitive
+     [::Fire name]
+     (into precond-map 
+           (concat [[(action-var effect-var) factored-primitive]]
+                   (for [v precond-vars] [(parent-var v effect-var) true])))
+     (into effect-map 
+           (concat [[(action-var effect-var) nil]]
+                   (for [v precond-vars] [(free-var v)              true])
+                   (for [v precond-vars] [(parent-var v effect-var) false])))
+     0)))
 
 
 ; Try to make an action that greedily fires the action scheduled on effect-var,
@@ -153,13 +170,15 @@
                        [res p])]
     (not (graphs/dag? (concat parent-edges extra-edges)))))
 
-(defn var-not-usable? [s ancestor-map target-var a-var]
-  (if-let [a  (state/get-var s (action-var a-var))]
-      (let [pm (:precond-map a)]
-        (every?
-         (fn [pv] (or (= (state/get-var s pv) (pm pv)) (var-not-usable? s ancestor-map target-var pv)))
-         (remove #{a-var} (keys pm))))
-    (not (contains? (ancestor-map a-var) target-var))))
+(comment
+  ;; Not used for now?
+  (defn var-not-usable? [s ancestor-map target-var a-var]
+   (if-let [a  (state/get-var s (action-var a-var))]
+     (let [pm (:precond-map a)]
+       (every?
+        (fn [pv] (or (= (state/get-var s pv) (pm pv)) (var-not-usable? s ancestor-map target-var pv)))
+        (remove #{a-var} (keys pm))))
+     (not (contains? (ancestor-map a-var) target-var)))))
 
 ;; TODO: dynamic bottom-up pruning.
  ; i.e., exists precondition of some current action, NOT currently achieved,
@@ -206,7 +225,7 @@
 
 ; Ideally, should prefer top-most top-down, bottom-most bottom-up, or something...
 
-(defrecord ASPlanEnv [init actions-fn g-map 
+(defrecord ASPlanEnv [init actions actions-fn g-map 
                     ; Following stuff is used by hierarchy.
                     causal-graph dtgs ancestor-var-map child-var-map acyclic-succ-fn]
   env/Env 
@@ -231,6 +250,10 @@
 ;    (clojure.inspector/inspect-tree child-var-map)
     (ASPlanEnv. 
      (expand-initial-state (env/initial-state sas-problem) child-var-map (goal-action dtgs))
+     (concat
+      (for [a (:actions sas-problem)] (make-add-action-action a))
+      (for [[p cs] child-var-map, c cs] (make-set-parent-var-action p c))
+      (for [a (:actions sas-problem)] (make-fire-action a)))
      (fn asplan-actions [s]
 ;      (if false ;(deadlocked? s child-var-map)
 ;        (do (println s) nil)
@@ -288,6 +311,30 @@
 (defn asplan-solution-pair-name [[sol rew]]
   [(asplan-solution-name sol) rew])
 
+(defn unrealized-reward [s]
+  (->> (state/as-map s)
+       (filter #(= (first (key %)) :action))
+       (keep val)
+       (map :reward)
+       (apply +)))
+
+(defn augmented-actions-and-goal-pair
+  "Return a set of actions and goal vv-pair that takes canceling of existing
+   commitments into account -- should really be incorporated into above?"
+  [asplan-env]
+  (let [init (env/initial-state asplan-env)
+        goal-var [::asplan-goal :?]
+        goal-val [::asplan-goal :true]]
+    [(cons
+      (env-util/make-factored-primitive
+       [::asplan-goal-action]
+       (into {sas/goal-var-name sas/goal-true-val}
+             (for [var (filter #(#{:action :free? :parent?} (first %)) (keys init))]
+               [var (case (first var) :free? true :parent? false :action nil)]))
+       {goal-var goal-val}
+       0)
+      (:actions asplan-env))
+     [goal-var goal-val]]))
 
 
 ;; TODO: cutoff when top-down and bottom-up meet, don't match ? (or earlier)
@@ -299,6 +346,8 @@
 ;; (use 'angelic.env 'angelic.hierarchy 'angelic.search.textbook 'angelic.domains.taxi-infinite 'angelic.search.action-set.asplan  'angelic.domains.sas-problems 'edu.berkeley.ai.util 'angelic.sas.hm-heuristic)
 
 ;; (let [e (make-random-infinite-taxi-sas2 4 4 4 2)] (println (time (run-counted #(uniform-cost-search e)))) (println (time (run-counted #(asplan-solution-pair-name (uniform-cost-search (make-asplan-env e)))))))
+
+;; (let [i 25] (let [e (make-random-infinite-taxi-sas2 3 3 3 i) ae (make-asplan-env e)]  (println (time (run-counted #(uniform-cost-search e)))) (println (time (run-counted (fn [] (a*-search e (h-max (:actions e))))))) (println (time (run-counted #(asplan-solution-pair-name (uniform-cost-search ae))))) (println (time (run-counted #(asplan-solution-pair-name (a*-search ae (h-max (:actions ae))))))) (println (time (run-counted #(asplan-solution-pair-name (a*-search ae (let [h (h-max (:actions ae))] (fn [s] (- (h s) (unrealized-reward s)))))))))))
 
 ; (let [e (force (nth ipc2-logistics 3)) ] #_ (println (time (run-counted #(uniform-cost-search e)))) (println (time (run-counted #(asplan-solution-pair-name (uniform-cost-search (make-asplan-env e)))))))
 
