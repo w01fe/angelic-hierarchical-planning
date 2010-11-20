@@ -1,8 +1,12 @@
-(ns angelic.gasplan
+(ns angelic.search.action-set.gasplan
   (:require [edu.berkeley.ai.util :as util]
-            [edu.berkeley.ai.util  [graphs :as graphs] ]
-            [angelic [env :as env]  [hierarchy :as hierarchy] 
-                 [sas :as sas] [sas-analysis :as sas-analysis]])
+            [edu.berkeley.ai.util.graphs :as graphs]
+            [angelic.env :as env]
+            [angelic.env.util :as env-util]
+            [angelic.env.state :as state]
+            [angelic.hierarchy :as hierarchy]
+            [angelic.sas :as sas]
+            [angelic.sas.analysis :as sas-analysis])
   (:import [java.util HashMap]))
 
 
@@ -55,7 +59,7 @@
   (assert (contains? effect-map target-var))
   (let [eval (effect-map target-var)
         pval? (contains? precond-map target-var)]
-    (env/env-util/make-factored-primitive
+    (env-util/make-factored-primitive
      [::AddAction name]
      (if pval? {(action-var target-var) nil, target-var (get precond-map target-var), (free-var target-var) false}
          {(action-var target-var) nil, (free-var target-var) false})
@@ -63,7 +67,7 @@
      reward)))
 
 (defn make-set-parent-var-action [p-var c-var]
-  (env/env-util/make-factored-primitive 
+  (env-util/make-factored-primitive 
    [::SetParent p-var c-var] 
    {(free-var p-var) true} 
    {(free-var p-var) false (parent-var p-var c-var) true} 
@@ -82,7 +86,7 @@
                (every? #(state/get-var s (parent-var % effect-var)) unfree-pv))
         (util/assert-is (every? #(nil? (state/get-var s (action-var %))) precond-vars) ); "%s" [name effect-var (println s)])
         (util/assert-is (every? #(nil? (state/get-var s (action-var %))) effect-vars))        
-        (env/env-util/make-factored-primitive
+        (env-util/make-factored-primitive
          [::GreedyFire name]
          (into precond-map 
                (concat [[(action-var effect-var) factored-primitive]]
@@ -169,13 +173,13 @@
 
 ; Ideally, should prefer top-most top-down, bottom-most bottom-up, or something...
 
-(deftype GASPlanEnv [init actions-fn g-map]
+(defrecord GASPlanEnv [init actions-fn g-map]
   env/Env 
-    (initial-state [_] init)
-    (actions-fn    [] actions-fn)
-    (goal-fn       [] #(when (state/state-matches-map? % g-map) (env/solution-and-reward %)))
+    (initial-state [this] init)
+    (actions-fn    [this] actions-fn)
+    (goal-fn       [this] #(when (state/state-matches-map? % g-map) (env/solution-and-reward %)))
   env/FactoredEnv
-    (goal-map      [] g-map))
+    (goal-map      [this] g-map))
 
 (defn make-gasplan-env [sas-problem] 
   (def *add-count* (util/sref 0))
@@ -188,7 +192,7 @@
         dtgs          (sas-analysis/domain-transition-graphs sas-problem)
         simple-dtgs   (util/map-vals (fn [dtg] (for [[pval emap] dtg, [eval _] emap] [pval eval])) dtgs)
         acyclic-succ-fn (partial possibly-acyclic-successors (HashMap.) simple-dtgs)]
-    (GASPlanEnv 
+    (GASPlanEnv. 
      (expand-initial-state (env/initial-state sas-problem) child-var-map (goal-action dtgs))
      (fn gasplan-actions [s]
       (when-not (deadlocked? s child-var-map []);)
