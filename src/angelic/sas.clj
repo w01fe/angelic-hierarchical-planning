@@ -8,6 +8,8 @@
 
 
 (defrecord SAS-Var [name vals])
+(defn make-sas-var [name vals] (SAS-Var. name vals))
+
 
 ;; SAS-Problem will always have a special action goal-action-name and var :goal with init [:goal :false], desired [:goal :true]. 
 
@@ -26,11 +28,12 @@
   (goal-map      [_] {goal-var-name goal-true-val}))
 
 (defn make-simple-successor-generator [vars actions]
-;  (println (count vars) (count actions))
+;  (println vars actions)
+ ;  (println (count vars) (count actions))
   (cond (empty? vars)    (constantly actions)
         (empty? actions) (constantly nil)
         :else            
-          (let [[var & more-vars] vars
+        (let [[var & more-vars] vars
                 var-name          (:name var)
                 actions-by-val    (group-by #((:precond-map %) var-name) actions)]
             (if (= (count actions-by-val) 1)
