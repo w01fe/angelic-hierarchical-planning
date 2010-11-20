@@ -128,6 +128,32 @@
 
 
 
+
+(comment ;; Version of above that allows "stealing"
+ (defn make-greedy-fire-action [s effect-var]
+   (let [{:keys [name precond-map effect-map reward] :as factored-primitive}
+         (->> effect-var action-var (state/get-var s))
+         precond-vars (keys (dissoc precond-map effect-var))
+         [free-pv unfree-pv] (util/separate #(state/get-var s (free-var %)) precond-vars)
+         [reserved-pv external-pv] (util/separate #(state/get-var s (parent-var % effect-var))
+                                                  unfree-pv)]
+     (when (state/state-matches-map? s precond-map)
+       (env-util/make-factored-primitive
+        [::GreedyFire name]
+        (into precond-map 
+              (concat [[(action-var effect-var) factored-primitive]]
+                      (for [v free-pv]   [(free-var v)              true])
+                      (for [v reserved-pv] [(parent-var v effect-var) true])
+                      (for [v external-pv] [(free-var v) false])
+                      (for [v external-pv] [(parent-var v effect-var) false])))
+        (into effect-map 
+              (concat [[(action-var effect-var) nil]]
+                      (for [v reserved-pv] [(free-var v)              true])
+                      (for [v reserved-pv] [(parent-var v effect-var) false])))
+        0)))))
+
+
+
 ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
 ;;;;;;;;;;;;;;;;;;;;;;;;;;;;; Primitive Environment ;;;;;;;;;;;;;;;;;;;;;;;;;;;;
 ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
