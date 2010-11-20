@@ -21,7 +21,15 @@
 ; Problems:
  ; (1) actions are split based on primary effect.
  ; (2) end up hallucinating huge pointless chains.
- ; (3) ways to assign parents multiples in general -- need to keep in control somehow.
+                                        ; (3) ways to assign parents multiples in general -- need to keep in control somehow.
+
+;; Note: this fails completely, even on cyclic unary domains.
+;; See, e.g., angelic.domains.unary-cyclic.clj.
+;;Var z, vals 0, 1, initially 0.
+;;a can transition along the line with no preconditions, except 0-->1 requires z = 1.
+;;z can transition 0 --> 1 when a = -1.  
+
+;; Seems to require either prediction or more interleaving, not handleable in this framework.
 
 ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
 ;;;;;;;;;;;;;;;;;;;;;;;;;;;; States, (meta)primitives ;;;;;;;;;;;;;;;;;;;;;;;;;;
@@ -227,7 +235,7 @@
             (do (println "??????????!!") (activation-actions child-var-map x))
 ;; tODO: put below back, needed for correctness!
           ;; Active top-down var -- add actions
-;          (util/find-first #(and (not (state/get-var s (free-var %)))
+;            (util/find-first #(and (not (state/get-var s (free-var %)))
 ;                                 (not (state/get-var s (action-var (current-child s child-var-map %))))) ;->ASPLAN1
 ;                           (map second na-tuples))  
 ;            (do ;(println "A!" x (state/get-var s x) )
