@@ -27,27 +27,26 @@
   env/FactoredEnv 
   (goal-map      [_] {goal-var-name goal-true-val}))
 
-(defn make-simple-successor-generator [vars actions]
+(defn make-simple-successor-generator [var-names actions]
 ;  (println vars actions)
  ;  (println (count vars) (count actions))
-  (cond (empty? vars)    (constantly actions)
+  (cond (empty? var-names)    (constantly actions)
         (empty? actions) (constantly nil)
         :else            
-        (let [[var & more-vars] vars
-                var-name          (:name var)
-                actions-by-val    (group-by #((:precond-map %) var-name) actions)]
+        (let [[var-name & more-var-names] var-names
+              actions-by-val    (group-by #((:precond-map %) var-name) actions)]
             (if (= (count actions-by-val) 1)
                 (if (nil? (key (first actions-by-val)))
-                    (make-simple-successor-generator more-vars actions)
+                    (make-simple-successor-generator more-var-names actions)
                   (let [v  (key (first actions-by-val))
-                        sg (make-simple-successor-generator more-vars actions)]
+                        sg (make-simple-successor-generator more-var-names actions)]
                     (fn successor-gen2 [s] (when (= v (state/get-var s var-name)) (sg s)))))
-              (let [dc-sg   (make-simple-successor-generator more-vars (get actions-by-val nil)) 
-                    val-sgs (util/map-vals #(make-simple-successor-generator more-vars %) actions-by-val)]
+              (let [dc-sg   (make-simple-successor-generator more-var-names (get actions-by-val nil)) 
+                    val-sgs (util/map-vals #(make-simple-successor-generator more-var-names %) actions-by-val)]
                 (fn successor-gen [s] (concat (dc-sg s) (when-let [f (val-sgs (state/get-var s var-name))] (f s)))))))))
 
 (defn make-sas-problem [vars init actions]
-  (SAS-Problem. vars init actions (delay (make-simple-successor-generator (vals vars) actions))))
+  (SAS-Problem. vars init actions (delay (make-simple-successor-generator (keys vars) actions))))
 
 
 (def *working-dir* "/tmp/")
