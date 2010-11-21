@@ -251,7 +251,7 @@
 
 ; Ideally, should prefer top-most top-down, bottom-most bottom-up, or something...
 
-(defrecord ASPlanEnv [init actions actions-fn g-map 
+(defrecord ASPlanEnv [base-sas-env init actions actions-fn g-map 
                     ; Following stuff is used by hierarchy.
                     causal-graph dtgs ancestor-var-map child-var-map acyclic-succ-fn]
   env/Env 
@@ -274,7 +274,8 @@
         acyclic-succ-fn (partial possibly-acyclic-successors (HashMap.) simple-dtgs)]
     (assert (graphs/dag? causal-graph))    
 ;    (clojure.inspector/inspect-tree child-var-map)
-    (ASPlanEnv. 
+    (ASPlanEnv.
+     sas-problem
      (expand-initial-state (env/initial-state sas-problem) child-var-map (goal-action dtgs))
      (concat
       (for [a (:actions sas-problem)] (make-add-action-action a))
@@ -330,6 +331,15 @@
             ))) )
      (env/goal-map sas-problem)
      causal-graph dtgs av-map child-var-map acyclic-succ-fn)))
+
+(defn unconstrain-asplan-env
+  "Replace the actions-fn in asplan-env with one that generates all legal actions,
+   with no partitioning or pruning."
+  [env]
+  (assoc env
+    :actions-fn
+    (sas/make-simple-successor-generator (keys (env/initial-state env)) (:actions env))))
+
 
 (defn asplan-solution-name [sol]
   (map second (filter #(= (first %) ::GreedyFire) sol)))
