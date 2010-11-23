@@ -17,6 +17,7 @@
 (def goal-var-name    [:goal :?])
 (def goal-true-val    [:goal :true])
 (def goal-false-val   [:goal :false])
+(def goal-var (make-sas-var goal-var-name #{goal-true-val goal-false-val}))
 
 (defrecord SAS-Problem [vars init actions actions-fn]
   env/Env
