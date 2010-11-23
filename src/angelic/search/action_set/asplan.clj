@@ -221,7 +221,6 @@
   (assert (contains? #{:naive :greedy :sloppy :extra-sloppy} rule))
   (assert (contains? #{:greedy} rule))  
   (apply concat
-         [[sas/goal-var-name sas/goal-var-name]]
          (for [v (cons sas/goal-var-name (keys child-map))]
            (let [a (state/get-var s (action-var v))]
              (cond
@@ -235,17 +234,16 @@
                                   (cond unavail?         [p-child v]
                                         (not right-val?) [p v])))))))))
 
+;; TO remove deadlock, simply avoid dag check and remove assert.
 (defn source-vars
   "Take the graph from var-ordering-edges, and return the sources in the same component
    as the goal variable, which are ripe for action.  Returns nil if there are any cycles
    in the graph, since this indicates a deadlock (at least some actions cannot fire)."
   [s child-map rule]
 ;  (println (var-ordering-edges s child-map rule))
-  (let [[edges components] (graphs/scc-graph (var-ordering-edges s child-map rule))]
-    (when (every? util/singleton? (vals components))
-      (let [translate (fn [c] (first (util/safe-get components c)))
-            edges (map (partial map translate) (remove (fn [[s t]] (= s t)) edges))
-            sources (clojure.set/difference (set (cons sas/goal-var-name (map first edges))) (set (map second edges)))
+  (let [edges (var-ordering-edges s child-map rule)]
+    (when (graphs/dag? edges)
+      (let [sources (clojure.set/difference (set (cons sas/goal-var-name (map first edges))) (set (map second edges)))
             goal-component (graphs/ancestor-set (cons [sas/goal-var-name sas/goal-var-name] edges) [sas/goal-var-name])
             goal-component-sources (clojure.set/intersection sources goal-component)]
         (when-not (= (count sources) (count goal-component-sources)) (println "Warning: multiple components..."))
@@ -291,12 +289,36 @@
                                         (state/get-var s (action-var c)))]
                           c)))))
 
+
+;; Why can we use parent-edges and not filtered res-edges???
+(defn b-deadlocked? [s child-map extra-edges]
+;  false #_
+  (let [parent-edges (concat extra-edges 
+                       (for [[p cs] child-map, c cs :when (state/get-var s (parent-var p c))] [p c]))
+        ;; Parent->child actions for active PC, where action on child actually wants parent
+        ; ? =*=> A
+        res-map      (into {} (filter (fn [[p c]] 
+                                        (when-let [a (state/get-var s (action-var c))]
+                                          (contains? (:precond-map a) p))) 
+                                      parent-edges))
+
+        ; Cross-edge -- from var reserving precondition to other var needing it.
+        extra-edges  (for [[p c] parent-edges 
+                           :let [a (state/get-var s (action-var p))] 
+                           :when a
+                           precond (remove #{p} (keys (:precond-map a)))
+                           :let [res (res-map precond)]
+                           :when res]
+                       [res p])]
+    (not (graphs/dag? (concat parent-edges extra-edges)))))
+
 (defn possible-activation-actions  
    "Return a list of possible activation actions for var v possible in state s.
    To be possible parent, must be supported from below. "
    [s ancestor-map child-map v]
 ;   (activation-actions child-map v) #_   
-   (for [c (child-map v) :when (not (dead-end? s ancestor-map child-map [[ v c]]))]
+   (for [c (child-map v) :when (not (or #_ (b-deadlocked? s child-map [[v c]])
+                                        (dead-end? s ancestor-map child-map [[ v c]])))]
      (make-set-parent-var-action v c)))
 ;   (or (deadlocked? s child-map [[v c]]))
 
@@ -331,6 +353,7 @@
   (let [causal-graph  (remove #(apply = %) (sas-analysis/standard-causal-graph sas-problem))
         vars          (graphs/ancestor-set causal-graph [sas/goal-var-name])
         causal-graph  (filter (fn [[v1 v2]] (and (vars v1) (vars v2))) causal-graph)
+        tsi           (graphs/topological-sort-indices causal-graph)
         av-map        (into {} (for [v vars] [v (graphs/ancestor-set causal-graph [v])]))
         child-var-map (util/map-vals #(map second %) (group-by first causal-graph))
 ;        vars          (keys (:vars sas-problem))
@@ -350,16 +373,16 @@
 
      (fn asplan-actions [s]
 ;;       (println "\n" s)
-       (when-let [sources (and (not (dead-end? s av-map child-var-map [])) ;; This is necessary to catch hanging edges, or need other checks.
+       (when-let [sources (and (not (dead-end? s av-map child-var-map [])) ;; This is necessary to catch hanging edges, or need other checks.  i.e., look at top-down env.
                                (seq (source-vars s child-var-map :greedy)))]
          (let [sources-by-type (group-by #(source-var-type s child-var-map %) sources)]
-;;           (println sources-by-type)
+;           (println sources-by-type)
            (util/cond-let [sources]
              (seq (sources-by-type :fire))
              [(make-greedy-fire-action s (first sources))]
 
              (seq (sources-by-type :bottom-up-action))
-             (let [v     (first sources)
+             (let [v     (apply min-key tsi sources)
                    c-val (state/get-var s v)
                    dtg   (get-in dtgs [v c-val])
                    child (current-child s child-var-map v)
@@ -369,7 +392,7 @@
                 (make-add-action-action a)))               
 
              (seq (sources-by-type :bottom-up-activate))
-             (possible-activation-actions s av-map child-var-map (first sources)) ;; TODO: sort!
+             (possible-activation-actions s av-map child-var-map (apply max-key tsi sources)) ;; TODO: sort!
 
              (seq (sources-by-type :top-down-activate))
              (let [v (first sources)]

@@ -313,7 +313,7 @@
          (util/cond-let [x]
           ;; Greedy action -- all preconditions satisfied and not assigned elsewhere
           (some #(make-greedy-fire-action s %) aa-vars) 
-            [x]
+            (do #_ (println "greedy") [x])
 
           ;; Active bottom-up var -- assigned, needs its value changed.               
           (util/find-first (fn [[pv cv]] (state/get-var s (parent-var pv cv))) aa-parent-edges)
@@ -321,12 +321,14 @@
                   p-val (state/get-var s pv)
                   d-val ((:precond-map (state/get-var s (action-var cv))) pv)
                   dtg   (get-in dtgs [pv p-val])]
+              #_ (println "bu-action")
               (for [n-val (acyclic-succ-fn pv p-val d-val), a (dtg n-val)]
                 (make-add-action-action a)))
 
           ;; Inactive bottom-up var -- needs to be assigned.  
           (util/find-first #(state/get-var s (free-var %)) (map first aa-parent-edges))
-            (possible-activation-actions s av-map child-var-map x)
+            (do #_ (println "bu-activate" x) 
+                (possible-activation-actions s av-map child-var-map x))
 
           ;; Active top-down var -- add actions
           (util/find-first #(not (state/get-var s (free-var %))) (map second na-tuples))  
