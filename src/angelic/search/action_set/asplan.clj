@@ -15,6 +15,8 @@
 
 ; For now, pretend analysis is free, just brute-force it. 
 
+; Modes:
+
 ; Put stuff previous in HLAs into state, so we can keep track of, e.g.,
 ; actions added while accomplishing some other action. 
 ; For each var, a second var pointing to: pending action, :frozen, or :open
@@ -120,6 +122,7 @@
                    (for [v precond-vars] [(action-var v) nil])))
      0)))
 
+;; TODO: should fail if I own parent, it has right value, but an action. (right now, we assert)...
 
 ;; Try to make an action that greedily fires the action scheduled on effect-var,
 ;; effectively representing a composition of set-parent and fire-action actions.
@@ -127,54 +130,53 @@
 ;; Assumes this will always be called on a "source", and asserts correspondingly.
 (defn make-greedy-fire-action [s effect-var]
   (let [{:keys [name precond-map effect-map reward] :as factored-primitive}
-          (->> effect-var action-var (state/get-var s))
+        (->> effect-var action-var (state/get-var s))
         precond-vars (keys (dissoc precond-map effect-var))
         [free-pv unfree-pv] (util/separate #(state/get-var s (free-var %)) precond-vars)]
     (assert (every? #(contains? #{nil :frozen} (state/get-var s (action-var %))) precond-vars))
-    (assert (every? #(contains? #{nil :frozen} (state/get-var s (action-var %))) unfree-pv))
-    (doto (env-util/make-factored-primitive
-           [::GreedyFire name]
-           (into precond-map 
-                 (concat [[(action-var effect-var) factored-primitive]]
-                         (for [v free-pv]   [(free-var v)              true])
-                         (for [v unfree-pv] [(parent-var v effect-var) true])
-                         (for [v precond-vars] [(action-var v) (state/get-var s (action-var v))])))           
-           (into effect-map 
-                 (concat [[(action-var effect-var) nil]]
-                         (for [v unfree-pv] [(free-var v)              true])
-                         (for [v unfree-pv] [(parent-var v effect-var) false])
-                         (for [v precond-vars] [(action-var v) nil])))
-           0)
-      (-> (env/applicable? s) assert))))
+    (env-util/make-factored-primitive
+     [::Fire name]
+     (into precond-map 
+           (concat [[(action-var effect-var) factored-primitive]]
+                   (for [v free-pv]   [(free-var v)              true])
+                   (for [v unfree-pv] [(parent-var v effect-var) true])
+                   (for [v precond-vars] [(action-var v) (state/get-var s (action-var v))])))           
+     (into effect-map 
+           (concat [[(action-var effect-var) nil]]
+                   (for [v unfree-pv] [(free-var v)              true])
+                   (for [v unfree-pv] [(parent-var v effect-var) false])
+                   (for [v precond-vars] [(action-var v) nil])))
+     0)))
 
+(defn make-sloppy-fire-action [s effect-var]
+  (let [{:keys [name precond-map effect-map reward] :as factored-primitive}
+        (->> effect-var action-var (state/get-var s))
+        precond-vars (keys (dissoc precond-map effect-var))
+        [free-pv unfree-pv] (util/separate #(state/get-var s (free-var %)) precond-vars)
+        [reserved-pv external-pv] (util/separate #(state/get-var s (parent-var % effect-var))
+                                                 unfree-pv)]
+    (assert (every? #(contains? #{nil :frozen} (state/get-var s (action-var %))) reserved-pv))
+    (env-util/make-factored-primitive
+     [::Fire name]
+     (into precond-map 
+           (concat [[(action-var effect-var) factored-primitive]]
+                   (for [v free-pv]   [(free-var v)              true])
+                   (for [v reserved-pv] [(parent-var v effect-var) true])
+                   (for [v external-pv] [(free-var v) false])
+                   (for [v external-pv] [(parent-var v effect-var) false])))
+     (into effect-map 
+           (concat [[(action-var effect-var) nil]]
+                   (for [v reserved-pv] [(free-var v)              true])
+                   (for [v reserved-pv] [(parent-var v effect-var) false])
+                   (for [v reserved-pv] [(action-var v) nil])))
+     0)))
 
-;; TODO: sloppy (var can be reserved for someone else, no action),
-;;       extra-sloppy (if it has the right value now, who cares about anything else?)
-
-;; TODO: should fail if I own parent, it has right value, but an action. (right now, we assert)...
-
-(comment ;; Version of above that allows "stealing"
- (defn make-greedy-fire-action [s effect-var]
-   (let [{:keys [name precond-map effect-map reward] :as factored-primitive}
-         (->> effect-var action-var (state/get-var s))
-         precond-vars (keys (dissoc precond-map effect-var))
-         [free-pv unfree-pv] (util/separate #(state/get-var s (free-var %)) precond-vars)
-         [reserved-pv external-pv] (util/separate #(state/get-var s (parent-var % effect-var))
-                                                  unfree-pv)]
-     (when (state/state-matches-map? s precond-map)
-       (env-util/make-factored-primitive
-        [::GreedyFire name]
-        (into precond-map 
-              (concat [[(action-var effect-var) factored-primitive]]
-                      (for [v free-pv]   [(free-var v)              true])
-                      (for [v reserved-pv] [(parent-var v effect-var) true])
-                      (for [v external-pv] [(free-var v) false])
-                      (for [v external-pv] [(parent-var v effect-var) false])))
-        (into effect-map 
-              (concat [[(action-var effect-var) nil]]
-                      (for [v reserved-pv] [(free-var v)              true])
-                      (for [v reserved-pv] [(parent-var v effect-var) false])))
-        0)))))
+(defn make-fire-action-type [s edge-rule effect-var]
+  (doto (case edge-rule
+          :naive (make-fire-action (->> effect-var action-var (state/get-var s)))
+          :greedy (make-greedy-fire-action s effect-var)
+          (:sloppy :extra-sloppy) (make-sloppy-fire-action s effect-var))
+    (-> (env/applicable? s) assert)))
 
 
 
@@ -218,8 +220,6 @@
     (3)(b) sloppy:       If (action-var c) has precondition on p, value mismatch or action on p and reserved by o!=c, o --> c
     (3)(c) extra-sloppy: If (action-var c) has precondition on p, value mismatch and reserved by o!=c, o --> c"   
   [s child-map rule]
-  (assert (contains? #{:naive :greedy :sloppy :extra-sloppy} rule))
-  (assert (contains? #{:greedy} rule))  
   (apply concat
          (for [v (cons sas/goal-var-name (keys child-map))]
            (let [a (state/get-var s (action-var v))]
@@ -231,44 +231,50 @@
                                 (let [right-val? (= (state/get-var s p) pval)
                                       p-child    (current-child s child-map p)
                                       unavail?   (not (or (= p-child nil) (= p-child v)))]
-                                  (cond unavail?         [p-child v]
-                                        (not right-val?) [p v])))))))))
+                                  (case rule
+                                    :naive  (cond unavail?         [p-child v]
+                                                  (or (not (= p-child v)) (not (= (state/get-var s (action-var p)) :frozen))) [p v])                                            :greedy (cond unavail?         [p-child v]
+                                                  (not right-val?) [p v])
+                                    :sloppy (cond (and unavail? (or (not right-val?) (when-let [a (state/get-var s (action-var p))] (not (= a :frozen)))))         [p-child v]
+                                                  (and (not unavail?) (not right-val?)) [p v])
+                                    :extra-sloppy
+                                            (cond (and unavail? (not right-val?)) [p-child v]
+                                                  (and (not unavail?) (not right-val?)) [p v]))))))))))
 
-;; TO remove deadlock, simply avoid dag check and remove assert.
+
+
+
 (defn source-vars
   "Take the graph from var-ordering-edges, and return the sources in the same component
    as the goal variable, which are ripe for action.  Returns nil if there are any cycles
    in the graph, since this indicates a deadlock (at least some actions cannot fire)."
-  [s child-map rule]
+  [s child-map check-deadlock? check-components? edge-rule]
 ;  (println (var-ordering-edges s child-map rule))
-  (let [edges (var-ordering-edges s child-map rule)]
-    (when (graphs/dag? edges)
+  (let [edges (var-ordering-edges s child-map edge-rule)]
+    (when (or (not check-deadlock?) (graphs/dag? edges)) 
       (let [sources (clojure.set/difference (set (cons sas/goal-var-name (map first edges))) (set (map second edges)))
-            goal-component (graphs/ancestor-set (cons [sas/goal-var-name sas/goal-var-name] edges) [sas/goal-var-name])
-            goal-component-sources (clojure.set/intersection sources goal-component)]
+            goal-component-sources
+            (if check-components?
+              (clojure.set/intersection
+               sources
+               (graphs/ancestor-set (cons [sas/goal-var-name sas/goal-var-name] edges) [sas/goal-var-name]))
+              sources)]
         (when-not (= (count sources) (count goal-component-sources)) (println "Warning: multiple components..."))
-        (assert (seq goal-component-sources))
+        (when check-deadlock? (assert (seq goal-component-sources)))
         goal-component-sources))))
 
 (defn source-var-type [s child-map v]
   (let [a (state/get-var s (action-var v))]
-    (cond (= a :frozen)
-          :top-down-activate
-
-          a
-          :fire
+    (cond (= a :frozen)  :top-down-activate
+          a              :fire
 
           ;; no action
-          (not (state/get-var s (free-var v)))
-          :bottom-up-action ;; Can assert on action below...
-
+          (not (state/get-var s (free-var v))) :bottom-up-action 
           (some (fn [c] (when-let [ca (state/get-var s (action-var c))]
                           (contains? (:precond-map ca) v)))
                 (child-map v))
-          :bottom-up-activate
-
-          :else
-          :top-down-action)))
+                         :bottom-up-activate
+          :els           :top-down-action)))
 
 ;; TODO: dynamic bottom-up pruning.
  ; i.e., exists precondition of some current action, NOT currently achieved,
@@ -284,41 +290,22 @@
                           (ancestor-map pv)))]
     (not-every? live-set
                 (concat (map second extra-edges)
+                        (for [p (keys child-map)
+                              :let [a (state/get-var s (action-var p))]
+                              :when (and a (not (= a :frozen)))]
+                          p)
                         (for [[p cs] child-map, c cs
-                              :when (or (state/get-var s (parent-var p c))
-                                        (state/get-var s (action-var c)))]
+                              :when (state/get-var s (parent-var p c))]
                           c)))))
 
 
-;; Why can we use parent-edges and not filtered res-edges???
-(defn b-deadlocked? [s child-map extra-edges]
-;  false #_
-  (let [parent-edges (concat extra-edges 
-                       (for [[p cs] child-map, c cs :when (state/get-var s (parent-var p c))] [p c]))
-        ;; Parent->child actions for active PC, where action on child actually wants parent
-        ; ? =*=> A
-        res-map      (into {} (filter (fn [[p c]] 
-                                        (when-let [a (state/get-var s (action-var c))]
-                                          (contains? (:precond-map a) p))) 
-                                      parent-edges))
-
-        ; Cross-edge -- from var reserving precondition to other var needing it.
-        extra-edges  (for [[p c] parent-edges 
-                           :let [a (state/get-var s (action-var p))] 
-                           :when a
-                           precond (remove #{p} (keys (:precond-map a)))
-                           :let [res (res-map precond)]
-                           :when res]
-                       [res p])]
-    (not (graphs/dag? (concat parent-edges extra-edges)))))
-
+;; TODO: remove redundant dead-end check ?
 (defn possible-activation-actions  
    "Return a list of possible activation actions for var v possible in state s.
    To be possible parent, must be supported from below. "
    [s ancestor-map child-map v]
 ;   (activation-actions child-map v) #_   
-   (for [c (child-map v) :when (not (or #_ (b-deadlocked? s child-map [[v c]])
-                                        (dead-end? s ancestor-map child-map [[ v c]])))]
+   (for [c (child-map v) :when (not (or (dead-end? s ancestor-map child-map [[ v c]])))]
      (make-set-parent-var-action v c)))
 ;   (or (deadlocked? s child-map [[v c]]))
 
@@ -326,17 +313,6 @@
 
 
 ;;;;;;;;;;;;;;;;;;;;;;;;;;;;; Actions fn, actual env ;;;;;;;;;;;;;;;;;;;;;;;;;;;
-
-; Simplest way to express mechanics (in order of preference):
-
-;  Schematics:
-;  a* => A   goes to a* -> a   (greedy fire)
-;  a => A    goes to  A => A   (bottom-up action)
-;  a -> A    goes to  a => A   (bottom-up activate)
-;  a => a => goes to => A =>   (top-down action)          
-;  a => a -> goes to a => a => (top-down activate)          
-
-; Ideally, should prefer top-most top-down, bottom-most bottom-up, or something...
 
 (defrecord ASPlanEnv [base-sas-env init actions actions-fn g-map 
                     ; Following stuff is used by hierarchy.
@@ -348,67 +324,87 @@
   env/FactoredEnv
     (goal-map      [e] g-map))
 
-(defn make-asplan-env [sas-problem] 
-  (def *add-count* (util/sref 0))
-  (let [causal-graph  (remove #(apply = %) (sas-analysis/standard-causal-graph sas-problem))
-        vars          (graphs/ancestor-set causal-graph [sas/goal-var-name])
-        causal-graph  (filter (fn [[v1 v2]] (and (vars v1) (vars v2))) causal-graph)
-        tsi           (graphs/topological-sort-indices causal-graph)
-        av-map        (into {} (for [v vars] [v (graphs/ancestor-set causal-graph [v])]))
-        child-var-map (util/map-vals #(map second %) (group-by first causal-graph))
-;        vars          (keys (:vars sas-problem))
-        dtgs          (sas-analysis/domain-transition-graphs sas-problem)
-        simple-dtgs   (util/map-vals (fn [dtg] (for [[pval emap] dtg, [eval _] emap] [pval eval])) dtgs)
-        acyclic-succ-fn (partial possibly-acyclic-successors (HashMap.) simple-dtgs)]
-    (assert (graphs/dag? causal-graph))    
-;    (clojure.inspector/inspect-tree child-var-map)
-    (ASPlanEnv.
-     sas-problem
-     (expand-initial-state (env/initial-state sas-problem) child-var-map (goal-action dtgs))
-     (concat
-      (for [v vars] (make-freeze-var-action v))
-      (for [a (:actions sas-problem)] (make-add-action-action a))
-      (for [[p cs] child-var-map, c cs] (make-set-parent-var-action p c))
-      (for [a (:actions sas-problem)] (make-fire-action a)))
+;(def *dead-count* (atom 0))
 
-     (fn asplan-actions [s]
-;;       (println "\n" s)
-       (when-let [sources (and (not (dead-end? s av-map child-var-map [])) ;; This is necessary to catch hanging edges, or need other checks.  i.e., look at top-down env.
-                               (seq (source-vars s child-var-map :greedy)))]
-         (let [sources-by-type (group-by #(source-var-type s child-var-map %) sources)]
-;           (println sources-by-type)
-           (util/cond-let [sources]
-             (seq (sources-by-type :fire))
-             [(make-greedy-fire-action s (first sources))]
+;; Recall: greedy helps the most when, e.g., lots of passengers and not much room.
+(defn make-asplan-env
+  "Make an actino-set planning environment.  Switches are:
+    check-deadlock?: check for cycles in precedence graph above and beyond lack of sources
+    check-components?: check for disconnected components, rule out sources outside of goal comp
+    edge-rule: :naive, :greedy, :sloppy, or :extra-sloppy.
+       Naive means we stick exactly to the simple semantics of the vanilla actions.
+       Greedy means we forget about reserving preconditions when free and we can fire right now (less branching).
+       Sloppy means we ignore if preconditions are free, but require no action on them.
+       Extra-sloppy means anything goes -- if you can execute ignoring commitments, go for it."
+  ([sas-problem] (make-asplan-env sas-problem true true :greedy))
+  ([sas-problem check-deadlock? check-components? edge-rule]
+  (assert (contains? #{:naive :greedy :sloppy :extra-sloppy} edge-rule))     
+     (def *add-count* (util/sref 0))
+;  (def *dead-count* (util/sref 0))
+     (let [causal-graph  (remove #(apply = %) (sas-analysis/standard-causal-graph sas-problem))
+           vars          (graphs/ancestor-set causal-graph [sas/goal-var-name])
+           causal-graph  (filter (fn [[v1 v2]] (and (vars v1) (vars v2))) causal-graph)
+           tsi           (graphs/topological-sort-indices causal-graph)
+           av-map        (into {} (for [v vars] [v (graphs/ancestor-set causal-graph [v])]))
+           child-var-map (util/map-vals #(map second %) (group-by first causal-graph))
+                                        ;        vars          (keys (:vars sas-problem))
+           dtgs          (sas-analysis/domain-transition-graphs sas-problem)
+           simple-dtgs   (util/map-vals (fn [dtg] (for [[pval emap] dtg, [eval _] emap] [pval eval])) dtgs)
+           acyclic-succ-fn (partial possibly-acyclic-successors (HashMap.) simple-dtgs)]
+       (assert (graphs/dag? causal-graph))    
+                                        ;    (clojure.inspector/inspect-tree child-var-map)
+       (ASPlanEnv.
+        sas-problem
+        (expand-initial-state (env/initial-state sas-problem) child-var-map (goal-action dtgs))
+        (concat
+         (for [v vars] (make-freeze-var-action v))
+         (for [a (:actions sas-problem)] (make-add-action-action a))
+         (for [[p cs] child-var-map, c cs] (make-set-parent-var-action p c))
+         (for [a (:actions sas-problem)] (make-fire-action a)))
 
-             (seq (sources-by-type :bottom-up-action))
-             (let [v     (apply min-key tsi sources)
-                   c-val (state/get-var s v)
-                   dtg   (get-in dtgs [v c-val])
-                   child (current-child s child-var-map v)
-                   d-val (-> (state/get-var s (action-var child)) :precond-map (util/safe-get v))]
-               (util/assert-is (not (= c-val d-val)) "%s" (def *s* s)) ;; TODO: this only correct for greedy...
-               (for [n-val (acyclic-succ-fn v c-val d-val), a (dtg n-val)]
-                (make-add-action-action a)))               
+        (fn asplan-actions [s]
+          ;;       (println "\n" s)
+;          (println "\n" s #_(dead-end? s av-map child-var-map []))
+          (when-let [sources (and (not (dead-end? s av-map child-var-map [])) ;; This is necessary to catch hanging edges, or need other checks.  i.e., look at top-down env.
+                                  (seq (source-vars s child-var-map check-deadlock? check-components? edge-rule)))]
+            (let [sources-by-type (group-by #(source-var-type s child-var-map %) sources)]
+;              (println sources-by-type)
+              (util/cond-let [sources]
+                (seq (sources-by-type :fire))
+                [(make-fire-action-type s edge-rule (first sources))]
 
-             (seq (sources-by-type :bottom-up-activate))
-             (possible-activation-actions s av-map child-var-map (apply max-key tsi sources)) ;; TODO: sort!
-
-             (seq (sources-by-type :top-down-activate))
-             (let [v (first sources)]
-               (println "I!" v)
-               (possible-activation-actions s av-map child-var-map (first sources))) ;; TODO: sort?
-
-             (seq (sources-by-type :top-down-action))
-             (let [v (first sources)]
-               (println "A!" v) ;                         (state/get-var s x) (state/get-var s (parent-var x sas/goal-var-name))
-               (cons (make-freeze-var-action v)
-                     (for [as (vals (get-in dtgs [v (state/get-var s v)])), a as]
-                       (make-add-action-action a))))
-               
-             :else (assert "Unknown source type!")))))
-     (env/goal-map sas-problem)
-     causal-graph dtgs av-map child-var-map acyclic-succ-fn)))
+                (seq (sources-by-type :bottom-up-action))
+                (let [v     (apply min-key tsi sources)
+                      c-val (state/get-var s v)
+                      dtg   (get-in dtgs [v c-val])
+                      child (current-child s child-var-map v)
+                      d-val (-> (state/get-var s (action-var child)) :precond-map (util/safe-get v))]
+                  (when (= edge-rule :greedy)
+                    #_ (util/assert-is (not (= c-val d-val)) "%s" (def *s* s)))
+                  (if (= c-val d-val)
+                    [(make-freeze-var-action v)]
+                    (for [n-val (acyclic-succ-fn v c-val d-val), a (dtg n-val)]
+                      (make-add-action-action a))))               
+                
+                (seq (sources-by-type :bottom-up-activate))
+                (possible-activation-actions s av-map child-var-map (apply max-key tsi sources)) ;; TODO: smarter sort!
+                
+                (seq (sources-by-type :top-down-activate))
+                (let [v (first sources)]
+                  (println "I!" v)
+                  (possible-activation-actions s av-map child-var-map (first sources))) ;; TODO: sort?
+                
+                (seq (sources-by-type :top-down-action))
+                (let [v (first sources)]
+                  (println "A!" v) ;                         (state/get-var s x) (state/get-var s (parent-var x sas/goal-var-name))
+                  (cons (make-freeze-var-action v)
+                        (for [as (vals (get-in dtgs [v (state/get-var s v)])), a as]
+                          (make-add-action-action a))))
+                
+                :else (assert "Unknown source type!")))
+            #_ (do (util/sref-set! *dead-count* (inc (util/sref-get *dead-count*))) nil)))
+        (env/goal-map sas-problem)
+        causal-graph dtgs av-map child-var-map acyclic-succ-fn))))
 
 (defn make-naive-asplan-env
   "Replace the actions-fn in asplan-env with one that generates all legal actions,
@@ -419,7 +415,7 @@
 
 
 (defn asplan-solution-name [sol]
-  (map second (filter #(= (first %) ::GreedyFire) sol)))
+  (map second (filter #(= (first %) ::Fire) sol)))
 
 (defn asplan-solution-pair-name [[sol rew]]
   [(asplan-solution-name sol) rew])
