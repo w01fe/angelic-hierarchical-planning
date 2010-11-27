@@ -23,12 +23,13 @@
      (doseq [f files]
        (println 
 	(apply util/sh 
-	 (util/prln (concat ["qsub" 
+               (util/prln (concat ["qsub"
+                  "-q" "zen"                 
 		  "-N" name 
 		  "-o" (str (util/file-stem f) ".out")
 		  "-e" (str (util/file-stem f) ".err")]
 		*default-qsub-options*
-		[:in (str *default-clj* " " f) :dir (util/dirname f)])))))))
+		[:in (str "java -cp " *classpath* " clojure.main " f) :dir (util/dirname f)])))))))
 
 (defn run-experiment-set-subprocesses [es]
   (run-files-subprocesses 

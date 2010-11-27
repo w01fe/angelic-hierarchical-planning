@@ -8,7 +8,10 @@
         best)))
 
 (defn git-commit-id []
-  (aget (.split #^String (sh "git" "log" "-1" :dir (root-local "")) "\n") 0))
+  (try 
+    (aget (.split #^String (sh "git" "log" "-1" :dir (root-local "")) "\n") 0)
+    (catch Exception e "git-not-found")))
+
 
 (def *debug-level* 0)
 
