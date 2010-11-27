@@ -178,7 +178,7 @@
           :naive (make-fire-action (->> effect-var action-var (state/get-var s)))
           :greedy (make-greedy-fire-action s effect-var)
           (:sloppy :extra-sloppy) (make-sloppy-fire-action s effect-var))
-     (-> (env/applicable? s) assert)))
+     #_ (-> (env/applicable? s) assert)))
 
 
 
@@ -202,11 +202,6 @@
           :when (and (= s cur-val) (not (contains? (backward-sets t) s)))]
       t)))
 
-
-(defn activation-actions  "Return a list of all activation actions for var v"
-  [child-map v]
-  (for [c (child-map v)]
-    (make-set-parent-var-action v c)))
 
 
 ;; TODO: generalize to modes other than greedy.
@@ -283,7 +278,7 @@
  ; that has every child of a parent-link in its ancestor-set. 
 ; Or, more simply, variables should "die off".  
 ;; TODO: generalize.  This is just special case for most logistics.
-(defn dead-end? [s ancestor-map child-map extra-edges]
+(defn uses-dead-vars? [s ancestor-map child-map extra-edges]
 ;  false #_
   (let [gpm      (:precond-map (state/get-var s (action-var sas/goal-var-name)))
         live-set (apply clojure.set/union #{sas/goal-var-name}
@@ -301,14 +296,37 @@
                           c)))))
 
 
-;; TODO: remove redundant dead-end check ?
-(defn possible-activation-actions  
+(defn activation-actions  "Return a list of all activation actions for var v"
+  [child-map v]
+  (for [c (child-map v)]
+    (make-set-parent-var-action v c)))
+
+(defn add-actions [s v dtgs]
+  (cons (make-freeze-var-action v)
+        (for [as (vals (get-in dtgs [v (state/get-var s v)])), a as]
+          (make-add-action-action a))))
+
+(defn add-directed-actions [s v dtgs cvm acyclic-succ-fn]
+  (let [c-val (state/get-var s v)
+        dtg   (get-in dtgs [v c-val])
+        child (current-child s cvm v)
+        d-val (-> (state/get-var s (action-var child)) :precond-map (util/safe-get v))]
+    ;    (when greedy? #_ (util/assert-is (not (= c-val d-val)) "%s" (def *s* s)))
+    (if (= c-val d-val)
+      [(make-freeze-var-action v)]
+      (for [n-val (acyclic-succ-fn v c-val d-val), a (dtg n-val)]
+        (make-add-action-action a)))))
+
+
+
+(comment ; Dead-end check moved out to init.
+ (defn possible-activation-actions  
    "Return a list of possible activation actions for var v possible in state s.
    To be possible parent, must be supported from below. "
    [s ancestor-map child-map v]
-;   (activation-actions child-map v) #_   
+                                        ;   (activation-actions child-map v) #_   
    (for [c (child-map v) :when (not (or (dead-end? s ancestor-map child-map [[ v c]])))]
-     (make-set-parent-var-action v c)))
+     (make-set-parent-var-action v c))))
 ;   (or (deadlocked? s child-map [[v c]]))
 
 
@@ -338,12 +356,12 @@
        Greedy means we forget about reserving preconditions when free and we can fire right now (less branching).
        Sloppy means we ignore if preconditions are free, but require no action on them.
        Extra-sloppy means anything goes -- if you can execute ignoring commitments, go for it."
-  ([sas-problem] (make-asplan-env sas-problem true true :greedy))
-  ([sas-problem check-deadlock? check-components? edge-rule]
-  (assert (contains? #{:naive :greedy :sloppy :extra-sloppy} edge-rule))     
+  ([sas-problem & {:keys [directed? greedy? deadlock? dead-vars? components?] :as m
+                   :or   {directed? true greedy? true deadlock? true dead-vars? true components? false}}]
+     (assert (every? #{:directed? :greedy? :deadlock? :dead-vars? :components?} (keys m)))
      (def *add-count* (util/sref 0))
-;  (def *dead-count* (util/sref 0))
-     (let [causal-graph  (remove #(apply = %) (sas-analysis/standard-causal-graph sas-problem))
+     (let [edge-rule     (if greedy? :greedy :naive)
+           causal-graph  (remove #(apply = %) (sas-analysis/standard-causal-graph sas-problem))
            vars          (graphs/ancestor-set causal-graph [sas/goal-var-name])
            causal-graph  (filter (fn [[v1 v2]] (and (vars v1) (vars v2))) causal-graph)
            tsi           (graphs/topological-sort-indices causal-graph)
@@ -355,7 +373,7 @@
            simple-dtgs   (util/map-vals (fn [dtg] (for [[pval emap] dtg, [eval _] emap] [pval eval])) dtgs)
            acyclic-succ-fn (partial possibly-acyclic-successors (HashMap.) simple-dtgs)]
        (assert (graphs/dag? causal-graph))    
-                                        ;    (clojure.inspector/inspect-tree child-var-map)
+
        (ASPlanEnv.
         sas-problem
         (expand-initial-state (env/initial-state sas-problem) child-var-map (goal-action dtgs))
@@ -366,46 +384,29 @@
          (for [a (:actions sas-problem)] (make-fire-action a)))
 
         (fn asplan-actions [s]
-          ;;       (println "\n" s)
-;          (println "\n" s #_(dead-end? s av-map child-var-map []))
-          (when-let [sources (and  (not (dead-end? s av-map child-var-map [])) ;; This is necessary to catch hanging edges, or need other checks.  i.e., look at top-down env.
-                                  (seq (source-vars s child-var-map check-deadlock? check-components? edge-rule)))]
+          (when-let [sources (and (or (not dead-vars?) (not (uses-dead-vars? s av-map child-var-map []))) 
+                                  (seq (source-vars s child-var-map deadlock? components? edge-rule)))]
             (let [sources-by-type (group-by #(source-var-type s child-var-map %) sources)]
 ;              (println sources-by-type)
               (util/cond-let [sources]
                 (seq (sources-by-type :fire))
-                [(make-fire-action-type s edge-rule (first sources))]
+                [(make-fire-action-type s  edge-rule (first sources))]
 
                 (seq (sources-by-type :bottom-up-action))
-                (let [v     (apply min-key tsi sources)
-                      c-val (state/get-var s v)
-                      dtg   (get-in dtgs [v c-val])
-                      child (current-child s child-var-map v)
-                      d-val (-> (state/get-var s (action-var child)) :precond-map (util/safe-get v))]
-                  (when (= edge-rule :greedy)
-                    #_ (util/assert-is (not (= c-val d-val)) "%s" (def *s* s)))
-                  (if (= c-val d-val)
-                    [(make-freeze-var-action v)]
-                    (for [n-val (acyclic-succ-fn v c-val d-val), a (dtg n-val)]
-                      (make-add-action-action a))))               
-                
+                (if directed?
+                  (add-directed-actions s (apply min-key tsi sources) dtgs child-var-map acyclic-succ-fn)
+                  (add-actions s (apply min-key tsi sources) dtgs))               
+                     
                 (seq (sources-by-type :bottom-up-activate))
-                (possible-activation-actions s av-map child-var-map (apply max-key tsi sources)) ;; TODO: smarter sort!
+                (activation-actions child-var-map (apply max-key tsi sources)) ;; TODO: smarter sort!
                 
                 (seq (sources-by-type :top-down-activate))
-                (let [v (first sources)]
-                  (println "I!" v)
-                  (possible-activation-actions s av-map child-var-map (first sources))) ;; TODO: sort?
+                (do (println "I!") (activation-actions child-var-map (first sources)))
                 
                 (seq (sources-by-type :top-down-action))
-                (let [v (first sources)]
-                  (println "A!" v) ;                         (state/get-var s x) (state/get-var s (parent-var x sas/goal-var-name))
-                  (cons (make-freeze-var-action v)
-                        (for [as (vals (get-in dtgs [v (state/get-var s v)])), a as]
-                          (make-add-action-action a))))
+                (do (println "A!") (add-actions s (first sources) dtgs))
                 
-                :else (assert "Unknown source type!")))
-            #_ (do (util/sref-set! *dead-count* (inc (util/sref-get *dead-count*))) nil)))
+                :else (assert "Unknown source type!")))))
         (env/goal-map sas-problem)
         causal-graph dtgs av-map child-var-map tsi acyclic-succ-fn))))
 
