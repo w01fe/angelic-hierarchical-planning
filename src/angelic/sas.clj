@@ -62,6 +62,10 @@
          (throw (RuntimeException. (str "LAMA-translate failed: "  ret))))
        ret  )))
 
+(defn lama-translate-to [domain-file inst-file output-stem]
+  (lama-translate domain-file inst-file)
+  (util/sh "mv" (str *working-dir* "test.groups") (str output-stem ".groups"))
+  (util/sh "mv" (str *working-dir* "output.sas") (str output-stem ".sas")))
 
 (defn map-ize [key-fn s]
   (into {}
@@ -104,14 +108,11 @@
 ;                    (if (apply = elts) (first elts) :?))]
 ;    (if (= (first prototype) :?) boring-name (vec prototype))))
 
-(defn make-sas-problem-from-pddl 
-  ([stem] (make-sas-problem-from-pddl  (str stem "-domain.pddl") (str stem ".pddl")))
-  ([domain-file inst-file]
-     (let [lto  (lama-translate domain-file inst-file)]
-       (util/print-debug 1 lto))
-     (let [var-map (assoc (read-groups-file (str *working-dir* "test.groups"))
+(defn make-sas-problem-from-lama 
+  ([groups-file sas-file]     
+     (let [var-map (assoc (read-groups-file groups-file)
                      goal-var-name [goal-false-val goal-true-val])
-           sas-q   (LinkedList. (seq (.split #^String (slurp (str *working-dir* "output.sas")) "\n")))
+           sas-q   (LinkedList. (seq (.split #^String (slurp sas-file) "\n")))
            _       (dotimes [_ 3] (.pop sas-q))
            _       (assert (= (.pop sas-q) "begin_variables"))
            n-vars  (read-string (.pop sas-q))
@@ -159,6 +160,12 @@
               (env-util/make-factored-primitive goal-action-name (util/map-map (partial expand-condition vars) goal-m) 
                                      {goal-var-name goal-true-val} 0))))))
 
+(defn make-sas-problem-from-pddl
+  ([stem] (make-sas-problem-from-pddl  (str stem "-domain.pddl") (str stem ".pddl")))
+  ([domain-file inst-file]
+     (let [lto  (lama-translate domain-file inst-file)]
+       (util/print-debug 1 lto))
+     (make-sas-problem-from-lama (str *working-dir* "test.groups") (str *working-dir* "output.sas"))))
 
 
 

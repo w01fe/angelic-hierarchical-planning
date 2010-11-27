@@ -44,10 +44,24 @@
 (defn funky-sort [strs]
   (sort (comparator (fn [#^String s1, #^String s2] (or (< (count s1) (count s2)) (and (= (count s1) (count s2)) (< (compare s1 s2) 0))))) strs))
 
+
 (def ipc2-dir "/Users/jawolfe/Projects/research/IPC/IPC2/2000-Tests/Logistics/Track1/Typed/")
-(def ipc2-logistics
+(def direct-ipc2-logistics
      (for [f (funky-sort (remove #{"probLOGISTICS-11-0.pddl"} (filter #(.startsWith #^String % "probL") (seq (.list (File. ipc2-dir))))))]
        (delay (do (println f) (sas/make-sas-problem-from-pddl (str ipc2-dir "domain.pddl") (str ipc2-dir  f))))))
+
+(def ipc2-logistics-dir (util/base-local "problems/logistics/"))
+
+(defn translate-ipc2-logistics []
+  (doseq [[i f] (util/indexed (funky-sort (remove #{"probLOGISTICS-11-0.pddl"} (filter #(.startsWith #^String % "probL") (seq (.list (File. ipc2-dir)))))))]
+    (println f)
+    (sas/lama-translate-to (str ipc2-dir "domain.pddl") (str ipc2-dir  f) (str ipc2-logistics-dir i))))
+
+(def ipc2-logistics
+  (for [i (range 27)]
+    (delay (sas/make-sas-problem-from-lama (str ipc2-logistics-dir i ".groups") (str ipc2-logistics-dir i ".sas")))))
+
+
 
 (def cptdir "/Users/jawolfe/Projects/research/IPC/cpt/pddl/")
 (def cpt-logistics
