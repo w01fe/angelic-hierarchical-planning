@@ -344,7 +344,6 @@
   env/FactoredEnv
     (goal-map      [e] g-map))
 
-;(def *dead-count* (atom 0))
 
 ;; Recall: greedy helps the most when, e.g., lots of passengers and not much room.
 (defn make-asplan-env
@@ -359,7 +358,6 @@
   ([sas-problem & {:keys [directed? greedy? deadlock? dead-vars? components?] :as m
                    :or   {directed? true greedy? true deadlock? true dead-vars? true components? false}}]
      (assert (every? #{:directed? :greedy? :deadlock? :dead-vars? :components?} (keys m)))
-     (def *add-count* (util/sref 0))
      (let [edge-rule     (if greedy? :greedy :naive)
            causal-graph  (remove #(apply = %) (sas-analysis/standard-causal-graph sas-problem))
            vars          (graphs/ancestor-set causal-graph [sas/goal-var-name])
