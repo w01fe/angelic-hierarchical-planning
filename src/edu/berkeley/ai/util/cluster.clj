@@ -7,7 +7,7 @@
 (def *default-qsub-options*
      ["-r" "n" 
       "-M" "jawolfe@berkeley.edu"
-      "-q" "batch"
+      "-q" "zen"
       "-l" "nodes=1:ppn=1:cpu3000"
       "-l" "mem=1200m"
       "-l" "walltime=24:00:00"])
@@ -24,7 +24,6 @@
        (println 
 	(apply util/sh 
                (util/prln (concat ["qsub"
-                  "-q" "zen"                 
 		  "-N" name 
 		  "-o" (str (util/file-stem f) ".out")
 		  "-e" (str (util/file-stem f) ".err")]
