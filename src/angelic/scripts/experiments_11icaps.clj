@@ -121,7 +121,7 @@
    (experiments/make-experiment-set
     "ib-taxi"
     [:product
-     [:run        [1  2  3]]
+     [:run        [1  ]]
      [:size (vec (range 1 16))]
      [:constrain? [true false]]
      [:alg (      keys taxi-algs)]
@@ -134,22 +134,64 @@
     (fn [m] `(textbook/uniform-cost-search ~'init))
     'angelic.scripts.experiments-11icaps 10 3600 512 false ::ExpResult))
 
+(defn make-taxi-exp-set-single []
+   (experiments/make-experiment-set
+    "ib-taxi-single"
+    [:product
+     [:run        [6]]
+     [:size (vec (range 1 11))]
+     [:constrain? [true false]]
+     [:alg (      keys taxi-algs)]
+     [:type [:single]]]    
+    (fn [m]
+      (let [instance-form `((taxi-factories ~(:type m)) 3 3 ~(:size m) ~(:constrain? m) ~(:run m))]
+        (if (= (:alg m) :baseline)
+          instance-form
+          `(asplan/make-asplan-env ~instance-form))))
+    (fn [m] `(textbook/uniform-cost-search ~'init))
+    'angelic.scripts.experiments-11icaps 10 3600 512 false ::ExpResult))
 
-(comment
-;;;;;;; miconic
 
- (def miconic-algs
-      [[[:baseline] "base"]
-       [[:asplan] "bi"]])
 
- 
-
- (defonce *results* nil)
- (defn read-results []
-   (def *results* 
+(defonce *taxi-results* nil)
+(defn read-taxi-results []
+  (def *taxi-results* 
+       (doall
         (experiments/experiment-set-results->dataset 
-         (experiments/read-experiment-set-results (make-exp-set))))))
+         (experiments/read-experiment-set-results (make-taxi-exp-set))))))
 
+(def *alg-order*
+     [[[:baseline false] "Baseline"]
+      [[:baseline true] "Baseline + constraint"]
+      [[:asplan false] "Bounded Intention"]
+      [[:asplan true] "Bounded Intention + constraint"]])
+
+(def *alg-names* (into {} *alg-order*))
+
+(defn order [things key-fn desired-order]
+  (let [m (group-by key-fn things)]
+    (keep #(first (get m %)) desired-order)))
+
+(defn make-taxi-charts []
+  (doseq [[type-key name] taxi-types]
+    (charts/plot
+     (datasets/ds->chart
+      (filter (datasets/ds-fn [type output constrain? alg]
+                              (and output (= type type-key)
+                                   (if (= type :pairwise)
+                                     constrain?
+                                     (or (not constrain?) (= alg :baseline)))))              
+              *taxi-results*)
+      [:alg :constrain?] :size :next-count
+      {:term "solid dashed size 3.0, 2.0" 
+       :ylog true :key (if (= type-key :independent) "top right" "bottom right")
+       :xlabel "# passengers" :ylabel "# states to optimal solution"
+       :title (str name " taxi")
+       }
+      (fn [[alg constrain?]] (let [v (cond (= alg :asplan) 1 constrain? 3 :else 2)] {:lw 3 :pt v :lt v}))
+      *alg-names*  #_ #(let [n (first %)] (if (= (last n) \U) (apply str (concat (drop-last n) "-UCS")) (str n "*")))
+      #(order % :title (map second *alg-order*))
+      #_ (str "/Users/jawolfe/Projects/reports/11-icaps/graphs/" name ".pdf")))))
 
 
 
@@ -159,7 +201,6 @@
 (comment
  (def *alg-order* ["H-UCS" "DH-UCS" "DSH-UCS" "AHA*" "DAHA*" "DASHA*"])
  (defn order [things key-fn desired-order]
-                                        ;  (println things)
    (let [m (group-by key-fn things)]
      (map #(first (util/safe-get m %)) desired-order)))
 
