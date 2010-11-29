@@ -50,6 +50,10 @@
      (for [f (funky-sort (remove #{"probLOGISTICS-11-0.pddl"} (filter #(.startsWith #^String % "probL") (seq (.list (File. ipc2-dir))))))]
        (delay (do (println f) (sas/make-sas-problem-from-pddl (str ipc2-dir "domain.pddl") (str ipc2-dir  f))))))
 
+(def ipc2-logistics-names
+     (for [f (funky-sort (remove #{"probLOGISTICS-11-0.pddl"} (filter #(.startsWith #^String % "probL") (seq (.list (File. ipc2-dir))))))]
+       f))
+
 (def ipc2-logistics-dir (util/base-local "problems/logistics/"))
 
 (defn translate-ipc2-logistics []
@@ -60,6 +64,26 @@
 (def ipc2-logistics
   (for [i (range 27)]
     (delay (sas/make-sas-problem-from-lama (str ipc2-logistics-dir i ".groups") (str ipc2-logistics-dir i ".sas")))))
+
+
+
+(def ipc2-miconic-src-dir "/Users/jawolfe/Projects/research/IPC/IPC2/2000-Tests/Elevator/m10-strips/")
+
+(def ipc2-miconic-names
+     (for [i (range 1 31) j (range 5)] (str i "-" j)))
+
+(def ipc2-miconic-dir (util/base-local "problems/miconic/"))
+
+(defn translate-ipc2-miconic []
+  (doseq [n ipc2-miconic-names]
+    (println n)
+    (sas/lama-translate-to (str ipc2-miconic-src-dir "domain.pddl") (str ipc2-miconic-src-dir "s" n ".pddl") (str ipc2-miconic-dir n))))
+
+(def ipc2-miconic
+  (for [n ipc2-miconic-names]
+    (delay (sas/make-sas-problem-from-lama (str ipc2-miconic-dir n ".groups") (str ipc2-miconic-dir n ".sas")))))
+
+
 
 
 
@@ -75,3 +99,4 @@
        (delay (sas/make-sas-problem-from-pddl 
                (str cptdir "domain-logisticsaips.pddl")
                (str cptdir "logisticsaips" (dig2 i) ".pddl")))))
+
