@@ -28,18 +28,20 @@
 
 ;;;;;;; logistics
 
+(def algs
+  [[[:baseline] "base"]
+   [[:asplan] "bi"]
+   [[:asplan :directed? false] "bi-d"]
+   [[:asplan :greedy? false] "bi-g"]
+   [[:asplan :deadlock? false] "bi-dl"]
+   [[:asplan :dead-vars? false] "bi-dv"]])
+
 (defn make-exp-set []
   (experiments/make-experiment-set
    "logistics"
    [:product
     [:instance (vec (range 27))]
-    [:alg
-      [[:baseline]
-       [:asplan]
-       [:asplan :directed? false]
-       [:asplan :greedy? false]
-       [:asplan :deadlock? false]
-       [:asplan :dead-vars? false]]]]
+    [:alg (map first algs)]]
    (fn [m]
      (let [{[type & args] :alg instance :instance} m
            instance-form `(force (nth sas-problems/ipc2-logistics ~instance))]
@@ -55,75 +57,121 @@
        (experiments/experiment-set-results->dataset 
         (experiments/read-experiment-set-results (make-exp-set)))))
 
+;;;;;;; table
 
-(comment
-
-;;;;;;;;;; Table
-
-  (defn pad-right [x n]  
+(defn pad-right [x n]  
     (let [xs (str x) 
           s #^String (str "                               " xs)]
-                                        ;    (assert (<= (.length xs) n))
+      (assert (<= (.length xs) n))
       (.substring s (- (.length s) n)))) 
 
-  (def *cw* 8)
-  (def *w* (+ 4 (* 3 *cw*)))
-  (defn make-table []
-    (let [results (group-by #(get % :alg) *results*)]
-      (doseq [alg (map first his/aaai-algs)]
-        (let [alg-results (results alg)
-              obj-map (group-by #(get % :objects) alg-results)
-              objects    (sort (keys obj-map))]
-          (println (apply str (pad-right alg 9) "|" (for [o ["s" "progs" "refs"]] (str (pad-right o *w*) "|"))))
-          (println (apply str (repeat (+ 10 (* 3 (inc *w*))) "-")))
-          (doseq [[no n-res] (map (fn [x] [x (obj-map x)]) objects)]
-            (println (apply str (pad-right no 9) "|"
-                            (for [angelic n-res]
-                              (if (:ms exp)
-                                (str (pad-right (/ (int (:ms exp)) 1000.0) *cw*) ", " (pad-right (:next-count exp) *cw*) ", " (pad-right (second (:output exp)) #_(:plan-count exp) *cw*) "|")
-                                (str (pad-right (cond (:memout? exp) "mem" (:timeout? exp) "time") *w*) "|")
-                                ))))))    
-        (println "\n\n"))))
+(defn prob-name [^String x]
+  (.substring x 14 (- (count x) 5)))
+
+
+
+(def *cw* 8)
+(def *w* (+ 4 (* 3 *cw*)))
+(defn make-full-table []
+  (println (apply str (pad-right " " 9) "|" (for [[_ alg] algs] (str (pad-right alg *w*) "|"))))
+  (doseq [i (range 25)]
+    (print (str (prob-name (nth sas-problems/ipc2-logistics-names i)) "   "  " " "|"))
+    (doseq [[algg name] algs
+            :let [result (util/find-first (datasets/ds-fn [instance alg] (and (= instance i) (= alg algg))) *results*)]]
+      (print (str (pad-right (if (:output result) (str " " (pad-right (:next-count result) *cw*) (pad-right  (int (:ms result)) *cw*)) (str ">" (:next-count result))) *w*) "|" )))
+    (println) ))
+
+(defn make-table []
+  (println (apply str (pad-right " " 9) "|" (for [[_ alg] algs] (str (pad-right alg *w*) "|"))))
+  (doseq [[i reward] (sort-by second (map (juxt identity #(- (second (:output (util/find-first (datasets/ds-fn [instance] (= instance %)) *results*))))) (range 10)))]
+    (print (str (prob-name (nth sas-problems/ipc2-logistics-names i)) "   " (pad-right reward 2) " " "|"))
+    (doseq [[algg name] algs
+            :let [result (util/find-first (datasets/ds-fn [instance alg] (and (= instance i) (= alg algg))) *results*)]]
+      (print (str (pad-right (if (:output result) (str " " (pad-right (:next-count result) *cw*) (pad-right  (int (:ms result)) *cw*)) (str ">" (:next-count result))) *w*) "|" )))
+    (println) ))
+
+(defn make-latex-table []
+  (println (apply str (pad-right " " 9) "&" (for [[_ alg] algs] (str (pad-right alg (/ *w* 2)) " &"))))
+  (doseq [[i reward] (sort-by second (map (juxt identity #(- (second (:output (util/find-first (datasets/ds-fn [instance] (= instance %)) *results*))))) (range 10)))]
+    (print (str (prob-name (nth sas-problems/ipc2-logistics-names i)) " & " (pad-right reward 2) " " "&"))
+    (doseq [[algg name] algs
+            :let [result (util/find-first (datasets/ds-fn [instance alg] (and (= instance i) (= alg algg))) *results*)]]
+      (print (str (str " " (pad-right (:next-count result) *cw*) " & " (pad-right  (int (:ms result)) *cw*)) " & " )))
+    (println) ))
+
+
+
+
+
+(comment
+;;;;;;; miconic
+
+ (def miconic-algs
+      [[[:baseline] "base"]
+       [[:asplan] "bi"]])
+
+ (defn make-exp-set []
+   (experiments/make-experiment-set
+    "miconic"
+    [:product
+     [:instance (vec (range 150))]
+     [:alg (map first algs)]]
+    (fn [m]
+      (let [{[type & args] :alg instance :instance} m
+            instance-form `(force (nth sas-problems/ipc2-logistics ~instance))]
+        (if (= type :baseline)
+          instance-form
+          `(asplan/make-asplan-env ~instance-form ~@args))))
+    (fn [m] `(textbook/uniform-cost-search ~'init))
+    'angelic.scripts.experiments-11icaps 10 600 512 false ::ExpResult))
+
+ (defonce *results* nil)
+ (defn read-results []
+   (def *results* 
+        (experiments/experiment-set-results->dataset 
+         (experiments/read-experiment-set-results (make-exp-set))))))
+
+
 
 
 
 ;;;;;; charts
 
-
-  (def *alg-order* ["H-UCS" "DH-UCS" "DSH-UCS" "AHA*" "DAHA*" "DASHA*"])
-  (defn order [things key-fn desired-order]
+(comment
+ (def *alg-order* ["H-UCS" "DH-UCS" "DSH-UCS" "AHA*" "DAHA*" "DASHA*"])
+ (defn order [things key-fn desired-order]
                                         ;  (println things)
-    (let [m (group-by key-fn things)]
-      (map #(first (util/safe-get m %)) desired-order)))
+   (let [m (group-by key-fn things)]
+     (map #(first (util/safe-get m %)) desired-order)))
 
-  (defn make-charts
-    ([] (make-charts "/Users/jawolfe/Projects/reports/10-aaai-btamp/poster/figs/" ))
-    ([dir]
-       (charts/plot 
-        (datasets/ds->chart 
-         (datasets/ds-derive #(/ (:ms %) 1000) (filter (datasets/ds-fn [ms] (and ms)) *results*) :secs) 
-         [:alg] :objects :secs 
-         {:term "solid dashed size 2.4,1.3"   :ylog nil :xrange "[1:6]" :yrange "[0:60]"
+ (defn make-charts
+   ([] (make-charts "/Users/jawolfe/Projects/reports/10-aaai-btamp/poster/figs/" ))
+   ([dir]
+      (charts/plot 
+       (datasets/ds->chart 
+        (datasets/ds-derive #(/ (:ms %) 1000) (filter (datasets/ds-fn [ms] (and ms)) *results*) :secs) 
+        [:alg] :objects :secs 
+        {:term "solid dashed size 2.4,1.3"   :ylog nil :xrange "[1:6]" :yrange "[0:60]"
                                         ;        :title "discrete manipulation problems" :xlabel "# of objects" ;:ylabel "runtime (s)"
-          :key "at 4.8, 67 height 3"                    
-          :extra-commands ["set ylabel \"runtime(s)\" 1,0"
-                           "set xlabel \"# of objects\" 0,.5"]} 
-         (let [c (util/counter-from 0)] (fn [& args] (let [v ([2 3 1 5 4.8 6] (c))]  {:lw 3 :pt v :lt v})))
-         #(let [n (first %)] (if (= (last n) \U) (apply str (concat (drop-last n) "-UCS")) (str n "*")))
-         #(order % :title *alg-order*))
-        (str dir "dm-time.pdf") false)
-       #_ (charts/plot 
-           (datasets/ds->chart 
-            (datasets/ds-derive #(/ (:ms %) 1000) (filter (datasets/ds-fn [ms] (and ms)) *results*) :secs) 
-            [:alg] :objects :next-count 
-            {:term "solid dashed size 3,1.7"   :ylog nil :xrange "[1:6]" :yrange "[0:60000]"  :key "at 3.6,57000"
+         :key "at 4.8, 67 height 3"                    
+         :extra-commands ["set ylabel \"runtime(s)\" 1,0"
+                          "set xlabel \"# of objects\" 0,.5"]} 
+        (let [c (util/counter-from 0)] (fn [& args] (let [v ([2 3 1 5 4.8 6] (c))]  {:lw 3 :pt v :lt v})))
+        #(let [n (first %)] (if (= (last n) \U) (apply str (concat (drop-last n) "-UCS")) (str n "*")))
+        #(order % :title *alg-order*))
+       (str dir "dm-time.pdf") false)
+      #_ (charts/plot 
+          (datasets/ds->chart 
+           (datasets/ds-derive #(/ (:ms %) 1000) (filter (datasets/ds-fn [ms] (and ms)) *results*) :secs) 
+           [:alg] :objects :next-count 
+           {:term "solid dashed size 3,1.7"   :ylog nil :xrange "[1:6]" :yrange "[0:60000]"  :key "at 3.6,57000"
                                         ;   :title "discrete manipulation problems"
-             :extra-commands ["set ylabel \"# of primitive action evaluations(s)\" 1,0"
-                              "set xlabel \"# of objects\" 0,.5"]} 
-            (let [c (util/counter-from 0)] (fn [& args] (let [v ([1 2 3 6 5 4] (c))]  {:lw 3 :pt v :lt v})))
-            first #(order % :title *alg-order*))
-           (str dir "dm-prim.pdf") false)
-       ))
+            :extra-commands ["set ylabel \"# of primitive action evaluations(s)\" 1,0"
+                             "set xlabel \"# of objects\" 0,.5"]} 
+           (let [c (util/counter-from 0)] (fn [& args] (let [v ([1 2 3 6 5 4] (c))]  {:lw 3 :pt v :lt v})))
+           first #(order % :title *alg-order*))
+          (str dir "dm-prim.pdf") false)
+      ))
 
 
 ;(use '[edu.berkeley.ai.util experiments cluster] 'angelic.aaai10)
