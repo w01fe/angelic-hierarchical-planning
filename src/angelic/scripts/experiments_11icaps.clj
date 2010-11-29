@@ -3,6 +3,7 @@
 	   [edu.berkeley.ai.util [charts :as charts] [datasets :as datasets] [experiments :as experiments]]
            [angelic [env :as env] [hierarchy :as hierarchy] [sas :as sas]]
            [angelic.domains.sas-problems :as sas-problems]
+           [angelic.domains.taxi-constrained :as taxi]           
            [angelic.search.textbook :as textbook]
            [angelic.search.action-set.asplan :as asplan]
 	   [edu.berkeley.ai.util.experiments :as experiments]))
@@ -100,7 +101,38 @@
     (println) ))
 
 
+;;;;; Taxi
 
+(def taxi-algs
+  {:baseline "base"
+   :asplan "bi"})
+
+(def taxi-types
+  {:independent "independent"
+   :pairwise "pairwise"
+   :single "single"})
+
+(def taxi-factories
+     {:independent taxi/make-random-independent-taxi-env
+      :pairwise taxi/make-random-pairwise-taxi-env
+      :single taxi/make-random-single-taxi-env })
+
+(defn make-taxi-exp-set []
+   (experiments/make-experiment-set
+    "ib-taxi"
+    [:product
+     [:run        [1  2  3]]
+     [:size (vec (range 1 16))]
+     [:constrain? [true false]]
+     [:alg (      keys taxi-algs)]
+     [:type (keys taxi-types)]]    
+    (fn [m]
+      (let [instance-form `((taxi-factories ~(:type m)) 3 3 ~(:size m) ~(:constrain? m) ~(:run m))]
+        (if (= (:alg m) :baseline)
+          instance-form
+          `(asplan/make-asplan-env ~instance-form))))
+    (fn [m] `(textbook/uniform-cost-search ~'init))
+    'angelic.scripts.experiments-11icaps 10 3600 512 false ::ExpResult))
 
 
 (comment
@@ -110,20 +142,7 @@
       [[[:baseline] "base"]
        [[:asplan] "bi"]])
 
- (defn make-exp-set []
-   (experiments/make-experiment-set
-    "miconic"
-    [:product
-     [:instance (vec (range 150))]
-     [:alg (map first algs)]]
-    (fn [m]
-      (let [{[type & args] :alg instance :instance} m
-            instance-form `(force (nth sas-problems/ipc2-logistics ~instance))]
-        (if (= type :baseline)
-          instance-form
-          `(asplan/make-asplan-env ~instance-form ~@args))))
-    (fn [m] `(textbook/uniform-cost-search ~'init))
-    'angelic.scripts.experiments-11icaps 10 600 512 false ::ExpResult))
+ 
 
  (defonce *results* nil)
  (defn read-results []

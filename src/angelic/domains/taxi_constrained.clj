@@ -27,14 +27,14 @@
    ['pickup pass taxi x y] 
    {['atx taxi]        x     ['aty taxi]        y
     ['passat pass] [x y]}
-   {['passat pass] :taxi}
+   {['passat pass] taxi}
    -1))
 
 (defn- make-dropoff [pass taxi [x y]]
   (env-util/make-factored-primitive 
    ['dropoff pass taxi x y] 
    {['atx taxi]        x     ['aty taxi] y 
-    ['passat pass] :taxi}
+    ['passat pass] taxi}
    {['passat pass] [x y]}
    -1))
 
@@ -44,11 +44,12 @@
 (defn make-constrained-taxi-env [width height passengers taxis constrain-dropoff?]
   (let [xs    (set (range 1 (inc width)))
         ys    (set (range 1 (inc height)))
-        locs  (set (cons :taxi (for [x xs, y ys] [x y])))]
+        locs  (set (for [x xs, y ys] [x y]))]
     (sas/make-sas-problem
      (into {sas/goal-var-name sas/goal-var}
            (concat
-            (for [[pass] passengers] [['passat pass] (sas/make-sas-var ['passat pass] locs)])
+            (for [[pass _ _ pts] passengers] [['passat pass] (sas/make-sas-var ['passat pass]
+                                                                       (apply conj locs pts))])
             (for [[taxi] taxis]      [['atx taxi] (sas/make-sas-var ['atx taxi] xs)])
             (for [[taxi] taxis]      [['aty taxi] (sas/make-sas-var ['aty taxi] ys)])))
      (into {sas/goal-var-name sas/goal-false-val}
@@ -74,8 +75,16 @@
          (for [[pass _ _ pts] passengers, taxi pts, x xs, y ys] (make-dropoff pass taxi [x y]))))))))
 
 
-(defn next-random-loc [^Random r width height]
-  [(inc (.nextInt r (int width))) (inc (.nextInt r (int height)))])
+(defn next-random-loc
+  ([^Random r width height]
+     [(inc (.nextInt r (int width))) (inc (.nextInt r (int height)))])
+  ([^Random r width height blackset]
+     (let [n (next-random-loc r width height)]
+       (if (contains? blackset n)
+         (recur r width height blackset)
+         n))))
+
+
 
 (defn make-random-taxi-env [width height passenger-taxis constrain-dropoff? seed]
   (let [r     (Random. seed)
@@ -83,7 +92,9 @@
     (.nextDouble r) (.nextDouble r)
     (make-constrained-taxi-env
      width height
-     (for [[p ts] passenger-taxis] [p (next-random-loc r width height) (next-random-loc r width height) ts])
+     (for [[p ts] passenger-taxis
+           :let [from (next-random-loc r width height)]]
+       [p from (next-random-loc r width height #{from}) ts])
      (for [t taxis] [t (next-random-loc r width height)])
      constrain-dropoff?)))
 
@@ -92,7 +103,7 @@
   (make-random-taxi-env width height (for [i (range n-passengers)] [i #{i}]) constrain-dropoff? seed))
 
 (defn make-random-pairwise-taxi-env [width height n-passengers constrain-dropoff?  seed]
-  (make-random-taxi-env width height (for [i (range n-passengers)] [i #{i (mod (inc i) n-passengers)}]) constrain-dropoff? seed))
+  (make-random-taxi-env width height (if (= n-passengers 1) [[0 #{0}]] (for [i (range n-passengers)] [i #{i (mod (inc i) n-passengers)}])) constrain-dropoff? seed))
 
 (defn make-random-single-taxi-env [width height n-passengers constrain-dropoff? seed]
   (make-random-taxi-env width height (for [i (range n-passengers)] [i #{0}]) constrain-dropoff? seed))
