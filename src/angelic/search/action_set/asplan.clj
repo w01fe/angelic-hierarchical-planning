@@ -311,7 +311,7 @@
         dtg   (get-in dtgs [v c-val])
         child (current-child s cvm v)
         d-val (-> (state/get-var s (action-var child)) :precond-map (util/safe-get v))]
-    ;    (when greedy? #_ (util/assert-is (not (= c-val d-val)) "%s" (def *s* s)))
+    ;;    (when greedy? #_ (util/assert-is (not (= c-val d-val)) "%s" (def *s* s)))
     (if (= c-val d-val)
       [(make-freeze-var-action v)]
       (for [n-val (acyclic-succ-fn v c-val d-val), a (dtg n-val)]
@@ -344,7 +344,7 @@
   env/FactoredEnv
     (goal-map      [e] g-map))
 
-
+;; TODO: add assertions on precond var = effect var
 ;; Recall: greedy helps the most when, e.g., lots of passengers and not much room.
 (defn make-asplan-env
   "Make an actino-set planning environment.  Switches are:
@@ -385,7 +385,7 @@
           (when-let [sources (and (or (not dead-vars?) (not (uses-dead-vars? s av-map child-var-map []))) 
                                   (seq (source-vars s child-var-map deadlock? components? edge-rule)))]
             (let [sources-by-type (group-by #(source-var-type s child-var-map %) sources)]
-;              (println sources-by-type)
+;;              (println sources-by-type)
               (util/cond-let [sources]
                 (seq (sources-by-type :fire))
                 [(make-fire-action-type s  edge-rule (first sources))]

@@ -21,11 +21,12 @@
                  (do
                    (let [acts (actions s)]
                      (util/print-debug 4 "Actions are:" (map env/action-name acts) "\n")
+                     (util/print-debug 4 (for [a acts :when (not (env/applicable? a s))] (str (:name a) (:precond-map a) "not applicable" )))
                      (doseq [a acts :when (env/applicable? a s)]
                        (let [[ss sc] (env/successor a s)
                              f-val (+ (:reward (meta ss)) (heuristic ss))]
                          (when (> f-val Double/NEGATIVE_INFINITY)
-                           (util/print-debug 1 "warning: pruning " ss)
+                           #_(util/print-debug 1 "warning: pruning " ss)
                            (queues/pq-add! q ss (- 0 f-val ))))))
                    (recur)))))))))
 
