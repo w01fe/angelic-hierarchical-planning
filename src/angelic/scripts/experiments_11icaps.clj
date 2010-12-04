@@ -108,9 +108,9 @@
    :asplan "bi"})
 
 (def taxi-types
-  {:independent "independent"
-   :pairwise "pairwise"
-   :single "single"})
+     {:independent ["independent" "individual taxis"]
+      :pairwise ["pairwise" "pairwise taxis"]
+      :single ["single" "single taxi"]})
 
 (def taxi-factories
      {:independent taxi/make-random-independent-taxi-env
@@ -154,17 +154,29 @@
 
 
 (defonce *taxi-results* nil)
+(defonce *taxi-single-results* nil)
 (defn read-taxi-results []
   (def *taxi-results* 
        (doall
         (experiments/experiment-set-results->dataset 
-         (experiments/read-experiment-set-results (make-taxi-exp-set))))))
+         (experiments/read-experiment-set-results (make-taxi-exp-set)))))
+  (def *taxi-single-results* 
+       (doall
+        (experiments/experiment-set-results->dataset 
+         (experiments/read-experiment-set-results (make-taxi-exp-set-single))))))
+
+(comment(def *alg-order*
+      [[[:baseline false] "Baseline"]
+       [[:baseline true] "Baseline + constraint"]
+       [[:asplan false] "Bounded Intention"]
+       [[:asplan true] "Bounded Intention + constraint"]]))
+
 
 (def *alg-order*
-     [[[:baseline false] "Baseline"]
-      [[:baseline true] "Baseline + constraint"]
-      [[:asplan false] "Bounded Intention"]
-      [[:asplan true] "Bounded Intention + constraint"]])
+     [[[:baseline false] "baseline"]
+      [[:baseline true] "baseline+c"]
+      [[:asplan false] "BI"]
+      [[:asplan true] "BI+c"]])
 
 (def *alg-names* (into {} *alg-order*))
 
@@ -172,26 +184,31 @@
   (let [m (group-by key-fn things)]
     (keep #(first (get m %)) desired-order)))
 
+; Use pdfcrop to remove whitespace
 (defn make-taxi-charts []
-  (doseq [[type-key name] taxi-types]
+  (doseq [[type-key [file name]] taxi-types]
     (charts/plot
      (datasets/ds->chart
       (filter (datasets/ds-fn [type output constrain? alg]
                               (and output (= type type-key)
-                                   (if (= type :pairwise)
+                                   (if (= type :pairwise) true #_
                                      constrain?
                                      (or (not constrain?) (= alg :baseline)))))              
-              *taxi-results*)
+              (if  (= type-key :single) *taxi-single-results* *taxi-results*))
       [:alg :constrain?] :size :next-count
-      {:term "solid dashed size 3.0, 2.0" 
+      {:term "solid dashed size 2.0, 1.5" 
        :ylog true :key (if (= type-key :independent) "top right" "bottom right")
-       :xlabel "# passengers" :ylabel "# states to optimal solution"
-       :title (str name " taxi")
+       ;;       :xlabel "# passengers"
+       :ylabel (when (= type-key :independent) "# states to optimal")
+       :xrange (if (= type-key :pairwise) "[1:6]" "[1:10]") :yrange "[10:10000000]"
+       ;;       :title (str name " taxi")
+       :extra-commands [(str "set title \"" name "\" offset 0,-0.8")
+                        "set xlabel \"# passengers\" 0,0.5"]
        }
-      (fn [[alg constrain?]] (let [v (cond (= alg :asplan) 1 constrain? 3 :else 2)] {:lw 3 :pt v :lt v}))
+      (fn [[alg constrain?]] (let [v (cond (and (= alg :asplan) (not constrain?)) 1 (= alg :asplan) 4 constrain? 3 :else 2)] {:lw 3 :pt v :lt v}))
       *alg-names*  #_ #(let [n (first %)] (if (= (last n) \U) (apply str (concat (drop-last n) "-UCS")) (str n "*")))
-      #(order % :title (map second *alg-order*))
-      #_ (str "/Users/jawolfe/Projects/reports/11-icaps/graphs/" name ".pdf")))))
+      #(order % :title (map second *alg-order*)))
+     (str "/Users/jawolfe/Projects/reports/11-icaps/graphs/" file ".pdf"))))
 
 
 

@@ -98,6 +98,8 @@
 	  ))
        filename)))
 
+(defn crop [pdf-file]
+  (sh "pdfcrop" pdf-file pdf-file))
 
 (defn plot 
   ([chart] (plot chart (fresh-random-filename *default-gnuplot-dir* ".pdf")))
@@ -106,9 +108,11 @@
      (prln (sh "gnuplot" (prln (dump-chart chart pdf-file))))
      (when show?
        (show-pdf-page pdf-file))
+     (crop pdf-file)
      pdf-file))
 ;       (sh "fixbb" ps-file)
 ;       (sh "open" "-a" "texshop" ps-file))))
+
 
 
 (defn gp-rgb [r g b]
