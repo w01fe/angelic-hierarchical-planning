@@ -3,7 +3,7 @@
         angelic.domains.taxi)
   (:require [angelic.env :as env]
             [angelic.hierarchy.util :as hierarchy-util]
-            [angelic.search.uniform-cost :as ucs]))
+            [angelic.search.textbook :as ucs]))
 
 (deftest taxi-random-env
   (is (= (:passengers (make-random-taxi-env 10 10 3 7))

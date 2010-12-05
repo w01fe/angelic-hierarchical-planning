@@ -3,7 +3,7 @@
         angelic.domains.discrete-manipulation)
   (:require [angelic.env :as env]
             [angelic.hierarchy.util :as hierarchy-util]
-            [angelic.search.uniform-cost :as ucs]))
+            [angelic.search.textbook :as ucs]))
 
 
 (deftest discrete-manipulation-print

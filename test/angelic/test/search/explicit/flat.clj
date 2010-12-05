@@ -1,6 +1,6 @@
-(ns angelic.test.search.incremental.flat
+(ns angelic.test.search.explicit.flat
   (:use clojure.test
-        angelic.search.incremental.flat)
+        angelic.search.explicit.flat)
   (:require [angelic.env :as env]
             [angelic.domains.nav-switch :as nav-switch]))
 

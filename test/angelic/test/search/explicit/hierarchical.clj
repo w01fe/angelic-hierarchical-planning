@@ -1,6 +1,6 @@
-(ns angelic.test.search.incremental.hierarchical
+(ns angelic.test.search.explicit.hierarchical
   (:use clojure.test
-        angelic.search.incremental.hierarchical)
+        angelic.search.explicit.hierarchical)
   (:require [angelic.env :as env]
             [angelic.domains.discrete-manipulation :as discrete-manipulation]
             [angelic.domains.nav-switch :as nav-switch]))

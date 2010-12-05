@@ -38,12 +38,12 @@
     (is (not-any? empty? [s1 s2 s3 s4 s5]))
     (is (= (state/as-map (singleton s5)) {:a 8 :b 2 :c 7 :d 4}))
     (is (not-any? singleton [s2 s3 s4]))
-    (is (thrown? AssertionError (constrain s1 {:c #{5}})))
+;;    (is (thrown? AssertionError (constrain s1 {:c #{5}})))
     (is (empty? (constrain s3 {:a #{5}})))
     (is (= (set (map state/as-map (explicit-set (state/set-var s3 :c #{4 5}))))
            #{{:a 3 :b 2 :c 4 :d 4} {:a 4 :b 2 :c 4 :d 4}
              {:a 3 :b 2 :c 5 :d 4} {:a 4 :b 2 :c 5 :d 4}}))
-    (is (= (state/extract-effects s4) {:a #{3 4} :b #{2} :c #{7}}))
+    (is (= (state/extract-effects s4) {:a #{3 4} :c #{7}}))
     (is (= (state/ooc-effects s4) {:c #{7}}))
     (= (set (map state/as-map (explicit-set (state/transfer-effects
                                              (make-logging-factored-state-set [(state/get-logger {:a 6 :b 5 :c 4 :d 3} #{:a :b :c :d})])

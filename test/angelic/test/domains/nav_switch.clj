@@ -3,7 +3,7 @@
         angelic.domains.nav-switch)
   (:require [angelic.env :as env]
             [angelic.hierarchy.util :as hierarchy-util]
-            [angelic.search.uniform-cost :as ucs]))
+            [angelic.search.textbook :as ucs]))
 
 (deftest nav-switch-random-env
   (is (= (make-random-switch-set 10 10 10 10)
