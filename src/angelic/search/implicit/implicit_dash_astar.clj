@@ -557,7 +557,7 @@
           (println sum)
           (def *root* root)
           (when (summary/solved? sum)
-            [(summary/leaf-sources sum) (summary/max-reward sum)]))))))
+            [::TODO #_(summary/leaf-sources sum) (summary/max-reward sum)]))))))
 
 
 
