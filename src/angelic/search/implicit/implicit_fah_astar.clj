@@ -75,8 +75,8 @@
 (declare make-simple-pair-subproblem)
 
 (defn- make-aligned-simple-pair-subproblem [sub-ps sp1 sp2]
-  (ccc/-?>> (subproblem/refine-input sp2 (subproblem/output-set sp1))
-            (make-simple-pair-subproblem sub-ps sp1)))
+  (when sp1 (ccc/-?>> (subproblem/refine-input sp2 (subproblem/output-set sp1))
+                      (make-simple-pair-subproblem sub-ps sp1))))
 
 ;; This is separate so we can handle child keys from other sps.
 (defn simple-pair-child [sp1 sp2 child-key]

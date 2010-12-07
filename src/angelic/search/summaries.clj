@@ -90,7 +90,13 @@
       (swap! sub-children conj child))
    (add-parent!   [n parent] (swap! parents conj parent)))
 
-(defn connect! [parent child subsuming?] (add-parent! child parent) (add-child! parent child subsuming?))
+(def *use-subsumption* true)
+
+(defn connect! [parent child subsuming?]
+ ;  (when subsuming? (print "."))
+  (when (or (not subsuming?) *use-subsumption*)
+    (add-parent! child parent)
+    (add-child! parent child subsuming?)))
 
 ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;; SummaryCache ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
 
