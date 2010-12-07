@@ -19,7 +19,9 @@
 (defn refine-input [s maybe-refined-input-set]
   (if (= (input-set s) maybe-refined-input-set)
     s
-    (refine-input- s maybe-refined-input-set)))
+    (when-let [refined (refine-input- s maybe-refined-input-set)]
+      (summaries/connect! s refined true)
+      refined)))
 
 ;; get-child and refine-input are allow to return nil 
 

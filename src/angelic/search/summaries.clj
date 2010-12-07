@@ -46,10 +46,11 @@
 ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
 
 (defprotocol Node
-  (node-children   [n])
+  (node-ordinary-children   [n])
+  (node-subsuming-children   [n])  
   (node-parents    [n])
   (add-parent!     [n parent-node])
-  (add-child!      [n child-node]))
+  (add-child!      [n child-node sub?]))
 
 (defprotocol SummaryCache
   (summary [n] "Possibly cached version of summarize")
@@ -73,20 +74,23 @@
 
 (traits/deftrait simple-node [] [children (atom nil) parents  (atom nil)] []
   Node
-  (node-children [n] @children)
+  (node-ordinary-children [n] (map second (remove first @children)))
+  (node-subsuming-children [n] (map second (filter first @children)))  
   (node-parents  [n] @parents)
-  (add-child!    [n child] (swap! children conj child))
+  (add-child!    [n child subsuming?] (swap! children conj [subsuming? child]))
   (add-parent!   [n parent] (swap! parents conj parent)))
 
-(traits/deftrait fixed-node [children] [parents  (atom nil)] []
+(traits/deftrait fixed-node [children] [sub-children (atom nil) parents (atom nil)] []
    Node
-   (node-children [n] children)
+   (node-ordinary-children [n] children)
+   (node-subsuming-children [n] @sub-children)   
    (node-parents  [n] @parents)
-   (add-child!    [n child] (throw (UnsupportedOperationException.)))
+   (add-child!    [n child sub?]
+      (assert sub?)
+      (swap! sub-children conj child))
    (add-parent!   [n parent] (swap! parents conj parent)))
 
-(defn connect! [parent child] (add-parent! child parent) (add-child! parent child))
-
+(defn connect! [parent child subsuming?] (add-parent! child parent) (add-child! parent child subsuming?))
 
 ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;; SummaryCache ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
 
@@ -135,30 +139,35 @@
   (expand!   [s child-summarizers]
     (assert (not (expanded? s)))
     (reset! expanded?-atom true)
-    (doseq [child child-summarizers] (connect! s child))
+    (doseq [child child-summarizers] (connect! s child false))
     (summary-changed! s)))
 ;; What should this really be ? 
 
 ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;; Summarizable ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
 
+(defn bound-subsuming [s sum]
+  (summary/bound sum (summary/max-reward (apply summary/min (map summary (node-subsuming-children s))))))
 
-;; Trait or concrete ?
+
 (traits/deftrait const-summarizable [reward status] [] []
   Summarizable
-  (summarize [s] (summary/make-simple-summary reward status s)))
+  (summarize [s] (bound-subsuming s (summary/make-simple-summary reward status s))))
 
 ;; Initially shoud be a parent of init, without having child.
+
 (traits/deftrait simple-or-summarizable [init] [] [simple-expandable]
   Summarizable
   (summarize [s]
-    (if (expanded? s)
-      (summary/bound (apply summary/max (map summary (node-children s))) (summary/max-reward (summary init)))
-      (summary/adjust-source (summary init) s))))
+    (bound-subsuming s
+     (if (expanded? s)
+       (summary/bound (apply summary/max (map summary (node-ordinary-children s)))
+                      (summary/max-reward (summary init)))
+       (summary/adjust-source (summary init) s)))))
 
 ;; This one is not expandable, needs children set from outside
 (traits/deftrait simple-seq-summarizable [] [] []
   Summarizable
-  (summarize [s] (apply summary/sum (map summary (node-children s)))))
+  (summarize [s] (bound-subsuming s (apply summary/sum (map summary (node-ordinary-children s))))))
 
 
 

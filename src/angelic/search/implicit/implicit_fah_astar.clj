@@ -11,11 +11,11 @@
 
 
 ;;; TODOs:
-;; handle null output sets
 ;; Figure out subsumption edges
 ;;   - how does this interface with strategy?
 ;;   - we cannot be ezpected to verify all parents too ...
-;;   - So, maybe forget about lazy for now ? 
+;;   - So, maybe forget about lazy for now ?
+;; Propagate subsumption edges downwards (duh).
 
 ;; Factored abstract lookahead trees
 ;; I.e., the real DASH-A* should be reached by adding DS to this.
@@ -38,9 +38,13 @@
 
 (declare make-simple-fs-seq-subproblem)
 
-(defn make-simple-atomic-subproblem [inp-set function-set]
-  (when-not (fs/apply-opt function-set inp-set) (println (fs/fs-name function-set)
-                      (fs/status function-set inp-set) inp-set))
+(defn refined-keys [sub-sp inp-set]
+  (when-let [sub-child-keys (and sub-sp (summaries/expanded? sub-sp) (seq (subproblem/child-keys sub-sp)))]
+    (util/for-map [k sub-child-keys]
+      k (subproblem/refine-input (subproblem/get-child sub-sp k) inp-set))))
+
+
+(defn make-simple-atomic-subproblem [sub-as inp-set function-set]
   (when-let [[out-set reward] (fs/apply-opt function-set inp-set)]
     (util/print-debug 3 "Making subproblem" (fs/fs-name function-set)
                       (fs/status function-set inp-set) reward)
@@ -48,18 +52,21 @@
      [(subproblem/simple-subproblem
        [(fs/fs-name function-set) inp-set]
        inp-set out-set 
-       (delay (let [fs-child-seqs (fs/child-seqs function-set inp-set)]
-                (util/print-debug 2 "refs of " (fs/fs-name function-set) "are"
-                                  (map #(map fs/fs-name %) fs-child-seqs))
-                (util/for-map [child fs-child-seqs]
-                  (map fs/fs-name child) (make-simple-fs-seq-subproblem inp-set child)))))      
+       (delay
+         (or (refined-keys sub-as inp-set)            
+           (let [fs-child-seqs (fs/child-seqs function-set inp-set)]
+             (util/print-debug 2 "refs of " (fs/fs-name function-set) "are"
+                               (map #(map fs/fs-name %) fs-child-seqs))
+             (util/for-map [child fs-child-seqs]
+               (map fs/fs-name child) (make-simple-fs-seq-subproblem inp-set child))))))      
       summaries/simple-node
       cache-trait
       (summaries/simple-or-summarizable
        (summaries/make-const-summarizable reward (fs/status function-set inp-set)))]
      subproblem/Refinable
      (refine-input- [s refined-input-set]
-       (make-simple-atomic-subproblem refined-input-set function-set)))))
+       (make-simple-atomic-subproblem s refined-input-set function-set)))))
+
 
 
 
@@ -67,23 +74,23 @@
 
 (declare make-simple-pair-subproblem)
 
-(defn- make-aligned-simple-pair-subproblem [sp1 sp2]
+(defn- make-aligned-simple-pair-subproblem [sub-ps sp1 sp2]
   (ccc/-?>> (subproblem/refine-input sp2 (subproblem/output-set sp1))
-            (make-simple-pair-subproblem sp1)))
+            (make-simple-pair-subproblem sub-ps sp1)))
 
 ;; This is separate so we can handle child keys from other sps.
 (defn simple-pair-child [sp1 sp2 child-key]
   (let [[which sub-key] child-key]
     (case which
-      ::1 (ccc/-?> (subproblem/get-child sp1 sub-key) (make-aligned-simple-pair-subproblem sp2))
-      ::2 (ccc/-?>> (subproblem/get-child sp2 sub-key) (make-simple-pair-subproblem sp1)))))
+      ::1 (ccc/-?> (subproblem/get-child sp1 sub-key) ((partial make-aligned-simple-pair-subproblem nil) sp2))
+      ::2 (ccc/-?>> (subproblem/get-child sp2 sub-key) (make-simple-pair-subproblem nil sp1)))))
 
 
 (defn force-child-keys [sp]
   (when-not (summaries/expanded? sp) (subproblem/expand! sp))
   (subproblem/child-keys sp))
 
-(defn make-simple-pair-subproblem [sp1 sp2]
+(defn make-simple-pair-subproblem [sub-ps sp1 sp2]
   (let [seq-sum (traits/reify-traits [(summaries/fixed-node [sp1 sp2]) cache-trait
                                       summaries/simple-seq-summarizable])
         ret 
@@ -91,34 +98,35 @@
          [(subproblem/simple-subproblem
            (gensym)
            (subproblem/input-set sp1) (subproblem/output-set sp2)
-           (delay  (let [[l ks] (if (summary/live? (summaries/summary sp2))
-                                           [::2 (force-child-keys sp2)]
-                                           [::1 (force-child-keys sp1)])]
-                     (util/for-map [k ks] [l k] (simple-pair-child sp1 sp2 [l k])))))
+           (or (refined-keys sub-ps (subproblem/input-set sp1))
+            (delay  (let [[l ks] (if (summary/live? (summaries/summary sp2))
+                                   [::2 (force-child-keys sp2)]
+                                   [::1 (force-child-keys sp1)])]
+                      (util/for-map [k ks] [l k] (simple-pair-child sp1 sp2 [l k]))))))
           summaries/simple-node
           cache-trait
           (summaries/simple-or-summarizable seq-sum)]
 
          subproblem/Refinable
          (refine-input- [s refined-input-set]
-           (make-aligned-simple-pair-subproblem (subproblem/refine-input sp1 refined-input-set) sp2)))]
+           (make-aligned-simple-pair-subproblem s (subproblem/refine-input sp1 refined-input-set) sp2)))]
     (summaries/add-parent! seq-sum ret)
     ret))
 
-;; TODO: remove viable thing here?
+
 (defn make-simple-fs-seq-subproblem [inp-set [first-fs & rest-fs]]
   (util/print-debug 2 "Making seq!:" (map fs/fs-name (cons first-fs rest-fs)))
-  (when-let [first-sp (make-simple-atomic-subproblem inp-set first-fs)]
+  (when-let [first-sp (make-simple-atomic-subproblem nil inp-set first-fs)]
     (if (empty? rest-fs)
       first-sp
       (ccc/-?>> (make-simple-fs-seq-subproblem (subproblem/output-set first-sp) rest-fs)
-                (make-simple-pair-subproblem first-sp)))))
+                (make-simple-pair-subproblem nil first-sp)))))
 
 ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;; Driver ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
 
 (defn implicit-fah-a* [henv]
   (->> (fs/make-init-pair henv)
-       (apply make-simple-atomic-subproblem)
+       (apply make-simple-atomic-subproblem nil)
        subproblem/solve))
 
 ;; (do (use 'edu.berkeley.ai.util '[angelic env hierarchy] 'angelic.domains.nav-switch 'angelic.search.implicit.implicit-fah-astar 'angelic.domains.discrete-manipulation) (require '[angelic.search.explicit.hierarchical :as his]))
