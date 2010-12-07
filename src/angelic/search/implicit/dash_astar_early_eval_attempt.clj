@@ -1,4 +1,4 @@
-(ns angelic.search.implicit.implicit-dash-astar2
+(ns angelic.search.implicit.dash-astar-early-eval-attempt
   (:require clojure.string
             [edu.berkeley.ai.util :as util]
             [clojure.contrib.core :as ccc]
@@ -16,6 +16,7 @@
             )
   (:import  [java.util HashMap IdentityHashMap]))
 
+;; This is an early attempt to make an eval-based dash-astar.
 
 ;; Revamp of fah_astar, try to unify the whole mess ! 
 ;; Factored abstract lookahead trees

@@ -1,10 +1,14 @@
-(ns angelic.search.implicit.subproblem
+(ns angelic.search.implicit.subproblem-expand
   (:require clojure.string
             [edu.berkeley.ai.util :as util]
             [edu.berkeley.ai.util.traits :as traits]            
             [angelic.search.summary :as summary]            
             [angelic.search.summaries :as summaries]))
 
+;; A first version of implicit subproblems, where computation steps are expansions
+;; (and evaluations are always eager).  
+;; The problem with this is that we do a lot of evaluations per each expansion,
+;; and potentially even moreso when in a decomposed framework.  
 
 ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
 ;;;;;;;;;;;;;;;;;;;;;;;;;;;;; Subproblem Protocol ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;

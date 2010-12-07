@@ -1,4 +1,4 @@
-(ns angelic.search.implicit.implicit-fah-astar
+(ns angelic.search.implicit.fah-astar-expand
   (:require clojure.string
             [clojure.contrib.core :as ccc]
             [edu.berkeley.ai.util :as util]
@@ -6,9 +6,12 @@
             [angelic.search.summary :as summary]
             [angelic.search.summaries :as summaries]
             [angelic.search.function-sets :as fs]
-            [angelic.search.implicit.subproblem :as subproblem])
+            [angelic.search.implicit.subproblem-expand :as subproblem])
   (:import  [java.util HashMap]))
 
+;; A simple "tree" algorithm like AHA*, but with full subsumption propagation,
+;; and no pseudo-rbfs problem.
+;; Computation steps are expansions.
 
 ;;; TODOs:
 ;; Figure out subsumption edges

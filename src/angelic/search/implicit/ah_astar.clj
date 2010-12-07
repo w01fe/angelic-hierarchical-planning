@@ -1,4 +1,4 @@
-(ns angelic.search.implicit.implicit-ah-astar
+(ns angelic.search.implicit.ah-astar
   (:require [edu.berkeley.ai.util :as util]
             [angelic.env :as env]
             [angelic.env.util :as env-util]            
