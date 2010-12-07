@@ -1,5 +1,6 @@
 (ns angelic.search.function-sets
   (:require
+   [edu.berkeley.ai.util :as util]
    [angelic.env :as env]
    [angelic.env.util :as env-util]            
    [angelic.hierarchy.angelic :as angelic]
@@ -17,7 +18,7 @@
 
 (defprotocol FunctionSet
   (fs-name    [sk]           "Arbitrary name to identify fs")
-  (apply-opt  [sk input-set] "[output-set upper-reward-bound] or nil if empty")
+  (apply-opt  [sk input-set] "[output-set upper-reward-bound] or nil if empty/-inf")
   (status     [sk input-set] ":live, :blocked, or :solved")
   (child-seqs [sk input-set] "seq of seqs of FunctionSets. Only valid if above is :live.
                               (= :live (status sk s)) ==>
@@ -27,15 +28,16 @@
 
 ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;; Implementations ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
 
+(defn viable-or-nil [[opt rew :as p]]
+  (when (and p (not (state-set/empty? opt)) (> rew Double/NEGATIVE_INFINITY))
+    p))
+
+
 (defn make-primitive-fs [action]
   (reify
    FunctionSet
    (fs-name    [sk]           (env/action-name action))
-   (apply-opt  [sk input-set]
-     (let [[opt rew :as p] (angelic/optimistic-set-and-reward action input-set)]
-       (if (and p (not (state-set/empty? opt)) (> rew Double/NEGATIVE_INFINITY))
-         p
-         [state-set/empty-lfss Double/NEGATIVE_INFINITY])))
+   (apply-opt  [sk input-set] (viable-or-nil (angelic/optimistic-set-and-reward action input-set)))
    (status     [sk input-set] :solved)
    (child-seqs [sk input-set] (throw (UnsupportedOperationException.)))))
 
@@ -43,7 +45,8 @@
   (for [[constraint ref] (angelic/immediate-refinements-set a input-set)]
     (if (or (empty? ref) (seq constraint))
       (cons
-       (env-util/make-factored-primitive [:noop] constraint {} 0)     
+       (env-util/make-factored-primitive [:noop constraint]
+                                         (util/map-vals util/safe-singleton constraint) {} 0)     
        ref)
       ref)))
 
@@ -52,7 +55,7 @@
   (reify
    FunctionSet
    (fs-name [sk] (env/action-name action))
-   (apply-opt [sk input-set] (angelic/optimistic-set-and-reward action input-set))
+   (apply-opt [sk input-set] (viable-or-nil (angelic/optimistic-set-and-reward action input-set)))
    (status  [sk input-set] (if (angelic/can-refine-from-set? action input-set) :live :blocked))
    (child-seqs [sk input-set]
      (for [ref (simple-immediate-refinements-set action input-set)]

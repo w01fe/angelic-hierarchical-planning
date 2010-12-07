@@ -147,10 +147,10 @@
   (loop []
     (let [summary (summary-fn)]
       (util/print-debug 1 "next round: " summary)
-      (if (solved? summary)
-        (extract-solution-pair summary action-extractor)
-        (do (expand!-fn (source summary))
-            (recur))))))
+      (cond (solved? summary) (extract-solution-pair summary action-extractor)
+            (= (max-reward summary) Double/NEGATIVE_INFINITY) nil
+            :else (do (expand!-fn (source summary))
+                      (recur))))))
 
 ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;; Misc. Helpers ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
 

@@ -3,26 +3,17 @@
             [edu.berkeley.ai.util :as util]
             [edu.berkeley.ai.util.traits :as traits]            
             [angelic.search.summary :as summary]            
-            [angelic.search.summaries :as summaries])
-  (:import  [java.util HashMap]))
+            [angelic.search.summaries :as summaries]))
 
 
 ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
 ;;;;;;;;;;;;;;;;;;;;;;;;;;;;; Subproblem Protocol ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
 ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
 
-;; For now, go with simple "complete eval" formulation.
-;; Will have "atomic" and "seq" subproblems -- separate impls..
+;; A subproblem should also implement Summarizable and Refinable implementations.
+;; The non-viable (pre-refinement) subproblem is always represented as nil.
 
-;; unclear if we need refined?
-;; blocked/solved should be autohandled by summarizer? 
-(defprotocol Subproblem
-  (subproblem-name [s])
-  (input-set       [s])
-  (output-set      [s])
-  (expand!         [s])
-  (child-keys      [s])
-  (get-child       [s child-key])
+(defprotocol Refinable
   (refine-input-   [s refined-input-set] "must be a strict subset of input-set."))
 
 (defn refine-input [s maybe-refined-input-set]
@@ -30,20 +21,29 @@
     s
     (refine-input- s maybe-refined-input-set)))
 
-(traits/deftrait simple-subproblem [name input-set output-set delayed-child-map refine-input-fn] [] []
+;; get-child and refine-input are allow to return nil 
+
+(defprotocol Subproblem
+  (subproblem-name [s])
+  (input-set       [s])
+  (output-set      [s] "Always non-empty.")
+  (expand!         [s])
+  (child-keys      [s])
+  (get-child       [s child-key]))
+
+(traits/deftrait simple-subproblem [name input-set output-set delayed-child-map] [] []
   Subproblem
    (subproblem-name [s] name)
    (input-set       [s] input-set)
    (output-set      [s] output-set)
    (expand!         [s]
-     (summaries/expand! s (vals (force delayed-child-map))))
+     (summaries/expand! s (remove nil? (vals (force delayed-child-map)))))
    (child-keys      [s]
      (assert (summaries/expanded? s))
      (keys (force delayed-child-map)))
    (get-child       [s child-key]
      (assert (summaries/expanded? s))
-     (util/safe-get (force delayed-child-map) child-key))
-   (refine-input-   [s refined-input-set] (refine-input-fn refined-input-set)))
+     (util/safe-get (force delayed-child-map) child-key)))
 
 
 
@@ -59,5 +59,5 @@
 (defn solve [root-subproblem]
   (summary/solve
    #(summaries/verified-summary root-subproblem summary/+worst-simple-summary+)
-   expand! #_ #(do (println %) (expand! %))
-   #(let [n (-> % subproblem-name first)] (when-not (= n [:noop]) n))))
+   expand!
+   #(let [n (-> % subproblem-name first)] (when-not (= (first n) :noop) n))))
