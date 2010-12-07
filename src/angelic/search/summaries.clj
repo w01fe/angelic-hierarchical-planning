@@ -131,7 +131,7 @@
       (notify-parents n)))
   (verified-summary [n min-summary]
     (let [cs (reset! summary-cache (summarize n))]
-      (println (angelic.search.implicit.subproblem/subproblem-name n) (expanded? n) cs min-summary) (Thread/sleep 10)
+;      (println (angelic.search.implicit.subproblem/subproblem-name n) (expanded? n) cs min-summary) (Thread/sleep 10)
       (if (or (not (summary/>= cs min-summary))
               (every? #(summary/>= (verified-summary (summary/source %) %) %) (summary/children cs)))
         cs

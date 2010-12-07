@@ -17,15 +17,6 @@
 ;; A subproblem should also implement Summarizable and Refinable implementations.
 ;; The non-viable (pre-refinement) subproblem is always represented as nil.
 
-(defprotocol Refinable
-  (refine-input-   [s refined-input-set] "must be a strict subset of input-set."))
-
-(defn refine-input [s maybe-refined-input-set]
-  (if (= (input-set s) maybe-refined-input-set)
-    s
-    (when-let [refined (refine-input- s maybe-refined-input-set)]
-      (summaries/connect! s refined true)
-      refined)))
 
 ;; get-child and refine-input are allow to return nil 
 
@@ -51,6 +42,15 @@
      (assert (summaries/expanded? s))
      (util/safe-get (force delayed-child-map) child-key)))
 
+(defprotocol Refinable
+  (refine-input-   [s refined-input-set] "must be a strict subset of input-set."))
+
+(defn refine-input [s maybe-refined-input-set]
+  (if (= (input-set s) maybe-refined-input-set)
+    s
+    (when-let [refined (refine-input- s maybe-refined-input-set)]
+      (summaries/connect! s refined true)
+      refined)))
 
 
 ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
