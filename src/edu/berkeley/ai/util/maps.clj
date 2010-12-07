@@ -184,7 +184,7 @@
    can be passed as a first argument, which will be bound to the transient map
    containing the entries produced so far."
   ([seq-exprs key-expr val-expr]
-     (for-map (gensym "m") seq-exprs key-expr val-expr))
+     `(for-map ~(gensym "m") ~seq-exprs ~key-expr ~val-expr))
   ([m-sym seq-exprs key-expr val-expr]
      `(let [m-atom# (atom (transient {}))]
         (doseq ~seq-exprs
