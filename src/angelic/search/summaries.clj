@@ -66,7 +66,7 @@
 ;; New-bound is a summarizable.
 (defprotocol Expandable
   (expanded?   [s])
-  (expand!     [s new-bound children]))
+  (expand!     [s children]))
 
 ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
 ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;; Traits ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
@@ -145,29 +145,33 @@
 (defn bound-subsuming [s sum]
   (summary/bound sum (summary/max-reward (apply summary/min (map summary (node-subsuming-children s))))))
 
+(defprotocol LeafSummarizable (adjust-summary [s new-reward new-status]))
 
-(traits/deftrait const-summarizable [reward status] [] []
+(traits/deftrait leaf-summarizable [reward status] [pair-atom (atom [reward status])] []
   Summarizable
-  (summarize [s] (summary/make-simple-summary reward status s)))
+  (summarize [s] (let [[rew st] @pair-atom] (summary/make-simple-summary rew st s)))
+  LeafSummarizable
+  (adjust-summary [s new-rew new-st] (reset! pair-atom [new-rew new-st])))
 ;; Note: no need for bound-subsuming here. 
 
 ;; Initially shoud be a parent of init, without having child.
 
-(traits/deftrait simple-or-summarizable [init] [expanded-bound-atom (atom nil)] []
+(traits/deftrait simple-or-summarizable [init] [expanded?-atom (atom false)] []
    Expandable
-   (expanded? [s] (if @expanded-bound-atom true false))
-   (expand!   [s new-bound child-summarizers]
+   (expanded? [s] @expanded?-atom)
+   (expand!   [s child-summarizers]
      (assert (not (expanded? s)))
-     (reset! expanded-bound-atom new-bound)
+     (reset! expanded?-atom true)
      (doseq [child child-summarizers] (connect! s child false))
      (summary-changed! s))
    Summarizable
    (summarize [s]
-    (bound-subsuming s
-     (if-let [expanded-bound @expanded-bound-atom]
-       (summary/bound (apply summary/max (map summary (node-ordinary-children s)))
-                      (summary/max-reward (summary expanded-bound)))
-       (summary/adjust-source (summary init) s)))))
+     (let [init-summary (summary init)]
+       (bound-subsuming s
+         (if (not (and (summary/live? init-summary) (expanded? s)))
+           (summary/adjust-source init-summary s)
+           (summary/bound (apply summary/max (map summary (node-ordinary-children s)))
+                      (summary/max-reward (summary init))))))))
 
 
 ;; This one is not expandable, needs children set from outside
@@ -182,10 +186,10 @@
 ;; When to use cached/fresh
 ;; verifying that (cached) summary is good enough. --> should be above
 
-(defn make-const-summarizable [reward status]
-  (traits/reify-traits [simple-node uncached-summarizer-node (const-summarizable reward status)]))
+(defn make-leaf-summarizable [reward status]
+  (traits/reify-traits [simple-node uncached-summarizer-node (leaf-summarizable reward status)]))
 
-(def worst-summarizable (make-const-summarizable Double/NEGATIVE_INFINITY :blocked))
+(def worst-summarizable (make-leaf-summarizable Double/NEGATIVE_INFINITY :blocked))
 
 
 

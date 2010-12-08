@@ -42,7 +42,7 @@
      [(subproblem/simple-subproblem
        [(fs/fs-name function-set) inp-set]
        inp-set
-       [out-set (summaries/make-const-summarizable reward (fs/status function-set inp-set))] 
+       [out-set (summaries/make-leaf-summarizable reward (fs/status function-set inp-set))] 
        (delay
          (or (refined-keys sub-as inp-set)            
            (let [fs-child-seqs (fs/child-seqs function-set inp-set)]

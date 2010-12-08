@@ -57,7 +57,7 @@
   (pessimistic-set-and-reward- [a ss] "Return pair of implicit outcome set and reward, or nil"))
 
 (defn immediate-refinements-set [a ss]  
-  ;(println "Refs for " (env/action-name a) "from" (map #(state/get-var s %) '[[atx] [aty]]))
+  (util/print-debug 3 "Refs for " (env/action-name a) "are" (immediate-refinements-set- a ss))
   (util/timeout)
   (assert (can-refine-from-set? a ss))
   (let [refs (immediate-refinements-set- a ss)]

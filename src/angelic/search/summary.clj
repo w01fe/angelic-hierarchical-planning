@@ -148,7 +148,7 @@
 (defn solve [summary-fn expand!-fn action-extractor]
   (loop []
     (let [summary (summary-fn)]
-      (util/print-debug 1 "next round: " summary)
+      (util/print-debug 1 "next round: " summary (Thread/sleep 1))
       (cond (solved? summary) (do (def *last-solution* summary)
                                   (extract-solution-pair summary action-extractor))
             (= (max-reward summary) Double/NEGATIVE_INFINITY) nil

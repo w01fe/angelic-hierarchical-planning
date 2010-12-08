@@ -36,7 +36,7 @@
    (input-set       [s] input-set)
    (output-set      [s] (first output-pair))
    (expand!         [s]
-     (summaries/expand! s (second output-pair) (remove nil? (vals (force delayed-child-map)))))
+     (summaries/expand! s (remove nil? (vals (force delayed-child-map)))))
    (child-keys      [s]
      (assert (summaries/expanded? s))
      (keys (force delayed-child-map)))
