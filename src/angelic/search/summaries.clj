@@ -59,12 +59,14 @@
                                      something workse than min-summary if not feasible."))
 
 
-(defprotocol Expandable
-  (expanded?   [s])
-  (expand!     [s children]))
 
 (defprotocol Summarizable
   (summarize [s] "Compute a summary based on the 'summary' of children, if applicable."))
+
+;; New-bound is a summarizable.
+(defprotocol Expandable
+  (expanded?   [s])
+  (expand!     [s new-bound children]))
 
 ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
 ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;; Traits ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
@@ -137,17 +139,6 @@
         cs
         (recur min-summary)))))
 
-;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;; Expandable ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
-
-(traits/deftrait simple-expandable [] [expanded?-atom (atom false)] []
-  Expandable
-  (expanded? [s] @expanded?-atom)
-  (expand!   [s child-summarizers]
-    (assert (not (expanded? s)))
-    (reset! expanded?-atom true)
-    (doseq [child child-summarizers] (connect! s child false))
-    (summary-changed! s)))
-;; What should this really be ? 
 
 ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;; Summarizable ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
 
@@ -157,18 +148,27 @@
 
 (traits/deftrait const-summarizable [reward status] [] []
   Summarizable
-  (summarize [s] (bound-subsuming s (summary/make-simple-summary reward status s))))
+  (summarize [s] (summary/make-simple-summary reward status s)))
+;; Note: no need for bound-subsuming here. 
 
 ;; Initially shoud be a parent of init, without having child.
 
-(traits/deftrait simple-or-summarizable [init] [] [simple-expandable]
-  Summarizable
-  (summarize [s]
+(traits/deftrait simple-or-summarizable [init] [expanded-bound-atom (atom nil)] []
+   Expandable
+   (expanded? [s] (if @expanded-bound-atom true false))
+   (expand!   [s new-bound child-summarizers]
+     (assert (not (expanded? s)))
+     (reset! expanded-bound-atom new-bound)
+     (doseq [child child-summarizers] (connect! s child false))
+     (summary-changed! s))
+   Summarizable
+   (summarize [s]
     (bound-subsuming s
-     (if (expanded? s)
+     (if-let [expanded-bound @expanded-bound-atom]
        (summary/bound (apply summary/max (map summary (node-ordinary-children s)))
-                      (summary/max-reward (summary init)))
+                      (summary/max-reward (summary expanded-bound)))
        (summary/adjust-source (summary init) s)))))
+
 
 ;; This one is not expandable, needs children set from outside
 (traits/deftrait simple-seq-summarizable [] [] []
@@ -185,6 +185,7 @@
 (defn make-const-summarizable [reward status]
   (traits/reify-traits [simple-node uncached-summarizer-node (const-summarizable reward status)]))
 
+(def worst-summarizable (make-const-summarizable Double/NEGATIVE_INFINITY :blocked))
 
 
 
@@ -222,3 +223,17 @@
   ([old-summary new-summary msg]
      `(do (util/assert-is (<= (max-reward ~new-summary) (max-reward ~old-summary)) "%s" [~old-summary ~new-summary ~msg])
         (when-not (live? ~old-summary) (assert (= ~old-summary ~new-summary))))))
+
+
+
+;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;; Expandable ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
+
+(comment
+  (traits/deftrait simple-expandable [] [expanded?-atom (atom false)] []
+   Expandable
+   (expanded? [s] @expanded?-atom)
+   (expand!   [s child-summarizers]
+              (assert (not (expanded? s)))
+              (reset! expanded?-atom true)
+              (doseq [child child-summarizers] (connect! s child false))
+              (summary-changed! s))))

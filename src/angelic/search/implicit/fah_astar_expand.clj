@@ -10,27 +10,14 @@
   (:import  [java.util HashMap]))
 
 ;; A simple "tree" algorithm like AHA*, but with full subsumption propagation,
-;; and no pseudo-rbfs problem.
+;; and no pseudo-rbfs problem.  Always expands rightmost thing?
 ;; Computation steps are expansions.
 
-;;; TODOs:
-;; Figure out subsumption edges
-;;   - how does this interface with strategy?
-;;   - we cannot be ezpected to verify all parents too ...
-;;   - So, maybe forget about lazy for now ?
-;; Propagate subsumption edges downwards (duh).
-
-;; Factored abstract lookahead trees
-;; I.e., the real DASH-A* should be reached by adding DS to this.
-;; Solves the pseudo-RBFS problem.
-;; Uses new traits approaches.
-;; No pessimistic for now. 
+;; TODO: figure out how lazy can interface with subsumption
+;; TODO: pessimistic bounds 
 ;; This yields a sort of rightmost-first AHA*,
 ;; With upward propagation and caching
 
-;; Right now, this works, except for lazy caching
-;; (which must be fixed to not skip over OR-levels),
-;; AND null output sets.  (In particular, for refine-input; immediate are fixed.) 
 
 ;; Note: used at compile-time, cannot be dynamically rebound without recompiling ...
 #_ (def cache-trait summaries/uncached-summarizer-node)
@@ -54,7 +41,8 @@
     (traits/reify-traits
      [(subproblem/simple-subproblem
        [(fs/fs-name function-set) inp-set]
-       inp-set out-set 
+       inp-set
+       [out-set (summaries/make-const-summarizable reward (fs/status function-set inp-set))] 
        (delay
          (or (refined-keys sub-as inp-set)            
            (let [fs-child-seqs (fs/child-seqs function-set inp-set)]
@@ -63,9 +51,7 @@
              (util/for-map [child fs-child-seqs]
                (map fs/fs-name child) (make-simple-fs-seq-subproblem inp-set child))))))      
       summaries/simple-node
-      cache-trait
-      (summaries/simple-or-summarizable
-       (summaries/make-const-summarizable reward (fs/status function-set inp-set)))]
+      cache-trait]
      subproblem/Refinable
      (refine-input- [s refined-input-set]
        (make-simple-atomic-subproblem s refined-input-set function-set)))))
@@ -100,15 +86,15 @@
         (traits/reify-traits
          [(subproblem/simple-subproblem
            (gensym)
-           (subproblem/input-set sp1) (subproblem/output-set sp2)
+           (subproblem/input-set sp1)
+           [(subproblem/output-set sp2) seq-sum]
            (or (refined-keys sub-ps (subproblem/input-set sp1))
             (delay  (let [[l ks] (if (summary/live? (summaries/summary sp2))
                                    [::2 (force-child-keys sp2)]
                                    [::1 (force-child-keys sp1)])]
                       (util/for-map [k ks] [l k] (simple-pair-child sp1 sp2 [l k]))))))
           summaries/simple-node
-          cache-trait
-          (summaries/simple-or-summarizable seq-sum)]
+          cache-trait]
 
          subproblem/Refinable
          (refine-input- [s refined-input-set]
@@ -136,25 +122,4 @@
 
 ;; (implicit-fah-a* (make-nav-switch-hierarchy (make-random-nav-switch-env 5 2 0) true))
 
-
 ;(let [h (make-discrete-manipulation-hierarchy (make-random-discrete-manipulation-env 1 3))] (println #_ (run-counted #(his/interactive-hierarchical-search h)))  (println (run-counted #(implicit-fah-a* h))))
-
-
-
-(comment
-  (defmacro make-simple-atomic-subproblem [cache-trait inp-set function-set]
-   `(let [inp-set# ~inp-set function-set# ~function-set
-          [out-set# reward#] (fs/apply-opt function-set# inp-set#)]
-      (util/print-debug 3 "Making subproblem" (fs/fs-name function-set#) (fs/status function-set# inp-set#) reward)
-      (traits/reify-traits
-       [(subproblem/simple-subproblem
-         [(fs/fs-name function-set#) inp-set#]
-         inp-set# out-set# 
-         (delay (let [fs-child-seqs (fs/child-seqs function-set# inp-set#)]
-                  (util/print-debug 2 "refs of " (fs/fs-name function-set#) "are" (map #(map fs/fs-name %) fs-child-seqs))
-                  (into {} (map (juxt #(map fs/fs-name %) #(make-simple-fs-seq-subproblem inp-set# %)) fs-child-seqs))))
-         #(make-simple-atomic-subproblem ~cache-trait % function-set#))
-        summaries/simple-node
-        ~cache-trait
-        (summaries/simple-or-summarizable
-         (summaries/make-const-summarizable reward# (fs/status function-set# inp-set#)))]))))

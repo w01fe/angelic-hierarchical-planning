@@ -24,17 +24,19 @@
   (subproblem-name [s])
   (input-set       [s])
   (output-set      [s] "Always non-empty.")
-  (expand!         [s])
+  (expand!         [s] "Generate children, and update summary.")
   (child-keys      [s])
   (get-child       [s child-key]))
 
-(traits/deftrait simple-subproblem [name input-set output-set delayed-child-map] [] []
+;; Output-pair is [output-set init-summarizable]
+(traits/deftrait simple-subproblem [name input-set output-pair delayed-child-map]
+  [] [(summaries/simple-or-summarizable (second output-pair))]
   Subproblem
    (subproblem-name [s] name)
    (input-set       [s] input-set)
-   (output-set      [s] output-set)
+   (output-set      [s] (first output-pair))
    (expand!         [s]
-     (summaries/expand! s (remove nil? (vals (force delayed-child-map)))))
+     (summaries/expand! s (second output-pair) (remove nil? (vals (force delayed-child-map)))))
    (child-keys      [s]
      (assert (summaries/expanded? s))
      (keys (force delayed-child-map)))
