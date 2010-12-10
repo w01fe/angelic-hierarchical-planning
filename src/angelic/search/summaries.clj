@@ -58,6 +58,7 @@
   (verified-summary [n min-summary] "Produce a summary that represents the current exact best summary, or
                                      something workse than min-summary if not feasible."))
 
+(def *summary-count* (atom 0))
 
 
 (defprotocol Summarizable
@@ -112,11 +113,20 @@
   (summary-changed! [n] nil)
   (verified-summary [n min-summary] (summary n)))
 
+
 (traits/deftrait eager-cached-summarizer-node [] [summary-cache (atom nil)] []
   SummaryCache
   (summary [n] (or @summary-cache (reset! summary-cache (summarize n))))
   (summary-changed! [n]
-    (when-not (= @summary-cache (reset! summary-cache (summarize n)))
+    (let [old @summary-cache new (summarize n)]
+      (when old
+        #_(print (cond (= old new) "=" (summary/>= new old) ">" :else "<"))
+        (when (and (not (= old new)) (summary/solved? old) (summary/>= old new) (summary/>= new old))
+          (def *bad* [old new]))
+        (println (cond (= old new) "=" (summary/>= new old) ">" :else "<") old new)))
+    
+    (when-not (or  (and @summary-cache (summary/solved? @summary-cache))
+               (= @summary-cache (reset! summary-cache (summarize n))))
       (doseq [p (node-parents n)] (summary-changed! p))))
   (verified-summary [n min-summary] (summary n)))
 
@@ -145,11 +155,16 @@
 (defn bound-subsuming [s sum]
   (summary/bound sum (summary/max-reward (apply summary/min (map summary (node-subsuming-children s))))))
 
+(defn bound-subsuming-x [s sum extra-bound]
+  (summary/bound sum (min extra-bound (summary/max-reward (apply summary/min (map summary (node-subsuming-children s)))))))
+
 (defprotocol LeafSummarizable (adjust-summary [s new-reward new-status]))
 
 (traits/deftrait leaf-summarizable [reward status] [pair-atom (atom [reward status])] []
   Summarizable
-  (summarize [s] (let [[rew st] @pair-atom] (summary/make-simple-summary rew st s)))
+  (summarize [s]
+   (swap! *summary-count* inc)
+   (let [[rew st] @pair-atom] (summary/make-simple-summary rew st s)))
   LeafSummarizable
   (adjust-summary [s new-rew new-st] (reset! pair-atom [new-rew new-st])))
 ;; Note: no need for bound-subsuming here. 
@@ -166,18 +181,36 @@
      (summary-changed! s))
    Summarizable
    (summarize [s]
+     (swap! *summary-count* inc)
      (let [init-summary (summary init)]
        (bound-subsuming s
          (if (not (and (summary/live? init-summary) (expanded? s)))
            (summary/adjust-source init-summary s)
-           (summary/bound (apply summary/max (map summary (node-ordinary-children s)))
+           (summary/bound (summary/apply-max (doall (map summary (node-ordinary-children s))))
                       (summary/max-reward (summary init))))))))
 
 
 ;; This one is not expandable, needs children set from outside
 (traits/deftrait simple-seq-summarizable [] [] []
   Summarizable
-  (summarize [s] (bound-subsuming s (apply summary/sum (map summary (node-ordinary-children s))))))
+  (summarize [s]
+   (swap! *summary-count* inc)
+   (bound-subsuming s (apply summary/sum (map summary (node-ordinary-children s))))))
+
+(defprotocol ExpandingPairSummarizable (set-right! [s right]))
+
+(traits/deftrait expanding-pair-summarizable [left] [right-atom (atom nil)] []
+  Summarizable
+  (summarize [s]
+    (swap! *summary-count* inc)
+    (bound-subsuming s (if-let [right @right-atom]
+                         (apply summary/sum (map summary [left right]))
+                         (summary/sum (summary left) summary/+zero-simple-summary+))))
+  
+  ExpandingPairSummarizable
+  (set-right! [s right] (reset! right-atom right)))
+
+
 
 
 

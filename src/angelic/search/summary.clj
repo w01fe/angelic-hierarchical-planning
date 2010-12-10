@@ -1,5 +1,5 @@
 (ns angelic.search.summary
-  (:refer-clojure :exclude [min max >= +])
+  (:refer-clojure :exclude [min max >= + ])
   (:require [edu.berkeley.ai.util :as util]))
 
 ;; Summaries are essentially sufficient statistics for searches.
@@ -32,6 +32,7 @@
 
   (adjust-reward [s f])
   (adjust-source [s src])  
+  (eq  [s other] "equaltiy, just based on reward and status.")
   (>=  [s other])
   (+   [s other]))
 
@@ -81,8 +82,9 @@
   (status           [s] stat)
   (source          [s] src)
   (children        [s] chldren)
-  (adjust-reward    [s f] (SimpleSummary. (f max-rew) stat src chldren))
+  (adjust-reward    [s f] (let [r (f max-rew)] (if (= r max-rew) s (SimpleSummary. r stat src chldren))))
   (adjust-source   [s new-src] (SimpleSummary. max-rew stat new-src chldren))
+  (eq               [s other] (and (= max-rew (max-reward other)) (= stat (status other))))
   (>=               [s other] (default->= s other))
   (+                [s other]
     (SimpleSummary.
@@ -126,7 +128,14 @@
     arg1))
 
 ;; TODO: can we safely handle empty case here?
-(defn max [& stats] (apply max-compare >= (cons +worst-simple-summary+ stats)))
+(defn apply-max [stats]
+  (loop [best +worst-simple-summary+ stats (seq stats)]
+    (if-let [f (first stats)]
+      (recur (if (>= f best) f best) (next stats))
+      best)))
+(defn max [& stats] (apply-max stats)
+  #_(apply max-compare >= (cons +worst-simple-summary+ stats)))
+
 (defn min [& stats] (apply max-compare (complement >=) (cons +best-simple-summary+ stats)))
 (defn sum [& stats] (if (empty? stats) +zero-simple-summary+ (reduce + (first stats) (next stats))))
 

@@ -19,8 +19,17 @@
 ;; This yields a sort of rightmost-first AHA*,
 ;; With upward propagation and caching
 
-;; TODO: this seems to have a problem with weak bounds due to lazy eval of refinements
-;; (perhaps only when >2 actions in ref).
+;; We also lazily evaluate refinements, for efficiency
+
+;; TODO: this is really slow, mostly from summary stuff.
+;; Looks like mostly useless propagation, with same summary but different ??
+;; When is this really needed?  In lazy, it could all be avoided?
+;; Also totally unnecessary -- updated solved summaries ?!
+
+;; TODO: how exactly is this factored?
+;; All plans are represented at top-level.
+;; Argument was: without decomposition, this is just how it is.  More will be needed for that case.
+
 
 ;; Note: used at compile-time, cannot be dynamically rebound without recompiling ...
 #_ (def cache-trait summaries/uncached-summarizer-node)
@@ -83,11 +92,11 @@
 ;; sp2-fn takes input-set to sp2
 (defn- make-simple-pair-subproblem [sub-ps sp1 sp2-fn]
 ;  (println "M" (util/truthify sub-ps) (first (subproblem/subproblem-name sp1)))
-  (let [ss (traits/reify-traits [summaries/simple-node cache-trait summaries/simple-seq-summarizable])
-        ph (summaries/make-leaf-summarizable 0 :live) ;; Placeholder for sp2.
+  (let [ss (traits/reify-traits [summaries/simple-node cache-trait
+                                 (summaries/expanding-pair-summarizable sp1)])
         sp2 (delay (assert (subproblem/evaluated? sp1))
                    (let [sp2 (sp2-fn (subproblem/output-set sp1))]
-                     (summaries/adjust-summary ph 0 :solved)
+                     (summaries/set-right! ss sp2)
                      (summaries/connect! ss sp2 false)
                      (summaries/summary-changed! ss)
                      sp2))
@@ -115,7 +124,6 @@
                         (make-simple-pair-subproblem s (subproblem/refine-input sp1 refined-input-set)
                                         #(subproblem/refine-input (force sp2) %))))]
     (summaries/connect! ss sp1 false)
-    (summaries/connect! ss ph false)  
     (summaries/add-parent! ss ret) ;; note uni-cxn
     ret))
 
@@ -138,3 +146,5 @@
 ;; (implicit-fah-a* (make-nav-switch-hierarchy (make-random-nav-switch-env 5 2 0) true))
 
 ;(let [h (make-discrete-manipulation-hierarchy (make-random-discrete-manipulation-env 1 3))] (println #_ (run-counted #(his/interactive-hierarchical-search h)))  (println (run-counted #(implicit-fah-a* h))))
+
+;(dotimes [_ 1] (reset! summaries/*summary-count* 0) (debug 0 (time (let [h (make-nav-switch-hierarchy (make-random-nav-switch-env 3 1 0) true)]  (println (run-counted #(second (implicit-fah-a*-eval h))) @summaries/*summary-count*)))))

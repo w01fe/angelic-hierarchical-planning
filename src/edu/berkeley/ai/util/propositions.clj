@@ -66,7 +66,7 @@
 (defn check-atom [types objects predicates atom]
   (let [[pred & args] atom,
 	type-sig (safe-get predicates pred)]
-    (assert-is (= (count args) (count type-sig)) "Wrong number of predicate args.")
+    (assert-is (= (count args) (count type-sig)) "Wrong number of predicate args. %s" [args type-sig])
     (doseq [[obj type] (map vector args type-sig)]
       (check-type types objects obj type))
     (vec atom)))

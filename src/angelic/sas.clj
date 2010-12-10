@@ -108,6 +108,7 @@
 ;                    (if (apply = elts) (first elts) :?))]
 ;    (if (= (first prototype) :?) boring-name (vec prototype))))
 
+
 (defn make-sas-problem-from-lama 
   ([groups-file sas-file]     
      (let [var-map (assoc (read-groups-file groups-file)
@@ -140,6 +141,11 @@
                                   effects  (doall (for [_ (range (read-string (.pop sas-q)))]
                                                     (read-string (str "[" (.pop sas-q) "]"))))  
                                   cost     (read-string (.pop sas-q))]
+;                              (println name prevails effects cost)
+;                              (doseq [p prevails]
+;                              (println "P" (vars (first p)) p))
+;                              (doseq [e effects]
+;                              (println "E" (vars (second e)) e))
                               (assert (not (= (first name) :goal)))
                               (assert (= (.pop sas-q) "end_operator"))
                               (assert (seq effects))
