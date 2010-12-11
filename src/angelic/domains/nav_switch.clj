@@ -244,8 +244,8 @@
     (for [p (hierarchy/immediate-refinements- a (state-set/some-element ss))] [{} p]))
   (optimistic-set-and-reward- [a ss]
     [(state/set-vars ss (util/map-vals (fn [x] #{x}) finish))
-     (* -2 (+ (- gx (util/safe-singleton (state/get-var ss '[x])))
-              (- gy (util/safe-singleton (state/get-var ss '[y])))))])
+     (* -2 (+ (util/abs (- gx (util/safe-singleton (state/get-var ss '[x]))))
+              (util/abs (- gy (util/safe-singleton (state/get-var ss '[y]))))))])
   (pessimistic-set-and-reward- [a ss]
     [(state/set-vars ss (util/map-vals (fn [x] #{x}) finish))
      (nav-reward-from-set ss gx gy min)]))
