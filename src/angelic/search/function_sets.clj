@@ -65,11 +65,13 @@
 
 ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;; Constructor ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
 
+;; Assume positive costs.
 (defn make-tla-fs [henv]
   (make-hla-fs
    (hierarchy-util/make-top-level-action
     (hierarchy/env henv)
-    [(hierarchy/initial-plan henv)])))
+    [(hierarchy/initial-plan henv)]
+    0)))
 
 (defn make-init-pair [henv]
   [(state-set/initial-logging-ss (hierarchy/env henv)) (make-tla-fs henv)])

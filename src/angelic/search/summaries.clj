@@ -113,20 +113,25 @@
   (summary-changed! [n] nil)
   (verified-summary [n min-summary] (summary n)))
 
+;; TODO: fix this up ?
+(defn update-cache! [n cache-atom]
+  (let [old @cache-atom new (summarize n)]
+    (when-not (and old (summary/solved? old)) 
+     (when old
+       ;;      (util/assert-is (not (summary/solved? old)) "%s" [(def *bad* [old new])])
+       (util/assert-is (<= (summary/max-reward new) (summary/max-reward old)) "%s" [(def *bad* n)])
+       ;;      (println (= old new) (summary/eq old new) (summary/>= old new) old new)
+       )
+     (reset! cache-atom new)
+     (not (= old new)))))
 
 (traits/deftrait eager-cached-summarizer-node [] [summary-cache (atom nil)] []
   SummaryCache
   (summary [n] (or @summary-cache (reset! summary-cache (summarize n))))
-  (summary-changed! [n]
-    (let [old @summary-cache new (summarize n)]
-      (when old
-        #_(print (cond (= old new) "=" (summary/>= new old) ">" :else "<"))
-        (when (and (not (= old new)) (summary/solved? old) (summary/>= old new) (summary/>= new old))
-          (def *bad* [old new]))
-        (println (cond (= old new) "=" (summary/>= new old) ">" :else "<") old new)))
-    
-    (when-not (or  (and @summary-cache (summary/solved? @summary-cache))
-               (= @summary-cache (reset! summary-cache (summarize n))))
+  (summary-changed! [n]    
+    (when (update-cache! n summary-cache)
+      ;;      (println (count (node-parents n)))
+      ;;      (when (> (count (node-parents n)) 1) (println n))
       (doseq [p (node-parents n)] (summary-changed! p))))
   (verified-summary [n min-summary] (summary n)))
 
@@ -166,7 +171,7 @@
    (swap! *summary-count* inc)
    (let [[rew st] @pair-atom] (summary/make-simple-summary rew st s)))
   LeafSummarizable
-  (adjust-summary [s new-rew new-st] (reset! pair-atom [new-rew new-st])))
+  (adjust-summary [s new-rew new-st] (reset! pair-atom [new-rew new-st]) (summary-changed! s)))
 ;; Note: no need for bound-subsuming here. 
 
 ;; Initially shoud be a parent of init, without having child.
@@ -187,7 +192,7 @@
          (if (not (and (summary/live? init-summary) (expanded? s)))
            (summary/adjust-source init-summary s)
            (summary/bound (summary/apply-max (doall (map summary (node-ordinary-children s))))
-                      (summary/max-reward (summary init))))))))
+                      (summary/max-reward init-summary)))))))
 
 
 ;; This one is not expandable, needs children set from outside
@@ -199,13 +204,15 @@
 
 (defprotocol ExpandingPairSummarizable (set-right! [s right]))
 
+(def +zero-live+ (summary/make-live-simple-summary 0 :dummy))
+
 (traits/deftrait expanding-pair-summarizable [left] [right-atom (atom nil)] []
   Summarizable
   (summarize [s]
-    (swap! *summary-count* inc)
+    (swap! *summary-count* inc)         
     (bound-subsuming s (if-let [right @right-atom]
                          (apply summary/sum (map summary [left right]))
-                         (summary/sum (summary left) summary/+zero-simple-summary+))))
+                         (summary/sum (summary left) +zero-live+))))
   
   ExpandingPairSummarizable
   (set-right! [s right] (reset! right-atom right)))

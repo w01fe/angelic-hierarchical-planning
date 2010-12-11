@@ -89,17 +89,20 @@
       ::1 (make-simple-pair-subproblem nil (subproblem/get-child sp1 sub-key) #(subproblem/refine-input sp2 %))
       ::2 (make-simple-pair-subproblem nil sp1 (constantly (subproblem/get-child sp2 sub-key))))))
 
+;; TODO: lots of bubbling up first, when evaluate, then when create sp2 ...
+
 ;; sp2-fn takes input-set to sp2
 (defn- make-simple-pair-subproblem [sub-ps sp1 sp2-fn]
 ;  (println "M" (util/truthify sub-ps) (first (subproblem/subproblem-name sp1)))
   (let [ss (traits/reify-traits [summaries/simple-node cache-trait
-                                 (summaries/expanding-pair-summarizable sp1)])
+                                 (summaries/expanding-pair-summarizable sp1 )])
         sp2 (delay (assert (subproblem/evaluated? sp1))
                    (let [sp2 (sp2-fn (subproblem/output-set sp1))]
                      (summaries/set-right! ss sp2)
                      (summaries/connect! ss sp2 false)
                      (summaries/summary-changed! ss)
                      sp2))
+        _   (when (subproblem/evaluated? sp1) (force sp2))
         ret 
         (traits/reify-traits
          [(subproblem/simple-subproblem (gensym) (subproblem/input-set sp1) ss)
@@ -109,7 +112,7 @@
          subproblem/Refinable
          (evaluate- [s]
            (if (not (subproblem/evaluated? sp1))
-             (do (subproblem/evaluate! sp1) nil)                 
+             (when (subproblem/evaluate! sp1) (force sp2) nil)                 
              (let [sp2 (force sp2)]
                (when-let [out (if (subproblem/evaluated? sp2) (subproblem/output-set sp2) (subproblem/evaluate! sp2))]
                 [out
@@ -143,7 +146,7 @@
 
 ;; (do (use '[angelic env hierarchy] 'angelic.domains.nav-switch 'angelic.search.implicit.fah-astar-expand 'angelic.search.implicit.fah-astar-eval 'angelic.domains.discrete-manipulation) (require '[angelic.search.explicit.hierarchical :as his]))
 
-;; (implicit-fah-a* (make-nav-switch-hierarchy (make-random-nav-switch-env 5 2 0) true))
+;; (time (run-counted #(implicit-fah-a*-eval (make-nav-switch-hierarchy (make-random-nav-switch-env 5 2 0) true))))
 
 ;(let [h (make-discrete-manipulation-hierarchy (make-random-discrete-manipulation-env 1 3))] (println #_ (run-counted #(his/interactive-hierarchical-search h)))  (println (run-counted #(implicit-fah-a* h))))
 

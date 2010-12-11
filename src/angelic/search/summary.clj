@@ -100,6 +100,7 @@
 
 (defn make-simple-summary [max-reward status source]
   (util/assert-is (contains? statuses-set status))
+  (assert source)
   (SimpleSummary. max-reward status source nil))
 
 (comment
@@ -143,9 +144,11 @@
   (adjust-reward summary #(clojure.core/min % reward-bound)))
 
 (defn extract-source-seq [summary]
+ ;(when (source summary) (println (angelic.search.implicit.subproblem-eval/subproblem-name (source summary))))
+;  (println "." summary)
   (if-let [kids (seq (children summary))]
     (apply concat (map extract-source-seq kids))
-    [(source summary)]))
+    [(util/make-safe (source summary) "%s" (class summary))]))
 
 (defn extract-solution-pair [summary action-extractor]
   (assert (solved? summary))
