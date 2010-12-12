@@ -33,7 +33,7 @@
 
 ;; Note: used at compile-time, cannot be dynamically rebound without recompiling ...
 #_ (def cache-trait summaries/uncached-summarizer-node)
-(def ^{:private true} cache-trait summaries/eager-cached-summarizer-node)
+ (def ^{:private true} cache-trait summaries/eager-cached-summarizer-node)
 #_ (def cache-trait summaries/lazy-cached-summarizer-node)
 
 ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;; Atomic Subproblem ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
@@ -47,28 +47,32 @@
 
 
 (defn- make-simple-atomic-subproblem [sub-as inp-set function-set]
-  (let [ls (summaries/make-leaf-summarizable 0 :live)]
-   (traits/reify-traits
-    [(subproblem/simple-subproblem [(fs/fs-name function-set) inp-set] inp-set ls)
-     summaries/simple-node
-     cache-trait]
+  (let [ls (traits/reify-traits [summaries/simple-node cache-trait (summaries/leaf-summarizable 0 :live)])
+        ret 
+        (traits/reify-traits
+         [(subproblem/simple-subproblem [(fs/fs-name function-set) inp-set] inp-set ls)
+          summaries/simple-node
+          cache-trait]
 
-    subproblem/Refinable
-    (evaluate- [s]
-      (if-let [[out-set reward] (fs/apply-opt function-set inp-set)]
-        (let [status (fs/status function-set inp-set)]
-          (summaries/adjust-summary ls reward status)
-          [out-set
-           (when (= status :live)
-             (delay
-              (or (refined-keys sub-as inp-set)            
-                  (let [fs-child-seqs (fs/child-seqs function-set inp-set)]
-                    (util/for-map [child fs-child-seqs]
-                                  (map fs/fs-name child) (make-simple-fs-seq-subproblem inp-set child))))))])
-        (do (summaries/adjust-summary ls Double/NEGATIVE_INFINITY :blocked)
-            nil)))   
-    (refine-input- [s refined-input-set]
-      (make-simple-atomic-subproblem s refined-input-set function-set)))))
+         subproblem/Refinable
+         (evaluate- [s]
+           (if-let [[out-set reward] (fs/apply-opt function-set inp-set)]
+             (let [status (fs/status function-set inp-set)]
+               (summaries/adjust-summary ls reward status)
+               [out-set
+                (when (= status :live)
+                  (delay
+                    (or (refined-keys sub-as inp-set)            
+                        (let [fs-child-seqs (fs/child-seqs function-set inp-set)]
+                          (util/for-map [child fs-child-seqs]
+                                        (map fs/fs-name child) (make-simple-fs-seq-subproblem inp-set child))))))])
+             (do (summaries/adjust-summary ls Double/NEGATIVE_INFINITY :blocked)
+                 nil)))   
+         (refine-input- [s refined-input-set]
+                        (make-simple-atomic-subproblem s refined-input-set function-set)))]
+    (summaries/add-parent! ls ret)
+    ret))
+
 
 
 

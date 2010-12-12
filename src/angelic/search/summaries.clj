@@ -174,6 +174,15 @@
   (adjust-summary [s new-rew new-st] (reset! pair-atom [new-rew new-st]) (summary-changed! s)))
 ;; Note: no need for bound-subsuming here. 
 
+(comment
+ (defn make-leaf-summarizable [reward status]
+   (traits/reify-traits [simple-node uncached-summarizer-node (leaf-summarizable reward status)]))
+
+ (def worst-summarizable (make-leaf-summarizable Double/NEGATIVE_INFINITY :blocked)))
+
+
+
+
 ;; Initially shoud be a parent of init, without having child.
 
 (traits/deftrait simple-or-summarizable [init] [expanded?-atom (atom false)] []
@@ -225,15 +234,6 @@
 ;; computing a summary given children
 ;; When to use cached/fresh
 ;; verifying that (cached) summary is good enough. --> should be above
-
-(defn make-leaf-summarizable [reward status]
-  (traits/reify-traits [simple-node uncached-summarizer-node (leaf-summarizable reward status)]))
-
-(def worst-summarizable (make-leaf-summarizable Double/NEGATIVE_INFINITY :blocked))
-
-
-
-
 
 
 

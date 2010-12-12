@@ -62,7 +62,7 @@
       (when-let [output-pair (evaluate- s)]
         (reset! output-pair-atom output-pair)
         (first output-pair))
-      (summaries/summary-changed! s)))
+  #_      (summaries/summary-changed! s)))
    
    (evaluated?      [s] (not (= :wait @output-pair-atom)))
    (output-set      [s] (first @output-pair-atom))
