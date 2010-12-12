@@ -30,7 +30,8 @@
   (source           [s] "Object being directly summarized")
   (children         [s] "Child summaries that went into this, if applicable")
 
-  (re-source [s src bound] "Create a new summary with same status, bounded, src, children [s]")  
+  (re-source [s src bound stat-bound] "Create a new summary with same status, bounded, src, children [s]")
+  (re-child [s new-children]          "Change children.")
   (eq  [s other] "equaltiy, just based on reward and status.")
   (>=  [s other])
   (+   [s other new-src]))
@@ -81,8 +82,9 @@
   (status           [s] stat)
   (source          [s] src)
   (children        [s] chldren)
-  (re-source       [s new-src bound]
-    (SimpleSummary. (clojure.core/min max-rew bound) stat new-src [s]))
+  (re-source       [s new-src bound stat-bound]
+    (SimpleSummary. (clojure.core/min max-rew bound) (min-key status-val stat stat-bound) new-src [s]))
+  (re-child        [s new-children] (SimpleSummary. max-rew stat src new-children))
   (eq               [s other] (and (= max-rew (max-reward other)) (= stat (status other))))
   (>=               [s other] (default->= s other))
   (+                [s other new-src]
@@ -140,7 +142,10 @@
 
 (defn or-combine [summaries new-src bound]
   (let [best (apply-max summaries)]
-    (re-source best new-src bound)))
+    (re-source best new-src bound :solved)))
+
+(defn liven [summary new-src]
+  (re-source summary new-src Double/POSITIVE_INFINITY :live))
 
 
 (defn min [& stats] (apply max-compare (complement >=) (cons +best-simple-summary+ stats)))
@@ -151,6 +156,7 @@
    (re-source summary #(clojure.core/min % reward-bound))))
 
 (defn extract-leaf-seq [summary stop?-fn]
+;  (println summary (source summary) (map source (children summary)) (map source (children (angelic.search.summaries/summarize (source summary))))#_(angelic.search.summaries/expanded? (source summary)))
   (if (stop?-fn summary)
     [summary]
     (apply concat (map #(extract-leaf-seq % stop?-fn) (children summary)))))

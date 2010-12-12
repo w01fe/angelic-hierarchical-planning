@@ -20,9 +20,9 @@
 
 
 ;; Note: used at compile-time, cannot be dynamically rebound without recompiling ...
-#_ (def cache-trait summaries/uncached-summarizer-node)
- (def cache-trait summaries/eager-cached-summarizer-node)
-#_ (def cache-trait summaries/lazy-cached-summarizer-node)
+#_ (def ^{:private true} cache-trait summaries/uncached-summarizer-node)
+ (def ^{:private true} cache-trait summaries/eager-cached-summarizer-node)
+#_ (def ^{:private true} cache-trait summaries/lazy-cached-summarizer-node)
 
 ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;; Atomic Subproblem ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
 
@@ -124,3 +124,5 @@
 ;; (implicit-fah-a* (make-nav-switch-hierarchy (make-random-nav-switch-env 5 2 0) true))
 
 ;(let [h (make-discrete-manipulation-hierarchy (make-random-discrete-manipulation-env 1 3))] (println #_ (run-counted #(his/interactive-hierarchical-search h)))  (println (run-counted #(implicit-fah-a* h))))
+
+;; (dotimes [_ 1] (reset! summaries/*summary-count* 0) (debug 0 (time (let [h (make-discrete-manipulation-hierarchy (make-random-discrete-manipulation-env 1 3))]  (println (run-counted #(second (implicit-fah-a* h))) @summaries/*summary-count*)))))

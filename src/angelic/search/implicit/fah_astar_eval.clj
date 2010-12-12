@@ -96,6 +96,7 @@
 
 ;; TODO: lots of bubbling up first, when evaluate, then when create sp2 ...
 
+;; I can be evaluated and expanded
 ;; sp2-fn takes input-set to sp2
 (defn- make-simple-pair-subproblem [sub-ps sp1 sp2-fn]
 ;  (println "M" (util/truthify sub-ps) (first (subproblem/subproblem-name sp1)))
@@ -155,4 +156,6 @@
 
 ;(let [h (make-discrete-manipulation-hierarchy (make-random-discrete-manipulation-env 1 3))] (println #_ (run-counted #(his/interactive-hierarchical-search h)))  (println (run-counted #(implicit-fah-a* h))))
 
-;(dotimes [_ 1] (reset! summaries/*summary-count* 0) (debug 0 (time (let [h (make-nav-switch-hierarchy (make-random-nav-switch-env 3 1 0) true)]  (println (run-counted #(second (implicit-fah-a*-eval h))) @summaries/*summary-count*)))))
+;;(dotimes [_ 1] (reset! summaries/*summary-count* 0) (debug 0 (time (let [h (make-nav-switch-hierarchy (make-random-nav-switch-env 3 1 0) true)]  (println (run-counted #(second (implicit-fah-a*-eval h))) @summaries/*summary-count*)))))
+
+;;(require '[angelic.search summary summaries] '[angelic.search.implicit subproblem-eval subproblem-expand fah-astar-eval fah-astar-expand] :reload)

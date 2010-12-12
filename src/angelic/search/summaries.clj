@@ -55,8 +55,8 @@
 (defprotocol SummaryCache
   (summary [n] "Possibly cached version of summarize")
   (summary-changed! [n])
-  (verified-summary [n min-summary] "Produce a summary that represents the current exact best summary, or
-                                     something workse than min-summary if not feasible."))
+  (verified-summary [n min-summary] "Return a current exact best summary >= min-summary, or nil"))
+
 
 (def *summary-count* (atom 0))
 
@@ -107,11 +107,16 @@
 
 ;;; NOTE: These all assume that the entire tree uses the same trait.
 
+(defn default-verified-summary [n min-summary]
+  (let [cs (summary n)]
+    (when (summary/>= cs min-summary)
+      cs)))
+
 (traits/deftrait uncached-summarizer-node [] [] []
   SummaryCache
   (summary [n] (summarize n))
   (summary-changed! [n] nil)
-  (verified-summary [n min-summary] (summary n)))
+  (verified-summary [n min-summary] (default-verified-summary n min-summary)))
 
 ;; TODO: fix this up ?
 (defn update-cache! [n cache-atom]
@@ -133,29 +138,36 @@
       ;;      (println (count (node-parents n)))
       ;;      (when (> (count (node-parents n)) 1) (println n))
       (doseq [p (node-parents n)] (summary-changed! p))))
-  (verified-summary [n min-summary] (summary n)))
+  (verified-summary [n min-summary] (default-verified-summary n min-summary)))
 
 ;; Only notifies when summary increases ...
 ;; Need a way to know which child(ren) summary computation depended on.
 ;; How is this different from sources?
 ;; Answer: for a seq, want to expand seq node, but verify against constituents.
-;; TODO: this is broken, since updates never make it upwards along OR-nodes... 
+
+;; TODO: figure out best v-s method.
+;; TODO: consistency of child ordering ...
 (traits/deftrait lazy-cached-summarizer-node [] [summary-cache (atom nil)]  []
   SummaryCache
   (summary [n] (or @summary-cache (reset! summary-cache (summarize n))))
   (summary-changed! [n]
-    (when-not (summary/>= @summary-cache (reset! summary-cache (summarize n)))
-      (notify-parents n)))
+    (let [os @summary-cache
+          ns (reset! summary-cache (summarize n))]
+      (when os
+        (assert (<= (summary/max-reward ns) (summary/max-reward os)))      
+        (when-not (summary/>= os ns)
+          (notify-parents n)))))
   (verified-summary [n min-summary]
-    (let [cs (reset! summary-cache (summarize n))]
+     (let [os @summary-cache
+           cs (reset! summary-cache (summarize n))]
+       (when os (assert (<= (summary/max-reward cs) (summary/max-reward os))))
 ;      (println (angelic.search.implicit.subproblem/subproblem-name n) (expanded? n) cs min-summary) (Thread/sleep 10)
-      (if (or (not (summary/>= cs min-summary))
-              (every? #(summary/>= (verified-summary (summary/source %) %) %) (summary/children cs)))
-        cs
-        (recur min-summary)))
-    #_(when (summary/>= (summary n) min-summary)
-      )                    
-))
+       (when (summary/>= cs min-summary)
+         (let [verified-children (map #(verified-summary (summary/source %) %) (summary/children cs))]
+           (if (every? identity verified-children)
+             (reset! summary-cache (summary/re-child cs verified-children))
+             (recur min-summary)))))))
+
 
 
 
@@ -223,8 +235,6 @@
 
 (defprotocol ExpandingPairSummarizable (set-right! [s right]))
 
-(def +zero-live+ (summary/make-live-simple-summary 0 :dummy))
-
 (traits/deftrait expanding-pair-summarizable [left right?] [right-atom (atom right?)] []
   Summarizable
   (summarize [s]
@@ -232,7 +242,7 @@
     (assert (empty? (node-subsuming-children s)))
     (if-let [right @right-atom]
       (summary/+ (summary left) (summary right) s)
-      (summary/+ (summary left) +zero-live+ s)))
+      (summary/liven (summary left) s)))
   
   ExpandingPairSummarizable
   (set-right! [s right] (reset! right-atom right)))
