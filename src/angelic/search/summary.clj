@@ -30,11 +30,10 @@
   (source           [s] "Object being directly summarized")
   (children         [s] "Child summaries that went into this, if applicable")
 
-  (adjust-reward [s f])
-  (adjust-source [s src])  
+  (re-source [s src bound] "Create a new summary with same status, bounded, src, children [s]")  
   (eq  [s other] "equaltiy, just based on reward and status.")
   (>=  [s other])
-  (+   [s other]))
+  (+   [s other new-src]))
 
 
 ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;; Properties ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
@@ -82,15 +81,15 @@
   (status           [s] stat)
   (source          [s] src)
   (children        [s] chldren)
-  (adjust-reward    [s f] (let [r (f max-rew)] (if (= r max-rew) s (SimpleSummary. r stat src chldren))))
-  (adjust-source   [s new-src] (SimpleSummary. max-rew stat new-src chldren))
+  (re-source       [s new-src bound]
+    (SimpleSummary. (clojure.core/min max-rew bound) stat new-src [s]))
   (eq               [s other] (and (= max-rew (max-reward other)) (= stat (status other))))
   (>=               [s other] (default->= s other))
-  (+                [s other]
+  (+                [s other new-src]
     (SimpleSummary.
      (clojure.core/+ max-rew (max-reward other))
      (min-key status-val stat (status other))
-     nil [s other]
+     new-src [s other]
 #_     (concat srcs (sources other)))))
 
 (defn make-live-simple-summary [max-reward source] (SimpleSummary. max-reward :live source nil))
@@ -130,18 +129,35 @@
 
 ;; TODO: can we safely handle empty case here?
 (defn apply-max [stats]
-  (loop [best +worst-simple-summary+ stats (seq stats)]
-    (if-let [f (first stats)]
-      (recur (if (>= f best) f best) (next stats))
-      best)))
+  (if-let [stats (seq stats)]
+   (loop [best (first stats) stats (next stats)]
+     (if stats
+       (recur (if (>= (first stats) best) (first stats) best) (next stats))
+       best))
+   +worst-simple-summary+))
 (defn max [& stats] (apply-max stats)
   #_(apply max-compare >= (cons +worst-simple-summary+ stats)))
 
-(defn min [& stats] (apply max-compare (complement >=) (cons +best-simple-summary+ stats)))
-(defn sum [& stats] (if (empty? stats) +zero-simple-summary+ (reduce + (first stats) (next stats))))
+(defn or-combine [summaries new-src bound]
+  (let [best (apply-max summaries)]
+    (re-source best new-src bound)))
 
-(defn bound [summary reward-bound]
-  (adjust-reward summary #(clojure.core/min % reward-bound)))
+
+(defn min [& stats] (apply max-compare (complement >=) (cons +best-simple-summary+ stats)))
+;(defn sum [& stats] (if (empty? stats) +zero-simple-summary+ (reduce + (first stats) (next stats))))
+
+(comment
+ (defn bound [summary reward-bound]
+   (re-source summary #(clojure.core/min % reward-bound))))
+
+(defn extract-leaf-seq [summary stop?-fn]
+  (if (stop?-fn summary)
+    [summary]
+    (apply concat (map #(extract-leaf-seq % stop?-fn) (children summary)))))
+
+(defn extract-single-leaf [summary stop?-fn]
+  (util/safe-singleton (extract-leaf-seq summary stop?-fn)))
+
 
 (defn extract-source-seq [summary]
  ;(when (source summary) (println (angelic.search.implicit.subproblem-eval/subproblem-name (source summary))))

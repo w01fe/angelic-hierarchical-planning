@@ -81,6 +81,6 @@
 
 (defn solve [root-subproblem]
   (summary/solve
-   #(summaries/verified-summary root-subproblem summary/+worst-simple-summary+)
+   #(summaries/extract-verified-unexpanded-leaf root-subproblem)
    #(if (evaluated? %) (do (assert (not (summaries/expanded? %))) (child-keys %)) (evaluate! %))
-   #(let [n (-> % subproblem-name first)] (when-not (= (first n) :noop) n))))
+   #(let [n (summaries/label %)] (when-not (= (first n) :noop) n))))

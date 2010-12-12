@@ -152,26 +152,29 @@
       (if (or (not (summary/>= cs min-summary))
               (every? #(summary/>= (verified-summary (summary/source %) %) %) (summary/children cs)))
         cs
-        (recur min-summary)))))
+        (recur min-summary)))
+    #_(when (summary/>= (summary n) min-summary)
+      )                    
+))
+
 
 
 ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;; Summarizable ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
 
-(defn bound-subsuming [s sum]
-  (summary/bound sum (summary/max-reward (apply summary/min (map summary (node-subsuming-children s))))))
 
-(defn bound-subsuming-x [s sum extra-bound]
-  (summary/bound sum (min extra-bound (summary/max-reward (apply summary/min (map summary (node-subsuming-children s)))))))
+(defprotocol LeafSummarizable
+  (label [s])
+  (adjust-summary [s new-reward new-status]))
 
-(defprotocol LeafSummarizable (adjust-summary [s new-reward new-status]))
-
-(traits/deftrait leaf-summarizable [reward status] [pair-atom (atom [reward status])] []
+(traits/deftrait leaf-summarizable [label reward status] [pair-atom (atom [reward status])] []
   Summarizable
   (summarize [s]
    (swap! *summary-count* inc)
    (let [[rew st] @pair-atom] (summary/make-simple-summary rew st s)))
   LeafSummarizable
+  (label [s] label)
   (adjust-summary [s new-rew new-st] (reset! pair-atom [new-rew new-st]) (summary-changed! s)))
+
 ;; Note: no need for bound-subsuming here. 
 
 (comment
@@ -182,6 +185,12 @@
 
 
 
+(comment
+ (defn bound-subsuming [s sum]
+   (summary/bound sum (summary/max-reward (apply summary/min (map summary (node-subsuming-children s))))))
+
+ (defn bound-subsuming-x [s sum extra-bound]
+   (summary/bound sum (min extra-bound (summary/max-reward (apply summary/min (map summary (node-subsuming-children s))))))))
 
 ;; Initially shoud be a parent of init, without having child.
 
@@ -196,35 +205,39 @@
    Summarizable
    (summarize [s]
      (swap! *summary-count* inc)
-     (let [init-summary (summary init)]
-       (bound-subsuming s
-         (if (not (and (summary/live? init-summary) (expanded? s)))
-           (summary/adjust-source init-summary s)
-           (summary/bound (summary/apply-max (doall (map summary (node-ordinary-children s))))
-                      (summary/max-reward init-summary)))))))
+     (let [init-summary (summary init)
+           bound        (summary/max-reward (apply summary/min (map summary (node-subsuming-children s))))]
+       (if (not (and (summary/live? init-summary) (expanded? s)))
+         (summary/or-combine [init-summary] s bound)
+         (summary/or-combine (map summary  (node-ordinary-children s)) s (min bound (summary/max-reward init-summary)))))))
+
+(defn extract-unexpanded-leaf [summary]
+  (summary/extract-single-leaf summary #(not (expanded? (summary/source %)))))
+
+(defn extract-verified-unexpanded-leaf [summarizable]
+  (let [s (verified-summary summarizable summary/+worst-simple-summary+)]
+    (if (summary/solved? s) s (extract-unexpanded-leaf s))))
 
 
-;; This one is not expandable, needs children set from outside
-(traits/deftrait simple-seq-summarizable [] [] []
-  Summarizable
-  (summarize [s]
-   (swap! *summary-count* inc)
-   (bound-subsuming s (apply summary/sum (map summary (node-ordinary-children s))))))
+;; These ones need children set from outside...
 
 (defprotocol ExpandingPairSummarizable (set-right! [s right]))
 
 (def +zero-live+ (summary/make-live-simple-summary 0 :dummy))
 
-(traits/deftrait expanding-pair-summarizable [left] [right-atom (atom nil)] []
+(traits/deftrait expanding-pair-summarizable [left right?] [right-atom (atom right?)] []
   Summarizable
   (summarize [s]
     (swap! *summary-count* inc)         
-    (bound-subsuming s (if-let [right @right-atom]
-                         (apply summary/sum (map summary [left right]))
-                         (summary/sum (summary left) +zero-live+))))
+    (assert (empty? (node-subsuming-children s)))
+    (if-let [right @right-atom]
+      (summary/+ (summary left) (summary right) s)
+      (summary/+ (summary left) +zero-live+ s)))
   
   ExpandingPairSummarizable
   (set-right! [s right] (reset! right-atom right)))
+
+(traits/deftrait simple-pair-summarizable [left right] [] [(expanding-pair-summarizable left right)])
 
 
 

@@ -42,7 +42,8 @@
      [(subproblem/simple-subproblem
        [(fs/fs-name function-set) inp-set]
        inp-set
-       [out-set (summaries/make-leaf-summarizable reward (fs/status function-set inp-set))] 
+       [out-set (traits/reify-traits [(summaries/leaf-summarizable (fs/fs-name function-set) reward (fs/status function-set inp-set))
+                                      cache-trait (summaries/fixed-node nil)])] 
        (delay
          (or (refined-keys sub-as inp-set)            
            (let [fs-child-seqs (fs/child-seqs function-set inp-set)]
@@ -81,7 +82,7 @@
 
 (defn make-simple-pair-subproblem [sub-ps sp1 sp2]
   (let [seq-sum (traits/reify-traits [(summaries/fixed-node [sp1 sp2]) cache-trait
-                                      summaries/simple-seq-summarizable])
+                                      (summaries/expanding-pair-summarizable sp1 sp2)])
         ret 
         (traits/reify-traits
          [(subproblem/simple-subproblem

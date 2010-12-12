@@ -32,9 +32,9 @@
 
 
 ;; Note: used at compile-time, cannot be dynamically rebound without recompiling ...
-#_ (def cache-trait summaries/uncached-summarizer-node)
+#_ (def  ^{:private true} cache-trait summaries/uncached-summarizer-node)
  (def ^{:private true} cache-trait summaries/eager-cached-summarizer-node)
-#_ (def cache-trait summaries/lazy-cached-summarizer-node)
+#_ (def ^{:private true} cache-trait summaries/lazy-cached-summarizer-node)
 
 ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;; Atomic Subproblem ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
 
@@ -47,7 +47,8 @@
 
 
 (defn- make-simple-atomic-subproblem [sub-as inp-set function-set]
-  (let [ls (traits/reify-traits [summaries/simple-node cache-trait (summaries/leaf-summarizable 0 :live)])
+  (let [ls (traits/reify-traits [(summaries/fixed-node nil) cache-trait
+                                 (summaries/leaf-summarizable (fs/fs-name function-set) 0 :live)])
         ret 
         (traits/reify-traits
          [(subproblem/simple-subproblem [(fs/fs-name function-set) inp-set] inp-set ls)
@@ -99,7 +100,7 @@
 (defn- make-simple-pair-subproblem [sub-ps sp1 sp2-fn]
 ;  (println "M" (util/truthify sub-ps) (first (subproblem/subproblem-name sp1)))
   (let [ss (traits/reify-traits [summaries/simple-node cache-trait
-                                 (summaries/expanding-pair-summarizable sp1 )])
+                                 (summaries/expanding-pair-summarizable sp1 nil)])
         sp2 (delay (assert (subproblem/evaluated? sp1))
                    (let [sp2 (sp2-fn (subproblem/output-set sp1))]
                      (summaries/set-right! ss sp2)
