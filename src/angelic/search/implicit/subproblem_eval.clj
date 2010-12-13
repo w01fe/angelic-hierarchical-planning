@@ -84,3 +84,7 @@
    #(summaries/extract-verified-unexpanded-leaf root-subproblem)
    #(if (evaluated? %) (do (assert (not (summaries/expanded? %))) (child-keys %)) (evaluate! %))
    #(let [n (summaries/label %)] (when-not (= (first n) :noop) n))))
+
+(defn pseudo-solve [root-sp]
+  (summaries/pseudo-solve root-sp summary/+worst-simple-summary+ (complement summaries/expanded?)
+    #(if (evaluated? %) (do (assert (not (summaries/expanded? %))) (child-keys %)) (evaluate! %))))

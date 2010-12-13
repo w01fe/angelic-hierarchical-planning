@@ -100,7 +100,7 @@
          subproblem/Refinable
          (refine-input- [s refined-input-set]
            (make-aligned-simple-pair-subproblem s (subproblem/refine-input sp1 refined-input-set) sp2)))]
-    (summaries/add-parent! seq-sum ret)
+    (summaries/add-parent! seq-sum ret false)
     ret))
 
 
@@ -123,6 +123,6 @@
 
 ;; (implicit-fah-a* (make-nav-switch-hierarchy (make-random-nav-switch-env 5 2 0) true))
 
-;(let [h (make-discrete-manipulation-hierarchy (make-random-discrete-manipulation-env 1 3))] (println #_ (run-counted #(his/interactive-hierarchical-search h)))  (println (run-counted #(implicit-fah-a* h))))
+;(let [h (make-discrete-manipulation-hierarchy (make-random-discrete-manipulation-env 1 3))] (println  (run-counted #(his/interactive-hierarchical-search h)))  (println (run-counted #(implicit-fah-a* h))))
 
 ;; (dotimes [_ 1] (reset! summaries/*summary-count* 0) (debug 0 (time (let [h (make-discrete-manipulation-hierarchy (make-random-discrete-manipulation-env 1 3))]  (println (run-counted #(second (implicit-fah-a* h))) @summaries/*summary-count*)))))

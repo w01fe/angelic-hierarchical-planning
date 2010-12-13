@@ -47,9 +47,10 @@
 
 (defprotocol Node
   (node-ordinary-children   [n])
-  (node-subsuming-children   [n])  
-  (node-parents    [n])
-  (add-parent!     [n parent-node])
+  (node-subsuming-children  [n])
+  (node-ordinary-parents   [n])
+  (node-subsumed-parents   [n])    
+  (add-parent!     [n parent-node sub?])
   (add-child!      [n child-node sub?]))
 
 (defprotocol SummaryCache
@@ -78,32 +79,36 @@
 (traits/deftrait simple-node [] [children (atom nil) parents  (atom nil)] []
   Node
   (node-ordinary-children [n] (map second (remove first @children)))
-  (node-subsuming-children [n] (map second (filter first @children)))  
-  (node-parents  [n] @parents)
+  (node-subsuming-children [n] (map second (filter first @children)))
+  (node-ordinary-parents [n] (map second (remove first @parents)))
+  (node-subsumed-parents [n] (map second (filter first @parents)))    
   (add-child!    [n child subsuming?] (swap! children conj [subsuming? child]))
-  (add-parent!   [n parent] (swap! parents conj parent)))
+  (add-parent!   [n parent subsuming?] (swap! parents conj [subsuming? parent])))
 
 (traits/deftrait fixed-node [children] [sub-children (atom nil) parents (atom nil)] []
    Node
    (node-ordinary-children [n] children)
    (node-subsuming-children [n] @sub-children)   
-   (node-parents  [n] @parents)
+   (node-ordinary-parents [n] (map second (remove first @parents)))
+   (node-subsumed-parents [n] (map second (filter first @parents)))    
    (add-child!    [n child sub?]
       (assert sub?)
       (swap! sub-children conj child))
-   (add-parent!   [n parent] (swap! parents conj parent)))
+   (add-parent!   [n parent subsuming?] (swap! parents conj [subsuming? parent])))
 
 (def *use-subsumption* true)
 
 (defn connect! [parent child subsuming?]
  ;  (when subsuming? (print "."))
   (when (or (not subsuming?) *use-subsumption*)
-    (add-parent! child parent)
+    (add-parent! child parent subsuming?)
     (add-child! parent child subsuming?)))
 
 ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;; SummaryCache ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
 
+(defn node-parents [n] (concat (node-ordinary-parents n) (node-subsumed-parents n)))
 (defn notify-parents [n] (doseq [p (node-parents n)] (summary-changed! p)))
+(defn notify-ordinary-parents [n] (doseq [p (node-ordinary-parents n)] (summary-changed! p)))
 
 ;;; NOTE: These all assume that the entire tree uses the same trait.
 
@@ -135,18 +140,23 @@
   (summary [n] (or @summary-cache (reset! summary-cache (summarize n))))
   (summary-changed! [n]    
     (when (update-cache! n summary-cache)
-      ;;      (println (count (node-parents n)))
-      ;;      (when (> (count (node-parents n)) 1) (println n))
-      (doseq [p (node-parents n)] (summary-changed! p))))
+      (notify-parents n)))
   (verified-summary [n min-summary] (default-verified-summary n min-summary)))
 
-;; Only notifies when summary increases ...
-;; Need a way to know which child(ren) summary computation depended on.
-;; How is this different from sources?
-;; Answer: for a seq, want to expand seq node, but verify against constituents.
+;; Eager except about subsumption, which is just accidental
+(traits/deftrait less-eager-cached-summarizer-node [] [summary-cache (atom nil)] []
+  SummaryCache
+  (summary [n] (or @summary-cache (reset! summary-cache (summarize n))))
+  (summary-changed! [n]    
+    (when (update-cache! n summary-cache)
+      (notify-ordinary-parents n)))
+  (verified-summary [n min-summary] (default-verified-summary n min-summary)))
 
+
+
+;; Only notifies when summary increases ...
 ;; TODO: figure out best v-s method.
-;; TODO: consistency of child ordering ...
+;; NOTE: efficiency depends on consistency of child ordering ...
 (traits/deftrait lazy-cached-summarizer-node [] [summary-cache (atom nil)]  []
   SummaryCache
   (summary [n] (or @summary-cache (reset! summary-cache (summarize n))))
@@ -156,10 +166,12 @@
       (when os
         (assert (<= (summary/max-reward ns) (summary/max-reward os)))      
         (when-not (summary/>= os ns)
+;          (print (summary/status ns))
           (notify-parents n)))))
   (verified-summary [n min-summary]
      (let [os @summary-cache
            cs (reset! summary-cache (summarize n))]
+;       (swap! *summary-count* dec)
        (when os (assert (<= (summary/max-reward cs) (summary/max-reward os))))
 ;      (println (angelic.search.implicit.subproblem/subproblem-name n) (expanded? n) cs min-summary) (Thread/sleep 10)
        (when (summary/>= cs min-summary)
@@ -167,6 +179,37 @@
            (if (every? identity verified-children)
              (reset! summary-cache (summary/re-child cs verified-children))
              (recur min-summary)))))))
+
+
+;; No notification, just pseudo-rbfs solution (which may refine suboptimal things)
+;; Can't quite replicate earlier, since we don't have control over AND expansion order...
+;; Can't use verified-summary since we need eval going up too.
+;; TODO: improve min-summary handling ?
+;; TODO: doesn't work right now, since deeper stuff doesn't get evaluated.
+;; Need to think harder about separation of concerns, how to cross-cut ?
+(defprotocol PseudoSolver
+  (pseudo-solve [n min-summary stop? evaluate!]))
+
+(traits/deftrait pseudo-cached-summarizer-node [] [summary-cache (atom nil)]  []
+  SummaryCache
+  (summary [n] (or @summary-cache (reset! summary-cache (summarize n))))
+  (summary-changed! [n] (reset! summary-cache (summarize n)))
+  (verified-summary [n min-summary] (throw (UnsupportedOperationException.)))
+  PseudoSolver
+  (pseudo-solve [n min-summary stop? evaluate!]
+    (let [os @summary-cache
+          cs (reset! summary-cache (summarize n))]
+      (when os (assert (<= (summary/max-reward cs) (summary/max-reward os))))
+      (println min-summary cs (angelic.search.implicit.subproblem-eval/subproblem-name (summary/source cs)) (angelic.search.implicit.subproblem-eval/evaluated? (summary/source cs)) (expanded? (summary/source cs)) #_  (summary/source cs)) (Thread/sleep 10)
+      (cond (not (summary/>= cs min-summary)) nil
+            (summary/solved? cs) cs
+            (stop? n) (do (println "\nEVAL!") (evaluate! n) (recur min-summary stop? evaluate!))
+            :else (let [child (util/safe-singleton (summary/children cs))]
+                    (pseudo-solve (summary/source child) child stop? evaluate!)
+                    (recur min-summary stop? evaluate!))))))
+
+
+
 
 
 

@@ -30,11 +30,14 @@
 ;; All plans are represented at top-level.
 ;; Argument was: without decomposition, this is just how it is.  More will be needed for that case.
 
+;; All three work now.  
 
 ;; Note: used at compile-time, cannot be dynamically rebound without recompiling ...
 #_ (def  ^{:private true} cache-trait summaries/uncached-summarizer-node)
- (def ^{:private true} cache-trait summaries/eager-cached-summarizer-node)
+#_ (def ^{:private true} cache-trait summaries/eager-cached-summarizer-node)
+#_ (def ^{:private true} cache-trait summaries/less-eager-cached-summarizer-node)
 #_ (def ^{:private true} cache-trait summaries/lazy-cached-summarizer-node)
+ (def ^{:private true} cache-trait summaries/pseudo-cached-summarizer-node)
 
 ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;; Atomic Subproblem ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
 
@@ -71,7 +74,7 @@
                  nil)))   
          (refine-input- [s refined-input-set]
                         (make-simple-atomic-subproblem s refined-input-set function-set)))]
-    (summaries/add-parent! ls ret)
+    (summaries/add-parent! ls ret false)
     ret))
 
 
@@ -133,7 +136,7 @@
                         (make-simple-pair-subproblem s (subproblem/refine-input sp1 refined-input-set)
                                         #(subproblem/refine-input (force sp2) %))))]
     (summaries/connect! ss sp1 false)
-    (summaries/add-parent! ss ret) ;; note uni-cxn
+    (summaries/add-parent! ss ret false) ;; note uni-cxn
     ret))
 
 
@@ -149,6 +152,11 @@
   (->> (fs/make-init-pair henv)
        (apply make-simple-atomic-subproblem nil)
        subproblem/solve))
+
+(defn implicit-fah-a*-eval-pseudo [henv]
+  (->> (fs/make-init-pair henv)
+       (apply make-simple-atomic-subproblem nil)
+       subproblem/pseudo-solve))
 
 ;; (do (use '[angelic env hierarchy] 'angelic.domains.nav-switch 'angelic.search.implicit.fah-astar-expand 'angelic.search.implicit.fah-astar-eval 'angelic.domains.discrete-manipulation) (require '[angelic.search.explicit.hierarchical :as his]))
 
