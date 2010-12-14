@@ -1,12 +1,11 @@
 (ns angelic.search.implicit.subproblem-eval
-  (:require clojure.string
-            [edu.berkeley.ai.util :as util]
+  (:require [edu.berkeley.ai.util :as util]
             [edu.berkeley.ai.util.traits :as traits]            
             [angelic.search.summary :as summary]            
             [angelic.search.summaries :as summaries]))
 
-;; Subproblems where the expand operation evaluates the output set, and generates
-;; the children.  Putting the focus on evaluation gives us finer granularity,
+;; Subproblems where we allow explicit evaluation, along with lazy child generation.
+;; Putting the focus on evaluation gives us finer granularity,
 ;; allowing full utilizatino of subsumption, plus is more natural in a decomposed
 ;; setting where we also have to "evaluate" existing actions in new contexts.
 
@@ -26,7 +25,7 @@
   (input-set       [s])
   (evaluate!       [s] "Evaluating will eventually produce output-set, but may require multiple steps.
                         Returns (non-empty) output-set when evaluation is finished, or nil if not/dead.
-                        Always refreshses summary of s.")
+                        Does not refresh summary.")
   (evaluated?      [s] "Is an output-set ready?")
   (output-set      [s])
   (child-keys      [s])
@@ -61,8 +60,7 @@
      (util/prog1
       (when-let [output-pair (evaluate- s)]
         (reset! output-pair-atom output-pair)
-        (first output-pair))
-  #_      (summaries/summary-changed! s)))
+        (first output-pair))))
    
    (evaluated?      [s] (not (= :wait @output-pair-atom)))
    (output-set      [s] (first @output-pair-atom))

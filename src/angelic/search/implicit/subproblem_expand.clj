@@ -1,6 +1,5 @@
 (ns angelic.search.implicit.subproblem-expand
-  (:require clojure.string
-            [edu.berkeley.ai.util :as util]
+  (:require [edu.berkeley.ai.util :as util]
             [edu.berkeley.ai.util.traits :as traits]            
             [angelic.search.summary :as summary]            
             [angelic.search.summaries :as summaries]))
