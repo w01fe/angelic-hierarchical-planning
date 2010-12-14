@@ -235,17 +235,13 @@
 (comment
  (defn make-leaf-summarizable [reward status]
    (traits/reify-traits [simple-node uncached-summarizer-node (leaf-summarizable reward status)]))
+)
 
- (def worst-summarizable (make-leaf-summarizable Double/NEGATIVE_INFINITY :blocked)))
+(def worst-summarizable
+     (traits/reify-traits [(leaf-summarizable :worst Double/NEGATIVE_INFINITY :blocked)
+                           (fixed-node nil) uncached-summarizer-node] ))
 
 
-
-(comment
- (defn bound-subsuming [s sum]
-   (summary/bound sum (summary/max-reward (apply summary/min (map summary (node-subsuming-children s))))))
-
- (defn bound-subsuming-x [s sum extra-bound]
-   (summary/bound sum (min extra-bound (summary/max-reward (apply summary/min (map summary (node-subsuming-children s))))))))
 
 ;; Initially shoud be a parent of init, without having child.
 
