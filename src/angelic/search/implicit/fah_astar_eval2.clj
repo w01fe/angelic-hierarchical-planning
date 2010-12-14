@@ -2,7 +2,8 @@
   (:require [edu.berkeley.ai.util :as util]
             [edu.berkeley.ai.util.traits :as traits]            
             [angelic.search.summary :as summary]            
-            [angelic.search.summaries :as summaries])
+            [angelic.search.summaries :as summaries]
+            [angelic.search.function-sets :as fs])
   (:import [java.util HashMap]))
 
 ;; A version of eval subproblems where we explicitly represent the relationships
@@ -18,10 +19,10 @@
 ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
 
 #_ (def  ^{:private true} cache-trait summaries/uncached-summarizer-node)
-#_ (def ^{:private true} cache-trait summaries/eager-cached-summarizer-node)
+ (def ^{:private true} cache-trait summaries/eager-cached-summarizer-node)
 #_ (def ^{:private true} cache-trait summaries/less-eager-cached-summarizer-node)
 #_ (def ^{:private true} cache-trait summaries/lazy-cached-summarizer-node)
- (def ^{:private true} cache-trait summaries/pseudo-cached-summarizer-node)
+#_ (def ^{:private true} cache-trait summaries/pseudo-cached-summarizer-node)
 
 
 (defprotocol FancyNode
@@ -52,14 +53,14 @@
       (assert (= (count new-parents) (dec (count @parents))))
       (reset! parents new-parents))))
 
-(declare tree-summary)
+(declare tree-summary inner-summary)
 
 (traits/deftrait outer-or-summarizable [] [] [fancy-node cache-trait]
   summaries/Summarizable
   (summarize [s]
     (swap! summaries/*summary-count* inc)
-    (summary/or-combine (map tree-summary (node-ordinary-children s)) s
-                        (summary/max-reward (apply summary/min (map tree-summary (node-subsuming-children s)))))))
+    (summary/or-combine (map tree-summary (summaries/node-ordinary-children s)) s
+                        (summary/max-reward (apply summary/min (map tree-summary (summaries/node-subsuming-children s)))))))
 
 
 
@@ -70,8 +71,12 @@
     (let [inner (inner-summary s)
           bound-only? (number? inner)
           inner-bound (if bound-only? inner (summary/max-reward inner))
-          bound (min inner-bound (summary/max-reward (apply summary/min (map summary (node-subsuming-children s)))))
-          child-summary (summary/or-combine (map summary (node-ordinary-children s)) s bound)]
+          bound (->> (summaries/node-subsuming-children s)
+                     (map summaries/summary )
+                     (apply summary/min)
+                     (summary/max-reward)
+                     (min inner-bound))
+          child-summary (summary/or-combine (map summaries/summary (summaries/node-ordinary-children s)) s bound)]
       (if bound-only?
         child-summary
         (summary/max child-summary inner)))))
@@ -146,28 +151,28 @@
    (tree-summarizer [s]
      (or @tree-sum
          (reset! tree-sum
-           (doto (traits/reify-traits [cache-trait outer-or-summarizable])
+           (doto (traits/reify-traits [outer-or-summarizable])
              (summaries/connect! s false)))))   
    (refine-input    [s maybe-refined-input-set]
       (if (= input-set maybe-refined-input-set)
         s
         (when-let [refined (refine-input- s maybe-refined-input-set)]
-          (summaries/connect! s false)
+          (summaries/connect! s refined true)
           refined)))
 
    (add-child!      [s child]                   
      (summaries/connect! (tree-summarizer s) child false)
-     (doseq [watcher @watchers] (notify-child! w s child)))
+     (doseq [w @watchers] (notify-child! w s child)))
    (set-output!     [s o-s]
      (assert (not @output-set))
      (swap! output-set o-s)
-     (doseq [watcher @watchers]
+     (doseq [w @watchers]
        (notify-output! w s o-s)))
    (set-sub-watched! [s sub]
      (assert (not @sub-watched))
      (swap! sub-watched sub)
-     (doseq [watcher @watchers]
-       (add-watcher! sub watcher))))
+     (doseq [w @watchers]
+       (add-watcher! sub w))))
 
 
 (def *subproblem-cache* (HashMap.))
@@ -186,11 +191,13 @@
 
 (declare make-simple-fs-seq-subproblem)
 
-(comment
- (defn- refined-keys [sub-sp inp-set]
-   (when-let [sub-child-keys (and sub-sp (summaries/expanded? sub-sp) (seq (subproblem/child-keys sub-sp)))]
-     (util/for-map [k sub-child-keys]
-                   k (subproblem/refine-input (subproblem/get-child sub-sp k) inp-set)))))
+(defn- refined-children [sub-sp inp-set]
+  (when-let [sub-children (and sub-sp
+                               (not (= :blocked (summary/status (summaries/summary sub-sp))))
+                               (concat (summaries/node-ordinary-children sub-sp)
+                                       (summaries/node-ordinary-children (tree-summary sub-sp))))]
+    (map #(refine-input- % inp-set) sub-children)))
+
 
 (defn connect-inner-child! [sp child]
   (summaries/connect! sp child false)
@@ -202,6 +209,7 @@
                        (notify-child! [s child grandchild] nil))))
 
 
+;; TODO: is leaving blocked alive the right thing ?
 ;; TODO: assuming consistency and evaluation s.t. no bounding is necessary. Otherwise, downwards would be better anyway?
 ;; TODO: multi-step eval like earlier version?
 (defn- make-simple-atomic-subproblem [subsuming-as inp-set function-set]
@@ -215,14 +223,14 @@
     (evaluate! [s]
       (if-let [[out-set reward] (fs/apply-opt function-set inp-set)]
         (let [status (fs/status function-set inp-set)]
-          (reset! summary-pair (if (= status :live) reward (summary/make-simple-summary reward status s)))
+          (reset! summary (if (= status :live) reward (summary/make-simple-summary reward status s)))
           (set-output! s out-set)
           (when (= status :live)
-            (doseq [child (or (refined-children sub-as inp-set)
+            (doseq [child (or (refined-children subsuming-as inp-set)
                               (map #(make-simple-fs-seq-subproblem inp-set %)
                                    (fs/child-seqs function-set inp-set)))]
               (connect-inner-child! s child))))
-        (reset! summary-pair summary/+worst-simple-summary+))
+        (reset! summary summary/+worst-simple-summary+))
       (summaries/summary-changed! s))   
     (refine-input- [s refined-input-set]
       (make-simple-atomic-subproblem s refined-input-set function-set)))))
@@ -244,8 +252,8 @@
            (if-let [sp2 @sp2-atom]
              (summary/+ (tree-summary sp1) (tree-summary sp2) s)
              (summary/liven (tree-summary sp1) s)))         
-         (can-evaluate- [s] false) 
-         (evaluate-     [s] (throw UnsupportedOperationException.))
+         (is-evaluable? [s] false) 
+         (evaluate!     [s] (throw (UnsupportedOperationException.)))
          (refine-input- [s refined-input-set] ;; TODO: fancier version?
            (assert @sp2-atom) 
            (make-left-pair-subproblem s nil (refine-input sp1 refined-input-set)
@@ -267,14 +275,12 @@
 (defn- make-right-pair-subproblem [sub-lps parent-lps sp1 sp2]
   (let [ret 
         (traits/reify-traits
-         [(simple-subproblem (gensym) (input-set sp1) ss)
-          summaries/simple-node
-          cache-trait]
+         [(simple-subproblem (gensym) (input-set sp1))]
 
          SubproblemImpl
          (inner-summary [s] (summary/+ (tree-summary sp1) (tree-summary sp2) s))         
-         (can-evaluate- [s] false)
-         (evaluate-     [s] (throw UnsupportedOperationException.))
+         (is-evaluable? [s] false)
+         (evaluate!     [s] (throw (UnsupportedOperationException.)))
          (refine-input- [s refined-input-set] ;; TODO: ???
            (make-left-pair-subproblem s nil (refine-input sp1 refined-input-set)
                                         #(refine-input (force sp2) %))))]

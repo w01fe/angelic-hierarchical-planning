@@ -36,7 +36,7 @@
 
 (defn merge-traits [& traits]
   (let [bindings  (vec (apply concat (map first traits)))]
-    (assert (apply distinct? (cons nil (take-nth 2 bindings))))
+    (util/assert-is (apply distinct? (cons nil (take-nth 2 bindings))))
     [bindings
      (reduce util/merge-disjoint {} (map second traits))]))
 
