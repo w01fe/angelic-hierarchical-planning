@@ -16,10 +16,10 @@
         method-args    (second method)
         method-body    (next (next method))
         all-args       (vec (concat method-args args))
-        fn-name        (gensym (str proto "-" method-name))
+        fn-name        (gensym (str (name proto) "-" method-name))
         scoped-fn-name (symbol ns (name fn-name))]
     (assert (apply distinct? (cons nil all-args)))
-    [(symbol ns (name proto))
+    [proto #_(symbol ns (name proto))
      `(~method-name ~method-args (~scoped-fn-name ~@all-args))
      `(defn ~fn-name ~all-args (loop ~(vec (interleave (next method-args) (next method-args))) ~@method-body))]))
 ;; Loop allows proper recur semantics ...
