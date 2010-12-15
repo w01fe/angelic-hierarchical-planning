@@ -55,12 +55,15 @@
 
 (declare tree-summary inner-summary)
 
-(traits/deftrait outer-or-summarizable [] [] [fancy-node cache-trait]
+(traits/deftrait outer-or-summarizable [inside] [] [fancy-node cache-trait]
   summaries/Summarizable
   (summarize [s]
     (swap! summaries/*summary-count* inc)
-    (summary/or-combine (map tree-summary (summaries/node-ordinary-children s)) s
-                        (summary/max-reward (apply summary/min (map tree-summary (summaries/node-subsuming-children s)))))))
+    (util/print-debug 5 "refresh-outer" inside (summaries/summary inside) (map tree-summary (summaries/node-ordinary-children s)))
+    (summary/or-combine
+     (cons (summaries/summary inside) (map tree-summary (summaries/node-ordinary-children s)))
+     s
+     (summary/max-reward (apply summary/min (map tree-summary (summaries/node-subsuming-children s)))))))
 
 
 
@@ -77,6 +80,7 @@
                      (summary/max-reward)
                      (min inner-bound))
           child-summary (summary/or-combine (map summaries/summary (summaries/node-ordinary-children s)) s bound)]
+      (util/print-debug 5 "refresh-inner" s inner bound child-summary)      
       (if bound-only?
         child-summary
         (summary/max child-summary inner)))))
@@ -115,6 +119,10 @@
   (set-output!       [s output-set] "Set the output of this subproblem, and notify.")
   (set-sub-watched!  [s sub] "Set a subsidiary that all watchers shoudl watch as well."))
 
+(defn sp-str [sp] (format  "#<Subproblem$%h %s>" (System/identityHashCode sp) (subproblem-name sp)) )
+(defmethod print-method angelic.search.implicit.fah_astar_eval2.Subproblem [ss o] (print-method (sp-str ss) o))
+
+
 (defn tree-summary [sp] (summaries/summary (tree-summarizer sp)))
 
 (defprotocol SubproblemImpl
@@ -147,13 +155,13 @@
      (when-let [os @output-set]
        (notify-output! w s os))
      (doseq [child (summaries/node-ordinary-children (tree-summarizer s))]
-       (when-not (identical? child s)
-        (notify-child! w s child))))
+       (notify-child! w s child)))
    (tree-summarizer [s]
      (or @tree-sum
          (reset! tree-sum
-           (doto (traits/reify-traits [outer-or-summarizable])
-             (summaries/connect! s false)))))   
+           (let [ts (traits/reify-traits [(outer-or-summarizable s)])]
+             (summaries/add-parent! s ts false)
+             ts))))   
    (refine-input    [s maybe-refined-input-set]
       (if (= input-set maybe-refined-input-set)
         s
@@ -196,7 +204,7 @@
   (when-let [sub-children (and sub-sp
                                (not (= :blocked (summary/status (summaries/summary sub-sp))))
                                (concat (summaries/node-ordinary-children sub-sp)
-                                       (summaries/node-ordinary-children (tree-summary sub-sp))))]
+                                       (summaries/node-ordinary-children (tree-summarizer sub-sp))))]
     (map #(refine-input- % inp-set) sub-children)))
 
 
@@ -205,8 +213,9 @@
   (add-watcher! child 
                 (reify SubproblemWatcher
                        (notify-output! [s child output-set]
-                                       (disconnect! sp child)
-                                       (add-child! sp child))         
+                          (disconnect! sp child)
+                          (summaries/connect! (tree-summarizer sp) child false)
+                          (summaries/summary-changed! sp))                       
                        (notify-child! [s child grandchild] nil))))
 
 
@@ -317,14 +326,19 @@
 (defn choose-leaf [verified-summary]
   (println verified-summary)
   (->> (summary/extract-leaf-seq verified-summary (comp empty? summary/children))
+;       util/prln
+;       (#(do (def *bads* %) %))
        (map summary/source)
+;       util/prln
+;       (#(do (def *bad* %) %))
        (filter can-evaluate?)
        rand-nth))
 
 
 (defn solve [root-subproblem]
+  (def *root* root-subproblem)
   (summary/solve
-   #(summaries/verified-summary root-subproblem summary/+worst-simple-summary+)
+   #(summaries/verified-summary (tree-summarizer root-subproblem) summary/+worst-simple-summary+)
    (comp evaluate! choose-leaf)
    #(let [n (first (subproblem-name %))] (when-not (= (first n) :noop) n))))
 
