@@ -10,28 +10,37 @@
       (cons [proto methods]
             (parse-protocols-and-method-pairs more)))))
 
-(defn rewrite-pm-pair [ns args [proto method]]
+(defn qualify-symbol [s]
+  (symbol
+   (name (ns-name (if-let [n (namespace s)]
+                    (or (find-ns (symbol n))
+                        (util/safe-get (ns-aliases *ns*) (symbol n)))
+                   *ns*)))
+   
+   (name s)))
+
+
+(defn rewrite-pm-pair [trait-name args [proto method]]
 ;  (println ns args proto method)
   (let [method-name    (first method)
         method-args    (second method)
         method-body    (next (next method))
         all-args       (vec (concat method-args args))
-        fn-name        (gensym (str (name proto) "-" method-name))
-        scoped-fn-name (symbol ns (name fn-name))]
+        fn-name        (gensym (str trait-name "-" (name proto) "-" method-name))
+        scoped-fn-name (symbol (name (ns-name *ns*)) (name fn-name))]
     (assert (apply distinct? (cons nil all-args)))
-    [proto #_(symbol ns (name proto))
+    [(qualify-symbol proto)
      `(~method-name ~method-args (~scoped-fn-name ~@all-args))
      `(defn ~fn-name ~all-args (loop ~(vec (interleave (next method-args) (next method-args))) ~@method-body))]))
 ;; Loop allows proper recur semantics ...
 
-(defn- parse-protocols-and-methods [args specs]
+(defn- parse-protocols-and-methods [trait-name args specs]
   (let [methods-by-proto (parse-protocols-and-method-pairs specs)
-        ns               (name (ns-name *ns*))
         pm-pairs         (for [[p ms] methods-by-proto, m ms] [p m])
 ;        _ (println pm-pairs)
-        pm-triples       (map #(rewrite-pm-pair ns args %) pm-pairs)]
+        pm-triples       (map #(rewrite-pm-pair trait-name args %) pm-pairs)]
     (assert (apply distinct? (cons nil (map first methods-by-proto))))
-    [(map #(nth % 2) pm-triples)
+    [(doall (map #(nth % 2) pm-triples))
      (util/map-vals #(map second %) (group-by first pm-triples))]))
 
 (defn merge-traits [& traits]
@@ -51,7 +60,7 @@
 ;; TODO: forn ow, args may be multiple evaluated?
 (defmacro deftrait [name args state-bindings child-traits & protocols-and-methods]
   (let [[method-fn-defs protocol-method-bodies]
-        (parse-protocols-and-methods (concat args (take-nth 2 state-bindings)) protocols-and-methods)]
+        (parse-protocols-and-methods name (concat args (take-nth 2 state-bindings)) protocols-and-methods)]
 ;    (println method-fn-defs "\n" protocol-method-bodies)
     `(do (defn ~name ~args
            (apply merge-traits
@@ -71,7 +80,7 @@
         ~@specs))))
 
 
-(do #_comment         
+(comment         
 
  (defprotocol P2
    (p21 [x y])

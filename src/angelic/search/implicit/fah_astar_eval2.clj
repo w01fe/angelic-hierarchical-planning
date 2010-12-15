@@ -147,7 +147,8 @@
      (when-let [os @output-set]
        (notify-output! w s os))
      (doseq [child (summaries/node-ordinary-children (tree-summarizer s))]
-       (notify-child! w s child)))
+       (when-not (identical? child s)
+        (notify-child! w s child))))
    (tree-summarizer [s]
      (or @tree-sum
          (reset! tree-sum
@@ -165,12 +166,12 @@
      (doseq [w @watchers] (notify-child! w s child)))
    (set-output!     [s o-s]
      (assert (not @output-set))
-     (swap! output-set o-s)
+     (reset! output-set o-s)
      (doseq [w @watchers]
        (notify-output! w s o-s)))
    (set-sub-watched! [s sub]
      (assert (not @sub-watched))
-     (swap! sub-watched sub)
+     (reset! sub-watched sub)
      (doseq [w @watchers]
        (add-watcher! sub w))))
 
@@ -238,8 +239,6 @@
 
 
 ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;; Seq Subproblem ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
-
-(declare make-simple-pair-subproblem)
 
 (defn- make-left-pair-subproblem [sub-lps parent-lps sp1 sp2-fn]
   (let [sp2-atom (atom nil) 
@@ -316,6 +315,7 @@
 ;; Do the latter for now.
 
 (defn choose-leaf [verified-summary]
+  (println verified-summary)
   (->> (summary/extract-leaf-seq verified-summary (comp empty? summary/children))
        (map summary/source)
        (filter can-evaluate?)
@@ -346,11 +346,4 @@
 
 
 
-
-;; How should Or-summarize work?  There's no clear expand.
-;; Instead, there should be two summaries -- local, and full.
-;; Children live in local until they are evaluated, then they move to full.
-;; Does this suggest two subproblems -- inner and outer ?
-
-;; Both atomics and seqs have an OutputCollector tree.
 

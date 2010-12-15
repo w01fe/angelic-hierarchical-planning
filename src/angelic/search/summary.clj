@@ -186,7 +186,7 @@
       (cond (solved? summary) (do (def *last-solution* summary)
                                   (extract-solution-pair summary action-extractor))
             (= (max-reward summary) Double/NEGATIVE_INFINITY) nil
-            :else (do (expand!-fn (source summary))
+            :else (do (expand!-fn summary)
                       (recur))))))
 
 ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;; Misc. Helpers ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;

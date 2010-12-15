@@ -66,5 +66,5 @@
 (defn solve [root-subproblem]
   (summary/solve
    #(summaries/extract-verified-unexpanded-leaf root-subproblem)
-   expand!
+   (comp expand! summary/source)
    #(let [n (summaries/label %)] (when-not (= (first n) :noop) n))))

@@ -28,13 +28,13 @@
 
 (declare make-simple-fs-seq-subproblem)
 
-(defn refined-keys [sub-sp inp-set]
+(defn- refined-keys [sub-sp inp-set]
   (when-let [sub-child-keys (and sub-sp (summaries/expanded? sub-sp) (seq (subproblem/child-keys sub-sp)))]
     (util/for-map [k sub-child-keys]
       k (subproblem/refine-input (subproblem/get-child sub-sp k) inp-set))))
 
 
-(defn make-simple-atomic-subproblem [sub-as inp-set function-set]
+(defn- make-simple-atomic-subproblem [sub-as inp-set function-set]
   (when-let [[out-set reward] (fs/apply-opt function-set inp-set)]
     (util/print-debug 3 "Making subproblem" (fs/fs-name function-set)
                       (fs/status function-set inp-set) reward)
@@ -69,18 +69,18 @@
                       (make-simple-pair-subproblem sub-ps sp1))))
 
 ;; This is separate so we can handle child keys from other sps.
-(defn simple-pair-child [sp1 sp2 child-key]
+(defn- simple-pair-child [sp1 sp2 child-key]
   (let [[which sub-key] child-key]
     (case which
       ::1 (ccc/-?> (subproblem/get-child sp1 sub-key) ((partial make-aligned-simple-pair-subproblem nil) sp2))
       ::2 (ccc/-?>> (subproblem/get-child sp2 sub-key) (make-simple-pair-subproblem nil sp1)))))
 
 
-(defn force-child-keys [sp]
+(defn- force-child-keys [sp]
   (when-not (summaries/expanded? sp) (subproblem/expand! sp))
   (subproblem/child-keys sp))
 
-(defn make-simple-pair-subproblem [sub-ps sp1 sp2]
+(defn- make-simple-pair-subproblem [sub-ps sp1 sp2]
   (let [seq-sum (traits/reify-traits [(summaries/fixed-node [sp1 sp2]) cache-trait
                                       (summaries/expanding-pair-summarizable sp1 sp2)])
         ret 
@@ -104,7 +104,7 @@
     ret))
 
 
-(defn make-simple-fs-seq-subproblem [inp-set [first-fs & rest-fs]]
+(defn- make-simple-fs-seq-subproblem [inp-set [first-fs & rest-fs]]
   (util/print-debug 2 "Making seq!:" (map fs/fs-name (cons first-fs rest-fs)))
   (when-let [first-sp (make-simple-atomic-subproblem nil inp-set first-fs)]
     (if (empty? rest-fs)
