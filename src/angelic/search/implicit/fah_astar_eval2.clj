@@ -14,77 +14,6 @@
 ;; allowing full utilizatino of subsumption, plus is more natural in a decomposed
 ;; setting where we also have to "evaluate" existing actions in new contexts.
 
-;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
-;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;; Summarizers ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
-;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
-
-#_ (def  ^{:private true} cache-trait summaries/uncached-summarizer-node)
- (def ^{:private true} cache-trait summaries/eager-cached-summarizer-node)
-#_ (def ^{:private true} cache-trait summaries/less-eager-cached-summarizer-node)
-#_ (def ^{:private true} cache-trait summaries/lazy-cached-summarizer-node)
-#_ (def ^{:private true} cache-trait summaries/pseudo-cached-summarizer-node)
-
-
-(defprotocol FancyNode
-  (remove-child! [s child])
-  (remove-parent! [s parent]))
-
-(defn disconnect! [parent child]
-  (remove-child! parent child)
-  (remove-parent! child parent))
-
-
-(traits/deftrait fancy-node [] [children (atom nil) parents  (atom nil)] []
-  summaries/Node
-  (node-ordinary-children [n] (map second (remove first @children)))
-  (node-subsuming-children [n] (map second (filter first @children)))
-  (node-ordinary-parents [n] (map second (remove first @parents)))
-  (node-subsumed-parents [n] (map second (filter first @parents)))    
-  (add-child!    [n child subsuming?] (swap! children conj [subsuming? child]))
-  (add-parent!   [n parent subsuming?] (swap! parents conj [subsuming? parent]))
-
-  FancyNode
-  (remove-child! [s child]
-    (let [new-children (remove #(identical? (second %) child) @children)]
-      (assert (= (count new-children) (dec (count @children))))
-      (reset! children new-children)))
-  (remove-parent! [s parent]
-    (let [new-parents (remove #(identical? (second %) parent) @parents)]
-      (assert (= (count new-parents) (dec (count @parents))))
-      (reset! parents new-parents))))
-
-(declare tree-summary inner-summary)
-
-(traits/deftrait outer-or-summarizable [inside] [] [fancy-node cache-trait]
-  summaries/Summarizable
-  (summarize [s]
-    (swap! summaries/*summary-count* inc)
-    (util/print-debug 5 "refresh-outer" inside (summaries/summary inside) (map tree-summary (summaries/node-ordinary-children s)))
-    (summary/or-combine
-     (cons (summaries/summary inside) (map tree-summary (summaries/node-ordinary-children s)))
-     s
-     (summary/max-reward (apply summary/min (map tree-summary (summaries/node-subsuming-children s)))))))
-
-
-
-(traits/deftrait inner-or-summarizable [] [] [fancy-node cache-trait]
-  summaries/Summarizable
-  (summarize [s]
-    (swap! summaries/*summary-count* inc)
-    (let [inner (inner-summary s)
-          bound-only? (number? inner)
-          inner-bound (if bound-only? inner (summary/max-reward inner))
-          bound (->> (summaries/node-subsuming-children s)
-                     (map summaries/summary )
-                     (apply summary/min)
-                     (summary/max-reward)
-                     (min inner-bound))
-          child-summary (summary/or-combine (map summaries/summary (summaries/node-ordinary-children s)) s bound)]
-      (util/print-debug 5 "refresh-inner" s inner bound child-summary)      
-      (if bound-only?
-        child-summary
-        (summary/max child-summary inner)))))
-
 
 
 ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
@@ -96,101 +25,172 @@
 
 ;; Here, get-child and refine-input always return subproblems,
 ;; but output-set can return "nil"
-;; get-child and refine-input are allow to return nil 
+;; get-child and refine-input are allow to return nil
 
-(defprotocol SubproblemWatcher
-  (notify-output! [w s output-set]       "s has direct output.  (Other args?). ")
-  (notify-child!  [w s child] "s has child output.  (Other args?). "))
 
-;; Notify on child created, or evaluated ? 
+(defprotocol OutputWatched
+  (add-watcher!   [s w] "Add a watcher to be notified of all outputs to this.
+                         A watcher is just a fn of [watched-sp/stub new-subproblem]."))
 
+(defprotocol Evaluable
+  (evaluate!      [s]))
+
+(defn can-evaluate? [s]
+  (satisfies? Evaluable s))
+
+;; Subproblem must also implement SubproblemStub.
 (defprotocol Subproblem
-  ;; External
   (subproblem-name   [s])
   (input-set         [s])
-  (can-evaluate?     [s] "Is this problem evaluable and not already evaluated?")  
-  (add-watcher!      [s ^SubproblemWatcher w] "Add a watcher to be notified of outputs to this, and refinements thereof.
-                                   Notifies immediately if already evaluated.  Never notifies for failure.")
-  (tree-summarizer   [s] "Summarizer that includes children.")
-  (refine-input      [s maybe-refined-input-set])
+  (output-set        [s])
+  (tree-summarizer   [s] "Summarizer that includes children."))
 
-  ;; Internal interface
-  (add-child!        [s child]  "Add a child to this subproblem, and notify")
-  (set-output!       [s output-set] "Set the output of this subproblem, and notify.")
-  (set-sub-watched!  [s sub] "Set a subsidiary that all watchers shoudl watch as well."))
+
+(comment ; TODO: refine-input must go somewhere
+  (refine-input      [s maybe-refined-input-set])  
+  (refine-input-   [s refined-input-set] "must be a strict subset of input-set."))
+
 
 (defn sp-str [sp] (format  "#<Subproblem$%h %s>" (System/identityHashCode sp) (subproblem-name sp)) )
 (defmethod print-method angelic.search.implicit.fah_astar_eval2.Subproblem [ss o] (print-method (sp-str ss) o))
 
 
-(defn tree-summary [sp] (summaries/summary (tree-summarizer sp)))
+;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
+;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;; Summarizers ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
+;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
 
-(defprotocol SubproblemImpl
-  ;; External
-  (evaluate!      [s] "return [output-set reward] or nil. output-pair or nil, if
-                        dead / more eval needed.  Update summary to match as needed.")
+;; Outer summary (on subproblem itself) covers everything -- "semantic" view.
+;; Inner summary (accesed by inner-summarizer) covers self and stubs.
+;; Self-summary is just self, nothing else.
 
-  ;; Internal
-  (is-evaluable?  [s] "Is this subproblem of a type that can be evaluated?")
-  (inner-summary [s]  "Return summary or just numeric bound -- not including any children")
-  (refine-input-   [s refined-input-set] "must be a strict subset of input-set."))
+;; Either use tree, or watch tere and use inner.
+;; Who actually uses tree?  Only top-level ? !
+;; TODO: add removal later ? 
 
 
-;; Output-pair is [output-set init-summarizable]
-(traits/deftrait simple-subproblem [name input-set]
-  [output-set (atom nil) 
-   watchers   (atom nil)
-   tree-sum   (atom nil)
-   sub-watched (atom nil)]
-  [inner-or-summarizable]
 
-  Subproblem
-   (subproblem-name [s] name)
-   (input-set       [s] input-set)
-   (can-evaluate?   [s] (and (not @output-set) (is-evaluable? s)))
-   (add-watcher! [s w]
-     (swap! watchers conj w)
-     (when-let [sub @sub-watched]
-       (add-watcher! sub w))
-     (when-let [os @output-set]
-       (notify-output! w s os))
-     (doseq [child (summaries/node-ordinary-children (tree-summarizer s))]
-       (notify-child! w s child)))
-   (tree-summarizer [s]
-     (or @tree-sum
-         (reset! tree-sum
-           (let [ts (traits/reify-traits [(outer-or-summarizable s)])]
-             (summaries/add-parent! s ts false)
-             ts))))   
-   (refine-input    [s maybe-refined-input-set]
+#_ (def  ^{:private true} cache-trait summaries/uncached-summarizer-node)
+ (def ^{:private true} cache-trait summaries/eager-cached-summarizer-node)
+#_ (def ^{:private true} cache-trait summaries/less-eager-cached-summarizer-node)
+#_ (def ^{:private true} cache-trait summaries/lazy-cached-summarizer-node)
+#_ (def ^{:private true} cache-trait summaries/pseudo-cached-summarizer-node)
+
+
+
+
+;; Expects to be a parent of inside, but not have inside as a child.
+;; All children are tree summarizers.
+;; Non-subsuming children must be added by calling connect-child-sp!
+
+(defprotocol SimpleWatched
+  (add-output! [sw o])
+  (add-forward! [sw child-sw]))
+
+(traits/deftrait simple-watched
+  [] [watchers (atom nil) outputs (atom nil) forwards (atom nil)] []
+  OutputWatched
+  (add-watcher! [sw w]
+    (swap! watchers conj w)
+    (doseq [o @outputs] (w sw o))
+    (doseq [f @forwards] (add-watcher! f w)))
+  
+  SimpleWatched
+  (add-output! [sw o]
+    (swap! outputs conj o)
+    (doseq [w @watchers] (w sw o)))
+  (add-forward! [sw child-sw]
+    (swap! forwards conj child-sw)
+    (doseq [w @watchers] (add-watcher! child-sw w))))
+
+
+
+(defprotocol TreeSummarizer
+  (connect-child-sp! [ts child-sp])
+  (get-inner-sp [ts]))
+
+
+(defn make-tree-summarizer [inner-sp]
+  (let [watchers (atom nil)]
+   (traits/reify-traits
+    [summaries/simple-node cache-trait]
+
+    TreeSummarizer
+    (get-inner-sp [ts] inner-sp)
+    (connect-child-sp! [ts child-sp]
+      (summaries/connect! ts (tree-summarizer child-sp) false)
+      (summaries/summary-changed! ts)
+      (doseq [w @watchers]
+        (w inner-sp child-sp)))
+
+    OutputWatched
+    (add-watcher! [s w]
+      (swap! watchers conj w)
+      (doseq [child (summaries/node-ordinary-children s)]
+        (w inner-sp (get-inner-sp child))))
+    
+    summaries/Summarizable
+    (summarize [s]
+      (swap! summaries/*summary-count* inc)
+;;    (util/print-debug 5 "refresh-outer" inside (summaries/summary inside) (summaries/node-ordinary-children s))
+      (summary/or-combine
+       (cons (summaries/summary inner-sp) (map summaries/summary (summaries/node-ordinary-children s)))
+       s
+       (summary/max-reward (apply summary/min (map summaries/summary (summaries/node-subsuming-children s)))))))))
+
+
+
+;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
+;;;;;;;;;;;;;;;;;;;;;;;;;;;;;; Subproblem Traits ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
+;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
+
+
+(comment (defn tree-summary [sp] (summaries/summary (tree-summarizer sp))))
+
+(defn persistent-watcher [sp w]
+  (fn p-watch [watched child]
+    (add-watcher! (tree-summarizer child) p-watch)
+    (w watched child)))
+
+
+(defn make-simple-subproblem [name inp-set out-set summary-fn inner-children copy-children]
+  (let [ts-atom (atom nil)
+        ret (traits/reify-traits [cache-trait summaries/simple-node]
+             summaries/Summarizable (summarize [s] (summary-fn s))
+             Subproblem             (subproblem-name [s] name)
+                                    (input-set       [s] input-set)
+                                    (output-set       [s] output-set)
+                                    (tree-summarizer [s] @ts-atom)
+             OutputWatched          (add-watcher! [s w] (add-watcher! @ts-atom w)))
+        ts  (make-tree-summarizer ret)]
+    ;; Set up tree summarizer
+    (summaries/add-parent! ret ts false)
+    (reset! ts-atom ts)
+
+    ;; Set up summary children
+    (doseq [child inner-children]
+      (summaries/connect! ret child false))
+
+    ;; Set up watching for outputs of children, to copy to self.
+    (doseq [child copy-children]
+      (add-watcher! child (persistent-watcher (fn [_ out-sp] (connect-child-sp! ts out-sp)))))))
+
+
+
+(comment
+     (refine-input    [s maybe-refined-input-set]
       (if (= input-set maybe-refined-input-set)
         s
-        (when-let [refined (refine-input- s maybe-refined-input-set)]
-          (summaries/connect! s refined true)
-          refined)))
+        (let [refined (refine-input- s maybe-refined-input-set)]
+          (assert refined)
+          (summaries/connect! (tree-summarizer s) (tree-summarizer refined) true)
+          refined))))
 
-   (add-child!      [s child]                   
-     (summaries/connect! (tree-summarizer s) child false)
-     (doseq [w @watchers] (notify-child! w s child)))
-   (set-output!     [s o-s]
-     (assert (not @output-set))
-     (reset! output-set o-s)
-     (doseq [w @watchers]
-       (notify-output! w s o-s)))
-   (set-sub-watched! [s sub]
-     (assert (not @sub-watched))
-     (reset! sub-watched sub)
-     (doseq [w @watchers]
-       (add-watcher! sub w))))
-
-
-(def *subproblem-cache* (HashMap.))
 
 ;;(defn get-subproblem ??)
 
   
 ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
-;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;; Implicit DAH A* ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
+;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;; Implicit FAH A* ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
 ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
 
 ;; TODO: "guarding" by supers
@@ -198,117 +198,139 @@
 ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;; Atomic Subproblem ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
 
 
-(declare make-simple-fs-seq-subproblem)
+(declare make-fs-seq-stub)
 
-(defn- refined-children [sub-sp inp-set]
-  (when-let [sub-children (and sub-sp
-                               (not (= :blocked (summary/status (summaries/summary sub-sp))))
-                               (concat (summaries/node-ordinary-children sub-sp)
-                                       (summaries/node-ordinary-children (tree-summarizer sub-sp))))]
-    (map #(refine-input- % inp-set) sub-children)))
-
-
-(defn connect-inner-child! [sp child]
-  (summaries/connect! sp child false)
-  (add-watcher! child 
-                (reify SubproblemWatcher
-                       (notify-output! [s child output-set]
-                          (disconnect! sp child)
-                          (summaries/connect! (tree-summarizer sp) child false)
-                          (summaries/summary-changed! sp))                       
-                       (notify-child! [s child grandchild] nil))))
+(comment
+ (defn- refined-children [sub-sp inp-set]
+   (when-let [sub-children (and sub-sp
+                                (not (= :blocked (summary/status (summaries/summary sub-sp))))
+                                (concat (summaries/node-ordinary-children sub-sp)
+                                        (summaries/node-ordinary-children (tree-summarizer sub-sp))))]
+     (map #(refine-input- % inp-set) sub-children))))
 
 
 ;; TODO: is leaving blocked alive the right thing ?
 ;; TODO: assuming consistency and evaluation s.t. no bounding is necessary. Otherwise, downwards would be better anyway?
-;; TODO: multi-step eval like earlier version?
-(defn- make-simple-atomic-subproblem [subsuming-as inp-set function-set]
-  (let [summary (atom nil)]
-   (traits/reify-traits
-    [(simple-subproblem [(fs/fs-name function-set) inp-set] inp-set)]
+;; TODO: do something with stub, refine-input.
+(defn- make-atomic-subproblem [stub inp-set function-set out-set reward status]
+  (let [children (when (= status :live)
+                   (or #_ (refined-children subsuming-as inp-set) ;; TODO!!
+                       (map #(make-fs-seq-stub inp-set %)
+                            (fs/child-seqs function-set inp-set))))]
+    (make-simple-subproblem
+     [::Atomic (fs/fs-name function-set) inp-set]
+     inp-set out-set
+     (if (= status :live)
+       (fn [s]
+         (assert (empty? (summaries/node-subsuming-children s)))
+         (assert (= (count children) (count (summaries/node-ordinary-children s))))
+         (summary/or-combine (map summaries/summary children) s reward))
+       (fn [s] (summary/make-simple-summary reward status s)))     
+     children children)))
 
-    SubproblemImpl
-    (inner-summary [s] (or @summary (summary/make-simple-summary 0 :live s)))
-    (is-evaluable? [s] true)
-    (evaluate! [s]
-      (if-let [[out-set reward] (fs/apply-opt function-set inp-set)]
-        (let [status (fs/status function-set inp-set)]
-          (reset! summary (if (= status :live) reward (summary/make-simple-summary reward status s)))
-          (set-output! s out-set)
-          (when (= status :live)
-            (doseq [child (or (refined-children subsuming-as inp-set)
-                              (map #(make-simple-fs-seq-subproblem inp-set %)
-                                   (fs/child-seqs function-set inp-set)))]
-              (connect-inner-child! s child))))
-        (reset! summary summary/+worst-simple-summary+))
-      (summaries/summary-changed! s))   
-    (refine-input- [s refined-input-set]
-      (make-simple-atomic-subproblem s refined-input-set function-set)))))
+
+(comment  (refine-input- [s refined-input-set]
+                   (make-simple-atomic-subproblem s refined-input-set function-set)))
+
+;; Needs a watched, with full subproblem cache, tied to output.
+;; Summary should initially be 0 :live, then worst after eval.
+(defn- make-atomic-stub [subsuming-as inp-set function-set]
+  (let [state (atom :ready)] ;; set to [out-set reward] after first eval, then :go after second.
+    (traits/reify-traits [simple-watched]
+     summaries/Summarizable
+     (summarize [s]
+       (cond (= :ready @state) (summary/make-live-simple-summary 0 s)
+             (= :go    @state) summary/+worst-simple-summary+
+             :else             (summary/make-live-simple-summary (second @state) s)))   
+     Evaluable
+     (evaluate! [s]
+       (assert (not (= :go @state)))
+       (let [ready?                  (= :ready @state)]
+         (if-let [[out-set reward :as op] (if ready? (fs/apply-opt function-set inp-set) @state)]
+           (let [status (if ready? (fs/status function-set inp-set)   :live)]
+             (if (or (not ready?) (not (= status :live)))
+               (do (add-output! s (make-atomic-subproblem s inp-set function-set out-set reward :live))
+                   (reset! state :go))
+               (reset! state op)))
+           (reset! state :go)) ;; Kill it
+         (summaries/summary-changed! s))))))
 
 
 
 ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;; Seq Subproblem ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
 
-(defn- make-left-pair-subproblem [sub-lps parent-lps sp1 sp2-fn]
-  (let [sp2-atom (atom nil) 
-        ret 
-        (traits/reify-traits
-         [(simple-subproblem (gensym) (input-set sp1))]
 
-         SubproblemImpl
-         (inner-summary [s]
-           (if-let [sp2 @sp2-atom]
-             (summary/+ (tree-summary sp1) (tree-summary sp2) s)
-             (summary/liven (tree-summary sp1) s)))         
-         (is-evaluable? [s] false) 
-         (evaluate!     [s] (throw (UnsupportedOperationException.)))
-         (refine-input- [s refined-input-set] ;; TODO: fancier version?
-           (assert @sp2-atom) 
-           (make-left-pair-subproblem s nil (refine-input sp1 refined-input-set)
-                                      #(refine-input @sp2-atom %))))]
-    (add-watcher! sp1
-     (reify SubproblemWatcher
-            (notify-output! [w child output-set]
-              (let [sp2 (sp2-fn output-set)]
-                (set-sub-watched! ret sp2)
-                (summaries/add-parent! sp2 ret false) ;;TODO: connect up sp2.
-                (summaries/summary-changed! ret)
-                (reset! sp2-atom sp2)))
-            (notify-child! [w child grandchild]
-              (connect-inner-child! ret (make-left-pair-subproblem nil #_ ::TODO! ret child sp2-fn)))))
-    (summaries/add-parent! sp1 ret false) 
+
+;; TODO: do something with subsuming, parent, stub, refine-input.
+(defn- make-right-subproblem [stub sp1 sp2]
+  (make-simple-subproblem
+   [::Pair (subproblem-name sp1) (subproblem-name sp2)]
+   (input-set sp1) (output-set sp2)
+   (fn [s]
+     (assert (empty? (summaries/node-subsuming-children s)))
+     (assert (= 2 (count (summaries/node-ordinary-children s))))
+     (summary/+ (summaries/summary sp1) (summaries/summary sp2) s))
+   [sp1 sp2] [sp2]))
+
+
+;; Right stub should only ever has one watcher -- left stub.
+(defn- make-right-stub [left-sp right-stub]
+  (let [ret (traits/reify-traits [simple-watched cache-trait summaries/simple-node]  
+              summaries/Summarizable
+              (summarize [s] (summary/+ (summaries/summary left-sp) (summaries/summary right-stub) s)))]
+    (add-watcher! right-stub (fn [_ o] (add-output! ret (make-right-subproblem ret left-sp o))))
+    (summaries/connect! ret left-sp false)
+    (summaries/connect! ret left-sp true)    
     ret))
 
 
-(defn- make-right-pair-subproblem [sub-lps parent-lps sp1 sp2]
-  (let [ret 
-        (traits/reify-traits
-         [(simple-subproblem (gensym) (input-set sp1))]
 
-         SubproblemImpl
-         (inner-summary [s] (summary/+ (tree-summary sp1) (tree-summary sp2) s))         
-         (is-evaluable? [s] false)
-         (evaluate!     [s] (throw (UnsupportedOperationException.)))
-         (refine-input- [s refined-input-set] ;; TODO: ???
-           (make-left-pair-subproblem s nil (refine-input sp1 refined-input-set)
-                                        #(refine-input (force sp2) %))))]
-    (add-watcher! sp2
-     (reify SubproblemWatcher
-            (notify-output! [w child output-set]
-              (set-output! ret output-set))
-            (notify-child! [w child grandchild]
-              (connect-inner-child! ret make-right-pair-subproblem ::TODO?? ret sp1 child))))
-    
-    (summaries/add-parent! sp1 ret false)
-    (summaries/add-parent! sp2 ret false)    
+;; TODO: should hold refined outputs until right is evaluated.
+;; Basic idea: this is only thing watching sp1's output.
+(defn- make-middle-stub [left-sp right-stub-fn]
+  (let [ret (traits/reify-traits [simple-watched]
+              summaries/Summarizable
+              (summarize [s]
+                (summary/or-combine
+                 (map summaries/summary (summaries/node-ordinary-children s))
+                 s Double/POSITIVE_INFINITY)))
+        add! (fn [c] (summaries/connect! ret c false) (add-forward! ret c))]
+    (add! (right-stub-fn (output-set left-sp)))
+    (add-watcher! left-sp ;; Note: non-persistent
+      (fn [_ left-child]
+        (add! (make-middle-stub left-child right-stub-fn))))
     ret))
 
-(defn- make-simple-fs-seq-subproblem [inp-set [first-fs & rest-fs]]
-  (let [first-sp (make-simple-atomic-subproblem nil inp-set first-fs)]
+
+;; Stub to wait for left to be evaluated
+(defn- make-left-stub [left-stub right-stub-fn]
+  (let [mid (atom nil) 
+        ret (traits/reify-traits [simple-watched]
+              summaries/Summarizable
+              (summarize [s]
+                (summary/re-source 
+                 (summaries/summary (or @mid left-stub))
+                 s
+                 Double/POSITIVE_INFINITY
+                 (if @mid :solved :live))))]
+    (add-watcher! left-stub
+      (fn [_ l]
+        (assert (nil? @mid))        
+        (add-forward! ret (reset! mid (make-middle-stub l (right-stub-fn (output-set l)))))))
+    ret))
+
+
+(defn- make-fs-seq-stub [inp-set [first-fs & rest-fs]]
+  (let [first-stub (make-atomic-stub nil inp-set first-fs)]
     (if (empty? rest-fs)
-      first-sp
-      (make-left-pair-subproblem nil nil first-sp #(make-simple-fs-seq-subproblem % rest-fs)))))
+      first-stub
+      (make-left-stub first-stub #(make-fs-seq-stub % rest-fs)))))
 
+
+(comment
+  (refine-input- [s refined-input-set] ;; TODO: ???
+                 (make-left-pair-subproblem s nil (refine-input sp1 refined-input-set)
+                                            #(refine-input (force sp2) %))))
 
 ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;; Driver ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
 
@@ -347,6 +369,24 @@
        (apply make-simple-atomic-subproblem nil)
        solve))
 
+
+
+
+
+
+
+
+
+
+
+
+
+
+;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
+;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;; Graveyard ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
+;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
+
+
 (comment
   (defn pseudo-solve [root-sp]
    (summaries/pseudo-solve root-sp summary/+worst-simple-summary+ (complement summaries/expanded?)
@@ -361,3 +401,34 @@
 
 
 
+(comment
+  
+
+(defprotocol FancyNode
+  (remove-child! [s child])
+  (remove-parent! [s parent]))
+
+(defn disconnect! [parent child]
+  (remove-child! parent child)
+  (remove-parent! child parent))
+
+
+(traits/deftrait fancy-node [] [children (atom nil) parents  (atom nil)] []
+  summaries/Node
+  (node-ordinary-children [n] (map second (remove first @children)))
+  (node-subsuming-children [n] (map second (filter first @children)))
+  (node-ordinary-parents [n] (map second (remove first @parents)))
+  (node-subsumed-parents [n] (map second (filter first @parents)))    
+  (add-child!    [n child subsuming?] (swap! children conj [subsuming? child]))
+  (add-parent!   [n parent subsuming?] (swap! parents conj [subsuming? parent]))
+
+  FancyNode
+  (remove-child! [s child]
+    (let [new-children (remove #(identical? (second %) child) @children)]
+      (assert (= (count new-children) (dec (count @children))))
+      (reset! children new-children)))
+  (remove-parent! [s parent]
+    (let [new-parents (remove #(identical? (second %) parent) @parents)]
+      (assert (= (count new-parents) (dec (count @parents))))
+      (reset! parents new-parents))))
+)
