@@ -129,7 +129,7 @@
     (when-not (and old (summary/solved? old)) 
      (when old
        ;;      (util/assert-is (not (summary/solved? old)) "%s" [(def *bad* [old new])])
-       (util/assert-is (<= (summary/max-reward new) (summary/max-reward old)) "%s" [(def *bad* n)])
+;       (util/assert-is (<= (summary/max-reward new) (summary/max-reward old)) "%s" [(def *bad* n)])
        ;;      (println (= old new) (summary/eq old new) (summary/>= old new) old new)
        )
      (reset! cache-atom new)

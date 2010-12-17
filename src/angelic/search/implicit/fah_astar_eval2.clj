@@ -98,32 +98,29 @@
 
 
 (defn make-tree-summarizer [inner-sp]
-  (let [watchers (atom nil)]
-   (traits/reify-traits
-    [summaries/simple-node cache-trait]
+  (traits/reify-traits
+   [summaries/simple-node cache-trait simple-watched]
 
-    TreeSummarizer
-    (get-inner-sp [ts] inner-sp)
-    (connect-child-sp! [ts child-sp]
-      (summaries/connect! ts (tree-summarizer child-sp) false)
-      (summaries/summary-changed! ts)
-      (doseq [w @watchers]
-        (w inner-sp child-sp)))
-
-    OutputWatched
-    (add-watcher! [s w]
-      (swap! watchers conj w)
-      (doseq [child (summaries/node-ordinary-children s)]
-        (w inner-sp (get-inner-sp child))))
+   TreeSummarizer
+   (get-inner-sp [ts] inner-sp)
+   (connect-child-sp! [ts child-sp]
+;                      (println "CC" inner-sp child-sp)
+     (summaries/connect! ts (tree-summarizer child-sp) false)
+     (add-output! ts child-sp)
+     (add-forward! ts child-sp)
+     (summaries/summary-changed! ts))
     
-    summaries/Summarizable
-    (summarize [s]
-      (swap! summaries/*summary-count* inc)
-;;    (util/print-debug 5 "refresh-outer" inside (summaries/summary inside) (summaries/node-ordinary-children s))
-      (summary/or-combine
-       (cons (summaries/summary inner-sp) (map summaries/summary (summaries/node-ordinary-children s)))
-       s
-       (summary/max-reward (apply summary/min (map summaries/summary (summaries/node-subsuming-children s)))))))))
+   summaries/Summarizable
+   (summarize [s]
+     (swap! summaries/*summary-count* inc)
+     ;;    (util/print-debug 5 "refresh-outer" inside (summaries/summary inside) (summaries/node-ordinary-children s))
+     (summary/or-combine
+      (cons (summaries/summary inner-sp) (map summaries/summary (summaries/node-ordinary-children s)))
+      s
+      (summary/max-reward (apply summary/min (map summaries/summary (summaries/node-subsuming-children s))))))))
+
+(defn ts-str [sp] (format  "#<TreeSummarizer$%h %s>" (System/identityHashCode sp) (subproblem-name (get-inner-sp sp))) )
+(defmethod print-method angelic.search.implicit.fah_astar_eval2.TreeSummarizer [ss o] (print-method (ts-str ss) o))
 
 
 
@@ -134,13 +131,14 @@
 
 (comment (defn tree-summary [sp] (summaries/summary (tree-summarizer sp))))
 
-(defn persistent-watcher [w]
-  (fn p-watch [watched child]
-    (add-watcher! (tree-summarizer child) p-watch)
-    (w watched child)))
+(comment
+ (defn persistent-watcher [w]
+   (fn p-watch [watched child]
+     (add-watcher! (tree-summarizer child) p-watch)
+     (w watched child))))
 
 
-(defn make-simple-subproblem [name inp-set out-set summary-fn inner-children copy-children]
+(defn make-simple-subproblem [name inp-set out-set summary-fn inner-children copy-children child-transform]
   (let [ts-atom (atom nil)
         ret (traits/reify-traits [cache-trait summaries/simple-node]
              summaries/Summarizable (summarize [s] (summary-fn s))
@@ -160,7 +158,7 @@
 
     ;; Set up watching for outputs of children, to copy to self.
     (doseq [child copy-children]
-      (add-watcher! child (persistent-watcher (fn [_ out-sp] (connect-child-sp! ts out-sp)))))
+      (add-watcher! child (fn [_ out-sp] #_(println "TTT" out-sp) (connect-child-sp! ts (child-transform out-sp)))))
 
     ret))
 
@@ -217,7 +215,7 @@
          (assert (= (count children) (count (summaries/node-ordinary-children s))))
          (summary/or-combine (map summaries/summary children) s reward))
        (fn [s] (summary/make-simple-summary reward status s)))     
-     children children)))
+     children children identity #_ #(util/prog1 % (println "AS")))))
 
 
 (comment  (refine-input- [s refined-input-set]
@@ -226,7 +224,7 @@
 ;; Needs a watched, with full subproblem cache, tied to output.
 ;; Summary should initially be 0 :live, then worst after eval.
 (defn- make-atomic-stub [subsuming-as inp-set function-set]
-  (println "Making stub " inp-set (fs/fs-name function-set))
+;  (println "Making stub " inp-set (fs/fs-name function-set))
   (let [state (atom :ready)] ;; set to [out-set reward] after first eval, then :go after second.
     (traits/reify-traits [simple-watched cache-trait (summaries/fixed-node nil)]
      summaries/Summarizable
@@ -251,7 +249,8 @@
 
 ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;; Seq Subproblem ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
 
-
+;; TODO TODO: think about who connects to who'se tree.
+;; TODO: increase is OK as long as tree doesn't ? 
 
 ;; TODO: do something with subsuming, parent, stub, refine-input.
 (defn- make-right-subproblem [stub sp1 sp2]
@@ -262,7 +261,8 @@
      (assert (empty? (summaries/node-subsuming-children s)))
      (assert (= 2 (count (summaries/node-ordinary-children s))))
      (summary/+ (summaries/summary sp1) (summaries/summary sp2) s))
-   [sp1 sp2] [sp2]))
+   [sp1 sp2] [sp2]
+   (fn [s] (make-right-subproblem stub sp1 s))))
 
 
 ;; Right stub should only ever has one watcher -- left stub.
@@ -285,9 +285,9 @@
                 (summary/or-combine
                  (map summaries/summary (summaries/node-ordinary-children s))
                  s Double/POSITIVE_INFINITY)))
-        add! (fn [c] (summaries/connect! ret c false) (add-forward! ret c))]
-    (add! (right-stub-fn (output-set left-sp)))
-    (add-watcher! left-sp ;; Note: non-persistent
+        add! (fn [c] (summaries/connect! ret c false) (add-forward! ret c) (summaries/summary-changed! ret))]
+    (add! (make-right-stub left-sp (right-stub-fn (output-set left-sp))))
+    (add-watcher! left-sp 
       (fn [_ left-child]
         (add! (make-middle-stub left-child right-stub-fn))))
     ret))
@@ -333,7 +333,7 @@
 ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
 
 (defn choose-leaf [verified-summary]
-  (println verified-summary) (Thread/sleep 1)
+  (println verified-summary) (def *sum* verified-summary) (Thread/sleep 10)
   (->> (summary/extract-leaf-seq verified-summary (comp empty? summary/children))
        util/prln
        (#(do (def *bads* %) %))
@@ -341,7 +341,7 @@
 ;       util/prln
 ;       (#(do (def *bad* %) %))
        (filter can-evaluate?)
-       rand-nth))
+       last #_ rand-nth))
 
 
 (defn solve [root-subproblem]
@@ -349,7 +349,7 @@
   (summary/solve
    #(summaries/verified-summary (tree-summarizer root-subproblem) summary/+worst-simple-summary+)
    (comp evaluate! choose-leaf)
-   #(let [n (first (subproblem-name %))] (when-not (= (first n) :noop) n))))
+   #(let [n (second (subproblem-name %))] (when-not (= (first n) :noop) n))))
 
 (defn get-root-subproblem [inp-set fs]
   (let [root-stub (make-atomic-stub nil inp-set fs)
