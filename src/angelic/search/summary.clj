@@ -41,12 +41,11 @@
 
 ; status is: :blocked, :solved, or :live
 ;; blocked is "better" than live, since it is contagious over live w.r.t. max. 
+
 (defn status-val [s]
-  (case s
-;    :stale   0
-        :live    0
-        :blocked 1
-        :solved  2))
+  (cond (identical? :live s) 0
+        (identical? :blocked s) 1
+        (identical? :solved s) 2))
 
 (def statuses [ :live :blocked :solved])
 (def statuses-set (set statuses))

@@ -101,10 +101,17 @@
    TreeSummarizer
    (get-inner-sp [ts] inner-sp)
    (connect-child-sp! [ts child-sp]
+;                      (when (= (summary/max-reward (summaries/summary ts)) Double/NEGATIVE_INFINITY) (println "connecting " ts child-sp))
      (summaries/connect! ts (tree-summarizer child-sp) false)
      (add-output! ts child-sp)
-     (add-forward! ts child-sp)
-     (summaries/summary-changed! ts))
+;     (add-forward! ts (tree-summarizer child-sp)) Not correct -- user should be responsible.
+     ;; Update only when changed to solved.
+     (let [my-sum (summaries/summary ts) child-sum (summaries/summary (tree-summarizer child-sp))]
+;       (def *bad* [ts child-sp])
+;       (util/assert-is (>= (summary/max-reward my-sum) (summary/max-reward child-sum)))
+       (when-not (summary/>= my-sum child-sum) (summaries/summary-changed! ts)))     
+#_     (util/assert-is (summary/>= (summaries/summary ts) (summaries/summary (tree-summarizer child-sp))))
+     #_(summaries/summary-changed! ts))
     
    summaries/Summarizable
    (summarize [s]
@@ -113,6 +120,8 @@
       (cons (summaries/summary inner-sp) (map summaries/summary (summaries/node-ordinary-children s)))
       s
       (summary/max-reward (apply summary/min (map summaries/summary (summaries/node-subsuming-children s))))))))
+
+
 
 (defn ts-str [sp] (format  "#<TreeSummarizer$%h %s>" (System/identityHashCode sp) (subproblem-name (get-inner-sp sp))) )
 (defmethod print-method angelic.search.implicit.fah_astar_eval2.TreeSummarizer [ss o] (print-method (ts-str ss) o))
@@ -131,7 +140,8 @@
                                     (input-set       [s] inp-set)
                                     (output-set       [s] out-set)
                                     (tree-summarizer [s] @ts-atom)
-             OutputWatched          (add-watcher! [s w] (add-watcher! @ts-atom w)))
+;;                                    OutputWatched          (add-watcher! [s w] (add-watcher! @ts-atom w))
+                                    )
         ts  (make-tree-summarizer ret)]
     (summaries/add-parent! ret ts false)
     (reset! ts-atom ts)
@@ -194,6 +204,7 @@
 
 ;; Note: this is double-stage to lazily generate children.  Could be simpler single-stage.
 (defn- make-atomic-stub [subsuming-as inp-set function-set]
+;  (println "Making atomic stub" inp-set (fs/fs-name function-set))
   (let [state (atom :ready)] ;; set to [out-set reward] after first eval, then :go after second.
     (traits/reify-traits [simple-watched cache-trait (summaries/fixed-node nil)]
      summaries/Summarizable
@@ -218,9 +229,15 @@
 
 ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;; Seq Subproblem ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
 
+;; Tree summarizer represents semantic (stateless) bound on best solution of SP.
+;; Inner of SP represents best possible bound on any descendent subproblem not outputted yet.,
+;;   i.e., tree of any child subproblem
+;; Stub represents best possible tree of any output (not outputted yet!).
+
 ;; TODO TODO: think about who connects to who'se tree.
 ;; TODO: increase is OK as long as tree doesn't ? 
 
+;; This subproblem is allowed to die, (incl. tree?!), replaced by refinements at sp1. 
 (defn- make-right-subproblem [stub sp1 sp2]
   (make-simple-subproblem
    [::Pair (subproblem-name sp1) (subproblem-name sp2)]
@@ -229,14 +246,13 @@
      (assert (empty? (summaries/node-subsuming-children s)))
      (assert (= 2 (count (summaries/node-ordinary-children s))))
      (summary/+ (summaries/summary sp1) (summaries/summary sp2) s))
-   [sp1 sp2] [sp2]
+   [sp1 sp2] [(tree-summarizer sp2)]
    (fn [s] (make-right-subproblem stub sp1 s))))
 
-
-;; Right stub should only ever has one watcher -- left stub.
-(defn- make-right-stub [left-sp right-stub-fn]
-  (let [right-stub (right-stub-fn (output-set left-sp))
-        ret (traits/reify-traits [simple-watched cache-trait summaries/simple-node]  
+;; TODO: sharing below ends up doubling up on published outputs unnecessarily?
+;; Short circuit means that right SP can go dead then back live. 
+(defn- make-right-stub [left-sp right-stub right-stub-fn]
+  (let [ret (traits/reify-traits [simple-watched cache-trait summaries/simple-node]  
               summaries/Summarizable
               (summarize [s]
                 (summary/or-combine
@@ -247,9 +263,11 @@
     (summaries/add-parent! left-sp ret false)
     (summaries/add-parent! right-stub ret false)
 
-    (add-watcher! left-sp 
+    (add-watcher! (tree-summarizer left-sp) 
       (fn [_ left-child]
-        (let [new-right-stub (make-right-stub left-child right-stub-fn)]
+        ;; Note: this right-sharing is crucial for efficiency! 
+        (let [right-right (if (= (output-set left-child) (output-set left-sp)) right-stub (right-stub-fn (output-set left-child)))
+              new-right-stub (make-right-stub left-child right-right right-stub-fn)]
           (summaries/connect! ret new-right-stub false)
           (add-forward! ret new-right-stub)
           (summaries/summary-changed! ret))))
@@ -258,6 +276,7 @@
 
 
 ;; Stub to wait for left to be evaluated
+;; Left-stub will always be atomic stub, which always has a single output.
 (defn- make-left-stub [left-stub right-stub-fn]
   (let [mid (atom nil) 
         ret (traits/reify-traits [simple-watched cache-trait summaries/simple-node]
@@ -271,7 +290,7 @@
     (add-watcher! left-stub
       (fn [_ l]
         (assert (nil? @mid))
-        (reset! mid (make-right-stub l right-stub-fn))
+        (reset! mid (make-right-stub l (right-stub-fn (output-set l)) right-stub-fn))
         (add-forward! ret @mid)
         (summaries/connect! ret @mid false)
         (summaries/summary-changed! ret)))    
@@ -297,7 +316,7 @@
 ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
 
 (defn choose-leaf [verified-summary]
-;  (println verified-summary) (def *sum* verified-summary) (Thread/sleep 10)
+;  (println "VS"  verified-summary) #_ (def *sum* verified-summary) (Thread/sleep 10)
   (->> (summary/extract-leaf-seq verified-summary (comp empty? summary/children))
 ;       util/prln
 ;       (#(do (def *bads* %) %))
@@ -331,7 +350,7 @@
        (apply get-root-subproblem)
        solve))
 
-
+;;(dotimes [_ 1] (reset! summaries/*summary-count* 0) (debug 0 (time (let [h (make-nav-switch-hierarchy (make-random-nav-switch-env 2 1 0) true)]  (println (run-counted #(second (implicit-fah-a*-eval2 h))) @summaries/*summary-count*)))))
 
 
 
