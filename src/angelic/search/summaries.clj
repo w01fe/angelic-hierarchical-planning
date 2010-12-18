@@ -82,8 +82,8 @@
   (node-subsuming-children [n] (map second (filter first @children)))
   (node-ordinary-parents [n] (map second (remove first @parents)))
   (node-subsumed-parents [n] (map second (filter first @parents)))    
-  (add-child!    [n child subsuming?] (swap! children conj [subsuming? child]))
-  (add-parent!   [n parent subsuming?] (swap! parents conj [subsuming? parent])))
+  (add-child!    [n child subsuming?] (assert (not (identical? child n))) (swap! children conj [subsuming? child]))
+  (add-parent!   [n parent subsuming?] (assert (not (identical? parent n))) (swap! parents conj [subsuming? parent])))
 
 (traits/deftrait fixed-node [children] [sub-children (atom nil) parents (atom nil)] []
    Node
@@ -164,7 +164,7 @@
     (let [os @summary-cache
           ns (reset! summary-cache (summarize n))]
       (when os
-        (assert (<= (summary/max-reward ns) (summary/max-reward os)))      
+;        (assert (<= (summary/max-reward ns) (summary/max-reward os)))      
         (when-not (summary/>= os ns)
 ;          (print (summary/status ns))
           (notify-parents n)))))
@@ -172,8 +172,9 @@
      (let [os @summary-cache
            cs (reset! summary-cache (summarize n))]
 ;       (swap! *summary-count* dec)
-       (when os (assert (<= (summary/max-reward cs) (summary/max-reward os))))
+       (when os (util/assert-is (<= (summary/max-reward cs) (summary/max-reward os))))
 ;      (println (angelic.search.implicit.subproblem/subproblem-name n) (expanded? n) cs min-summary) (Thread/sleep 10)
+;      (println n os cs min-summary) (Thread/sleep 10)       
        (when (summary/>= cs min-summary)
          (let [verified-children (map #(verified-summary (summary/source %) %) (summary/children cs))]
            (if (every? identity verified-children)

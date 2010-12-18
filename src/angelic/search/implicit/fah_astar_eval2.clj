@@ -24,9 +24,9 @@
 
 
 #_ (def  ^{:private true} cache-trait summaries/uncached-summarizer-node)
- (def ^{:private true} cache-trait summaries/eager-cached-summarizer-node)
+#_ (def ^{:private true} cache-trait summaries/eager-cached-summarizer-node)
 #_ (def ^{:private true} cache-trait summaries/less-eager-cached-summarizer-node)
-#_ (def ^{:private true} cache-trait summaries/lazy-cached-summarizer-node)
+ (def ^{:private true} cache-trait summaries/lazy-cached-summarizer-node)
 #_ (def ^{:private true} cache-trait summaries/pseudo-cached-summarizer-node)
 
 ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
@@ -241,10 +241,11 @@
   (let [ret (traits/reify-traits [simple-watched cache-trait summaries/simple-node]  
               summaries/Summarizable
               (summarize [s]
-                (summary/or-combine
-                 (cons (summary/+ (summaries/summary left-sp) (summaries/summary right-stub) s)
-                       (map summaries/summary (summaries/node-ordinary-children s)))
-                  s Double/POSITIVE_INFINITY)))]
+                 (summary/max
+                  (summary/+ (summaries/summary left-sp) (summaries/summary right-stub) s)
+                  (summary/or-combine                   
+                   (map summaries/summary (summaries/node-ordinary-children s))
+                   s Double/POSITIVE_INFINITY))))]
     (add-watcher! right-stub (fn [_ o] (add-output! ret (make-pair-subproblem ret left-sp o))))
     (summaries/add-parent! left-sp ret false)
     (summaries/add-parent! right-stub ret false)
