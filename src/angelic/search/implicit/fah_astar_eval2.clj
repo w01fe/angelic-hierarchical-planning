@@ -9,52 +9,19 @@
 ;; A version of eval subproblems where we explicitly represent the relationships
 ;; between subproblems, and allow "listeners" that wait for a subproblem to be
 ;; evaluated.
-;; Subproblems where the expand operation evaluates the output set, and generates
-;; the children.  Putting the focus on evaluation gives us finer granularity,
-;; allowing full utilizatino of subsumption, plus is more natural in a decomposed
-;; setting where we also have to "evaluate" existing actions in new contexts.
 
-;; TODO: assuming consistency and evaluation s.t. no bounding is necessary. Otherwise, downwards would be better anyway?
+;; Assuming consistency and evaluation s.t. no bounding is necessary.
+;; Otherwise, downwards would be better anyway?
 
-;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
-;;;;;;;;;;;;;;;;;;;;;;;;;;;;; Subproblem Protocol ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
-;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
+;; Breaks down into "subproblems" with well-defined action seqs, inputs, outputs,
+;; and "stubs" where output is not known yet.
+;; Summary of either represents child subproblems not yet produced.
+;; These are produced into "tree summary", which has semantic view.
 
-;; A subproblem should also implement Summarizable and Refinable implementations.
-;; The non-viable (pre-refinement) subproblem is always represented as nil.
+;; One issue with this formulation is that pair-subproblems can
+;; decrease and increase reward arbitrarily (with shortcutting)
+;; as they get cut off by left sp, then recreated by children.
 
-;; Here, get-child and refine-input always return subproblems,
-;; but output-set can return "nil"
-;; get-child and refine-input are allow to return nil
-
-
-(defprotocol OutputWatched
-  (add-watcher!   [s w] "Add a watcher to be notified of all outputs to this.
-                         A watcher is just a fn of [watched-sp/stub new-subproblem]."))
-
-(defprotocol Evaluable
-  (evaluate!      [s]))
-
-(defn can-evaluate? [s]  (satisfies? Evaluable s))
-
-(defprotocol Subproblem
-  (subproblem-name   [s])
-  (input-set         [s])
-  (output-set        [s])
-  (tree-summarizer   [s] "Summarizer that includes children."))
-
-(defn sp-str [sp] (format  "#<Subproblem$%h %s>" (System/identityHashCode sp) (subproblem-name sp)) )
-(defmethod print-method angelic.search.implicit.fah_astar_eval2.Subproblem [ss o] (print-method (sp-str ss) o))
-
-
-(comment ; TODO: refine-input must go somewhere
-  (refine-input      [s maybe-refined-input-set])  
-  (refine-input-   [s refined-input-set] "must be a strict subset of input-set."))
-
-
-;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
-;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;; Summarizers ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
-;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
 
 #_ (def  ^{:private true} cache-trait summaries/uncached-summarizer-node)
  (def ^{:private true} cache-trait summaries/eager-cached-summarizer-node)
@@ -62,6 +29,13 @@
 #_ (def ^{:private true} cache-trait summaries/lazy-cached-summarizer-node)
 #_ (def ^{:private true} cache-trait summaries/pseudo-cached-summarizer-node)
 
+;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
+;;;;;;;;;;;;;;;;;;;;;;;;;;;;;       Watchers      ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
+;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
+
+(defprotocol OutputWatched
+  (add-watcher!   [s w] "Add a watcher to be notified of all outputs to this.
+                         A watcher is just a fn of [watched-sp/stub new-subproblem]."))
 
 (defprotocol SimpleWatched
   (add-output! [sw o])
@@ -84,7 +58,28 @@
     (swap! forwards conj child-sw)
     (doseq [w @watchers] (add-watcher! child-sw w))))
 
+;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
+;;;;;;;;;;;;;;;;;;;;;;;;;;;;;     Subproblems     ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
+;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
 
+;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;     Protocols     ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
+
+(defprotocol Evaluable
+  (evaluate!      [s]))
+
+(defn can-evaluate? [s]  (satisfies? Evaluable s))
+
+(defprotocol Subproblem
+  (subproblem-name   [s])
+  (input-set         [s])
+  (output-set        [s])
+  (tree-summarizer   [s] "Summarizer that includes children."))
+
+(defn sp-str [sp] (format  "#<Subproblem$%h %s>" (System/identityHashCode sp) (subproblem-name sp)) )
+(defmethod print-method angelic.search.implicit.fah_astar_eval2.Subproblem [ss o] (print-method (sp-str ss) o))
+
+
+;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;  Tree Summarizer  ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
 
 ;; Expects to be a parent of inside, but not have inside as a child.
 ;; All children are tree summarizers.
@@ -101,17 +96,11 @@
    TreeSummarizer
    (get-inner-sp [ts] inner-sp)
    (connect-child-sp! [ts child-sp]
-;                      (when (= (summary/max-reward (summaries/summary ts)) Double/NEGATIVE_INFINITY) (println "connecting " ts child-sp))
      (summaries/connect! ts (tree-summarizer child-sp) false)
      (add-output! ts child-sp)
-;     (add-forward! ts (tree-summarizer child-sp)) Not correct -- user should be responsible.
-     ;; Update only when changed to solved.
      (let [my-sum (summaries/summary ts) child-sum (summaries/summary (tree-summarizer child-sp))]
-;       (def *bad* [ts child-sp])
-;       (util/assert-is (>= (summary/max-reward my-sum) (summary/max-reward child-sum)))
-       (when-not (summary/>= my-sum child-sum) (summaries/summary-changed! ts)))     
-#_     (util/assert-is (summary/>= (summaries/summary ts) (summaries/summary (tree-summarizer child-sp))))
-     #_(summaries/summary-changed! ts))
+;       (util/assert-is (>= (summary/max-reward my-sum) (summary/max-reward child-sum)))  Cannot assert this -- see above.
+       (when-not (summary/>= my-sum child-sum) (summaries/summary-changed! ts))))
     
    summaries/Summarizable
    (summarize [s]
@@ -128,9 +117,11 @@
 
 
 
-;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
-;;;;;;;;;;;;;;;;;;;;;;;;;;;;;; Subproblem Traits ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
-;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
+(comment ; TODO: refine-input must go somewhere
+  (refine-input      [s maybe-refined-input-set])  
+  (refine-input-   [s refined-input-set] "must be a strict subset of input-set."))
+
+;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;  Subproblem Impl  ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
 
 (defn make-simple-subproblem [name inp-set out-set summary-fn inner-children copy-children child-transform]
   (let [ts-atom (atom nil)
@@ -166,7 +157,12 @@
           refined))))
 
 
-;;;;;;;;;;;;;;;;;;;;;;;;;;;;;; Atomic Subproblem ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
+
+;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
+;;;;;;;;;;;;;;;;;;;;;     Subproblem Types and Stubs     ;;;;;;;;;;;;;;;;;;;;;;;
+;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
+
+;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;      Atomic       ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
 
 
 (declare make-fs-seq-stub)
@@ -180,8 +176,6 @@
      (map #(refine-input- % inp-set) sub-children))))
 
 
-
-;; TODO: do something with stub, refine-input.
 (defn- make-atomic-subproblem [stub inp-set function-set out-set reward status]
   (let [children (when (= status :live)
                    (or #_ (refined-children subsuming-as inp-set) ;; TODO!!
@@ -227,18 +221,10 @@
 
 
 
-;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;; Seq Subproblem ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
-
-;; Tree summarizer represents semantic (stateless) bound on best solution of SP.
-;; Inner of SP represents best possible bound on any descendent subproblem not outputted yet.,
-;;   i.e., tree of any child subproblem
-;; Stub represents best possible tree of any output (not outputted yet!).
-
-;; TODO TODO: think about who connects to who'se tree.
-;; TODO: increase is OK as long as tree doesn't ? 
+;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;   Sequences    ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
 
 ;; This subproblem is allowed to die, (incl. tree?!), replaced by refinements at sp1. 
-(defn- make-right-subproblem [stub sp1 sp2]
+(defn- make-pair-subproblem [stub sp1 sp2]
   (make-simple-subproblem
    [::Pair (subproblem-name sp1) (subproblem-name sp2)]
    (input-set sp1) (output-set sp2)
@@ -247,7 +233,7 @@
      (assert (= 2 (count (summaries/node-ordinary-children s))))
      (summary/+ (summaries/summary sp1) (summaries/summary sp2) s))
    [sp1 sp2] [(tree-summarizer sp2)]
-   (fn [s] (make-right-subproblem stub sp1 s))))
+   (fn [s] (make-pair-subproblem stub sp1 s))))
 
 ;; TODO: sharing below ends up doubling up on published outputs unnecessarily?
 ;; Short circuit means that right SP can go dead then back live. 
@@ -259,13 +245,13 @@
                  (cons (summary/+ (summaries/summary left-sp) (summaries/summary right-stub) s)
                        (map summaries/summary (summaries/node-ordinary-children s)))
                   s Double/POSITIVE_INFINITY)))]
-    (add-watcher! right-stub (fn [_ o] (add-output! ret (make-right-subproblem ret left-sp o))))
+    (add-watcher! right-stub (fn [_ o] (add-output! ret (make-pair-subproblem ret left-sp o))))
     (summaries/add-parent! left-sp ret false)
     (summaries/add-parent! right-stub ret false)
 
+    ;; Note: this right-sharing is crucial for efficiency!     
     (add-watcher! (tree-summarizer left-sp) 
       (fn [_ left-child]
-        ;; Note: this right-sharing is crucial for efficiency! 
         (let [right-right (if (= (output-set left-child) (output-set left-sp)) right-stub (right-stub-fn (output-set left-child)))
               new-right-stub (make-right-stub left-child right-right right-stub-fn)]
           (summaries/connect! ret new-right-stub false)
@@ -315,7 +301,7 @@
 ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;; Planning ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
 ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
 
-(defn choose-leaf [verified-summary]
+(defn- choose-leaf [verified-summary]
 ;  (println "VS"  verified-summary) #_ (def *sum* verified-summary) (Thread/sleep 10)
   (->> (summary/extract-leaf-seq verified-summary (comp empty? summary/children))
 ;       util/prln
@@ -326,15 +312,14 @@
        (filter can-evaluate?)
        last #_ rand-nth))
 
-
-(defn solve [root-subproblem]
+(defn- solve [root-subproblem]
   (def *root* root-subproblem)
   (summary/solve
    #(summaries/verified-summary (tree-summarizer root-subproblem) summary/+worst-simple-summary+)
    (comp evaluate! choose-leaf)
    #(let [n (second (subproblem-name %))] (when-not (= (first n) :noop) n))))
 
-(defn get-root-subproblem [inp-set fs]
+(defn- get-root-subproblem [inp-set fs]
   (let [root-stub (make-atomic-stub nil inp-set fs)
         ret       (atom nil)]
     (add-watcher! root-stub (fn [_ root] (reset! ret root)))
