@@ -77,7 +77,9 @@
   (subproblem-name   [s])
   (input-set         [s])
   (output-set        [s])
-  (tree-summarizer   [s] "Summarizer that includes children."))
+  (tree-summarizer   [s] "Summarizer that includes children.")
+  (refine-input      [s refined-input-set] "Return a child stub that refines the input of s."))
+
 
 (defn sp-str [sp] (format  "#<Subproblem$%h %s>" (System/identityHashCode sp) (subproblem-name sp)) )
 (defmethod print-method angelic.search.implicit.fah_astar_eval2.Subproblem [ss o] (print-method (sp-str ss) o))
@@ -104,7 +106,8 @@
      (add-output! ts child-sp)
      (let [my-sum (summaries/summary ts) child-sum (summaries/summary (tree-summarizer child-sp))]
 ;       (util/assert-is (>= (summary/max-reward my-sum) (summary/max-reward child-sum)))  Cannot assert this -- see above.
-       (when-not (summary/>= my-sum child-sum) (summaries/summary-changed! ts))))
+       (when-not (summary/>= my-sum child-sum)
+         (summaries/summary-changed! ts))))
     
    summaries/Summarizable
    (summarize [s]
@@ -121,42 +124,41 @@
 
 
 
-(comment ; TODO: refine-input must go somewhere
-  (refine-input      [s maybe-refined-input-set])  
-  (refine-input-   [s refined-input-set] "must be a strict subset of input-set."))
+
 
 ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;  Subproblem Impl  ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
 
-(defn make-simple-subproblem [name inp-set out-set summary-fn inner-children copy-children child-transform]
+(defn make-simple-subproblem [name inp-set out-set summary-fn refine-input-fn]
   (let [ts-atom (atom nil)
         ret (traits/reify-traits [cache-trait summaries/simple-node]
              summaries/Summarizable (summarize [s] (summary-fn s))
              Subproblem             (subproblem-name [s] name)
                                     (input-set       [s] inp-set)
                                     (output-set       [s] out-set)
-                                    (tree-summarizer [s] @ts-atom))
+                                    (tree-summarizer [s] @ts-atom)
+                                    (refine-input    [s new-inp-set]
+                                     (if (= inp-set new-inp-set) s (refine-input-fn s new-inp-set))))        
         ts  (make-tree-summarizer ret)]
     (summaries/add-parent! ret ts false)
     (reset! ts-atom ts)
-
-    (doseq [child inner-children]
-      (summaries/connect! ret child false))
-
-    (doseq [child copy-children]
-      (add-watcher! child (fn [_ out-sp] (connect-child-sp! ts (child-transform out-sp)))))
-
     ret))
 
+(defn setup-ordinary-subproblem! [sp inner-children copy-children child-transform]
+  (doseq [child inner-children]
+    (summaries/connect! sp child false))
+  (doseq [child copy-children]
+    (add-watcher! child (fn [_ out-sp] (connect-child-sp! (tree-summarizer sp) (child-transform out-sp))))))
+
+(defn setup-subsumed-subproblem! [sp subsuming-sp]
+  (summaries/connect! (tree-summarizer sp) (tree-summarizer subsuming-sp) true)
+  (add-watcher! subsuming-sp
+     (fn [_ sub-out]
+       (let [sub-stub (refine-input sub-out (input-set sp))]
+         (summaries/connect! sp sub-stub)
+         (add-watcher! sub-stub
+           (fn [_ out-sp] (connect-child-sp! (tree-summarizer sp) out-sp)))))))
 
 
-(comment
-     (refine-input    [s maybe-refined-input-set]
-      (if (= input-set maybe-refined-input-set)
-        s
-        (let [refined (refine-input- s maybe-refined-input-set)]
-          (assert refined)
-          (summaries/connect! (tree-summarizer s) (tree-summarizer refined) true)
-          refined))))
 
 
 
@@ -167,39 +169,27 @@
 ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;      Atomic       ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
 
 
-(declare make-fs-seq-stub)
+(declare make-fs-seq-stub make-atomic-stub)
 
-(comment
- (defn- refined-children [sub-sp inp-set]
-   (when-let [sub-children (and sub-sp
-                                (not (= :blocked (summary/status (summaries/summary sub-sp))))
-                                (concat (summaries/node-ordinary-children sub-sp)
-                                        (summaries/node-ordinary-children (tree-summarizer sub-sp))))]
-     (map #(refine-input- % inp-set) sub-children))))
+ ;; TODO: add refine-input- to skip comparisons?
+(defn- make-atomic-subproblem [stub subsuming-sp subsuming-children? inp-set function-set out-set reward status]
+  (let [sp (make-simple-subproblem
+            [::Atomic (fs/fs-name function-set) inp-set]
+            inp-set out-set
+            (if (= status :live)
+              (fn [s] (summary/or-combine (map summaries/summary (summaries/node-ordinary-children s)) s reward))
+              (fn [s] (summary/make-simple-summary reward status s)))
+            (fn [s inp] (make-atomic-stub s (= status :live) inp function-set)))]
+    (when (= status :live)
+      (when subsuming-sp (setup-subsumed-subproblem! sp subsuming-sp))
+      (when-not subsuming-children?
+        (let [children (map #(make-fs-seq-stub inp-set %) (fs/child-seqs function-set inp-set))]
+          (setup-ordinary-subproblem! sp children children identity))))
+    sp))
 
-
-(defn- make-atomic-subproblem [stub inp-set function-set out-set reward status]
-  (let [children (when (= status :live)
-                   (or #_ (refined-children subsuming-as inp-set) ;; TODO!!
-                       (map #(make-fs-seq-stub inp-set %)
-                            (fs/child-seqs function-set inp-set))))]
-    (make-simple-subproblem
-     [::Atomic (fs/fs-name function-set) inp-set]
-     inp-set out-set
-     (if (= status :live)
-       (fn [s]
-         (assert (empty? (summaries/node-subsuming-children s)))
-         (assert (= (count children) (count (summaries/node-ordinary-children s))))
-         (summary/or-combine (map summaries/summary children) s reward))
-       (fn [s] (summary/make-simple-summary reward status s)))     
-     children children identity #_ #(util/prog1 % (println "AS")))))
-
-
-(comment  (refine-input- [s refined-input-set]
-                   (make-simple-atomic-subproblem s refined-input-set function-set)))
 
 ;; Note: this is double-stage to lazily generate children.  Could be simpler single-stage.
-(defn- make-atomic-stub [subsuming-as inp-set function-set]
+(defn- make-atomic-stub [subsuming-sp subsuming-children? inp-set function-set]
 ;  (println "Making atomic stub" inp-set (fs/fs-name function-set))
   (let [state (atom :ready)] ;; set to [out-set reward] after first eval, then :go after second.
     (traits/reify-traits [simple-watched cache-trait (summaries/fixed-node nil)]
@@ -215,7 +205,8 @@
          (if-let [[out-set reward :as op] (if ready? (fs/apply-opt function-set inp-set) @state)]
            (let [status (if ready? (fs/status function-set inp-set)   :live)]
              (if (or (not ready?) (not (= status :live)))
-               (do (add-output! s (make-atomic-subproblem s inp-set function-set out-set reward status))
+               (do (add-output! s (make-atomic-subproblem s subsuming-sp subsuming-children?
+                                                          inp-set function-set out-set reward status))
                    (reset! state :go))
                (reset! state op)))
            (reset! state :go)) ;; Kill it
@@ -227,17 +218,13 @@
 
 ;; This subproblem is allowed to die, (incl. tree?!), replaced by refinements at sp1. 
 (defn- make-pair-subproblem [stub sp1 sp2]
-  (make-simple-subproblem
-   [::Pair (subproblem-name sp1) (subproblem-name sp2)]
-   (input-set sp1) (output-set sp2)
-   (fn [s]
-     (assert (empty? (summaries/node-subsuming-children s)))
-     (assert (= 2 (count (summaries/node-ordinary-children s))))
-     (summary/+ (summaries/summary sp1) (summaries/summary sp2) s))
-   [sp1 sp2] [(tree-summarizer sp2)]
-   (fn [s] (make-pair-subproblem stub sp1 s))))
+  (doto (make-simple-subproblem
+         [::Pair (subproblem-name sp1) (subproblem-name sp2)]
+         (input-set sp1) (output-set sp2)
+         (fn [s] (summary/+ (summaries/summary sp1) (summaries/summary sp2) s))
+         (fn [s inp] nil))    
+    (setup-ordinary-subproblem! [sp1 sp2] [(tree-summarizer sp2)] (fn [s] (make-pair-subproblem stub sp1 s)))))
 
-;; TODO: sharing below ends up doubling up on published outputs unnecessarily?
 ;; Short circuit means that right SP can go dead then back live. 
 (defn- make-right-stub [left-sp right-stub right-stub-fn]
   (let [ret (traits/reify-traits [simple-watched cache-trait summaries/simple-node]  
@@ -288,7 +275,7 @@
 
 
 (defn- make-fs-seq-stub [inp-set [first-fs & rest-fs]]
-  (let [first-stub (make-atomic-stub nil inp-set first-fs)]
+  (let [first-stub (make-atomic-stub nil false inp-set first-fs)]
     (if (empty? rest-fs)
       first-stub
       (make-left-stub first-stub #(make-fs-seq-stub % rest-fs)))))
@@ -323,7 +310,7 @@
    #(let [n (second (subproblem-name %))] (when-not (= (first n) :noop) n))))
 
 (defn- get-root-subproblem [inp-set fs]
-  (let [root-stub (make-atomic-stub nil inp-set fs)
+  (let [root-stub (make-atomic-stub nil false inp-set fs)
         ret       (atom nil)]
     (add-watcher! root-stub (fn [_ root] (reset! ret root)))
     (evaluate! root-stub)
@@ -401,3 +388,22 @@
       (assert (= (count new-parents) (dec (count @parents))))
       (reset! parents new-parents))))
 )
+
+
+(comment
+  (defn- make-atomic-subproblem [stub subsuming-sp inp-set function-set out-set reward status]
+  (let [children (when (= status :live)
+                   (or #_ (refined-children subsuming-as inp-set) ;; TODO!!
+                       (map #(make-fs-seq-stub inp-set %)
+                            (fs/child-seqs function-set inp-set))))]
+    (make-simple-subproblem
+     [::Atomic (fs/fs-name function-set) inp-set]
+     inp-set out-set
+     (if (= status :live)
+       (fn [s]
+         (assert (empty? (summaries/node-subsuming-children s)))
+         (assert (= (count children) (count (summaries/node-ordinary-children s))))
+         (summary/or-combine (map summaries/summary children) s reward))
+       (fn [s] (summary/make-simple-summary reward status s)))     
+     children children identity
+     (fn [s ref-inp-set] (make-atomic-stub s ref-inp-set function-set))))))
