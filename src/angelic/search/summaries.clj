@@ -1,7 +1,8 @@
 (ns angelic.search.summaries
   (:require [edu.berkeley.ai.util :as util]
             [edu.berkeley.ai.util.traits :as traits]
-            [angelic.search.summary :as summary]))
+            [angelic.search.summary :as summary])
+  (:import [java.util ArrayList]))
 
 ;; This file defines a dataflow-style API for computing and caching
 ;; summaries of potentially mutable objects.
@@ -41,6 +42,8 @@
 ;; full -- always fully propagate changes to the top, just use cached values as accurate.
 ;; Lazy -- report cache, ...
 
+(set! *warn-on-reflection* true)
+
 ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
 ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;; Protocols ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
 ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
@@ -76,25 +79,29 @@
 
 ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;; Node ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
 
-(traits/deftrait simple-node [] [children (atom nil) parents  (atom nil)] []
+(traits/deftrait simple-node [] [^java.util.ArrayList children (java.util.ArrayList.)
+                                 ^java.util.ArrayList parents  (java.util.ArrayList.)] []
   Node
-  (node-ordinary-children [n] (map second (remove first @children)))
-  (node-subsuming-children [n] (map second (filter first @children)))
-  (node-ordinary-parents [n] (map second (remove first @parents)))
-  (node-subsumed-parents [n] (map second (filter first @parents)))    
-  (add-child!    [n child subsuming?] (assert (not (identical? child n))) (swap! children conj [subsuming? child]))
-  (add-parent!   [n parent subsuming?] (assert (not (identical? parent n))) (swap! parents conj [subsuming? parent])))
+  (node-ordinary-children [n] (map second (remove first (seq children))))
+  (node-subsuming-children [n] (map second (filter first (seq children))))
+  (node-ordinary-parents [n] (map second (remove first (seq parents))))
+  (node-subsumed-parents [n] (map second (filter first (seq parents))))    
+  (add-child!    [n child subsuming?] (assert (not (identical? child n)))
+    (.add children [subsuming? child]))
+  (add-parent!   [n parent subsuming?] (assert (not (identical? parent n)))
+    (.add parents [subsuming? parent])))
 
-(traits/deftrait fixed-node [children] [sub-children (atom nil) parents (atom nil)] []
+(traits/deftrait fixed-node [children] [^java.util.ArrayList sub-children (java.util.ArrayList.)
+                                        ^java.util.ArrayList parents (java.util.ArrayList.)] []
    Node
    (node-ordinary-children [n] children)
-   (node-subsuming-children [n] @sub-children)   
-   (node-ordinary-parents [n] (map second (remove first @parents)))
-   (node-subsumed-parents [n] (map second (filter first @parents)))    
+   (node-subsuming-children [n] (seq sub-children))   
+   (node-ordinary-parents [n] (map second (remove first (seq parents))))
+   (node-subsumed-parents [n] (map second (filter first (seq parents))))    
    (add-child!    [n child sub?]
       (assert sub?)
-      (swap! sub-children conj child))
-   (add-parent!   [n parent subsuming?] (swap! parents conj [subsuming? parent])))
+      (.add sub-children child))
+   (add-parent!   [n parent subsuming?] (.add parents [subsuming? parent])))
 
 (def *use-subsumption* true)
 
@@ -201,7 +208,7 @@
     (let [os @summary-cache
           cs (reset! summary-cache (summarize n))]
       (when os (assert (<= (summary/max-reward cs) (summary/max-reward os))))
-      (println min-summary cs (angelic.search.implicit.subproblem-eval/subproblem-name (summary/source cs)) (angelic.search.implicit.subproblem-eval/evaluated? (summary/source cs)) (expanded? (summary/source cs)) #_  (summary/source cs)) (Thread/sleep 10)
+      ;      (println min-summary cs (angelic.search.implicit.subproblem-eval/subproblem-name (summary/source cs)) (angelic.search.implicit.subproblem-eval/evaluated? (summary/source cs)) (expanded? (summary/source cs)) #_  (summary/source cs)) (Thread/sleep 10)
       (cond (not (summary/>= cs min-summary)) nil
             (summary/solved? cs) cs
             (stop? n) (do (println "\nEVAL!") (evaluate! n) (recur min-summary stop? evaluate!))

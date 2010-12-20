@@ -4,7 +4,7 @@
             [angelic.search.summary :as summary]            
             [angelic.search.summaries :as summaries]
             [angelic.search.function-sets :as fs])
-  (:import [java.util HashMap]))
+  (:import [java.util HashMap ArrayList]))
 
 ;; A version of eval subproblems where we explicitly represent the relationships
 ;; between subproblems, and allow "listeners" that wait for a subproblem to be
@@ -21,6 +21,8 @@
 ;; One issue with this formulation is that pair-subproblems can
 ;; decrease and increase reward arbitrarily (with shortcutting)
 ;; as they get cut off by left sp, then recreated by children.
+
+(set! *warn-on-reflection* true)
 
 
 #_ (def  ^{:private true} cache-trait summaries/uncached-summarizer-node)
@@ -42,21 +44,23 @@
   (add-forward! [sw child-sw]))
 
 (traits/deftrait simple-watched
-  [] [watchers (atom nil) outputs (atom nil) forwards (atom nil)] []
+  [] [^ArrayList watchers (ArrayList.)
+      ^ArrayList outputs (ArrayList.)
+      ^ArrayList forwards (ArrayList.)] []
   OutputWatched
   (add-watcher! [sw w]
-    (swap! watchers conj w)
-    (doseq [o @outputs] (w sw o))
-    (doseq [f @forwards] (add-watcher! f w)))
+    (.add watchers w)
+    (doseq [o outputs] (w sw o))
+    (doseq [f forwards] (add-watcher! f w)))
   
   SimpleWatched
   (add-output! [sw o]
-    (assert (satisfies? Subproblem o))
-    (swap! outputs conj o)
-    (doseq [w @watchers] (w sw o)))
+;   (assert (satisfies? Subproblem o))
+    (.add outputs o)
+    (doseq [w watchers] (w sw o)))
   (add-forward! [sw child-sw]
-    (swap! forwards conj child-sw)
-    (doseq [w @watchers] (add-watcher! child-sw w))))
+    (.add forwards child-sw)
+    (doseq [w watchers] (add-watcher! child-sw w))))
 
 ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
 ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;     Subproblems     ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
@@ -67,7 +71,7 @@
 (defprotocol Evaluable
   (evaluate!      [s]))
 
-(defn can-evaluate? [s]  (satisfies? Evaluable s))
+(defn can-evaluate? [s]  (instance? angelic.search.implicit.fah_astar_eval2.Evaluable s))
 
 (defprotocol Subproblem
   (subproblem-name   [s])
@@ -130,9 +134,7 @@
              Subproblem             (subproblem-name [s] name)
                                     (input-set       [s] inp-set)
                                     (output-set       [s] out-set)
-                                    (tree-summarizer [s] @ts-atom)
-;;                                    OutputWatched          (add-watcher! [s w] (add-watcher! @ts-atom w))
-                                    )
+                                    (tree-summarizer [s] @ts-atom))
         ts  (make-tree-summarizer ret)]
     (summaries/add-parent! ret ts false)
     (reset! ts-atom ts)
