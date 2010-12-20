@@ -50,7 +50,7 @@
   (if (= (input-set s) maybe-refined-input-set)
     s
     (when-let [refined (refine-input- s maybe-refined-input-set)]
-      (summaries/connect! s refined true)
+      (summaries/connect! refined s true)
       refined)))
 
 
