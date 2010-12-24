@@ -34,9 +34,9 @@
 
 ;; Note: used at compile-time, cannot be dynamically rebound without recompiling ...
 #_ (def  ^{:private true} cache-trait summaries/uncached-summarizer-node)
-(def ^{:private true} cache-trait summaries/eager-cached-summarizer-node)
+#_ (def ^{:private true} cache-trait summaries/eager-cached-summarizer-node)
 #_ (def ^{:private true} cache-trait summaries/less-eager-cached-summarizer-node)
-#_ (def ^{:private true} cache-trait summaries/lazy-cached-summarizer-node)
+ (def ^{:private true} cache-trait summaries/lazy-cached-summarizer-node)
 #_ (def ^{:private true} cache-trait summaries/pseudo-cached-summarizer-node)
 
 ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;; Atomic Subproblem ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
