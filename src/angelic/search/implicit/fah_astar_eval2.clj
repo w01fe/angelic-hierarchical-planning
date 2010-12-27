@@ -73,35 +73,26 @@
 ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;       Watchers      ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
 ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
 
-(defprotocol OutputWatched
-  (add-watcher!   [s w] "Add a watcher to be notified of all outputs to this.
-                         A watcher is just a fn of [watched-sp/stub new-subproblem]."))
-
-(defprotocol SimpleWatched
-  (add-output! [sw o])
-  (add-forward! [sw child-sw]))
-
-;; TODO: remove the ;doall seq pairs --
-;; these work around a concurrent modification exception, which is indicative of a bug ?!
+(defprotocol Watched
+  (add-watcher! [s w] "Add a watcher to be notified of all outputs to this.
+                         A watcher is just a fn of [watched-sp/stub new-subproblem].")
+  (add-output!  [sw o]    "O is a subproblem")
+  (add-forward! [sw child-sw] "child-sw is a simple-watched"))
 
 (traits/deftrait simple-watched
-  [] [^ArrayList watchers (ArrayList.)
-      ^ArrayList outputs (ArrayList.)
-      ^ArrayList forwards (ArrayList.)] []
-  OutputWatched
+  []
+  [^ArrayList watchers (ArrayList.)
+   ^ArrayList outputs (ArrayList.)
+   ^ArrayList forwards (ArrayList.)]
+  []
+  Watched
   (add-watcher! [sw w]
     (.add watchers w)
     (doseq [o outputs] (w sw o))
     (doseq [f forwards] (add-watcher! f w)))
-  
-  SimpleWatched
   (add-output! [sw o]
-;   (assert (satisfies? Subproblem o))
     (.add outputs o)
-    (doseq [w watchers] (w sw o))
-    #_           (let [i (rand-int 10000)]     (println i sw o)
-    
-                    (println "DONE!" i sw)))
+    (doseq [w watchers] (w sw o)))
   (add-forward! [sw child-sw]
     (.add forwards child-sw)
     (doseq [w watchers] (add-watcher! child-sw w))))
@@ -226,7 +217,6 @@
     ret))
 
 ;; Children should be lazy, are not touched if subsuming criteria are met?
-;; TODO: computaiton of summary fn here seems to be crux of the issue.xz
 (defn make-nonterminal-subproblem [name subsuming-sp inp-set out-set summary-fn ri-fn
                                    use-sub-children? inner-children copy-children child-transform]
   (let [sub-children? (and subsuming-sp use-sub-children? (not (terminal? subsuming-sp)))
@@ -282,10 +272,8 @@
   (when subsuming-sp (summaries/connect! child (tree-summarizer subsuming-sp) true)))
 
 
-;; TODO: subsumption links should be to tree su, not stub ? 
 ;; Note: this is double-stage to lazily generate children.  Could be simpler single-stage.
 (defn- make-atomic-stub [subsuming-sp inp-set function-set]
-;  (println "Making atomic stub" inp-set (fs/fs-name function-set))
   (let [state (atom :ready) ;; set to [out-set reward] after first eval, then :go after second.
         ret
         (traits/reify-traits
@@ -359,7 +347,7 @@
   (let [ret (traits/reify-traits [simple-watched cache-trait summaries/simple-node]  
               summaries/Summarizable
               (summarize [s] 
-                 (summary/max ;; Mxa here prevents infinite loop from s in s
+                 (summary/max ;; Max here prevents infinite loop from s in s
                   (summary/+ (summaries/summary left-sp) (summaries/summary right-stub) s)
                   (summary/or-combine                   
                    (map summaries/summary (summaries/node-ordinary-children s))
@@ -381,8 +369,6 @@
     ret))
 
 ;; TODO: figure out if transient increases can be solved (is there better semantics for inner)?
-;; TODO: figure out how to do subsumption connections properly. 
-
 ;; Stub to wait for left to be evaluated
 ;; Left-stub will always be atomic stub, which always has a single output.
 ;; TODO: this seems to not always be true -- someitmes get multiple outputs for left-stub !
@@ -484,56 +470,3 @@
        (apply make-simple-atomic-subproblem nil)
        subproblem/pseudo-solve)))
 
-
-
-
-(comment
-  
-
-(defprotocol FancyNode
-  (remove-child! [s child])
-  (remove-parent! [s parent]))
-
-(defn disconnect! [parent child]
-  (remove-child! parent child)
-  (remove-parent! child parent))
-
-
-(traits/deftrait fancy-node [] [children (atom nil) parents  (atom nil)] []
-  summaries/Node
-  (node-ordinary-children [n] (map second (remove first @children)))
-  (node-subsuming-children [n] (map second (filter first @children)))
-  (node-ordinary-parents [n] (map second (remove first @parents)))
-  (node-subsumed-parents [n] (map second (filter first @parents)))    
-  (add-child!    [n child subsuming?] (swap! children conj [subsuming? child]))
-  (add-parent!   [n parent subsuming?] (swap! parents conj [subsuming? parent]))
-
-  FancyNode
-  (remove-child! [s child]
-    (let [new-children (remove #(identical? (second %) child) @children)]
-      (assert (= (count new-children) (dec (count @children))))
-      (reset! children new-children)))
-  (remove-parent! [s parent]
-    (let [new-parents (remove #(identical? (second %) parent) @parents)]
-      (assert (= (count new-parents) (dec (count @parents))))
-      (reset! parents new-parents))))
-)
-
-
-(comment
-  (defn- make-atomic-subproblem [stub subsuming-sp inp-set function-set out-set reward status]
-  (let [children (when (= status :live)
-                   (or #_ (refined-children subsuming-as inp-set) ;; TODO!!
-                       (map #(make-fs-seq-stub inp-set %)
-                            (fs/child-seqs function-set inp-set))))]
-    (make-simple-subproblem
-     [::Atomic (fs/fs-name function-set) inp-set]
-     inp-set out-set
-     (if (= status :live)
-       (fn [s]
-         (assert (empty? (summaries/node-subsuming-children s)))
-         (assert (= (count children) (count (summaries/node-ordinary-children s))))
-         (summary/or-combine (map summaries/summary children) s reward))
-       (fn [s] (summary/make-simple-summary reward status s)))     
-     children children identity
-     (fn [s ref-inp-set] (make-atomic-stub s ref-inp-set function-set))))))
