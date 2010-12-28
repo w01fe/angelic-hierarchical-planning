@@ -34,7 +34,7 @@
   (re-child [s new-children]          "Change children.")
   (eq  [s other] "equaltiy, just based on reward and status.")
   (>=  [s other])
-  (+   [s other new-src]))
+  (+   [s other new-src] [s other new-src bound]))
 
 
 ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;; Properties ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
@@ -86,12 +86,12 @@
   (re-child        [s new-children] (SimpleSummary. max-rew stat src new-children))
   (eq               [s other] (and (= max-rew (max-reward other)) (= stat (status other))))
   (>=               [s other] (default->= s other))
-  (+                [s other new-src]
+  (+ [s other src] (+ s other src Double/POSITIVE_INFINITY))
+  (+                [s other new-src bound]
     (SimpleSummary.
-     (clojure.core/+ max-rew (max-reward other))
+     (clojure.core/min (clojure.core/+ max-rew (max-reward other)) bound)
      (min-key status-val stat (status other))
-     new-src [s other]
-#_     (concat srcs (sources other)))))
+     new-src [s other])))
 
 (defn make-live-simple-summary [max-reward source] (SimpleSummary. max-reward :live source nil))
 (defn make-blocked-simple-summary [max-reward source] (SimpleSummary. max-reward :blocked source nil))
