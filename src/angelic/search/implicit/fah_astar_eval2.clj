@@ -10,8 +10,15 @@
 ;; between subproblems, and allow "listeners" that wait for a subproblem to be
 ;; evaluated.
 
-;; This version still has some inconsistency, seemingly due to not
-;; setting top-down-bound on tree-summarizers (broadly enough).
+;; TODO: improve top-down propagation of bounds
+
+;; TODO: diagnose inconsistency in d-m 1 3 with rand-nth selection.
+;; Or, in 2-1, happens even with first.
+;; Issue seems to be ordering of pushing cost updates and outputs -- need to be synchronous
+;; I.e., have atomic stub, pushes output.
+;; Can fix by adding temporary way to update cost, then push, then do full update...
+;; Really, want summary-changed to just mark as dirty, then verified-summary processes updates.
+
 ;; Also TODO: better subusmption.
 
 ;; Breaks down into "subproblems" with well-defined action seqs, inputs, outputs,
@@ -27,7 +34,7 @@
 ;; TODO: note lazy is so lazy about subsumption , ...
 
 #_ (def  ^{:private true} cache-trait summaries/uncached-summarizer-node)
- (def ^{:private true} cache-trait summaries/eager-cached-summarizer-node)
+  (def ^{:private true} cache-trait summaries/eager-cached-summarizer-node)
 #_ (def ^{:private true} cache-trait summaries/less-eager-cached-summarizer-node)
 #_ (def ^{:private true} cache-trait summaries/lazy-cached-summarizer-node)
 #_ (def ^{:private true} cache-trait summaries/pseudo-cached-summarizer-node)
@@ -137,6 +144,7 @@
            child-sum (summaries/summary (tree-summarizer child-sp))]
        (when-not (summary/>= my-sum child-sum)
          (summaries/summary-changed! ts))))
+
    (top-down-bound [s] @tdb-atom)
    (add-top-down-bound! [s b]
      (when (< b @tdb-atom)
@@ -240,13 +248,14 @@
          Evaluable
          (evaluate! [s]
            (assert (not (= :go @state)))
-           (let [ready?                  (= :ready @state)]
+           (let [ready? (= :ready @state)]
              (if-let [[out-set reward :as op] (if ready? (fs/apply-opt function-set inp-set) @state)]
                (let [status (if ready? (fs/status function-set inp-set)   :live)]
+                 (println "eval" s @state status)
                  (if (or (not ready?) (not (= status :live)))
-                   (do (add-output! s (make-atomic-subproblem s function-set subsuming-sp
-                                                              out-set reward status))
-                       (reset! state :go))
+                   (do (reset! state :go) (summaries/summary-changed! s)
+                       (add-output! s (make-atomic-subproblem s function-set subsuming-sp
+                                                              out-set reward status)))
                    (reset! state op)))
                (reset! state :go)) ;; Kill it
              (summaries/summary-changed! s))))]
@@ -261,8 +270,9 @@
 
 (declare make-pair-stub1 make-pair-stub2)
 
-;; TODO: fix up subsuming, parent, etc. 
-(defn- make-pair-subproblem [subsuming-sp pair-stub #_ parent-sp left-sp right-sp]
+;; TODO: fix up subsuming, parent, etc.
+;; nils at bottom should chase subsuming-sp.
+(defn- make-pair-subproblem [subsuming-sp pair-stub left-sp right-sp]
   (let [expand-right? (terminal? left-sp) ;; TODO: not right..., plus change.
         kids (if expand-right? [(tree-summarizer left-sp) right-sp]
                                [left-sp (tree-summarizer right-sp)])
@@ -339,7 +349,7 @@
 ;       util/prln
 ;       (#(do (def *bad* %) %))
        (filter can-evaluate?)
-       #_ first  last #_ rand-nth))
+        first #_ last #_ rand-nth))
 
 (defn- solve [root-subproblem]
   (def *root* root-subproblem)
@@ -366,6 +376,7 @@
 
 ; (do (use '[angelic env hierarchy] 'angelic.domains.nav-switch 'angelic.search.implicit.fah-astar-expand 'angelic.search.implicit.fah-astar-eval 'angelic.search.implicit.fah-astar-eval2 'angelic.domains.discrete-manipulation) (require '[angelic.search.explicit.hierarchical :as his]))
 
+; (do (def s summaries/summarize) (def sc summary/children) (def nc summaries/node-ordinary-children) (def src summary/source))
 ;;(dotimes [_ 1] (reset! summaries/*summary-count* 0) (debug 0 (time (let [h (make-nav-switch-hierarchy (make-random-nav-switch-env 2 1 0) true)]  (println (run-counted #(second (implicit-fah-a*-eval2 h))) @summaries/*summary-count*)))))
 
 
