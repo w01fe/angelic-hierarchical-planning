@@ -12,6 +12,8 @@
 
 ;; This version has a few problems, not least multiple generation,
 ;; and some dangling inconsistency.
+;; LAtter may be because setting of top-down-bound is not sufficient
+ ;; (does not pass through tree summarizers, just goes inside).
 
 ;; Assuming consistency and evaluation s.t. no bounding is necessary.
 ;; Otherwise, downwards would be better anyway?

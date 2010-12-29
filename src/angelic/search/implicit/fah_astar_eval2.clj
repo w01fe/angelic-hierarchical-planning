@@ -10,22 +10,26 @@
 ;; between subproblems, and allow "listeners" that wait for a subproblem to be
 ;; evaluated.
 
-;; This version has a few problems, not least multiple generation,
-;; and some dangling inconsistency.
+;; This version still has some inconsistency, seemingly due to not
+;; setting top-down-bound on tree-summarizers (broadly enough).
+;; Also TODO: better subusmption.
 
 ;; Breaks down into "subproblems" with well-defined action seqs, inputs, outputs,
 ;; and "stubs" where output is not known yet.
 ;; Summary of either represents child subproblems not yet produced.
 ;; These are produced into "tree summary", which has semantic view.
 
+;; Note: with split-first, refine-last, consistency seems preserved.
+;; With others, we can still get cost increases .. 
+
 (set! *warn-on-reflection* true)
 
 ;; TODO: note lazy is so lazy about subsumption , ...
 
 #_ (def  ^{:private true} cache-trait summaries/uncached-summarizer-node)
-#_ (def ^{:private true} cache-trait summaries/eager-cached-summarizer-node)
+ (def ^{:private true} cache-trait summaries/eager-cached-summarizer-node)
 #_ (def ^{:private true} cache-trait summaries/less-eager-cached-summarizer-node)
- (def ^{:private true} cache-trait summaries/lazy-cached-summarizer-node)
+#_ (def ^{:private true} cache-trait summaries/lazy-cached-summarizer-node)
 #_ (def ^{:private true} cache-trait summaries/pseudo-cached-summarizer-node)
 
 ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
@@ -96,10 +100,7 @@
   (output-set        [s])
   (tree-summarizer   [s] "Summarizer that includes children.")
   (terminal?         [s] "Subproblem will not return further outputs.")
-  (refine-input      [s refined-input-set] "Return a child stub.")
-
-  (top-down-bound    [s])
-  (add-top-down-bound! [s b]))
+  (refine-input      [s refined-input-set] "Return a child stub."))
 
 (defn subproblem-name [s] (stub-name (stub s)))
 
@@ -117,35 +118,37 @@
 ;; Non-subsuming children must be added by calling connect-child-sp!
 (defprotocol TreeSummarizer
   (connect-child-sp! [ts child-sp])
-  (get-inner-sp      [ts] "Get subproblem for this ts"))
+  (get-inner-sp      [ts] "Get subproblem for this ts")
 
+  (top-down-bound    [s])
+  (add-top-down-bound! [s b]))
 
-(defn make-tree-summarizer [inner-sp assert-monotonic?]
- (let [last-sum (atom nil)]
+;; TODO: also propagate top-down-bounds downward?
+(defn make-tree-summarizer [inner-sp init-bound]
+ (let [tdb-atom (atom init-bound)]
   (traits/reify-traits [simple-cached-node simple-watched]
    TreeSummarizer
    (get-inner-sp [ts] inner-sp)
    (connect-child-sp! [ts child-sp]
      (summaries/connect! ts (tree-summarizer child-sp) false)
-     (add-top-down-bound! child-sp (top-down-bound inner-sp))
+     (add-top-down-bound! (tree-summarizer child-sp) @tdb-atom)
      (add-output! ts child-sp)
      (let [my-sum (summaries/summary ts)
            child-sum (summaries/summary (tree-summarizer child-sp))]
-       (when assert-monotonic?
-         (util/assert-is (>= (summary/max-reward my-sum) (summary/max-reward child-sum)) "%s" [:AC (def *sum* ts) (def *child-sp* child-sp) inner-sp (subsuming-bound ts)]))
-       (when-not (summary/>= my-sum child-sum) ;         (println "New child inc" my-sum child-sum ts child-sp)
+       (when-not (summary/>= my-sum child-sum)
          (summaries/summary-changed! ts))))
-    
+   (top-down-bound [s] @tdb-atom)
+   (add-top-down-bound! [s b]
+     (when (< b @tdb-atom)
+       (reset! tdb-atom b)
+       (summaries/summary-changed! s)))    
    summaries/Summarizable
    (summarize [s]
      (swap! summaries/*summary-count* inc)
-     (let [sum (summary/or-combine
-                 (cons (summaries/summary inner-sp)
-                       (map summaries/summary (summaries/node-ordinary-children s)))
-                 s (subsuming-bound s))]
-       (when (and assert-monotonic? @last-sum)
-       (util/assert-is (>= (summary/max-reward @last-sum) (summary/max-reward sum)) "%s" [:s (def *sum* s) inner-sp]))
-       (reset! last-sum sum))))))
+     (summary/or-combine
+      (cons (summaries/summary inner-sp)
+            (map summaries/summary (summaries/node-ordinary-children s)))
+      s (min @tdb-atom (subsuming-bound s)))))))
 
 
 
@@ -165,21 +168,15 @@
 (defn make-simple-subproblem
   [stub subsuming-sp out-set terminal? summary-fn ri-fn init-bound]
   (let [ts-atom (atom nil)
-        tdb-atom (atom init-bound) ;; TODO: factor out into trait?
         ret (traits/reify-traits [simple-cached-node]
-             summaries/Summarizable (summarize       [s] (summary-fn s @tdb-atom))
+             summaries/Summarizable (summarize       [s] (summary-fn s (top-down-bound @ts-atom)))
              Subproblem             (stub            [s] stub)
                                     (output-set      [s] out-set)
                                     (tree-summarizer [s] @ts-atom)
                                     (terminal?       [s] terminal?)
                                     (refine-input    [s ni]
-                                      (if (= ni (input-set stub)) stub (ri-fn s ni)))
-                                    (top-down-bound [s] @tdb-atom)
-                                    (add-top-down-bound! [s b]
-                                      (when (< b @tdb-atom)
-                                        (reset! tdb-atom b)
-                                        (summaries/summary-changed! s))))]
-    (reset! ts-atom (make-tree-summarizer ret true #_(= :Atomic (first name))))
+                                      (if (= ni (input-set stub)) stub (ri-fn s ni))))]
+    (reset! ts-atom (make-tree-summarizer ret init-bound #_(= :Atomic (first name))))
     (summaries/add-parent! ret @ts-atom false)
     (when subsuming-sp (summaries/connect! (tree-summarizer ret) (tree-summarizer subsuming-sp) true))
     ret))
@@ -267,8 +264,8 @@
 ;; TODO: fix up subsuming, parent, etc. 
 (defn- make-pair-subproblem [subsuming-sp pair-stub #_ parent-sp left-sp right-sp]
   (let [expand-right? (terminal? left-sp) ;; TODO: not right..., plus change.
-        kids (if expand-right? [right-sp (tree-summarizer left-sp)]
-                 [left-sp (tree-summarizer right-sp)])
+        kids (if expand-right? [(tree-summarizer left-sp) right-sp]
+                               [left-sp (tree-summarizer right-sp)])
         ret (make-simple-subproblem
              pair-stub subsuming-sp (output-set right-sp) false             
              (fn [s b] (summary/max
@@ -279,7 +276,7 @@
                                          (subproblem-name right-sp) #(refine-input right-sp %)))
              0)]
     (doseq [k kids] (summaries/add-parent! k ret false))
-    (add-watcher! (tree-summarizer (first kids))
+    (add-watcher! (tree-summarizer (if expand-right? right-sp left-sp))
       (fn [_ o] (connect-and-watch! ret
                   (if expand-right? 
                     (make-pair-stub2 nil left-sp (stub o))
@@ -342,7 +339,7 @@
 ;       util/prln
 ;       (#(do (def *bad* %) %))
        (filter can-evaluate?)
-       last #_ rand-nth))
+       #_ first  last #_ rand-nth))
 
 (defn- solve [root-subproblem]
   (def *root* root-subproblem)
