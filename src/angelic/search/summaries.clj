@@ -132,25 +132,24 @@
   (summary-changed! [n] nil)
   (verified-summary [n min-summary] (default-verified-summary n min-summary)))
 
-;; TODO: fix this up ?
+
 (defn update-cache! [n cache-atom]
   (let [old @cache-atom new (summarize n)]
     (when-not (and old (summary/solved? old)) 
-     (when old
-       ;;      (util/assert-is (not (summary/solved? old)) "%s" [(def *bad* [old new])])
-             (when *assert-consistency* (util/assert-is (<= (summary/max-reward new) (summary/max-reward old)) "%s" [(def *bad* n)]))
-       ;;      (println (= old new) (summary/eq old new) (summary/>= old new) old new)
-       )
-     (reset! cache-atom new)
-     (not (= old new)))))
+      (when (and old *assert-consistency*)
+        (util/assert-is (<= (summary/max-reward new) (summary/max-reward old))
+                        "%s" [(def *bad* n)]))     
+      (reset! cache-atom new)
+      (not (= old new)))))
 
 (traits/deftrait eager-cached-summarizer-node [] [summary-cache (atom nil)] []
   SummaryCache
   (summary [n] (or @summary-cache (reset! summary-cache (summarize n))))
-  (summary-changed! [n]    
+  (summary-changed! [n]
     (when (update-cache! n summary-cache)
-      (notify-parents n)))
-  (verified-summary [n min-summary] (default-verified-summary n min-summary)))
+        (notify-parents n)))
+  (verified-summary [n min-summary]
+    (default-verified-summary n min-summary)))
 
 ;; Eager except about subsumption, which is just accidental
 (traits/deftrait less-eager-cached-summarizer-node [] [summary-cache (atom nil)] []
@@ -191,14 +190,20 @@
              (recur min-summary)))))))
 
 
-;; No notification, just pseudo-rbfs solution (which may refine suboptimal things)
-;; Can't quite replicate earlier, since we don't have control over AND expansion order...
-;; Can't use verified-summary since we need eval going up too.
-;; TODO: improve min-summary handling ?
-;; TODO: doesn't work right now, since deeper stuff doesn't get evaluated.
-;; Need to think harder about separation of concerns, how to cross-cut ?
-(defprotocol PseudoSolver
-  (pseudo-solve [n min-summary stop? evaluate!]))
+
+
+
+
+(comment 
+
+ ;; No notification, just pseudo-rbfs solution (which may refine suboptimal things)
+ ;; Can't quite replicate earlier, since we don't have control over AND expansion order...
+ ;; Can't use verified-summary since we need eval going up too.
+ ;; TODO: improve min-summary handling ?
+ ;; TODO: doesn't work right now, since deeper stuff doesn't get evaluated.
+ ;; Need to think harder about separation of concerns, how to cross-cut ?
+ (defprotocol PseudoSolver
+   (pseudo-solve [n min-summary stop? evaluate!]))
 
 (traits/deftrait pseudo-cached-summarizer-node [] [summary-cache (atom nil)]  []
   SummaryCache
@@ -216,7 +221,7 @@
             (stop? n) (do (println "\nEVAL!") (evaluate! n) (recur min-summary stop? evaluate!))
             :else (let [child (util/safe-singleton (summary/children cs))]
                     (pseudo-solve (summary/source child) child stop? evaluate!)
-                    (recur min-summary stop? evaluate!))))))
+                    (recur min-summary stop? evaluate!)))))))
 
 
 
