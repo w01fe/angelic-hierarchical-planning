@@ -32,8 +32,11 @@
 #_ (def  ^{:private true} cache-trait summaries/uncached-summarizer-node)
   (def ^{:private true} cache-trait summaries/eager-cached-summarizer-node)
 #_ (def ^{:private true} cache-trait summaries/less-eager-cached-summarizer-node)
-#_ (def ^{:private true} cache-trait summaries/lazy-cached-summarizer-node)
+ (def ^{:private true} cache-trait summaries/lazy-cached-summarizer-node)
 #_ (def ^{:private true} cache-trait summaries/pseudo-cached-summarizer-node)
+
+(def *no-identical-nonterminal-outputs* true)
+(def *decompose-cache* #_nil true) ;; nil for none, or bind to hashmap  
 
 ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
 ;;;;;;;;;;;;;;;;;;;;;;;;;;;;       Utilities      ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
@@ -203,23 +206,18 @@
   (summaries/summary-changed-local! stub)
   (add-output! stub sp))
 
-;; TODO: put a switch here.
 ;; Would be nice to assert consistency, but hard to get before-summary...
 ;; This version keeps children with same input inside.
 ;; Actually makes things worse sometimes (more evaluations?!) -- with first, better with last.
 (defn add-sp-child! [sp child-sp]
   (assert (not (terminal? sp)))
-  (if (and (= (output-set sp) (output-set child-sp))
-            (not (terminal? child-sp)#_(summary/solved? (summaries/summary (tree-summarizer child-sp))))) ;;no
+  (if (and *no-identical-nonterminal-outputs*
+           (= (output-set sp) (output-set child-sp))
+           (not (terminal? child-sp)))
     (do (connect-and-watch! sp child-sp #(add-sp-child! sp %))
         (summaries/summary-changed! sp ))
     (do (summaries/summary-changed-local! sp)
         (add-output! sp child-sp))))
-#_
-(defn add-sp-child! [sp child-sp]
-  (assert (not (terminal? sp)))
-  (summaries/summary-changed-local! sp)
-  (add-output! sp child-sp))
 
 ;; Note: All nonterminal subproblems use or-summary for ri-fn
 (defn make-simple-subproblem
@@ -246,11 +244,11 @@
 
 
 
-(declare make-fs-seq-stub make-atomic-stub)
+(declare make-fs-seq-stub get-atomic-stub)
 
 (defn- make-atomic-subproblem [stub function-set subsuming-sp out-set reward status]
   (let [inp-set  (input-set stub)
-        ri-fn    (fn [s ri] (make-atomic-stub s ri function-set))]
+        ri-fn    (fn [s ri] (get-atomic-stub s ri function-set))]
     (cond (not (= status :live))
           (make-simple-subproblem
            stub subsuming-sp out-set true
@@ -277,11 +275,11 @@
   (when subsuming-sp (summaries/connect! child (tree-summarizer subsuming-sp) true)))
 
 ;; Note: this is double-stage to lazily generate children.  Could be simpler single-stage.
-(defn- make-atomic-stub [subsuming-sp inp-set function-set]
+(defn- make-atomic-stub [name subsuming-sp inp-set function-set]
   (let [state (atom :ready) ;; set to [out-set reward] after first eval, then :go after second.
         ret
         (traits/reify-traits
-         [(simple-stub [:Atomic (fs/fs-name function-set) #_ inp-set] inp-set)
+         [(simple-stub name inp-set)
           simple-watched simple-cached-node]
          summaries/Summarizable
          (summarize [s]
@@ -306,6 +304,13 @@
     (connect-subsuming! ret subsuming-sp)
     ret))
 
+;; TODO: do something more with subsuming?
+(defn- get-atomic-stub [subsuming-sp inp-set function-set]
+  (let [name [:Atomic (fs/fs-name function-set) inp-set]]
+   (if *decompose-cache*
+     (util/cache-with ^HashMap *decompose-cache* name
+       (make-atomic-stub name subsuming-sp inp-set function-set))
+     (make-atomic-stub name subsuming-sp inp-set function-set))))
 
 
 
@@ -381,7 +386,7 @@
 (defn- make-fs-seq-stub
   ([inp-set fs] (make-fs-seq-stub inp-set fs (map fs/fs-name fs)))
   ([inp-set [first-fs & rest-fs] fs-names]
-     (let [left-stub (make-atomic-stub nil inp-set first-fs)]
+     (let [left-stub (get-atomic-stub nil inp-set first-fs)]
        (if (empty? rest-fs)
          left-stub
          (make-pair-stub1 nil left-stub (rest fs-names)
@@ -413,7 +418,7 @@
    #(let [n (second (subproblem-name %))] (when-not (= (first n) :noop) n))))
 
 (defn- get-root-subproblem [inp-set fs]
-  (let [root-stub (make-atomic-stub nil inp-set fs)
+  (let [root-stub (get-atomic-stub nil inp-set fs)
         ret       (atom nil)]
     (add-watcher! root-stub (fn [root] (reset! ret root)))
     (evaluate! root-stub)
@@ -424,9 +429,10 @@
 
 
 (defn implicit-fah-a*-eval2 [henv]
-  (->> (fs/make-init-pair henv)
-       (apply get-root-subproblem)
-       solve))
+  (binding [*decompose-cache* (when *decompose-cache* (HashMap.))]
+   (->> (fs/make-init-pair henv)
+        (apply get-root-subproblem)
+        solve)))
 
 ; (do (use '[angelic env hierarchy] 'angelic.domains.nav-switch 'angelic.search.implicit.fah-astar-expand 'angelic.search.implicit.fah-astar-eval 'angelic.search.implicit.fah-astar-eval2 'angelic.domains.discrete-manipulation) (require '[angelic.search.explicit.hierarchical :as his]))
 
