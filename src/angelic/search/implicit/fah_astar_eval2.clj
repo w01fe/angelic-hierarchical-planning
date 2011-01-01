@@ -199,13 +199,29 @@
 
 ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;  Subproblem Impl  ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
 
-(defn add-child-sp! [thing sp]
- #_ (util/assert-is (<= (summary/max-reward (summaries/summary sp))
-                      (summary/max-reward (summaries/summary thing)))
-                  "%s" [thing sp]) ;; Would be nice, but hard to get right before-sum
-  (summaries/summary-changed-local! thing)
-  (add-output! thing sp))
+(defn set-stub-output! [stub sp]
+  (summaries/summary-changed-local! stub)
+  (add-output! stub sp))
 
+;; TODO: put a switch here.
+;; Would be nice to assert consistency, but hard to get before-summary...
+;; This version keeps children with same input inside.
+;; Actually makes things worse sometimes (more evaluations?!) -- with first, better with last.
+(defn add-sp-child! [sp child-sp]
+  (assert (not (terminal? sp)))
+  (if (and (= (output-set sp) (output-set child-sp))
+            (not (terminal? child-sp)#_(summary/solved? (summaries/summary (tree-summarizer child-sp))))) ;;no
+    (do (connect-and-watch! sp child-sp #(add-sp-child! sp %))
+        (summaries/summary-changed! sp ))
+    (do (summaries/summary-changed-local! sp)
+        (add-output! sp child-sp))))
+#_
+(defn add-sp-child! [sp child-sp]
+  (assert (not (terminal? sp)))
+  (summaries/summary-changed-local! sp)
+  (add-output! sp child-sp))
+
+;; Note: All nonterminal subproblems use or-summary for ri-fn
 (defn make-simple-subproblem
   [stub subsuming-sp out-set terminal? summary-fn ri-fn init-bound]
   (let [ts-atom (atom nil)
@@ -244,14 +260,14 @@
           (let [ret (make-simple-subproblem stub subsuming-sp out-set false or-summary ri-fn reward)]
             (connect-and-watch! ret subsuming-sp
               (fn [sub-out]
-                (connect-and-watch! ret (refine-input sub-out inp-set) #(add-child-sp! ret %))
+                (connect-and-watch! ret (refine-input sub-out inp-set) #(add-sp-child! ret %))
                 (summaries/summary-changed! ret)))  ;; TODO: needed?                       
             ret)
           
           :else 
           (let [ret (make-simple-subproblem stub subsuming-sp out-set false or-summary ri-fn reward)]
             (doseq [child (map #(make-fs-seq-stub inp-set %) (fs/child-seqs function-set inp-set))]
-              (connect-and-watch! ret child #(add-child-sp! ret %)))
+              (connect-and-watch! ret child #(add-sp-child! ret %)))
             ret))))
 
 
@@ -275,6 +291,7 @@
                                     (min (subsuming-bound s) (second @state)) s)))   
          Evaluable
          (evaluate! [s]
+;                    (println "evals" s)
            (assert (not (= :go @state)))
            (let [ready? (= :ready @state)]
              (if-let [[out-set reward :as op] (if ready? (fs/apply-opt function-set inp-set) @state)]
@@ -283,7 +300,7 @@
                  (if (or (not ready?) (not (= status :live)))
                    (do (reset! state :go)
                        (->> (make-atomic-subproblem s function-set subsuming-sp out-set reward status)
-                            (add-child-sp! s)))
+                            (set-stub-output! s)))
                    (do (reset! state op) (summaries/summary-changed! s))))
                (do (reset! state :go) (summaries/summary-changed! s))))))]
     (connect-subsuming! ret subsuming-sp)
@@ -318,7 +335,7 @@
     (add-watcher! watch
       (fn [o] ;        (println ret o)
         (summaries/summary-changed-local! ss)
-        (connect-and-watch! ret (stub-f o) #(add-child-sp! ret %))
+        (connect-and-watch! ret (stub-f o) #(add-sp-child! ret %))
         (summaries/summary-changed! ret))) ;; TODO: efficiency?
     
     ret))
@@ -343,7 +360,7 @@
     (connect-subsuming! ret subsuming-sp)
     (summaries/connect! ret (tree-summarizer left-sp) false)
     (connect-and-watch! ret right-stub 
-      #(add-child-sp! ret (make-pair-subproblem subsuming-sp ret left-sp %)))
+      #(set-stub-output! ret (make-pair-subproblem subsuming-sp ret left-sp %)))
     ret))
 
 (defn- make-pair-stub1 [subsuming-sp left-stub right-name right-stub-fn]
@@ -355,7 +372,7 @@
       (fn [lo]
         (connect-and-watch! ret
           (make-pair-stub2 subsuming-sp lo (right-stub-fn (output-set lo)))
-          #(add-child-sp! ret %))
+          #(set-stub-output! ret %))
         (summaries/summary-changed! ret))) ;; TODO: wasteful?
     
     ret))
@@ -400,7 +417,6 @@
         ret       (atom nil)]
     (add-watcher! root-stub (fn [root] (reset! ret root)))
     (evaluate! root-stub)
-    (summaries/summary root-stub) ;; To make asert in add-child-sp! happy
     (evaluate! root-stub)
 ;    (println root-stub (summaries/summary root-stub) ret)
     (assert @ret)
