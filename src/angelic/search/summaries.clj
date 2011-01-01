@@ -60,8 +60,10 @@
 
 (defprotocol SummaryCache
   (summary [n] "Possibly cached version of summarize")
-  (summary-changed! [n])
+  (summary-changed! [n] "Update summary and notify parents as needed")
+  (summary-changed-local! [n] "Just update local summary, no parent notification (pot'l unsafe)")
   (verified-summary [n min-summary] "Return a current exact best summary >= min-summary, or nil"))
+
 
 
 (def *summary-count* (atom 0))
@@ -130,24 +132,27 @@
   SummaryCache
   (summary [n] (summarize n))
   (summary-changed! [n] nil)
+  (summary-changed-local! [n] nil)
   (verified-summary [n min-summary] (default-verified-summary n min-summary)))
 
 
 (defn update-cache! [n cache-atom]
-  (let [old @cache-atom new (summarize n)]
-    (when-not (and old (summary/solved? old)) 
-      (when (and old *assert-consistency*)
-        (util/assert-is (<= (summary/max-reward new) (summary/max-reward old))
-                        "%s" [(def *bad* n)]))     
-      (reset! cache-atom new)
-      (not (= old new)))))
+  (when-let [old @cache-atom]
+    (let [new (summarize n)]
+      (when-not (summary/solved? old) 
+        (when *assert-consistency*
+          (util/assert-is (<= (summary/max-reward new) (summary/max-reward old))
+                          "%s" [(def *bad* n)]))     
+        (reset! cache-atom new)
+        (not (= old new))))))
 
 (traits/deftrait eager-cached-summarizer-node [] [summary-cache (atom nil)] []
   SummaryCache
   (summary [n] (or @summary-cache (reset! summary-cache (summarize n))))
   (summary-changed! [n]
     (when (update-cache! n summary-cache)
-        (notify-parents n)))
+      (notify-parents n)))
+  (summary-changed-local! [n] (reset! summary-cache nil))
   (verified-summary [n min-summary]
     (default-verified-summary n min-summary)))
 
@@ -158,6 +163,7 @@
   (summary-changed! [n]    
     (when (update-cache! n summary-cache)
       (notify-ordinary-parents n)))
+  (summary-changed-local! [n] (reset! summary-cache nil))
   (verified-summary [n min-summary] (default-verified-summary n min-summary)))
 
 
@@ -176,6 +182,7 @@
         (when-not (summary/>= os ns)
 ;          (print (summary/status ns))
           (notify-parents n)))))
+  (summary-changed-local! [n] (reset! summary-cache nil))
   (verified-summary [n min-summary]
      (let [os @summary-cache
            cs (reset! summary-cache (summarize n))]
