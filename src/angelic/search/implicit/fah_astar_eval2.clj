@@ -15,12 +15,7 @@
 
 ;; TODO: improve top-down propagation of bounds
 
-
-;; TODO: diagnose inconsistency in d-m 1 3 with rand-nth selection.
-;; Or, in 2-1, happens even with first.
-;; Issue seems to be ordering of pushing cost updates and outputs -- need to be synchronous
-;; I.e., have atomic stub, pushes output.
-;; Rule: iff you follow a stub, you must have it as a child.
+;; TODO: diagnose inconsistency in d-m 2 3 w
 
 ;; Also TODO: better subusmption.
 
@@ -37,7 +32,7 @@
 #_ (def  ^{:private true} cache-trait summaries/uncached-summarizer-node)
   (def ^{:private true} cache-trait summaries/eager-cached-summarizer-node)
 #_ (def ^{:private true} cache-trait summaries/less-eager-cached-summarizer-node)
- (def ^{:private true} cache-trait summaries/lazy-cached-summarizer-node)
+#_ (def ^{:private true} cache-trait summaries/lazy-cached-summarizer-node)
 #_ (def ^{:private true} cache-trait summaries/pseudo-cached-summarizer-node)
 
 ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
@@ -56,8 +51,6 @@
 ;; This allows changes in lock-step, so we don't end up with inconsistency problems.
 ;; (decrease + increase)
 
-
-;; TODO: doall is bug ? 
 (traits/deftrait simple-watched
   []
   [^ArrayList watchers (ArrayList.)
@@ -164,7 +157,7 @@
   (top-down-bound    [s])
   (add-top-down-bound! [s b]))
 
-;; TODO: also propagate top-down-bounds downward? in smarter way using existing IS?
+;; TODO: propagate top-down-bounds downward in smarter way using existing IS?
 ;; TODO: we need to make sure tree sums get called on add-output! first to ensure
 ;;       consistency with top-down-bounds ? 
 (defn make-tree-summarizer [inner-sp init-bound]
@@ -174,12 +167,12 @@
             (get-inner-sp [ts] inner-sp)
             (top-down-bound [s] @tdb-atom)
             (add-top-down-bound! [s b]
-              (when (< b @tdb-atom) ;; TODO: (max-reward (summaries/summary s)) ?
-                (reset! tdb-atom b)
-                (doseq [c (summaries/node-ordinary-children s)]
-                  (when (instance? angelic.search.implicit.fah_astar_eval2.TreeSummarizer c)
-                    (add-top-down-bound! c b)))
-                (summaries/summary-changed! s)))    
+             (when (< b @tdb-atom) ;; ;; Note: adding < current max-reward actually hurts...
+               (reset! tdb-atom b)
+               (doseq [c (summaries/node-ordinary-children s)]
+                 (when (instance? angelic.search.implicit.fah_astar_eval2.TreeSummarizer c)
+                   (add-top-down-bound! c b)))
+               (summaries/summary-changed! s)))    
             summaries/Summarizable
             (summarize [s] (or-summary s @tdb-atom)))]
    (connect-and-watch! ret inner-sp
@@ -187,14 +180,13 @@
 ;       (println "Add" ret child-sp)
        (summaries/connect! ret (tree-summarizer child-sp) false)
        (add-top-down-bound! (tree-summarizer child-sp) @tdb-atom)
-       (summaries/summary-changed! ret) ;; TODO: put back following... about 30% speedup
-       ;; (problem is that forcing summary triggers problem with lazy summary...)
-       #_ (let [my-sum (summaries/summary ret)
-                child-sum (summaries/summary (tree-summarizer child-sp))]
-            (when-not (summary/>= my-sum child-sum)
-              (summaries/summary-changed! ret)))))
+       (summaries/summary-changed! ret))) ;; TODO: speedup? 
    ret))
 
+(comment         (let [my-sum (summaries/summary ret)
+                child-sum (summaries/summary (tree-summarizer child-sp))]
+            (when-not (summary/>= my-sum child-sum)
+              (summaries/summary-changed! ret))))
 
 
 
@@ -240,10 +232,6 @@
 
 (declare make-fs-seq-stub make-atomic-stub)
 
-
-
-;; TODO: pass reward through so it propagates through outputs.
-;; How to do this elegantly ? 
 (defn- make-atomic-subproblem [stub function-set subsuming-sp out-set reward status]
   (let [inp-set  (input-set stub)
         ri-fn    (fn [s ri] (make-atomic-stub s ri function-set))]
@@ -311,7 +299,6 @@
 
 ;; TODO: fix up subsuming, parent, etc.
 ;; nils at bottom should chase subsuming-sp.
-;;TODO: if refining left, and left becomes solved without new output ... must switch?
 (defn- make-nt-pair-subproblem [subsuming-sp pair-stub left-sp right-sp]
   (let [ret (make-simple-subproblem
              pair-stub subsuming-sp (output-set right-sp) false             
@@ -359,7 +346,6 @@
       #(add-child-sp! ret (make-pair-subproblem subsuming-sp ret left-sp %)))
     ret))
 
-;; TODO: we need to liven left-stub ??
 (defn- make-pair-stub1 [subsuming-sp left-stub right-name right-stub-fn]
   (let [ret (traits/reify-traits [simple-cached-node simple-watched or-summarizable
                                   (simple-stub [:Pair1 (stub-name left-stub) right-name]
