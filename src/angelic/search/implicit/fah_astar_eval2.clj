@@ -14,10 +14,30 @@
 ;; children, by makig sure to do the updates synchronously.
 
 ;; TODO: improve top-down propagation of bounds
+;; TODO: better subusmption.
+;; TODO: diagnose inconsistency in d-m 2 3 
 
-;; TODO: diagnose inconsistency in d-m 2 3 w
+;; TODO: lump together children?  i.e., outside rather than inside solution?
 
-;; Also TODO: better subusmption.
+;; Problem with decomposition: terminal subproblems get generated when
+;; created, not when optimal.
+
+;; TODO: deal with single-solution constraint.  (happens automatically?)
+
+;; Basic solution to both -- SP is optimally solved when tree summarizer
+;; has status solved, by child other than inner-sp
+;;  TODO: ties should be broken away from inner-sp.  Always?
+;; SO: idea is to
+;; -- Always publish if different output set
+;; -- Otherwise, always add internally.
+;; --  (to tree summarizer, if terminal, inner-sp otherwise)
+;; -- When tree summarizer becomes solved by terminal output,
+;;    -- publish this output
+;;    -- and shut down publisher. --ie no more outputs.
+;; To implement this, need:
+;; - tie breaking (implement in summarize method?)
+;; - notification of tree summarizer solved by ... (implement in summarize method?)
+
 
 ;; Breaks down into "subproblems" with well-defined action seqs, inputs, outputs,
 ;; and "stubs" where output is not known yet.
@@ -36,7 +56,7 @@
 #_ (def ^{:private true} cache-trait summaries/pseudo-cached-summarizer-node)
 
 (def *no-identical-nonterminal-outputs* true)
-(def *decompose-cache* #_nil true) ;; nil for none, or bind to hashmap  
+(def *decompose-cache*  #_ nil  true) ;; nil for none, or bind to hashmap  
 
 ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
 ;;;;;;;;;;;;;;;;;;;;;;;;;;;;       Utilities      ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
@@ -65,7 +85,6 @@
     (doseq [o (doall (seq outputs))] (w o))#_ (println :WF sw))
   (add-output! [sw o] #_ (println :AO sw o)
     (.add outputs o)
-;    (println (count watchers) (seq watchers))
     (doseq [w (doall (seq watchers))] (w o)) #_(println :OF sw)))
 
 
@@ -180,7 +199,6 @@
             (summarize [s] (or-summary s @tdb-atom)))]
    (connect-and-watch! ret inner-sp
      (fn [child-sp]
-;       (println "Add" ret child-sp)
        (summaries/connect! ret (tree-summarizer child-sp) false)
        (add-top-down-bound! (tree-summarizer child-sp) @tdb-atom)
        (summaries/summary-changed! ret))) ;; TODO: speedup? 
@@ -209,11 +227,16 @@
 ;; Would be nice to assert consistency, but hard to get before-summary...
 ;; This version keeps children with same input inside.
 ;; Actually makes things worse sometimes (more evaluations?!) -- with first, better with last.
+;; TODO: this solution does not work with decomposition -- infinite loops
+;; TODO: the check commented out below works, but adds 50% overhead.
+;; TODO: also, it doesn't seem to work... -- see dm 2-3
+;;  (Since we don't keep only first solution)
 (defn add-sp-child! [sp child-sp]
   (assert (not (terminal? sp)))
   (if (and *no-identical-nonterminal-outputs*
            (= (output-set sp) (output-set child-sp))
-           (not (terminal? child-sp)))
+           (or (not (terminal? child-sp))
+              #_ (summary/solved? (summaries/summary (tree-summarizer child-sp)))))
     (do (connect-and-watch! sp child-sp #(add-sp-child! sp %))
         (summaries/summary-changed! sp ))
     (do (summaries/summary-changed-local! sp)
@@ -241,8 +264,6 @@
 ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
 
 ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;      Atomic       ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
-
-
 
 (declare make-fs-seq-stub get-atomic-stub)
 
@@ -329,7 +350,7 @@
                           (subproblem-name right-sp) #(refine-input right-sp %)))
              0)
         [ss watch stub-f]
-        (if (terminal? left-sp) ; ;Expand right?
+        (if (terminal? left-sp) ;Expand right?
           [(make-sum-summarizer [(tree-summarizer left-sp) right-sp])
            right-sp #(make-pair-stub2 nil left-sp (stub %))]
           [(make-sum-summarizer [left-sp (tree-summarizer right-sp)])
@@ -338,7 +359,7 @@
     (summaries/connect! ret ss false)
     
     (add-watcher! watch
-      (fn [o] ;        (println ret o)
+      (fn [o]
         (summaries/summary-changed-local! ss)
         (connect-and-watch! ret (stub-f o) #(add-sp-child! ret %))
         (summaries/summary-changed! ret))) ;; TODO: efficiency?
@@ -402,11 +423,7 @@
 (defn- choose-leaf [verified-summary]
 ;  (println "VS"  verified-summary)  (def *sum* verified-summary)  (Thread/sleep 10)
   (->> (summary/extract-leaf-seq verified-summary (comp empty? summary/children))
-;       util/prln
-;       (#(do (def *bads* %) %))
        (map summary/source)
-;       util/prln
-;       (#(do (def *bad* %) %))
        (filter can-evaluate?)
        #_ first  last #_  rand-nth))
 
@@ -423,7 +440,6 @@
     (add-watcher! root-stub (fn [root] (reset! ret root)))
     (evaluate! root-stub)
     (evaluate! root-stub)
-;    (println root-stub (summaries/summary root-stub) ret)
     (assert @ret)
     @ret))
 
