@@ -2,7 +2,8 @@
   (:require
    [edu.berkeley.ai.util :as util]
    [angelic.env :as env]
-   [angelic.env.util :as env-util]            
+   [angelic.env.util :as env-util]
+   [angelic.env.state :as state]               
    [angelic.hierarchy.angelic :as angelic]
          
    [angelic.hierarchy :as hierarchy]   
@@ -22,7 +23,9 @@
   (status     [sk input-set] ":live, :blocked, or :solved")
   (child-seqs [sk input-set] "seq of seqs of FunctionSets. Only valid if above is :live.
                               (= :live (status sk s)) ==>
-                                 (subset? (child-seqs sk s-subset) (child-seqs sk s)) (for names)"))
+                                 (subset? (child-seqs sk s-subset) (child-seqs sk s)) (for names)")
+  (extract-context [sk input-set] "Relevant parts of input-set, for state abstraction")
+  (get-logger  [sk input-set] "Relevant parts of input-set, for state abstraction"))
 
 ;; Child-seqs must obey the containment property for subsets of input-set.
 
@@ -33,13 +36,22 @@
     p))
 
 
+(defn extract-context* [action input-set]
+  (state/extract-context input-set (angelic/precondition-context-set action input-set)))
+
+(defn get-logger* [action input-set]
+  (state/get-logger input-set (angelic/precondition-context-set action input-set)))
+
 (defn make-primitive-fs [action]
   (reify
    FunctionSet
    (fs-name    [sk]           (env/action-name action))
    (apply-opt  [sk input-set] (viable-or-nil (angelic/optimistic-set-and-reward action input-set)))
    (status     [sk input-set] :solved)
-   (child-seqs [sk input-set] (throw (UnsupportedOperationException.)))))
+   (child-seqs [sk input-set] (throw (UnsupportedOperationException.)))
+   (extract-context [sk input-set] (extract-context* action input-set))
+   (get-logger  [sk input-set] (get-logger* action input-set))   
+   ))
 
 (defn- simple-immediate-refinements-set [a input-set]
   (for [[constraint ref] (angelic/immediate-refinements-set a input-set)]
@@ -60,7 +72,9 @@
    (child-seqs [sk input-set]
      (for [ref (simple-immediate-refinements-set action input-set)]
        (for [a ref]
-         ((if (env/primitive? a) make-primitive-fs make-hla-fs) a))))))
+         ((if (env/primitive? a) make-primitive-fs make-hla-fs) a))))
+   (extract-context [sk input-set] (extract-context* action input-set))
+   (get-logger  [sk input-set] (get-logger* action input-set))   ))
 
 
 ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;; Constructor ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
