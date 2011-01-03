@@ -58,7 +58,7 @@
  (def ^{:private true} cache-trait summaries/lazy-cached-summarizer-node)
 #_ (def ^{:private true} cache-trait summaries/pseudo-cached-summarizer-node)
 
-(def *no-identical-nonterminal-outputs* false #_true)
+(def *no-identical-nonterminal-outputs* true )
 (def *decompose-cache*   nil #_  true) ;; nil for none, or bind to hashmap  
 
 ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
@@ -84,10 +84,10 @@
    ^ArrayList outputs (ArrayList.)]
   []
   Watched
-  (add-watcher! [sw w] #_(println :AW sw w)
-    (.add watchers w)
+  (add-watcher! [sw w] #_(println :AW sw w) #_ (assert (not (some #(= % w) watchers)))
+    (.add watchers w) 
     (doseq [o (doall (seq outputs))] (w o))#_ (println :WF sw))
-  (add-output! [sw o] #_ (println :AO sw o)
+  (add-output! [sw o] #_ (println :AO sw o) 
     (.add outputs o)
     (doseq [w (doall (seq watchers))] (w o)) #_(println :OF sw))
   (get-outputs [sw] (doall (seq outputs))))
@@ -238,12 +238,8 @@
 ;;  (Since we don't keep only first solution)
 (defn add-sp-child! [sp child-sp]
   (assert (not (terminal? sp)))
-  (if (and *no-identical-nonterminal-outputs*
-           (= (output-set sp) (output-set child-sp)))
-    (do (connect-and-watch! sp child-sp #(add-sp-child! sp %))
-        (summaries/summary-changed! sp ))
-    (do (summaries/summary-changed-local! sp)
-        (add-output! sp child-sp))))
+  (summaries/summary-changed-local! sp)
+  (add-output! sp child-sp))
 
 
 ;; Note: All nonterminal subproblems use or-summary for ri-fn
@@ -262,10 +258,28 @@
     (when subsuming-sp (summaries/connect! @ts-atom (tree-summarizer subsuming-sp) true))
     ret))
 
-;; 
+;; TODO: better grouping -- allow adding etc? 
 (defn make-output-collecting-subproblem [inner-sp]
-  )
+  (let [ts  (tree-summarizer inner-sp)
+        ret (traits/reify-traits [simple-cached-node simple-watched ]
+             summaries/Summarizable (summarize       [s] (or-summary s (top-down-bound ts)))
+             Subproblem             (stub            [s] (stub inner-sp))
+                                    (output-set      [s] (output-set inner-sp))
+                                    (tree-summarizer [s] ts)
+                                    (terminal?       [s] false)
+                                    (refine-input    [s ni] (refine-input inner-sp ni)))
+        child-watch (fn child-watch [o]
+                      (if (= (output-set inner-sp) (output-set o))
+                        (do (connect-and-watch! ret o child-watch)
+                            (summaries/summary-changed! ret))
+                        (add-sp-child! ret o)))]
+    (connect-and-watch! ret inner-sp child-watch)    
+    ret))
 
+(defn output-wrap [sp]
+  (if *no-identical-nonterminal-outputs*
+    (make-output-collecting-subproblem sp)
+    sp))
 
 ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
 ;;;;;;;;;;;;;;;;;;;;;     Subproblem Types and Stubs     ;;;;;;;;;;;;;;;;;;;;;;;
@@ -275,13 +289,7 @@
 
 (declare make-fs-seq-stub get-atomic-stub)
 
-;; We have to do it this way to cope iwth *no-identical-nt-outputs
-(defn get-atomic-sp-child-stubs [atomic-sp]
-  (filter #(instance? angelic.search.implicit.fah_astar_eval2.Stub %)
-          (summaries/node-ordinary-children atomic-sp)))
 
-
-;; Problem -- if we watch ret but yank out its children, we also double count ...
 
 (defn- make-atomic-subproblem [stub function-set subsuming-sp out-set reward status]
   (let [inp-set  (input-set stub)
@@ -293,18 +301,17 @@
           
           (and subsuming-sp (not (terminal? subsuming-sp))) 
           (let [ret (make-simple-subproblem stub subsuming-sp out-set false or-summary ri-fn reward)]
-            (doseq [c (get-atomic-sp-child-stubs ret)] ;; 
-              (connect-and-watch! ret c
-                (fn [sub-out]
-                  (connect-and-watch! ret (refine-input sub-out inp-set) #(add-sp-child! ret %))
-                  (summaries/summary-changed! ret)))) ;; TODO: needed?                       
-            ret)
+            (connect-and-watch! ret subsuming-sp
+              (fn [sub-out]
+                (connect-and-watch! ret (refine-input sub-out inp-set) #(add-sp-child! ret %))
+                (summaries/summary-changed! ret))) ;; TODO: needed?                       
+            (output-wrap ret))
           
           :else 
           (let [ret (make-simple-subproblem stub subsuming-sp out-set false or-summary ri-fn reward)]
             (doseq [child (map #(make-fs-seq-stub inp-set %) (fs/child-seqs function-set inp-set))]
               (connect-and-watch! ret child #(add-sp-child! ret %)))
-            ret))))
+            (output-wrap ret)))))
 
 
 
@@ -370,6 +377,7 @@
 ;; TODO: remove ss ?
 ;; Note: this is the only place logic depends on summary.  Potential for problems? 
 (defn- make-pair-subproblem [subsuming-sp pair-stub left-sp right-sp]
+;  (println "mps" pair-stub)
   (let [expand-right? (not (can-split? left-sp) ) #_(terminal? left-sp)
         [ss watch stub-f]
         (if expand-right?
@@ -383,10 +391,15 @@
                  (let [left-done? (atom false)]
                    (fn [s b] 
                      (when (and (not @left-done?) (not (summary/live? (summaries/summary left-sp))))
-                       (reset! left-done? true) (println "BOO")
+                       (reset! left-done? true) #_(println "BOO" pair-stub left-sp right-sp (class right-sp))
                        (summaries/disconnect! s ss)
-                       (add-watcher! left-sp (fn [o] (def *sum* [s left-sp o]) (throw (RuntimeException. "Solved and children."))))
-                       (add-sp-child! s (make-nt-pair-subproblem subsuming-sp pair-stub left-sp right-sp)))
+                       (add-watcher! left-sp (fn [o] (def *sum* [s left-sp o])
+                                               (throw (RuntimeException. "Solved and children."))))
+                       ;; TODO: do more efficiently?
+                       (connect-and-watch! s (make-pair-stub2 subsuming-sp left-sp (stub right-sp))
+                                           (fn [os] (connect-and-watch! s os #(add-child-sp! s %))))
+ ;                       (add-sp-child! s (make-pair-subproblem subsuming-sp pair-stub left-sp right-sp))
+                       )
                      (or-summary s b))))             
              (fn [s ri] (make-pair-stub1 s (refine-input left-sp ri)
                           (subproblem-name right-sp) #(refine-input right-sp %)))
@@ -400,7 +413,7 @@
         (connect-and-watch! ret (stub-f o) #(add-sp-child! ret %))
         (summaries/summary-changed! ret))) ;; TODO: efficiency?
     
-    ret))
+    (output-wrap ret)))
 
 
 
@@ -448,7 +461,7 @@
 ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
 
 (defn- choose-leaf [verified-summary]
-  (println "VS"  verified-summary)  (def *sum* verified-summary)  (Thread/sleep 10)
+ ;  (println "VS"  verified-summary)  (def *sum* verified-summary)  (Thread/sleep 10)
   (->> (summary/extract-leaf-seq verified-summary (comp empty? summary/children))
        (map summary/source)
        (filter can-evaluate?)
