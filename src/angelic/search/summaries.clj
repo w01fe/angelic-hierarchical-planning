@@ -56,7 +56,9 @@
   (node-ordinary-parents   [n])
   (node-subsumed-parents   [n])    
   (add-parent!     [n parent-node sub?])
-  (add-child!      [n child-node sub?]))
+  (add-child!      [n child-node sub?])
+  (remove-parent!     [n parent-node ])
+  (remove-child!      [n child-node ])  )
 
 (defprotocol SummaryCache
   (summary [n] "Possibly cached version of summarize")
@@ -93,7 +95,14 @@
   (add-child!    [n child subsuming?] (assert (not (identical? child n)))
     (.add children [subsuming? child]))
   (add-parent!   [n parent subsuming?] (assert (not (identical? parent n)))
-    (.add parents [subsuming? parent])))
+    (.add parents [subsuming? parent]))
+  (remove-child! [n child]
+    (let [i (util/position-if #(identical? (second %) child) children)]
+      (.remove children (int i))))  
+  (remove-parent! [n parent]
+    (let [i (util/position-if #(identical? (second %) parent) parents)]
+      (.remove parents (int i))))  
+  )
 
 (traits/deftrait fixed-node [children] [^java.util.ArrayList sub-children (java.util.ArrayList.)
                                         ^java.util.ArrayList parents (java.util.ArrayList.)] []
@@ -105,21 +114,31 @@
    (add-child!    [n child sub?]
       (assert sub?)
       (.add sub-children child))
-   (add-parent!   [n parent subsuming?] (.add parents [subsuming? parent])))
+   (add-parent!   [n parent subsuming?] (.add parents [subsuming? parent]))
+  (remove-child! [n child]
+    (let [i (util/position-if #(identical? % child) sub-children)]
+      (.remove sub-children (int i))))  
+  (remove-parent! [n parent]
+    (let [i (util/position-if #(identical? (second %) parent) parents)]
+      (.remove parents (int i))))
+   )
 
 
 
 (defn connect! [parent child subsuming?]
- ;  (when subsuming? (print "."))
   (when (or (not subsuming?) *use-subsumption*)
     (add-parent! child parent subsuming?)
     (add-child! parent child subsuming?)))
 
+(defn disconnect! [parent child ]
+  (remove-parent! child parent )
+  (remove-child! parent child ))
+
 ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;; SummaryCache ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
 
 (defn node-parents [n] (concat (node-ordinary-parents n) (node-subsumed-parents n)))
-(defn notify-parents [n] (doseq [p (node-parents n)] (summary-changed! p)))
-(defn notify-ordinary-parents [n] (doseq [p (node-ordinary-parents n)] (summary-changed! p)))
+(defn notify-parents [n] (doseq [p (doall (node-parents n))] (summary-changed! p)))
+(defn notify-ordinary-parents [n] (doseq [p (doall (node-ordinary-parents n))] (summary-changed! p)))
 
 ;;; NOTE: These all assume that the entire tree uses the same trait.
 

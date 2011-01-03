@@ -22,7 +22,6 @@
 ;; Problem with decomposition: terminal subproblems get generated when
 ;; created, not when optimal.
 
-;; TODO: deal with single-solution constraint.  (happens automatically?)
 
 ;; Basic solution to both -- SP is optimally solved when tree summarizer
 ;; has status solved, by child other than inner-sp
@@ -44,6 +43,10 @@
 ;; Summary of either represents child subproblems not yet produced.
 ;; These are produced into "tree summary", which has semantic view.
 
+;; TODO: problem with decomposed on d-m 2-3 -- end up blocked?
+
+;; TODO: general problem -- what if action we're refining input of gets
+;; blocked deeper down?
 
 (set! *warn-on-reflection* true)
 
@@ -55,8 +58,8 @@
  (def ^{:private true} cache-trait summaries/lazy-cached-summarizer-node)
 #_ (def ^{:private true} cache-trait summaries/pseudo-cached-summarizer-node)
 
-(def *no-identical-nonterminal-outputs* true)
-(def *decompose-cache*  #_ nil  true) ;; nil for none, or bind to hashmap  
+(def *no-identical-nonterminal-outputs* false #_true)
+(def *decompose-cache*   nil #_  true) ;; nil for none, or bind to hashmap  
 
 ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
 ;;;;;;;;;;;;;;;;;;;;;;;;;;;;       Utilities      ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
@@ -65,7 +68,8 @@
 (defprotocol Watched
   (add-watcher! [s w] "Add a watcher to be notified of all outputs to this.
                        A watcher is just a fn of new-subproblem.")
-  (add-output!  [sw o]    "O is a subproblem"))
+  (add-output!  [sw o]    "O is a subproblem")
+  (get-outputs  [sw]))
 
 ;; Every watcher of a stub must also have it as an OR in its summary
 ;; (possibly added with something else).
@@ -85,7 +89,8 @@
     (doseq [o (doall (seq outputs))] (w o))#_ (println :WF sw))
   (add-output! [sw o] #_ (println :AO sw o)
     (.add outputs o)
-    (doseq [w (doall (seq watchers))] (w o)) #_(println :OF sw)))
+    (doseq [w (doall (seq watchers))] (w o)) #_(println :OF sw))
+  (get-outputs [sw] (doall (seq outputs))))
 
 
 ;; Note: this entails zero minimum cost (i.e., nonnegative costs).
@@ -234,13 +239,12 @@
 (defn add-sp-child! [sp child-sp]
   (assert (not (terminal? sp)))
   (if (and *no-identical-nonterminal-outputs*
-           (= (output-set sp) (output-set child-sp))
-           (or (not (terminal? child-sp))
-              #_ (summary/solved? (summaries/summary (tree-summarizer child-sp)))))
+           (= (output-set sp) (output-set child-sp)))
     (do (connect-and-watch! sp child-sp #(add-sp-child! sp %))
         (summaries/summary-changed! sp ))
     (do (summaries/summary-changed-local! sp)
         (add-output! sp child-sp))))
+
 
 ;; Note: All nonterminal subproblems use or-summary for ri-fn
 (defn make-simple-subproblem
@@ -258,6 +262,10 @@
     (when subsuming-sp (summaries/connect! @ts-atom (tree-summarizer subsuming-sp) true))
     ret))
 
+;; 
+(defn make-output-collecting-subproblem [inner-sp]
+  )
+
 
 ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
 ;;;;;;;;;;;;;;;;;;;;;     Subproblem Types and Stubs     ;;;;;;;;;;;;;;;;;;;;;;;
@@ -267,6 +275,14 @@
 
 (declare make-fs-seq-stub get-atomic-stub)
 
+;; We have to do it this way to cope iwth *no-identical-nt-outputs
+(defn get-atomic-sp-child-stubs [atomic-sp]
+  (filter #(instance? angelic.search.implicit.fah_astar_eval2.Stub %)
+          (summaries/node-ordinary-children atomic-sp)))
+
+
+;; Problem -- if we watch ret but yank out its children, we also double count ...
+
 (defn- make-atomic-subproblem [stub function-set subsuming-sp out-set reward status]
   (let [inp-set  (input-set stub)
         ri-fn    (fn [s ri] (get-atomic-stub s ri function-set))]
@@ -275,12 +291,13 @@
            stub subsuming-sp out-set true
            (fn [s b] (summary/make-simple-summary (min b reward) status s)) ri-fn reward)
           
-          (and subsuming-sp (not (terminal? subsuming-sp)))
+          (and subsuming-sp (not (terminal? subsuming-sp))) 
           (let [ret (make-simple-subproblem stub subsuming-sp out-set false or-summary ri-fn reward)]
-            (connect-and-watch! ret subsuming-sp
-              (fn [sub-out]
-                (connect-and-watch! ret (refine-input sub-out inp-set) #(add-sp-child! ret %))
-                (summaries/summary-changed! ret)))  ;; TODO: needed?                       
+            (doseq [c (get-atomic-sp-child-stubs ret)] ;; 
+              (connect-and-watch! ret c
+                (fn [sub-out]
+                  (connect-and-watch! ret (refine-input sub-out inp-set) #(add-sp-child! ret %))
+                  (summaries/summary-changed! ret)))) ;; TODO: needed?                       
             ret)
           
           :else 
@@ -327,9 +344,10 @@
 
 ;; TODO: do something more with subsuming?
 (defn- get-atomic-stub [subsuming-sp inp-set function-set]
-  (let [name [:Atomic (fs/fs-name function-set) inp-set]]
+  (let [full-name [:Atomic (fs/fs-name function-set) inp-set]
+        name [:Atomic (fs/fs-name function-set)]]
    (if *decompose-cache*
-     (util/cache-with ^HashMap *decompose-cache* name
+     (util/cache-with ^HashMap *decompose-cache* full-name
        (make-atomic-stub name subsuming-sp inp-set function-set))
      (make-atomic-stub name subsuming-sp inp-set function-set))))
 
@@ -340,21 +358,39 @@
 
 (declare make-pair-stub1 make-pair-stub2)
 
+
+(defn can-split? [sp]
+  (or (summary/live? (summaries/summary sp))
+      (seq (get-outputs sp))))
+
 ;; TODO: fix up subsuming, parent, etc.
 ;; nils at bottom should chase subsuming-sp.
-(defn- make-nt-pair-subproblem [subsuming-sp pair-stub left-sp right-sp]
-  (let [ret (make-simple-subproblem
-             pair-stub subsuming-sp (output-set right-sp) false             
-             or-summary
-             (fn [s ri] (make-pair-stub1 s (refine-input left-sp ri)
-                          (subproblem-name right-sp) #(refine-input right-sp %)))
-             0)
+;; TODO TODO: we should not use tree-summarizer when left-done
+;; How do we know that current output set is actually solved ?
+;; TODO: remove ss ?
+;; Note: this is the only place logic depends on summary.  Potential for problems? 
+(defn- make-pair-subproblem [subsuming-sp pair-stub left-sp right-sp]
+  (let [expand-right? (not (can-split? left-sp) ) #_(terminal? left-sp)
         [ss watch stub-f]
-        (if (terminal? left-sp) ;Expand right?
+        (if expand-right?
           [(make-sum-summarizer [(tree-summarizer left-sp) right-sp])
            right-sp #(make-pair-stub2 nil left-sp (stub %))]
           [(make-sum-summarizer [left-sp (tree-summarizer right-sp)])
-           left-sp #(make-pair-stub2 nil % (refine-input right-sp (output-set %)))])]
+           left-sp #(make-pair-stub2 nil % (refine-input right-sp (output-set %)))])
+        ret (make-simple-subproblem
+             pair-stub subsuming-sp (output-set right-sp) false             
+             (if (or expand-right? (not *no-identical-nonterminal-outputs*)) or-summary
+                 (let [left-done? (atom false)]
+                   (fn [s b] 
+                     (when (and (not @left-done?) (not (summary/live? (summaries/summary left-sp))))
+                       (reset! left-done? true) (println "BOO")
+                       (summaries/disconnect! s ss)
+                       (add-watcher! left-sp (fn [o] (def *sum* [s left-sp o]) (throw (RuntimeException. "Solved and children."))))
+                       (add-sp-child! s (make-nt-pair-subproblem subsuming-sp pair-stub left-sp right-sp)))
+                     (or-summary s b))))             
+             (fn [s ri] (make-pair-stub1 s (refine-input left-sp ri)
+                          (subproblem-name right-sp) #(refine-input right-sp %)))
+             0)]
 
     (summaries/connect! ret ss false)
     
@@ -366,15 +402,6 @@
     
     ret))
 
-(defn- make-pair-subproblem [subsuming-sp pair-stub left-sp right-sp]
-  (if (and (terminal? left-sp) (terminal? right-sp))
-    (make-simple-subproblem
-     pair-stub subsuming-sp (output-set right-sp) true
-     (fn [s b] (summary/+ (summaries/summary left-sp) (summaries/summary right-sp) s b))
-     (fn [s ri] (make-pair-stub1 s (refine-input left-sp ri)
-                  (subproblem-name right-sp) #(refine-input right-sp %)))
-     0)
-    (make-nt-pair-subproblem subsuming-sp pair-stub left-sp right-sp)))
 
 
 ;; TODO: remove children as they are no longer needed ?
@@ -421,7 +448,7 @@
 ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
 
 (defn- choose-leaf [verified-summary]
-;  (println "VS"  verified-summary)  (def *sum* verified-summary)  (Thread/sleep 10)
+  (println "VS"  verified-summary)  (def *sum* verified-summary)  (Thread/sleep 10)
   (->> (summary/extract-leaf-seq verified-summary (comp empty? summary/children))
        (map summary/source)
        (filter can-evaluate?)
@@ -509,3 +536,40 @@
  (do
    (defn schedule-summary-change! [n] (summaries/summary-changed! n))
    (defn process-summary-changes! [])))
+
+
+
+(comment
+ (defn- make-nt-pair-subproblem [subsuming-sp pair-stub left-sp right-sp]
+   (let [ret (make-simple-subproblem
+              pair-stub subsuming-sp (output-set right-sp) false             
+              or-summary
+              (fn [s ri] (make-pair-stub1 s (refine-input left-sp ri)
+                                          (subproblem-name right-sp) #(refine-input right-sp %)))
+              0)
+         [ss watch stub-f]
+         (if (terminal? left-sp)        ;Expand right?
+           [(make-sum-summarizer [(tree-summarizer left-sp) right-sp])
+            right-sp #(make-pair-stub2 nil left-sp (stub %))]
+           [(make-sum-summarizer [left-sp (tree-summarizer right-sp)])
+            left-sp #(make-pair-stub2 nil % (refine-input right-sp (output-set %)))])]
+
+     (summaries/connect! ret ss false)
+    
+     (add-watcher! watch
+                   (fn [o]
+                     (summaries/summary-changed-local! ss)
+                     (connect-and-watch! ret (stub-f o) #(add-sp-child! ret %))
+                     (summaries/summary-changed! ret))) ;; TODO: efficiency?
+    
+     ret))
+
+ (defn- make-pair-subproblem [subsuming-sp pair-stub left-sp right-sp]
+   (if (and (terminal? left-sp) (terminal? right-sp))
+     (make-simple-subproblem
+      pair-stub subsuming-sp (output-set right-sp) true
+      (fn [s b] (summary/+ (summaries/summary left-sp) (summaries/summary right-sp) s b))
+      (fn [s ri] (make-pair-stub1 s (refine-input left-sp ri)
+                                  (subproblem-name right-sp) #(refine-input right-sp %)))
+      0)
+     (make-nt-pair-subproblem subsuming-sp pair-stub left-sp right-sp))))
