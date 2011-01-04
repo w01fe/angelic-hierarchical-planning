@@ -466,24 +466,11 @@
 ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;; Planning ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
 ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
 
-(defn- choose-leaf [verified-summary]
-;  (println "VS"  verified-summary)  (def *sum* verified-summary)  (Thread/sleep 10)
-  (->> (summary/extract-leaf-seq verified-summary (comp empty? summary/children))
-       (map summary/source)
-       (filter can-evaluate?)
-       #_ first  last #_  rand-nth))
-
-(defn- solve [root-subproblem]
-  (def *root* root-subproblem)
-  (summary/solve
-   #(summaries/verified-summary (tree-summarizer root-subproblem) summary/+worst-simple-summary+)
-   #(evaluate! (choose-leaf %))
-   #(let [n (second (subproblem-name %))] (when-not (= (first n) :noop) n))))
 
 ;; TODO: simplify this.
 (defn- get-root-subproblem [inp-set fs]
   (let [root-stub (get-atomic-stub nil inp-set fs)
-        inner-root (summary/source (first (summary/extract-leaf-seq (summaries/summary root-stub) (comp empty? summary/children))))
+        inner-root (first (summary/extract-leaf-source-seq (summaries/summary root-stub)))
         ret       (atom nil)]
     (add-watcher! inner-root (fn [root] (reset! ret root)))
     (evaluate! inner-root)
@@ -491,13 +478,13 @@
     (assert @ret)
     @ret))
 
-
 (defn implicit-fah-a*-eval2 [henv]
   (binding [summaries/*cache-method* :eager
             *decompose-cache* (when *decompose-cache* (HashMap.))]
-   (->> (fs/make-init-pair henv)
-        (apply get-root-subproblem)
-        solve)))
+    (summaries/solve
+     (tree-summarizer (apply get-root-subproblem (fs/make-init-pair henv)))
+     #(evaluate! (last (filter can-evaluate? %)))
+     #(let [n (second (subproblem-name %))] (when-not (= (first n) :noop) n)))))
 
 ; (do (use '[angelic env hierarchy] 'angelic.domains.nav-switch 'angelic.search.implicit.fah-astar-expand 'angelic.search.implicit.fah-astar-eval 'angelic.search.implicit.fah-astar-eval2 'angelic.domains.discrete-manipulation) (require '[angelic.search.explicit.hierarchical :as his]))
 

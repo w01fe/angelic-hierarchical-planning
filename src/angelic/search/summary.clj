@@ -154,11 +154,14 @@
  (defn bound [summary reward-bound]
    (re-source summary #(clojure.core/min % reward-bound))))
 
-(defn extract-leaf-seq [summary stop?-fn]
-;  (println summary (source summary) (map source (children summary)) (map source (children (angelic.search.summaries/summarize (source summary))))#_(angelic.search.summaries/expanded? (source summary)))
-  (if (stop?-fn summary)
-    [summary]
-    (apply concat (map #(extract-leaf-seq % stop?-fn) (children summary)))))
+(defn extract-leaf-seq
+  ([summary] (extract-leaf-seq summary (comp empty? children)))
+  ([summary stop?-fn]  
+     (if (stop?-fn summary)
+       [summary]
+       (apply concat (map #(extract-leaf-seq % stop?-fn) (children summary))))))
+
+(defn extract-leaf-source-seq [summary] (map source (extract-leaf-seq summary)))
 
 (defn extract-single-leaf [summary stop?-fn]
   (util/safe-singleton (extract-leaf-seq summary stop?-fn)))

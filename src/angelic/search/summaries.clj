@@ -217,6 +217,24 @@
     ret))
 
 
+;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;; Searching ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
+
+(def *root* nil)
+(defn solve [root-summarizable operate-on-best-leaf-seq! action-extractor]
+  (def *root* root-summarizable)
+  (summary/solve
+   #(verified-summary root-summarizable summary/+worst-simple-summary+)
+   #(operate-on-best-leaf-seq! (summary/extract-leaf-source-seq %))
+   action-extractor))
+
+
+
+
+
+
+
+
+
 
 
 
