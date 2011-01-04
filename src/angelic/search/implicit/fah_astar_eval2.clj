@@ -19,7 +19,6 @@
 ;; Here we properly deal with weirdness of stubs/inner-sps decreaseing as they add
 ;; children, by makig sure to do the updates synchronously.
 
-;; TODO: organize
 ;; TODO: remove extra stub indirection step when not needed?
 ;; (i.e., either reverse directions, or just have get-stub-output when known..)
 ;; TODO: pessimistic
@@ -27,12 +26,10 @@
 ;; TODO: pseudo-solve
 ;; TODO: smarter summary updates (i.e., pass child)
 ;; TODO: halfway eager prop -- eager about cost, not contents.
-;; TODO: stepped state abstraction.
 
 ;; TODO: improve top-down propagation of bounds
 ;; TODO: better subusmption.
 
-;; TODO: way to select traits without recompiling...
 ;; TODO: think about relation to old dash_astar_summary --
 ;;   i.e. where did excluded-child-set go ?
 ;;   where did output-constraints go ?
@@ -43,9 +40,9 @@
 
 (def *no-identical-nonterminal-outputs* true)
 (def *decompose-cache*     true) ;; nil for none, or bind to hashmap
-(def *state-abstraction*   :eager) ;; Or lazy or nil.
+(def *state-abstraction*   :eager #_ :deliberate) ;; Or lazy or nil.
 
-(assert (contains? #{nil :eager :lazy} *state-abstraction*))
+(assert (contains? #{nil :eager :deliberate} *state-abstraction*))
 (when *state-abstraction* (assert *decompose-cache*))
 (when *decompose-cache* (assert *no-identical-nonterminal-outputs*)) 
 
@@ -219,6 +216,9 @@
 
 ;;;;;;;;;;;;;;;;;;;;;;;;;;;     Output Collection     ;;;;;;;;;;;;;;;;;;;;;;;;;;
 
+
+
+
 ;; TODO: collect children too ?
 (declare make-output-collecting-subproblem)
 (defn make-output-collecting-stub [inner-stub]
@@ -254,10 +254,39 @@
 
 
 (declare make-state-abstracted-subproblem)
-(defn make-state-abstracted-stub [inner-stub in-set]
+(defn make-eager-state-abstracted-stub [inner-stub in-set]
   (let [ret (traits/reify-traits [summaries/or-summarizable (simple-stub [:SA (stub-name inner-stub) in-set] in-set)])]
     (connect-and-watch! ret inner-stub #(set-stub-output! ret (make-state-abstracted-subproblem ret %)))
     ret))
+
+
+;; DOTO: reduce overhead with deliberate?
+;; Only wait when inner-stub has no output -- prevent double-wait.
+(defn make-deliberate-state-abstracted-stub [inner-stub in-set]
+  (if-let [out (first (get-outputs inner-stub))]
+    (let [done? (atom false)  
+          ret
+          (traits/reify-traits
+           [(simple-stub [:SA (stub-name inner-stub) in-set] in-set)]
+           summaries/Summarizable
+           (summarize [s]
+            (if @done? summary/+worst-simple-summary+
+                (summary/make-live-simple-summary
+                 (summary/max-reward (summaries/summary (tree-summarizer out))) s)))   
+           Evaluable
+           (evaluate! [s] (reset! done? true)
+            (set-stub-output! s (make-state-abstracted-subproblem s out))))]
+      (summaries/connect! ret out false)
+      ret)
+    (make-eager-state-abstracted-stub inner-stub in-set)))
+
+
+(defn make-state-abstracted-stub [inner-stub in-set]
+  ((case *state-abstraction*
+     :eager make-eager-state-abstracted-stub
+     :deliberate make-deliberate-state-abstracted-stub)
+   inner-stub in-set))
+
 
 ;; Note: subsumed subproblems can have different irrelevant vars
 (defn make-state-abstracted-subproblem [stb inner-sp]
@@ -268,7 +297,8 @@
         ret (traits/reify-traits
              [summaries/or-summarizable (simple-subproblem stb out ts (terminal? inner-sp) ri-fn)])]
     (connect-and-watch! ret inner-sp
-      (fn [o] (connect-and-watch! ret (make-state-abstracted-stub (stub o) in) #(add-sp-child! ret %))))    
+      (fn [o] (connect-and-watch! ret (make-state-abstracted-stub (stub o) in) #(add-sp-child! ret %))
+        (when (= :deliberate *state-abstraction*) (summaries/summary-changed! ret))))
     ret))
 
 
