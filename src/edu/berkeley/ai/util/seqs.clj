@@ -240,4 +240,8 @@
 	
 	 )
 
-
+(defn unchunk [s]
+  (when (seq s)
+    (lazy-seq
+      (cons (first s)
+            (unchunk (next s))))))

@@ -11,53 +11,38 @@
 ;; between subproblems, and allow "listeners" that wait for a subproblem to be
 ;; evaluated.
 
+;; Breaks down into "subproblems" with well-defined action seqs, inputs, outputs,
+;; and "stubs" where output is not known yet.
+;; Summary of either represents child subproblems not yet produced, or if "solved",
+;; a terminal state with the current output.
+
 ;; Here we properly deal with weirdness of stubs/inner-sps decreaseing as they add
 ;; children, by makig sure to do the updates synchronously.
 
+
+;; TODO: pessimistic
+
+;; TODO: pseudo-solve
+;; TODO: smarter summary updates (i.e., pass child)
+;; TODO: halfway eager prop -- eager about cost, not contents.
+;; TODO: stepped state abstraction.
+
 ;; TODO: improve top-down propagation of bounds
 ;; TODO: better subusmption.
-;; TODO: diagnose inconsistency in d-m 2 3 
 
-;; TODO: lump together children?  i.e., outside rather than inside solution?
-
-;; Problem with decomposition: terminal subproblems get generated when
-;; created, not when optimal.
-
-
-;; Basic solution to both -- SP is optimally solved when tree summarizer
-;; has status solved, by child other than inner-sp
-;;  TODO: ties should be broken away from inner-sp.  Always?
-;; SO: idea is to
-;; -- Always publish if different output set
-;; -- Otherwise, always add internally.
-;; --  (to tree summarizer, if terminal, inner-sp otherwise)
-;; -- When tree summarizer becomes solved by terminal output,
-;;    -- publish this output
-;;    -- and shut down publisher. --ie no more outputs.
-;; To implement this, need:
-;; - tie breaking (implement in summarize method?)
-;; - notification of tree summarizer solved by ... (implement in summarize method?)
-
-
-;; Breaks down into "subproblems" with well-defined action seqs, inputs, outputs,
-;; and "stubs" where output is not known yet.
-;; Summary of either represents child subproblems not yet produced.
-;; These are produced into "tree summary", which has semantic view.
-
+;; TODO: way to select traits without recompiling...
 ;; TODO: think about relation to old dash_astar_summary --
 ;;   i.e. where did excluded-child-set go ?
 ;;   where did output-constraints go ?
 
-;; Note: with decomposition, need nino 
 
 (set! *warn-on-reflection* true)
 
-;; TODO: note lazy is so lazy about subsumption , ...
 
 #_ (def  ^{:private true} cache-trait summaries/uncached-summarizer-node)
   (def ^{:private true} cache-trait summaries/eager-cached-summarizer-node)
-#_ (def ^{:private true} cache-trait summaries/less-eager-cached-summarizer-node)
- (def ^{:private true} cache-trait summaries/lazy-cached-summarizer-node)
+#_ (def ^{:private true} cache-trait summaries/less-eager-cached-summarizer-node) 
+#_ (def ^{:private true} cache-trait summaries/lazy-cached-summarizer-node)
 #_ (def ^{:private true} cache-trait summaries/pseudo-cached-summarizer-node)
 
 (def *no-identical-nonterminal-outputs* true)
@@ -76,7 +61,7 @@
   (add-watcher! [s w] "Add a watcher to be notified of all outputs to this.
                        A watcher is just a fn of new-subproblem.")
   (add-output!  [sw o]    "O is a subproblem")
-  (get-outputs  [sw]))
+  (get-outputs  [sw]  "List current outputs"))
 
 ;; Every watcher of a stub must also have it as an OR in its summary
 ;; (possibly added with something else).
@@ -95,10 +80,10 @@
   Watched
   (add-watcher! [sw w] #_(println :AW sw w) #_ (assert (not (some #(= % w) watchers)))
     (.add watchers w) 
-    (doseq [o (doall (seq outputs))] #_(swap! *out-count* inc) (w o))#_ (println :WF sw))
+    (doseq [o (doall (seq outputs))] (swap! *out-count* inc) (w o))#_ (println :WF sw))
   (add-output! [sw o] ;               (println :AO sw o) (Thread/sleep 10)
     (.add outputs o)
-    (doseq [w (doall (seq watchers))] #_(swap! *out-count* inc) (w o)) #_(println :OF sw))
+    (doseq [w (doall (seq watchers))] (swap! *out-count* inc) (w o)) #_(println :OF sw))
   (get-outputs [sw] (doall (seq outputs))))
 
 
@@ -302,26 +287,15 @@
                       (if (=-state-sets (output-set inner-sp) (output-set o))
                         (do (connect-and-watch! ret o child-watch)
                             (summaries/summary-changed! ret))
-                        (do (util/assert-is (#{:OS :SA} (first (stub-name (stub o)))))
-                            (add-sp-child! ret o))))]
+                        (do (if (#{:SA :OS} (first (stub-name (stub o)))) 
+                              (add-sp-child! ret o)
+                              (connect-and-watch! ret (make-output-collecting-stub (stub o)) #(add-sp-child! ret %))))))]
     (connect-and-watch! ret inner-sp child-watch)    
     ret))
-;; OTDO: one too many layers of?
 
-(defn output-wrap [stub]
-  (if *no-identical-nonterminal-outputs*
-    (make-output-collecting-stub stub)
-    stub))
 
-;; TODO: can we safely unwrap?
-;; Does not work --
-(defn get-base-stub [stub]
-  (if (= :SA (first (stub-name stub)))
-    (get-base-stub (get-inner-sp (tree-summarizer stub)))
-    stub))
 
-;; TODO: can be made simpler, if output-set removed from subproblem
-;; (or takes input-set as arg, e.g.)
+
 (declare make-state-abstracted-subproblem)
 (defn make-state-abstracted-stub [inner-stub in-set]
  ; (println "MSAS" inner-stub in-set)
@@ -417,7 +391,9 @@
                    (do (reset! state op) (summaries/summary-changed! s))))
                (do (reset! state :go) (summaries/summary-changed! s))))))]
     (connect-subsuming! ret subsuming-sp)
-    (output-wrap ret)))
+    (if *no-identical-nonterminal-outputs*
+      (make-output-collecting-stub ret)
+      ret)))
 
 ;; Note: we must always wrap in S-A stub to get effects out of logger. 
 ;; TODO: do something more with subsuming?
@@ -453,7 +429,7 @@
 ;; Note: this is the only place logic depends on summary.  Potential for problems? 
 (defn- make-pair-subproblem [subsuming-sp pair-stub left-sp right-sp]
 ;  (println "mps" pair-stub)
-  (let [expand-right? (not (can-split? left-sp) ) #_(terminal? left-sp)
+  (let [expand-right? (not (can-split? left-sp) )
         [ss watch stub-f]
         (if expand-right?
           [(make-sum-summarizer [(tree-summarizer left-sp) right-sp])
@@ -504,7 +480,7 @@
     (summaries/connect! ret (tree-summarizer left-sp) false)
     (connect-and-watch! ret right-stub 
       #(set-stub-output! ret (make-pair-subproblem subsuming-sp ret left-sp %)))
-    (output-wrap ret)))
+    ret))
 
 (defn- make-pair-stub1 [subsuming-sp left-stub right-name right-stub-fn]
   (let [ret (traits/reify-traits [simple-cached-node simple-watched or-summarizable
@@ -579,7 +555,7 @@
 
 
 
-
+; (dotimes [_ 1] (reset! summaries/*summary-count* 0) (reset! *out-count* 0) (debug 0 (let [h (make-discrete-manipulation-hierarchy (make-random-discrete-manipulation-env 4 3))]  (time (println (run-counted #(identity (implicit-fah-a*-eval2 h))) @summaries/*summary-count* @*out-count*)) )))
 
 
 

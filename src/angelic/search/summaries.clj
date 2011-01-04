@@ -188,7 +188,7 @@
 
 
 ;; Only notifies when summary increases ...
-;; TODO: figure out best v-s method.
+;; TODO: figure out best v-s method. -- avoid thrashing ? 
 ;; NOTE: efficiency depends on consistency of child ordering ...
 (traits/deftrait lazy-cached-summarizer-node [] [summary-cache (atom nil)]  []
   SummaryCache
@@ -207,10 +207,8 @@
            cs (reset! summary-cache (summarize n))]
 ;       (swap! *summary-count* dec)
        (when os (util/assert-is (<= (summary/max-reward cs) (summary/max-reward os))))
-;      (println (angelic.search.implicit.subproblem/subproblem-name n) (expanded? n) cs min-summary) (Thread/sleep 10)
-;      (println n os cs min-summary) (Thread/sleep 10)       
        (when (summary/>= cs min-summary)
-         (let [verified-children (map #(verified-summary (summary/source %) %) (summary/children cs))]
+         (let [verified-children (map #(verified-summary (summary/source %) %) (util/unchunk (summary/children cs)))]
            (if (every? identity verified-children)
              (reset! summary-cache (summary/re-child cs verified-children))
              (recur min-summary)))))))
