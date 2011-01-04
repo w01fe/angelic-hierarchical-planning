@@ -8,44 +8,11 @@
 ;; summaries of potentially mutable objects.
 
 ;; The basic idea here is to separate these statistics and their
-;; propagation and caching from the underlying search space.
+;; propagation and caching from the generation of the search space
 
-;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
-;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;; Summarizer ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
-;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
-
-;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;; Protocol ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
-
-;; Actually, leaves have fixed summaries?  Except "live" can change - "increase" to blocked.
-;; TODO: if we do eager propagation, how do we avoid infinite loops ?
-
-;; Also; regardless of caching, etc; need way to verify that an apparently-optimal
-;; plan is actually optimal before doing any refinement 
-
-;; Either summarizer needs atom for source, and stash it in summary,
-;; or source needs atom for summarizer.
-;; Either way is a bit of a pain.  Former is maybe better ?
-
-;; How do we seprate out dependence from physics ? 
-
-;; TODO: notify and extract go logically together ??
-
-;; Separation of concerns:
-;; And/OR/const. -- computing summaries
-;; Caching and notification strategy
-
-;; Main concern: how do cached values get into computing?
-;; notifier should have getChildSummaries, or some such ...
-
-;; Three types of caching behavior:
-;; None -- compute fresh, recursively, every time.
-;; full -- always fully propagate changes to the top, just use cached values as accurate.
-;; Lazy -- report cache, ...
 
 (set! *warn-on-reflection* true)
 
-(def *use-subsumption* true)
-(def *assert-consistency* false #_true)
 ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
 ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;; Protocols ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
 ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
@@ -70,14 +37,11 @@
 
 (def *summary-count* (atom 0))
 
-
 (defprotocol Summarizable
   (summarize [s] "Compute a summary based on the 'summary' of children, if applicable."))
 
-;; New-bound is a summarizable.
-(defprotocol Expandable
-  (expanded?   [s])
-  (expand!     [s children]))
+(def *use-subsumption* true)
+(def *assert-consistency* false #_true)
 
 ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
 ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;; Traits ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
@@ -134,87 +98,53 @@
   (remove-parent! child parent )
   (remove-child! parent child ))
 
+(defn node-parents [n] (concat (node-ordinary-parents n) (node-subsumed-parents n)))
+
+
 ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;; SummaryCache ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
 
-(defn node-parents [n] (concat (node-ordinary-parents n) (node-subsumed-parents n)))
-(defn notify-parents [n] (doseq [p (doall (node-parents n))] (summary-changed! p)))
-(defn notify-ordinary-parents [n] (doseq [p (doall (node-ordinary-parents n))] (summary-changed! p)))
+;; Problem with making these true traits are that:
+;; (1) no enforcement that all nodes use the same trait
+;; (2) no way to select at runtime.
 
-;;; NOTE: These all assume that the entire tree uses the same trait.
+;; In retrospect, probably would be better to bite the bullet and say
+;; "a node has a cache", but for now we just hack it with binding?
 
-(defn default-verified-summary [n min-summary]
-  (let [cs (summary n)]
-    (when (summary/>= cs min-summary)
-      cs)))
+;; Can be :uncached, :eager, :lazy, :less-eager, ...?
+(def *cache-method* nil)
 
-(traits/deftrait uncached-summarizer-node [] [] []
+(traits/deftrait summary-cache [] [cache (atom nil)] []
   SummaryCache
-  (summary [n] (summarize n))
-  (summary-changed! [n] nil)
-  (summary-changed-local! [n] nil)
-  (verified-summary [n min-summary] (default-verified-summary n min-summary)))
-
-
-(defn update-cache! [n cache-atom]
-  (when-let [old @cache-atom]
-    (let [new (summarize n)]
-      (when-not (summary/solved? old) 
+  (summary [n]
+    (if (= :uncached *cache-method*)
+      (summarize n)
+      (or @cache (do (assert (#{:eager :lazy :less-eager} *cache-method*))
+                     (reset! cache (summarize n))))))
+  (summary-changed! [n]
+    (when-let [old @cache]
+      (let [new (summarize n)]
         (when *assert-consistency*
-          (util/assert-is (<= (summary/max-reward new) (summary/max-reward old))
-                          "%s" [(def *bad* n)]))     
-        (reset! cache-atom new)
-        (not (= old new))))))
-
-(traits/deftrait eager-cached-summarizer-node [] [summary-cache (atom nil)] []
-  SummaryCache
-  (summary [n] (or @summary-cache (reset! summary-cache (summarize n))))
-  (summary-changed! [n]
-    (when (update-cache! n summary-cache)
-      (notify-parents n)))
-  (summary-changed-local! [n] (reset! summary-cache nil))
+          (util/assert-is (<= (summary/max-reward new) (summary/max-reward old))))
+        (when-not (summary/solved? old)
+          (reset! cache new)
+          (when-not ((if (= :lazy *cache-method*) summary/>= =) old new)
+            (doseq [p (doall ((if (= :less-eager *cache-method*) node-ordinary-parents node-parents) n))]
+              (summary-changed! p)))))))
+  (summary-changed-local! [n] (reset! cache nil))
   (verified-summary [n min-summary]
-    (default-verified-summary n min-summary)))
-
-;; Eager except about subsumption, which is just accidental
-(traits/deftrait less-eager-cached-summarizer-node [] [summary-cache (atom nil)] []
-  SummaryCache
-  (summary [n] (or @summary-cache (reset! summary-cache (summarize n))))
-  (summary-changed! [n]    
-    (when (update-cache! n summary-cache)
-      (notify-ordinary-parents n)))
-  (summary-changed-local! [n] (reset! summary-cache nil))
-  (verified-summary [n min-summary] (default-verified-summary n min-summary)))
-
-
-
-;; Only notifies when summary increases ...
-;; TODO: figure out best v-s method. -- avoid thrashing ? 
-;; NOTE: efficiency depends on consistency of child ordering ...
-(traits/deftrait lazy-cached-summarizer-node [] [summary-cache (atom nil)]  []
-  SummaryCache
-  (summary [n] (or @summary-cache (reset! summary-cache (summarize n))))
-  (summary-changed! [n]
-    (let [os @summary-cache
-          ns (reset! summary-cache (summarize n))]
-      (when os
-        (when *assert-consistency* (util/assert-is (<= (summary/max-reward ns) (summary/max-reward os))))      
-        (when-not (summary/>= os ns)
-;          (print (summary/status ns))
-          (notify-parents n)))))
-  (summary-changed-local! [n] (reset! summary-cache nil))
-  (verified-summary [n min-summary]
-     (let [os @summary-cache
-           cs (reset! summary-cache (summarize n))]
+    (if (= :lazy *cache-method*)
+      (let [os @cache
+            cs (reset! cache (summarize n))]
 ;       (swap! *summary-count* dec)
        (when os (util/assert-is (<= (summary/max-reward cs) (summary/max-reward os))))
        (when (summary/>= cs min-summary)
          (let [verified-children (map #(verified-summary (summary/source %) %) (util/unchunk (summary/children cs)))]
            (if (every? identity verified-children)
-             (reset! summary-cache (summary/re-child cs verified-children))
-             (recur min-summary)))))))
-
-
-
+             (reset! cache (summary/re-child cs verified-children))
+             (recur min-summary)))))
+      (let [cs (summary n)]
+        (when (summary/>= cs min-summary)
+          cs)))))
 
 
 
@@ -250,11 +180,58 @@
 
 
 
-
-
-
 ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;; Summarizable ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
 
+
+
+;; Note: this entails zero minimum cost (i.e., nonnegative costs).
+(defn subsuming-bound [s]
+  (->> (node-subsuming-children s)
+       (map (comp summary/max-reward summary))
+       (apply min 0)))
+
+(defn or-summary [s b]
+  (swap! *summary-count* inc)
+  (summary/or-combine (map summary (node-ordinary-children s))
+                      s (min (subsuming-bound s) b)))
+
+
+(traits/deftrait or-summarizable [] [] []
+  Summarizable (summarize [s] (or-summary s 0)))
+
+(traits/deftrait simple-cached-node [] [] [simple-node summary-cache])
+
+(defn sum-summary [s b]
+  (swap! *summary-count* inc)
+  (let [children (node-ordinary-children s)]
+    (assert (= (count children) 2))
+    (summary/+ (summary (first children)) (summary (second children))
+               s (min b (subsuming-bound s)))))
+
+(traits/deftrait sum-summarizable [] [] []
+  Summarizable (summarize [s] (sum-summary s 0)))
+
+(defn make-sum-summarizer [kids]
+  (let [ret (traits/reify-traits [sum-summarizable simple-cached-node])]
+    (doseq [kid kids] (connect! ret kid false))
+    ret))
+
+
+
+
+
+
+
+
+
+;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;; Junk for olg algs that should eventually go away ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
+
+
+
+;; New-bound is a summarizable.
+(defprotocol Expandable
+  (expanded?   [s])
+  (expand!     [s children]))
 
 (defprotocol LeafSummarizable
   (label [s])
@@ -275,10 +252,6 @@
  (defn make-leaf-summarizable [reward status]
    (traits/reify-traits [simple-node uncached-summarizer-node (leaf-summarizable reward status)]))
 )
-
-(def worst-summarizable
-     (traits/reify-traits [(leaf-summarizable :worst Double/NEGATIVE_INFINITY :blocked)
-                           (fixed-node nil) uncached-summarizer-node] ))
 
 
 
@@ -330,6 +303,88 @@
 
 
 
+(defn notify-parents [n]
+  (doseq [p (doall (node-parents n))]
+    (summary-changed! p)))
+
+(defn notify-ordinary-parents [n]
+  (doseq [p (doall (node-ordinary-parents n))]
+    (summary-changed! p)))
+
+(defn default-verified-summary [n min-summary]
+  (let [cs (summary n)]
+    (when (summary/>= cs min-summary)
+      cs)))
+
+(defn update-cache! [n cache-atom]
+  (when-let [old @cache-atom]
+    (let [new (summarize n)]
+      (when-not (summary/solved? old) 
+        (when *assert-consistency*
+          (util/assert-is (<= (summary/max-reward new) (summary/max-reward old))
+                          "%s" [(def *bad* n)]))     
+        (reset! cache-atom new)
+        (not (= old new))))))
+
+
+(traits/deftrait uncached-summarizer-node [] [] []
+  SummaryCache
+  (summary [n] (summarize n))
+  (summary-changed! [n] nil)
+  (summary-changed-local! [n] nil)
+  (verified-summary [n min-summary] (default-verified-summary n min-summary)))
+
+
+(traits/deftrait eager-cached-summarizer-node [] [] []
+  SummaryCache
+  (summary [n] (or @summary-cache (reset! summary-cache (summarize n))))
+  (summary-changed! [n]
+    (when (update-cache! n summary-cache)
+      (notify-parents n)))
+  (summary-changed-local! [n] (reset! summary-cache nil))
+  (verified-summary [n min-summary]
+    (default-verified-summary n min-summary)))
+
+;; Eager except about subsumption, which is just accidental
+(traits/deftrait less-eager-cached-summarizer-node [] [summary-cache (atom nil)] []
+  SummaryCache
+  (summary [n] (or @summary-cache (reset! summary-cache (summarize n))))
+  (summary-changed! [n]    
+    (when (update-cache! n summary-cache)
+      (notify-ordinary-parents n)))
+  (summary-changed-local! [n] (reset! summary-cache nil))
+  (verified-summary [n min-summary] (default-verified-summary n min-summary)))
+
+
+
+;; Only notifies when summary increases ...
+;; TODO: figure out best v-s method. -- avoid thrashing ? 
+;; NOTE: efficiency depends on consistency of child ordering ...
+(traits/deftrait lazy-cached-summarizer-node [] [summary-cache (atom nil)]  []
+  SummaryCache
+  (summary [n] (or @summary-cache (reset! summary-cache (summarize n))))
+  (summary-changed! [n]
+    (let [os @summary-cache
+          ns (reset! summary-cache (summarize n))]
+      (when os
+        (when *assert-consistency* (util/assert-is (<= (summary/max-reward ns) (summary/max-reward os))))      
+        (when-not (summary/>= os ns)
+;          (print (summary/status ns))
+          (notify-parents n)))))
+  (summary-changed-local! [n] (reset! summary-cache nil))
+  (verified-summary [n min-summary]
+     (let [os @summary-cache
+           cs (reset! summary-cache (summarize n))]
+;       (swap! *summary-count* dec)
+       (when os (util/assert-is (<= (summary/max-reward cs) (summary/max-reward os))))
+       (when (summary/>= cs min-summary)
+         (let [verified-children (map #(verified-summary (summary/source %) %) (util/unchunk (summary/children cs)))]
+           (if (every? identity verified-children)
+             (reset! summary-cache (summary/re-child cs verified-children))
+             (recur min-summary)))))))
+
+
+
 
 ;; Concerns:
 ;; computing a summary given children
@@ -341,44 +396,3 @@
 
 
 
-
-
-(comment
-  (defn extract-best-and-summaries
-   "Return [best-item best-summary rest-items rest-summary]"
-   [summary-fn things]
-   (assert (seq things))
-   (loop [best-thing   (first things)
-          best-summary (summary-fn (first things))
-          rest-things  []
-          rest-summary  +worst-summary+
-          more-things  (rest things)]
-     (if-let [[next-thing & even-more-things] (seq more-things)]
-       (let [next-summary (summary-fn next-thing)]
-         (if (better-summary? next-summary best-summary)
-           (recur next-thing next-summary
-                  (conj rest-things best-thing) best-summary even-more-things)
-           (recur best-thing best-summary
-                  (conj rest-things next-thing) (max-summary next-summary rest-summary) even-more-things)))
-       [best-thing best-summary rest-things rest-summary]))))
-
-
-(defmacro assert-valid-summary-change
-  ([old-summary new-summary] ( assert-valid-summary-change old-summary new-summary ""))
-  ([old-summary new-summary msg]
-     `(do (util/assert-is (<= (max-reward ~new-summary) (max-reward ~old-summary)) "%s" [~old-summary ~new-summary ~msg])
-        (when-not (live? ~old-summary) (assert (= ~old-summary ~new-summary))))))
-
-
-
-;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;; Expandable ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
-
-(comment
-  (traits/deftrait simple-expandable [] [expanded?-atom (atom false)] []
-   Expandable
-   (expanded? [s] @expanded?-atom)
-   (expand!   [s child-summarizers]
-              (assert (not (expanded? s)))
-              (reset! expanded?-atom true)
-              (doseq [child child-summarizers] (connect! s child false))
-              (summary-changed! s))))

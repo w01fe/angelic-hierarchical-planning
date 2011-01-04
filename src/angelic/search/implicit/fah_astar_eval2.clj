@@ -41,36 +41,26 @@
 (set! *warn-on-reflection* true)
 
 
-#_ (def  ^{:private true} cache-trait summaries/uncached-summarizer-node)
-  (def ^{:private true} cache-trait summaries/eager-cached-summarizer-node)
-#_ (def ^{:private true} cache-trait summaries/less-eager-cached-summarizer-node) 
-#_ (def ^{:private true} cache-trait summaries/lazy-cached-summarizer-node)
-#_ (def ^{:private true} cache-trait summaries/pseudo-cached-summarizer-node)
-
 (def *no-identical-nonterminal-outputs* true)
 (def *decompose-cache*     true) ;; nil for none, or bind to hashmap
 (def *state-abstraction*   :eager) ;; Or lazy or nil.
 
 (assert (contains? #{nil :eager :lazy} *state-abstraction*))
 (when *state-abstraction* (assert *decompose-cache*))
-(when *decompose-cache* (assert *no-identical-nonterminal-outputs*)) ;; Otherwise overflow
+(when *decompose-cache* (assert *no-identical-nonterminal-outputs*)) 
 
 ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
 ;;;;;;;;;;;;;;;;;;;;;;;;;;;;       Utilities      ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
 ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
+
+;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;      Watches      ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
+
 
 (defprotocol Watched
   (add-watcher! [s w] "Add a watcher to be notified of all outputs to this.
                        A watcher is just a fn of new-subproblem.")
   (add-output!  [sw o]    "O is a subproblem")
   (get-outputs  [sw]  "List current outputs"))
-
-;; Every watcher of a stub must also have it as an OR in its summary
-;; (possibly added with something else).
-;; Receiver of update is responsible for updating its summary --
-;;  implicitly, watched's summary may have changed, without cascading up the tree
-;; This allows changes in lock-step, so we don't end up with inconsistency problems.
-;; (decrease + increase)
 
 (def *out-count* (atom 1))
 
@@ -89,37 +79,15 @@
   (get-outputs [sw] (doall (seq outputs))))
 
 
-;; Note: this entails zero minimum cost (i.e., nonnegative costs).
-(defn subsuming-bound [s]
-  (->> (summaries/node-subsuming-children s)
-       (map (comp summary/max-reward summaries/summary))
-       (apply min 0)))
-
-(defn or-summary [s b]
-  (swap! summaries/*summary-count* inc)
-  (summary/or-combine (map summaries/summary (summaries/node-ordinary-children s))
-                      s (min (subsuming-bound s) b)))
+;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;      Watches      ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
 
 
-(traits/deftrait or-summarizable [] [] []
-  summaries/Summarizable (summarize [s] (or-summary s 0)))
-
-(traits/deftrait simple-cached-node [] [] [summaries/simple-node cache-trait])
-
-(defn sum-summary [s b]
-  (swap! summaries/*summary-count* inc)
-  (let [children (summaries/node-ordinary-children s)]
-    (assert (= (count children) 2))
-    (summary/+ (summaries/summary (first children)) (summaries/summary (second children))
-               s (min b (subsuming-bound s)))))
-
-(traits/deftrait sum-summarizable [] [] []
-  summaries/Summarizable (summarize [s] (sum-summary s 0)))
-
-(defn make-sum-summarizer [kids]
-  (let [ret (traits/reify-traits [sum-summarizable simple-cached-node])]
-    (doseq [kid kids] (summaries/connect! ret kid false))
-    ret))
+;; Every watcher of a stub must also have it as an OR in its summary
+;; (possibly added with something else).
+;; Receiver of update is responsible for updating its summary --
+;;  implicitly, watched's summary may have changed, without cascading up the tree
+;; This allows changes in lock-step, so we don't end up with inconsistency problems.
+;; (decrease + increase)
 
 
 
@@ -149,7 +117,7 @@
 
 (defn get-stub-output [s] (util/safe-singleton (get-outputs s)))
 
-(traits/deftrait simple-stub [name inp] [] [simple-cached-node simple-watched]
+(traits/deftrait simple-stub [name inp] [] [summaries/simple-cached-node simple-watched]
   Stub (input-set [s] inp) (stub-name [s] name))
 
 (defmethod print-method angelic.search.implicit.fah_astar_eval2.Stub [s o]
@@ -186,7 +154,7 @@
 
 (defn make-tree-summarizer [init-bound]
  (let [tdb-atom (atom init-bound)]
-   (traits/reify-traits [simple-cached-node]
+   (traits/reify-traits [summaries/simple-cached-node]
      TreeSummarizer (top-down-bound [s] @tdb-atom)
                     (add-top-down-bound! [s b]
                       (when (< b @tdb-atom) ;; ;; Note: adding < current max-reward actually hurts...
@@ -195,7 +163,10 @@
                           (when (tree-summarizer? c)
                             (add-top-down-bound! c b)))
                         (summaries/summary-changed! s)))    
-     summaries/Summarizable (summarize [s] (or-summary s @tdb-atom)))))
+     summaries/Summarizable (summarize [s] (summaries/or-summary s @tdb-atom)))))
+
+(defn connect-subsuming! [child subsuming-sp]
+  (when subsuming-sp (summaries/connect! child (tree-summarizer subsuming-sp) true)))
 
 (defn init-tree-summarizer! [ts inner-sp subsuming-sp]
   (connect-and-watch! ts inner-sp
@@ -203,7 +174,7 @@
       (summaries/connect! ts (tree-summarizer child-sp) false)
       (add-top-down-bound! (tree-summarizer child-sp) (top-down-bound ts))
       (summaries/summary-changed! ts))) ;; TODO: speedup? 
-  (when subsuming-sp (summaries/connect! ts (tree-summarizer subsuming-sp) true)))
+  (connect-subsuming! ts subsuming-sp))
 
 ;; TODO: top-down bound business does not actually help at all ? 
 ;; TODO: look at this.
@@ -238,7 +209,7 @@
 
 (traits/deftrait simple-subproblem
   [stb out-set ts term? ri-fn] []
-  [simple-cached-node simple-watched]
+  [summaries/simple-cached-node simple-watched]
   Subproblem (stub            [s] stb)
              (output-set      [s] out-set)
              (tree-summarizer [s] ts)
@@ -261,14 +232,13 @@
   (assert (not (= (first (stub-name inner-stub)) :OS)))
   (assert (not (= (first (stub-name inner-stub)) :SA)))  
   (let [in-set (input-set inner-stub)
-        ret (traits/reify-traits [or-summarizable (simple-stub [:OS (stub-name inner-stub) in-set] in-set)])]
+        ret (traits/reify-traits [summaries/or-summarizable (simple-stub [:OS (stub-name inner-stub) in-set] in-set)])]
     (connect-and-watch! ret inner-stub #(set-stub-output! ret (make-output-collecting-subproblem ret %)))
     ret))
 
 
 (defn =-state-sets [s1 s2]
-  (util/assert-is (= (state/current-context s1)
-                     (state/current-context s2)) "%s" [s1 s2])
+  (util/assert-is (= (state/current-context s1) (state/current-context s2)) "%s" [s1 s2])
   (= s1 s2))
 
 ;; TODO: is refine-input right ?
@@ -276,7 +246,7 @@
   (let [ts  (tree-summarizer inner-sp)
         ret (traits/reify-traits ;; TODO: RI correct?
              [(simple-subproblem stb (output-set inner-sp) ts false #(refine-input inner-sp %2))]
-             summaries/Summarizable (summarize [s] (or-summary s (top-down-bound ts))))]
+             summaries/Summarizable (summarize [s] (summaries/or-summary s (top-down-bound ts))))]
     (connect-and-watch! ret inner-sp
       (fn child-watch [o]
         (if (=-state-sets (output-set inner-sp) (output-set o))
@@ -292,7 +262,7 @@
 
 (declare make-state-abstracted-subproblem)
 (defn make-state-abstracted-stub [inner-stub in-set]
-  (let [ret (traits/reify-traits [or-summarizable (simple-stub [:SA (stub-name inner-stub) in-set] in-set)])]
+  (let [ret (traits/reify-traits [summaries/or-summarizable (simple-stub [:SA (stub-name inner-stub) in-set] in-set)])]
     (connect-and-watch! ret inner-stub #(set-stub-output! ret (make-state-abstracted-subproblem ret %)))
     ret))
 
@@ -303,7 +273,7 @@
         out (state/transfer-effects in (output-set inner-sp))
         ri-fn #(if (=-state-sets %2 in) stb (refine-input inner-sp %2))
         ret (traits/reify-traits
-             [or-summarizable (simple-subproblem stb out ts (terminal? inner-sp) ri-fn)])]
+             [summaries/or-summarizable (simple-subproblem stb out ts (terminal? inner-sp) ri-fn)])]
     (connect-and-watch! ret inner-sp
       (fn [o] (connect-and-watch! ret (make-state-abstracted-stub (stub o) in) #(add-sp-child! ret %))))    
     ret))
@@ -330,7 +300,7 @@
            (fn [s b] (summary/make-simple-summary (min b reward) status s)) ri-fn reward)
           
           (and subsuming-sp (not (terminal? subsuming-sp))) 
-          (let [ret (make-simple-subproblem stub subsuming-sp out-set false or-summary ri-fn reward)]
+          (let [ret (make-simple-subproblem stub subsuming-sp out-set false summaries/or-summary ri-fn reward)]
             (connect-and-watch! ret subsuming-sp
               (fn [sub-out]
                 (connect-and-watch! ret (refine-input sub-out inp-set) #(add-sp-child! ret %))
@@ -338,7 +308,7 @@
             ret)
           
           :else 
-          (let [ret (make-simple-subproblem stub subsuming-sp out-set false or-summary ri-fn reward)]
+          (let [ret (make-simple-subproblem stub subsuming-sp out-set false summaries/or-summary ri-fn reward)]
             (doseq [child (map #(make-fs-seq-stub inp-set %) (fs/child-seqs function-set inp-set))]
               (connect-and-watch! ret child #(add-sp-child! ret %)))
             ret))))
@@ -346,8 +316,7 @@
 
 
 
-(defn connect-subsuming! [child subsuming-sp]
-  (when subsuming-sp (summaries/connect! child (tree-summarizer subsuming-sp) true)))
+
 
 ;; Note: this is double-stage to lazily generate children.  Could be simpler single-stage.
 (defn- make-atomic-stub [name subsuming-sp inp-set function-set]
@@ -356,10 +325,10 @@
         (traits/reify-traits [(simple-stub name inp-set)]
          summaries/Summarizable
          (summarize [s]
-           (cond (= :ready @state) (summary/make-live-simple-summary (subsuming-bound s) s)
+           (cond (= :ready @state) (summary/make-live-simple-summary (summaries/subsuming-bound s) s)
                  (= :go    @state) summary/+worst-simple-summary+
                  :else             (summary/make-live-simple-summary
-                                    (min (subsuming-bound s) (second @state)) s)))   
+                                    (min (summaries/subsuming-bound s) (second @state)) s)))   
          Evaluable
          (evaluate! [s]
 ;                    (println "evals" s)
@@ -416,13 +385,13 @@
   (let [expand-right? (not (can-split? left-sp) )
         [ss watch stub-f]
         (if expand-right?
-          [(make-sum-summarizer [(tree-summarizer left-sp) right-sp])
+          [(summaries/make-sum-summarizer [(tree-summarizer left-sp) right-sp])
            right-sp #(make-pair-stub2 nil left-sp (stub %))]
-          [(make-sum-summarizer [left-sp (tree-summarizer right-sp)])
+          [(summaries/make-sum-summarizer [left-sp (tree-summarizer right-sp)])
            left-sp #(make-pair-stub2 nil % (refine-input right-sp (output-set %)))])
         ret (make-simple-subproblem
              pair-stub subsuming-sp (output-set right-sp) false             
-             (if (or expand-right? (not *no-identical-nonterminal-outputs*)) or-summary
+             (if (or expand-right? (not *no-identical-nonterminal-outputs*)) summaries/or-summary
                  (let [left-done? (atom false)]
                    (fn [s b] 
                      (when (and (not @left-done?)
@@ -437,7 +406,7 @@
                                            (fn [os] (connect-and-watch! s os #(add-sp-child! s %))))
  ;                       (add-sp-child! s (make-pair-subproblem subsuming-sp pair-stub left-sp right-sp))
                        )
-                     (or-summary s b))))             
+                     (summaries/or-summary s b))))             
              (fn [s ri] (make-pair-stub1 s (refine-input left-sp ri)
                           (subproblem-name right-sp) #(refine-input right-sp %)))
              0)]
@@ -457,7 +426,7 @@
 ;; TODO: remove children as they are no longer needed ?
 (defn- make-pair-stub2 [subsuming-sp left-sp right-stub]
   (let [ret (traits/reify-traits
-             [sum-summarizable
+             [summaries/sum-summarizable
               (simple-stub [:Pair (subproblem-name left-sp) (stub-name right-stub)]
                            (input-set (stub left-sp)))])]
     (connect-subsuming! ret subsuming-sp)
@@ -467,7 +436,7 @@
     ret))
 
 (defn- make-pair-stub1 [subsuming-sp left-stub right-name right-stub-fn]
-  (let [ret (traits/reify-traits [or-summarizable
+  (let [ret (traits/reify-traits [summaries/or-summarizable
                                   (simple-stub [:Pair1 (stub-name left-stub) right-name]
                                                (input-set left-stub))])]
     (connect-subsuming! ret subsuming-sp)
@@ -524,7 +493,8 @@
 
 
 (defn implicit-fah-a*-eval2 [henv]
-  (binding [*decompose-cache* (when *decompose-cache* (HashMap.))]
+  (binding [summaries/*cache-method* :eager
+            *decompose-cache* (when *decompose-cache* (HashMap.))]
    (->> (fs/make-init-pair henv)
         (apply get-root-subproblem)
         solve)))
