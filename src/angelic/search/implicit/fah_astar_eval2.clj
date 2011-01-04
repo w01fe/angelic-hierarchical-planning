@@ -55,11 +55,15 @@
 
 ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;      Watches      ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
 
+;; Stubs have at most one output (SP), SPs have any number
 
 (defprotocol Watched
   (add-watcher! [s w] "Add a watcher to be notified of all outputs to this.
                        A watcher is just a fn of new-subproblem.")
-  (add-output!  [sw o]    "O is a subproblem")
+  (add-output!  [sw o] "O is a subproblem.  sw may have an updated summary,
+                        but will not call summary-changed! on its parents.
+                        The receiver is responsible for handling this change.
+                        This allows handling decrease+increase in lock-step. ")
   (get-outputs  [sw]  "List current outputs"))
 
 (def *out-count* (atom 1))
@@ -78,51 +82,43 @@
     (doseq [w (doall (seq watchers))] (swap! *out-count* inc) (w o)))
   (get-outputs [sw] (doall (seq outputs))))
 
-
-;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;      Watches      ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
-
-
-;; Every watcher of a stub must also have it as an OR in its summary
-;; (possibly added with something else).
-;; Receiver of update is responsible for updating its summary --
-;;  implicitly, watched's summary may have changed, without cascading up the tree
-;; This allows changes in lock-step, so we don't end up with inconsistency problems.
-;; (decrease + increase)
-
-
-
-
 (defn connect-and-watch! [p c f]
   (summaries/connect! p c false)
   (add-watcher! c f))
 
 
 ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
-;;;;;;;;;;;;;;;;;;;;;;;;;;;;;     Subproblems     ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
+;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;     Stubs     ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
 ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
 
-;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;     Protocols     ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
-
-(defprotocol Evaluable
-  (evaluate!      [s]))
-
-(defn can-evaluate? [s] 
-  (instance? angelic.search.implicit.fah_astar_eval2.Evaluable s))
-
-;; Stub implements node, watched, possibly Evaluable, cached, Summarizable
-;;  -- Has at most a single output, not included in local reward -- goes dead 
 (defprotocol Stub
   (stub-name   [s])
   (input-set   [s]))
 
-(defn get-stub-output [s] (util/safe-singleton (get-outputs s)))
-
 (traits/deftrait simple-stub [name inp] [] [summaries/simple-cached-node simple-watched]
-  Stub (input-set [s] inp) (stub-name [s] name))
+  Stub (input-set [s] inp)
+       (stub-name [s] name))
 
 (defmethod print-method angelic.search.implicit.fah_astar_eval2.Stub [s o]
   (print-method (format "#<ST$%8h %s>" (System/identityHashCode s) (stub-name s)) o))
 
+
+;; Stub must implement Summarizable, optionally implements Evaluable
+
+(defprotocol Evaluable (evaluate! [s]))
+(defn can-evaluate? [s] (instance? angelic.search.implicit.fah_astar_eval2.Evaluable s))
+
+(defn set-stub-output! [stub sp]
+  (assert (empty? (get-outputs stub)))
+  (summaries/summary-changed-local! stub)
+  (add-output! stub sp))
+
+(comment (defn get-stub-output [s] (util/safe-singleton (get-outputs s))))
+
+
+;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
+;;;;;;;;;;;;;;;;;;;;;;;;;;;;;     Subproblems     ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
+;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
 
 (defprotocol Subproblem
   (stub              [s])
@@ -137,18 +133,27 @@
   (print-method (format "#<SP$%8h %s>" (System/identityHashCode (stub sp)) (subproblem-name sp)) o))
 
 
+(defn connect-subsuming! [child subsuming-sp]
+  (when subsuming-sp (summaries/connect! child (tree-summarizer subsuming-sp) true)))
+
+(defn add-sp-child! [sp child-sp]
+  (assert (not (terminal? sp)))
+  (summaries/summary-changed-local! sp)
+  (add-output! sp child-sp))
+
 ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;  Tree Summarizer  ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
 
-;; Expects to be a parent of inside, but not have inside as a child.
-;; All children are tree summarizers.
-;; Non-subsuming children must be added by calling connect-child-sp!
-(defprotocol TreeSummarizer
-  (top-down-bound    [s])
-  (add-top-down-bound! [s b]))
+
 
 ;; TODO: propagate top-down-bounds downward in smarter way using existing IS?
 ;; TODO: we need to make sure tree sums get called on add-output! first to ensure
 ;;       consistency with top-down-bounds ? 
+;; TODO: top-down bound business does not actually help at all
+;;  (except ensuring consistency if we're asserting it...)
+
+(defprotocol TreeSummarizer
+  (top-down-bound    [s])
+  (add-top-down-bound! [s b]))
 
 (defn tree-summarizer? [s] (instance? angelic.search.implicit.fah_astar_eval2.TreeSummarizer s))
 
@@ -165,23 +170,13 @@
                         (summaries/summary-changed! s)))    
      summaries/Summarizable (summarize [s] (summaries/or-summary s @tdb-atom)))))
 
-(defn connect-subsuming! [child subsuming-sp]
-  (when subsuming-sp (summaries/connect! child (tree-summarizer subsuming-sp) true)))
-
 (defn init-tree-summarizer! [ts inner-sp subsuming-sp]
   (connect-and-watch! ts inner-sp
     (fn [child-sp]
       (summaries/connect! ts (tree-summarizer child-sp) false)
       (add-top-down-bound! (tree-summarizer child-sp) (top-down-bound ts))
-      (summaries/summary-changed! ts))) ;; TODO: speedup? 
+      (summaries/summary-changed! ts))) ;; TODO: speedup by checking child reward? 
   (connect-subsuming! ts subsuming-sp))
-
-;; TODO: top-down bound business does not actually help at all ? 
-;; TODO: look at this.
-(comment         (let [my-sum (summaries/summary ret)
-                child-sum (summaries/summary (tree-summarizer child-sp))]
-            (when-not (summary/>= my-sum child-sum)
-              (summaries/summary-changed! ret))))
 
 (defn get-inner-sp [ts]
   (->> (summaries/node-ordinary-children ts)
@@ -195,17 +190,6 @@
 
 
 ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;  Subproblem Impl  ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
-
-(defn set-stub-output! [stub sp]
-  (assert (empty? (get-outputs stub)))
-  (summaries/summary-changed-local! stub)
-  (add-output! stub sp))
-
-(defn add-sp-child! [sp child-sp]
-  (assert (not (terminal? sp)))
-  (summaries/summary-changed-local! sp)
-  (add-output! sp child-sp))
-
 
 (traits/deftrait simple-subproblem
   [stb out-set ts term? ri-fn] []
@@ -221,12 +205,21 @@
   (let [ts  (make-tree-summarizer init-bound)
         ret (traits/reify-traits [(simple-subproblem stub out-set ts terminal? ;; Note ni may have different context.
                                                      (fn [s ni] (if (= ni (input-set stub)) stub (ri-fn s ni))))]
-              summaries/Summarizable (summarize       [s] (summary-fn s (top-down-bound ts))))]
+              summaries/Summarizable (summarize [s] (summary-fn s (top-down-bound ts))))]
     (init-tree-summarizer! ts ret subsuming-sp)
     ret))
 
-;; TODO: collect children too ?
 
+
+;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
+;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;     Wrappers     ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
+;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
+
+;; TODO: simplify these, avoid extra stub steps when possible ?
+
+;;;;;;;;;;;;;;;;;;;;;;;;;;;     Output Collection     ;;;;;;;;;;;;;;;;;;;;;;;;;;
+
+;; TODO: collect children too ?
 (declare make-output-collecting-subproblem)
 (defn make-output-collecting-stub [inner-stub]
   (assert (not (= (first (stub-name inner-stub)) :OS)))
@@ -257,7 +250,7 @@
                 (connect-and-watch! ret (make-output-collecting-stub (stub o)) #(add-sp-child! ret %)))))))    
     ret))
 
-
+;;;;;;;;;;;;;;;;;;;;;;;;;;;     State Abstraction     ;;;;;;;;;;;;;;;;;;;;;;;;;;
 
 
 (declare make-state-abstracted-subproblem)
@@ -279,17 +272,13 @@
     ret))
 
 
-;; TODO: getting multi-levels of wrapping...
-;; Must state abstract when
-
 ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
-;;;;;;;;;;;;;;;;;;;;;     Subproblem Types and Stubs     ;;;;;;;;;;;;;;;;;;;;;;;
+;;;;;;;;;;;;;;;;;;;;;;;;;;     Core Subproblems     ;;;;;;;;;;;;;;;;;;;;;;;;;;;;
 ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
 
 ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;      Atomic       ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
 
 (declare make-fs-seq-stub get-atomic-stub)
-
 
 (defn- make-atomic-subproblem [stub function-set subsuming-sp out-set reward status]
   (let [inp-set  (input-set stub)
@@ -313,11 +302,6 @@
               (connect-and-watch! ret child #(add-sp-child! ret %)))
             ret))))
 
-
-
-
-
-
 ;; Note: this is double-stage to lazily generate children.  Could be simpler single-stage.
 (defn- make-atomic-stub [name subsuming-sp inp-set function-set]
   (let [state (atom :ready) ;; set to [out-set reward] after first eval, then :go after second.
@@ -331,7 +315,6 @@
                                     (min (summaries/subsuming-bound s) (second @state)) s)))   
          Evaluable
          (evaluate! [s]
-;                    (println "evals" s)
            (assert (not (= :go @state)))
            (let [ready? (= :ready @state)]
              (if-let [[out-set reward :as op] (if ready? (fs/apply-opt function-set inp-set) @state)]
@@ -344,23 +327,21 @@
                    (do (reset! state op) (summaries/summary-changed! s))))
                (do (reset! state :go) (summaries/summary-changed! s))))))]
     (connect-subsuming! ret subsuming-sp)
-    (if *no-identical-nonterminal-outputs*
-      (make-output-collecting-stub ret)
-      ret)))
+    ret))
 
 ;; Note: we must always wrap in S-A stub to get effects out of logger. 
 ;; TODO: do something more with subsuming?
 (defn- get-atomic-stub [subsuming-sp inp-set function-set]
   (let [full-name [:Atomic (fs/fs-name function-set)
                    (if *state-abstraction* (fs/extract-context function-set inp-set) inp-set)]
-        name [:Atomic (fs/fs-name function-set)]]
+        make-stub #(let [r (make-atomic-stub [:Atomic (fs/fs-name function-set)] subsuming-sp % function-set)]
+                     (if *no-identical-nonterminal-outputs* (make-output-collecting-stub r) r))]
     (if-let [^HashMap dc *decompose-cache*]
       (if *state-abstraction*
-        (let [logged-inp (fs/get-logger function-set inp-set)
-              stub (util/cache-with dc full-name (make-atomic-stub name subsuming-sp logged-inp function-set))]
+        (let [stub (util/cache-with dc full-name (make-stub (fs/get-logger function-set inp-set)))]
           (make-state-abstracted-stub stub inp-set))   
-        (util/cache-with dc full-name (make-atomic-stub name subsuming-sp inp-set function-set)))
-     (make-atomic-stub name subsuming-sp inp-set function-set))))
+        (util/cache-with dc full-name (make-stub inp-set)))
+     (make-stub inp-set))))
 
 
 
@@ -369,11 +350,6 @@
 
 (declare make-pair-stub1 make-pair-stub2)
 
-
-(defn can-split? [sp]
-  (or (summary/live? (summaries/summary sp))
-      (seq (get-outputs sp))))
-
 ;; TODO: fix up subsuming, parent, etc.
 ;; nils at bottom should chase subsuming-sp.
 ;; TODO TODO: we should not use tree-summarizer when left-done
@@ -381,8 +357,7 @@
 ;; TODO: remove ss ?
 ;; Note: this is the only place logic depends on summary.  Potential for problems? 
 (defn- make-pair-subproblem [subsuming-sp pair-stub left-sp right-sp]
-;  (println "mps" pair-stub)
-  (let [expand-right? (not (can-split? left-sp) )
+  (let [expand-right? (not (or (summary/live? (summaries/summary left-sp)) (seq (get-outputs left-sp))))
         [ss watch stub-f]
         (if expand-right?
           [(summaries/make-sum-summarizer [(tree-summarizer left-sp) right-sp])
@@ -420,8 +395,6 @@
         (summaries/summary-changed! ret))) ;; TODO: efficiency?
     
     ret))
-
-
 
 ;; TODO: remove children as they are no longer needed ?
 (defn- make-pair-stub2 [subsuming-sp left-sp right-stub]
@@ -467,19 +440,13 @@
 ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
 
 
-;; TODO: simplify this.
 (defn- get-root-subproblem [inp-set fs]
-  (let [root-stub (get-atomic-stub nil inp-set fs)
-        inner-root (first (summary/extract-leaf-source-seq (summaries/summary root-stub)))
-        ret       (atom nil)]
-    (add-watcher! inner-root (fn [root] (reset! ret root)))
-    (evaluate! inner-root)
-    (evaluate! inner-root)
-    (assert @ret)
-    @ret))
+  (let [root-stub (make-atomic-stub nil nil inp-set fs)]
+    (dotimes [_ 2] (evaluate! root-stub))
+    (util/safe-singleton (get-outputs root-stub))))
 
 (defn implicit-fah-a*-eval2 [henv]
-  (binding [summaries/*cache-method* :eager
+  (binding [summaries/*cache-method* :lazy
             *decompose-cache* (when *decompose-cache* (HashMap.))]
     (summaries/solve
      (tree-summarizer (apply get-root-subproblem (fs/make-init-pair henv)))
