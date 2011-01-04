@@ -261,7 +261,7 @@
                                     (output-set      [s] out-set)
                                     (tree-summarizer [s] @ts-atom)
                                     (terminal?       [s] terminal?)
-                                    (refine-input    [s ni]
+                                    (refine-input    [s ni] ;; Note ni may have different context.
                                       (if (= ni (input-set stub)) stub (ri-fn s ni))))]
     (reset! ts-atom (make-tree-summarizer ret init-bound))
     (when subsuming-sp (summaries/connect! @ts-atom (tree-summarizer subsuming-sp) true))
@@ -281,6 +281,12 @@
     (connect-and-watch! ret inner-stub #(set-stub-output! ret (make-output-collecting-subproblem ret %)))
     ret))
 
+
+(defn =-state-sets [s1 s2]
+  (util/assert-is (= (state/current-context s1)
+                     (state/current-context s2)) "%s" [s1 s2])
+  (= s1 s2))
+
 ;; TODO: check out set equality issues...
 ;; TODO: remove extra layers here ?  Don't actually seem to help.
 (defn make-output-collecting-subproblem [stb inner-sp]
@@ -293,12 +299,10 @@
                                     (terminal?       [s] false)
                                     (refine-input    [s ni] (refine-input inner-sp ni)))
         child-watch (fn child-watch [o]
-                      (if (= (output-set inner-sp) (output-set o))
+                      (if (=-state-sets (output-set inner-sp) (output-set o))
                         (do (connect-and-watch! ret o child-watch)
                             (summaries/summary-changed! ret))
-                        (do (util/assert-is (= (first (stub-name (stub o))) :OS))
-                            (util/assert-is (= (state/current-context (output-set inner-sp))
-                                               (state/current-context (output-set o))) "%s" [stb inner-sp])
+                        (do (util/assert-is (#{:OS :SA} (first (stub-name (stub o)))))
                             (add-sp-child! ret o))))]
     (connect-and-watch! ret inner-sp child-watch)    
     ret))
@@ -309,8 +313,8 @@
     (make-output-collecting-stub stub)
     stub))
 
-;; TODO: unwrap
-
+;; TODO: can we safely unwrap?
+;; Does not work --
 (defn get-base-stub [stub]
   (if (= :SA (first (stub-name stub)))
     (get-base-stub (get-inner-sp (tree-summarizer stub)))
@@ -320,15 +324,12 @@
 ;; (or takes input-set as arg, e.g.)
 (declare make-state-abstracted-subproblem)
 (defn make-state-abstracted-stub [inner-stub in-set]
-;  (println "MSAS" inner-stub in-set)
-  (if false #_(= in-set (input-set inner-stub)) ;; TODO
-    inner-stub
-    (let [inner-stub (get-base-stub inner-stub)
-          ret (traits/reify-traits
-               [simple-cached-node simple-watched or-summarizable
-                (simple-stub [:SA (stub-name inner-stub) in-set] in-set)])]
-      (connect-and-watch! ret inner-stub #(set-stub-output! ret (make-state-abstracted-subproblem ret %)))
-      ret)))
+ ; (println "MSAS" inner-stub in-set)
+  (let [ret (traits/reify-traits
+             [simple-cached-node simple-watched or-summarizable
+              (simple-stub [:SA (stub-name inner-stub) in-set] in-set)])]
+    (connect-and-watch! ret inner-stub #(set-stub-output! ret (make-state-abstracted-subproblem ret %)))
+    ret))
 
 ;; Note: subsumed subproblems can have different irrelevant vars
 (defn make-state-abstracted-subproblem [stb inner-sp]
@@ -341,14 +342,15 @@
                                     (output-set      [s] out)
                                     (tree-summarizer [s] ts)
                                     (terminal?       [s] (terminal? inner-sp))
-                                    (refine-input    [s ni] (if (= ni in) stb (refine-input inner-sp ni))))]
+                                    (refine-input    [s ni] (if (=-state-sets ni in) stb (refine-input inner-sp ni))))]
     (connect-and-watch! ret inner-sp
-      (fn [o]
-        (assert (= (first (stub-name (stub o))) :OS))
-        (connect-and-watch! ret (make-state-abstracted-stub (stub o) in) #(add-sp-child! ret %))))
+      (fn [o] (connect-and-watch! ret (make-state-abstracted-stub (stub o) in) #(add-sp-child! ret %))))
     
     ret))
 
+
+;; TODO: getting multi-levels of wrapping...
+;; Must state abstract when
 
 ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
 ;;;;;;;;;;;;;;;;;;;;;     Subproblem Types and Stubs     ;;;;;;;;;;;;;;;;;;;;;;;
@@ -358,7 +360,6 @@
 
 (declare make-fs-seq-stub get-atomic-stub)
 
-;; TODO: getting multi-levels of wrapping...
 
 (defn- make-atomic-subproblem [stub function-set subsuming-sp out-set reward status]
   (let [inp-set  (input-set stub)
@@ -418,22 +419,18 @@
     (connect-subsuming! ret subsuming-sp)
     (output-wrap ret)))
 
+;; Note: we must always wrap in S-A stub to get effects out of logger. 
 ;; TODO: do something more with subsuming?
 (defn- get-atomic-stub [subsuming-sp inp-set function-set]
   (let [full-name [:Atomic (fs/fs-name function-set)
                    (if *state-abstraction* (fs/extract-context function-set inp-set) inp-set)]
         name [:Atomic (fs/fs-name function-set)]]
     (if-let [^HashMap dc *decompose-cache*]
-      (if-let [cache-val (.get dc full-name)]
-        (if *state-abstraction* 
-          (make-state-abstracted-stub cache-val inp-set)
-          cache-val)
-        (let [in (if *state-abstraction* (fs/get-logger function-set inp-set) inp-set)
-              stub (make-atomic-stub name subsuming-sp in function-set)]
-          (.put dc full-name stub)
-          (if *state-abstraction* 
-          (make-state-abstracted-stub stub inp-set) ;; TODO: needed?
-          stub)))
+      (if *state-abstraction*
+        (let [logged-inp (fs/get-logger function-set inp-set)
+              stub (util/cache-with dc full-name (make-atomic-stub name subsuming-sp logged-inp function-set))]
+          (make-state-abstracted-stub stub inp-set))   
+        (util/cache-with dc full-name (make-atomic-stub name subsuming-sp inp-set function-set)))
      (make-atomic-stub name subsuming-sp inp-set function-set))))
 
 
