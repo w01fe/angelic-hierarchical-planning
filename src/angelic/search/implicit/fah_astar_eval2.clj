@@ -19,6 +19,10 @@
 ;; Here we properly deal with weirdness of stubs/inner-sps decreaseing as they add
 ;; children, by makig sure to do the updates synchronously.
 
+;; TODO: don't bother with names?  Or make names primary...
+;; TODO: cache refine-inputs and/or other SPs.
+;; TODO: encapsulate stub/sp behaviors somehow.
+
 ;; TODO: remove extra stub indirection step when not needed?
 ;; (i.e., either reverse directions, or just have get-stub-output when known..)
 ;; TODO: pessimistic
@@ -29,6 +33,8 @@
 
 ;; TODO: improve top-down propagation of bounds
 ;; TODO: better subusmption.
+
+;; TODO: add options to search alg.
 
 ;; TODO: think about relation to old dash_astar_summary --
 ;;   i.e. where did excluded-child-set go ?
@@ -65,11 +71,11 @@
 
 (def *out-count* (atom 1))
 
-(traits/deftrait simple-watched
+(traits/deftrait watched-node
   []
   [^ArrayList watchers (ArrayList.)
    ^ArrayList outputs (ArrayList.)]
-  []
+  [summaries/simple-cached-node]
   Watched
   (add-watcher! [sw w] #_(println :AW sw w) 
     (.add watchers w) 
@@ -92,13 +98,12 @@
   (stub-name   [s])
   (input-set   [s]))
 
-(traits/deftrait simple-stub [name inp] [] [summaries/simple-cached-node simple-watched]
+(traits/deftrait simple-stub [name inp] [] [watched-node]
   Stub (input-set [s] inp)
        (stub-name [s] name))
 
 (defmethod print-method angelic.search.implicit.fah_astar_eval2.Stub [s o]
   (print-method (format "#<ST$%8h %s>" (System/identityHashCode s) (stub-name s)) o))
-
 
 ;; Stub must implement Summarizable, optionally implements Evaluable
 
@@ -188,9 +193,7 @@
 
 ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;  Subproblem Impl  ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
 
-(traits/deftrait simple-subproblem
-  [stb out-set ts term? ri-fn] []
-  [summaries/simple-cached-node simple-watched]
+(traits/deftrait simple-subproblem [stb out-set ts term? ri-fn] [] [watched-node]
   Subproblem (stub            [s] stb)
              (output-set      [s] out-set)
              (tree-summarizer [s] ts)
@@ -476,7 +479,7 @@
     (util/safe-singleton (get-outputs root-stub))))
 
 (defn implicit-fah-a*-eval2 [henv]
-  (binding [summaries/*cache-method* :lazy
+  (binding [summaries/*cache-method* :eager
             *decompose-cache* (when *decompose-cache* (HashMap.))]
     (summaries/solve
      (tree-summarizer (apply get-root-subproblem (fs/make-init-pair henv)))
