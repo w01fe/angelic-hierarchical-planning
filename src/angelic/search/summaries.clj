@@ -113,6 +113,7 @@
 ;; Can be :uncached, :eager, :lazy, :less-eager, ...?
 (def *cache-method* nil)
 
+;; Try to keep consistency ... not sure if it's worth it.
 (traits/deftrait summary-cache [] [cache (atom nil)] []
   SummaryCache
   (summary [n]
@@ -126,11 +127,17 @@
         (when *assert-consistency*
           (util/assert-is (<= (summary/max-reward new) (summary/max-reward old))))
         (when-not (summary/solved? old)
-          (reset! cache new)
-          (when-not ((if (= :lazy *cache-method*) summary/>= =) old new)
-            (doseq [p (doall ((if (= :less-eager *cache-method*) node-ordinary-parents node-parents) n))]
-              (summary-changed! p)))))))
-  (summary-changed-local! [n] (reset! cache nil))
+          (let [lazy? (= :lazy *cache-method*)
+                equal? (= old new)]
+            (when-not equal? (reset! cache new))
+            (when-not (if lazy? (summary/>= old new) equal?)
+              (doseq [p (doall ((if (= :less-eager *cache-method*) node-ordinary-parents node-parents) n))]
+                (summary-changed! p))))))))
+  (summary-changed-local! [n] (reset! cache nil) 
+    (when-not (= :uncached *cache-method*)
+      (let [new (summarize n)]
+        (when-not (= @cache new)
+          (reset! cache new)))))
   (verified-summary [n min-summary]
     (if (= :lazy *cache-method*)
       (let [os @cache

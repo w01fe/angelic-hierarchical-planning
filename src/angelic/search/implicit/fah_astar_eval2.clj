@@ -37,6 +37,7 @@
 ;; Of this, 25% is =summary, unclear where rest is....
 ;; 20% of total time is extracting parents from node
 
+;; Explicit is still faster on small or easy instances, slower on hard ones.
 
 ;; TODO: find cleaner overall architecture.  Right now, names
 ;;   don't really do anything, and there's too much worrying about types, etc.
@@ -44,9 +45,12 @@
 ;;   Generator knows how to take input set and produce stub., etc.
 ;;   For now, seems like too much complexity for too little gain.
 
-
+;; TODO: if old and new summaries=, keep old !
 ;;;;; Features
-;; TODO: pessimistic
+;; TODO: pessimistic (problem: subsets!)
+;; TODO: smarter choose-leaf?
+;; TODO: don't always split-left?
+;; TODO: smarter output-collector (semantic)
 
 ;;;;; Summaries and solving (if only 30% of time, who cares!)
 ;; TODO: pseudo-solve
@@ -56,21 +60,24 @@
 ;;;;; SP caching
 ;; TODO: tail (i.e., pair) caching? -- Only help for >2 len refs...
 ;; TODO: cache refine-inputs?
-;; TODO: cache children of output-collector?
+;; TODO: cache children of output-collector? ~15 examples >1 in dm 4-3...
 
 ;;;;; Misc
 ;; TODO: garbage collect dead stuff
 ;; TODO: improve top-down propagation of bounds
 ;; TODO: better subusmption.
 
-;; --> TODO: add options to search alg.
-
 ;; TODO: why doesn't subsumption help (at all?)
 ;; Note: subsumption edges don't help AT ALL, under seemingly any settings
 ;;       subsumption in atomic seems to help at most 50%, not at all with D/S.
 ;; Part of the reason is that top-down-bound seems to fill similar role -- removing both
 ;;   gives modest but small slowdown (x2)
-;; Descriptions are just too accurate ?? (problems too easy?)
+
+;; TODO: tweak DM to be more interesting.
+;; Descriptions are just too accurate ?? (problems too easy?) (state spaces too small?)
+;; Descriptions, esp for move-to-goal, are far too expensive.
+
+
 
 (set! *warn-on-reflection* true)
 
@@ -282,7 +289,8 @@
   (= s1 s2))
 
 (defn make-output-collecting-subproblem [stb inner-sp]
-  (let [ts  (tree-summarizer inner-sp)
+  (let [;        counter (HashMap.)
+        ts  (tree-summarizer inner-sp)
         ret (traits/reify-traits 
              [(simple-subproblem stb (output-set inner-sp) ts false
                                  #(doto (if (= (input-set stb) %2) stb (refine-input inner-sp %2)) ;Needed when SA off
@@ -293,7 +301,11 @@
         (if (=-state-sets (output-set inner-sp) (output-set o))
           (do (connect-and-watch! ret o child-watch)
               (summaries/summary-changed! ret))
-          (do (if (#{:SA :OS} (first (subproblem-name o))) 
+          (do #_ (let [c (.get counter (input-set (stub o)))]
+                (when c (println c (stub-name (stub o))))
+                (.put counter (input-set (stub o)) (inc (or c 0))))
+              
+              (if (#{:SA :OS} (first (subproblem-name o))) 
                 (add-sp-child! ret o)
                 (connect-and-watch-stub! ret (make-output-collecting-stub (stub o)) #(add-sp-child! ret %))))))) ;; No update needed
     ret))
@@ -514,19 +526,19 @@
     (dotimes [_ 2] (evaluate! root-stub))
     (get-stub-output! root-stub)))
 
-(defn implicit-fah-a*-eval2 [henv & {gather :gather d :d s :s c :cache
-                                     :or {gather true s :eager d true c :eager}}]
+(defn implicit-fah-a*-eval2 [henv & {gather :gather d :d s :s c :cache choose-leaf :choose-leaf
+                                     :or {gather true s :eager d true c :eager choose-leaf last}}]
   (assert (contains? #{nil false :eager :deliberate} s))
   (when s (assert d))
   (when d (assert gather)) 
-  (assert (contains? #{:lazy :eager} c))
+  (assert (contains? #{:lazy :eager :less-eager} c))
   (binding [*no-identical-nonterminal-outputs* gather
             *decompose-cache* (when d (HashMap.))
             *state-abstraction* s
             summaries/*cache-method* c]
     (summaries/solve
      (tree-summarizer (apply get-root-subproblem (fs/make-init-pair henv)))
-     #(evaluate! (last (filter can-evaluate? %)))
+     #(evaluate! (choose-leaf (filter can-evaluate? %)))
      #(let [n (second (subproblem-name %))] (when-not (= (first n) :noop) n)))))
 
 ;; (do (use '[angelic env hierarchy] 'angelic.domains.nav-switch 'angelic.search.implicit.fah-astar-expand 'angelic.search.implicit.fah-astar-eval 'angelic.search.implicit.fah-astar-eval2 'angelic.domains.discrete-manipulation) (require '[angelic.search.explicit.hierarchical :as his]))
@@ -540,6 +552,7 @@
 ;; (dotimes [_ 1] (reset! summaries/*summary-count* 0) (debug 0 (let [h (make-discrete-manipulation-hierarchy  (make-discrete-manipulation-env [5 3] [1 1] [ [ [2 2] [3 2] ] ] [ [:a [2 2] [ [3 2] [3 2] ] ] ] 1))]  (time (println (run-counted #(identity (implicit-fah-a*-eval2 h))) @summaries/*summary-count*)) )))
 
 
+;;(dotimes [_ 1] (reset! summaries/*summary-count* 0) (reset! *out-count* 0) (debug 0 (let [h (make-discrete-manipulation-hierarchy (make-random-hard-discrete-manipulation-env 2 3))]  (time (println (run-counted #(identity (implicit-fah-a*-eval2 h))) @summaries/*summary-count* @*out-count*)) (time (println (run-counted #(identity (his/explicit-simple-dash-a* h ))) @summaries/*summary-count* @*out-count*)) )))
 
 ; (dotimes [_ 1] (reset! summaries/*summary-count* 0) (reset! *out-count* 0) (debug 0 (let [h (make-discrete-manipulation-hierarchy (make-random-discrete-manipulation-env 4 3))]  (time (println (run-counted #(identity (implicit-fah-a*-eval2 h))) @summaries/*summary-count* @*out-count*)) )))
 

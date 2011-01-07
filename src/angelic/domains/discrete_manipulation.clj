@@ -254,6 +254,19 @@
        [(keyword (str (char (+ (int \a) i)))) start (nth tables (mod (.nextInt random) 4))])
      1 2 2 (long (+ 17 (* 13 seed))))))
 
+;; Slightly more interesting, for testing implicit...
+(defn make-random-hard-discrete-manipulation-env [n-objects seed]
+  (let [tables [[[3 3] [6 6]] [[13 3] [16 6]] [[3 13] [6 16]] [[13 13] [16 16]]]
+        table-positions (apply concat (map region-cells tables))
+        random (Random. (long seed))]
+    (make-discrete-manipulation-env-regions
+     [20 20]
+     [1 1]
+     tables
+     (for [[i start] (util/indexed (take n-objects (pseudo-shuffle random table-positions)))]
+       [(keyword (str (char (+ (int \a) i)))) start (nth tables (mod (.nextInt random) 4))])
+     1 10 10 (long (+ 17 (* 13 seed))))))
+
 (defn state-map [s]
   (let [const   (state/get-var s :const)
         base    (state/get-var s [:base])
@@ -865,7 +878,7 @@
                        {(state/set-vars s [[[:base] b-dst] [[:pos o] o-dst] 
                                          [[:object-at o-pos] nil] [[:object-at o-dst] o]
                                          [[:at-goal? o] true]])
-                        (+ (move-base-reward base b-med [0 0])
+                         (+ (move-base-reward base b-med [0 0])
                            (move-base-reward b-med b-dst [0 0])
                            pickup-reward putdown-reward
                            (if (= b-med b-dst)
@@ -879,7 +892,7 @@
                                           (* -2 move-gripper-step-reward))))))}))))))
 
 
-
+;; TODO: descriptions are so expensive for big problems, they're not worth it
 ;; TODO: cache as much as this as we can ?
 (defn make-move-to-goal-hla [o] 
  (reify 
