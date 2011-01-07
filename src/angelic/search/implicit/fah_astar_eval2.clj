@@ -28,6 +28,7 @@
 ;; TODO: tail caching?
 ;; TODO: cache refine-inputs and/or other SPs.
 ;; TODO: encapsulate stub/sp behaviors somehow.
+;; TODO: garbage collect dead stuff
 
 ;; TODO: remove extra stub indirection step when not needed?
 ;; (i.e., either reverse directions, or just have get-stub-output when known..)
@@ -132,6 +133,11 @@
     (f sp)
     (do (summaries/connect! p c false)
         (add-watcher! c f))))
+
+(defn make-wrapping-stub [[name in-set] inner-stub sp-fn]
+  (let [ret (traits/reify-traits [summaries/or-summarizable (simple-stub name in-set)])]
+    (connect-and-watch-stub! ret inner-stub #(set-stub-output! ret (sp-fn ret %)))
+    ret))
 
 
 
@@ -238,16 +244,14 @@
 
 
 
-
 ;; TODO: collect children too ?
 (declare make-output-collecting-subproblem)
 (defn make-output-collecting-stub [inner-stub]
   (assert (not (= (first (stub-name inner-stub)) :OS)))
-  (assert (not (= (first (stub-name inner-stub)) :SA)))  
-  (let [in-set (input-set inner-stub)
-        ret (traits/reify-traits [summaries/or-summarizable (simple-stub [:OS (stub-name inner-stub) in-set] in-set)])]
-    (connect-and-watch-stub! ret inner-stub #(set-stub-output! ret (make-output-collecting-subproblem ret %)))
-    ret))
+  (assert (not (= (first (stub-name inner-stub)) :SA)))
+  (make-wrapping-stub
+   [[:OS (stub-name inner-stub)] (input-set inner-stub)]
+   inner-stub make-output-collecting-subproblem))
 
 
 (defn =-state-sets [s1 s2]
@@ -265,7 +269,7 @@
         (if (=-state-sets (output-set inner-sp) (output-set o))
           (do (connect-and-watch! ret o child-watch)
               (summaries/summary-changed! ret))
-          (do (if (#{:SA :OS} (first (stub-name (stub o)))) 
+          (do (if (#{:SA :OS} (first (subproblem-name o))) 
                 (add-sp-child! ret o)
                 (connect-and-watch-stub! ret (make-output-collecting-stub (stub o)) #(add-sp-child! ret %)))))))    
     ret))
@@ -275,9 +279,7 @@
 
 (declare make-state-abstracted-subproblem)
 (defn make-eager-state-abstracted-stub [inner-stub in-set]
-  (let [ret (traits/reify-traits [summaries/or-summarizable (simple-stub [:SA (stub-name inner-stub) in-set] in-set)])]
-    (connect-and-watch-stub! ret inner-stub #(set-stub-output! ret (make-state-abstracted-subproblem ret %)))
-    ret))
+  (make-wrapping-stub [[:SA (stub-name inner-stub)] in-set] inner-stub make-state-abstracted-subproblem))
 
 
 ;; DOTO: reduce overhead with deliberate?
@@ -422,15 +424,12 @@
                      (when (and (not @left-done?)
                                 (not (summary/live? (summaries/summary left-sp)))
                                 (not (= Double/NEGATIVE_INFINITY (summary/max-reward (summaries/summary left-sp))))) ;; TODO:??
-                       (reset! left-done? true) #_(println "BOO" pair-stub left-sp right-sp (class right-sp))
+                       (reset! left-done? true) 
                        (summaries/disconnect! s ss)
                        (add-watcher! left-sp (fn [o] (def *sum* [s left-sp o])
                                                (throw (RuntimeException. "Solved and children."))))
-                       ;; TODO: do more efficiently?
                        (connect-and-watch-stub! s (make-pair-stub2 subsuming-sp left-sp (stub right-sp))
-                                           (fn [os] (connect-and-watch! s os #(add-sp-child! s %))))
- ;                       (add-sp-child! s (make-pair-subproblem subsuming-sp pair-stub left-sp right-sp))
-                       )
+                                           (fn [os] (connect-and-watch! s os #(add-sp-child! s %)))))                     
                      (summaries/or-summary s b))))             
              (fn [s ri] (make-pair-stub1 s (refine-input left-sp ri)
                           (subproblem-name right-sp) #(refine-input right-sp %)))
@@ -446,31 +445,34 @@
     
     ret))
 
-;; TODO: remove children as they are no longer needed ?
 (defn- make-pair-stub2 [subsuming-sp left-sp right-stub]
-  (let [ret (traits/reify-traits
-             [summaries/sum-summarizable
-              (simple-stub [:Pair (subproblem-name left-sp) (stub-name right-stub)]
-                           (input-set (stub left-sp)))])]
-    (connect-subsuming! ret subsuming-sp)
-    (summaries/connect! ret (tree-summarizer left-sp) false)
-    (connect-and-watch-stub! ret right-stub 
-      #(set-stub-output! ret (make-pair-subproblem subsuming-sp ret left-sp %)))
-    ret))
+  (let [nm [:Pair (subproblem-name left-sp) (stub-name right-stub)]
+        is (input-set (stub left-sp))]
+    (if (get-stub-output right-stub) ;; short-circuit the mess below
+      (doto (make-wrapping-stub [nm is] right-stub #(make-pair-subproblem subsuming-sp %1 left-sp %2))
+        (-> get-stub-output assert)) ;; summary of wrapping stub would be wrong, otherwise...
+      (let [ret (traits/reify-traits [summaries/sum-summarizable (simple-stub nm is)])]
+        (connect-subsuming! ret subsuming-sp)
+        (summaries/connect! ret (tree-summarizer left-sp) false)
+        (connect-and-watch-stub! ret right-stub 
+                                 #(set-stub-output! ret (make-pair-subproblem subsuming-sp ret left-sp %)))
+        ret))))
 
 (defn- make-pair-stub1 [subsuming-sp left-stub right-name right-stub-fn]
-  (let [ret (traits/reify-traits [summaries/or-summarizable
-                                  (simple-stub [:Pair1 (stub-name left-stub) right-name]
-                                               (input-set left-stub))])]
-    (connect-subsuming! ret subsuming-sp)
-    (connect-and-watch-stub! ret left-stub 
-      (fn [lo]
-        (connect-and-watch-stub! ret
-          (make-pair-stub2 subsuming-sp lo (right-stub-fn (output-set lo)))
-          #(set-stub-output! ret %))
-        (summaries/summary-changed! ret))) ;; TODO: wasteful?
+  (if-let [left-sp (get-stub-output left-stub)]
+    (make-pair-stub2 subsuming-sp left-sp (right-stub-fn (output-set left-sp)))
+   (let [nm [:Pair1 (stub-name left-stub) right-name]
+         is (input-set left-stub)
+         ret (traits/reify-traits [summaries/or-summarizable (simple-stub nm is)])]
+     (connect-subsuming! ret subsuming-sp)
+     (connect-and-watch-stub! ret left-stub 
+       (fn [lo]
+         (connect-and-watch-stub! ret
+           (make-pair-stub2 subsuming-sp lo (right-stub-fn (output-set lo)))
+           #(set-stub-output! ret %))
+         (summaries/summary-changed! ret))) ;; TODO: wasteful?
     
-    ret))
+     ret)))
 
 
 (defn- make-fs-seq-stub
