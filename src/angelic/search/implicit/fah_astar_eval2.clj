@@ -23,6 +23,20 @@
 ;;  excluded-child-set went away, since we're now eager about pushing new outputs
 ;;   output-constraints went away since we have refine-input.
 
+;; Timing breakdown on DM 4-3 is:
+;; 10% extract-leaf-seq
+;; 20% lfss-empty?
+;; 20% optimistic-set-and-reward
+;; 25% make-atomic-subproblem (immediate refs+)
+;; 30% summary-changed
+
+;; Actually just about 1/3 in apply-opt, counting primitives, 10% in immediate-refs
+;; (almost half in primitives -- close enough).
+
+;; For nav-switch, becomes 80% summary-changed!
+;; Of this, 25% is =summary, unclear where rest is....
+;; 20% of total time is extracting parents from node
+
 
 ;; TODO: find cleaner overall architecture.  Right now, names
 ;;   don't really do anything, and there's too much worrying about types, etc.
@@ -34,13 +48,13 @@
 ;;;;; Features
 ;; TODO: pessimistic
 
-;;;;; Summaries and solving
+;;;;; Summaries and solving (if only 30% of time, who cares!)
 ;; TODO: pseudo-solve
 ;; TODO: smarter summary updates (i.e., pass child)
 ;; TODO: halfway eager prop -- eager about cost, not contents.
 
 ;;;;; SP caching
-;; TODO: tail (i.e., pair) caching?
+;; TODO: tail (i.e., pair) caching? -- Only help for >2 len refs...
 ;; TODO: cache refine-inputs?
 ;; TODO: cache children of output-collector?
 
@@ -48,7 +62,8 @@
 ;; TODO: garbage collect dead stuff
 ;; TODO: improve top-down propagation of bounds
 ;; TODO: better subusmption.
-;; TODO: add options to search alg.
+
+;; --> TODO: add options to search alg.
 
 ;; TODO: why doesn't subsumption help (at all?)
 ;; Note: subsumption edges don't help AT ALL, under seemingly any settings
@@ -62,11 +77,8 @@
 
 (def *no-identical-nonterminal-outputs* true)
 (def *decompose-cache*       true) ;; nil for none, or bind to hashmap
-(def *state-abstraction*     :eager #_ :deliberate) ;; Or lazy or nil.
+(def *state-abstraction*     :eager ) ;; Or lazy or nil.
 
-(assert (contains? #{nil :eager :deliberate} *state-abstraction*))
-(when *state-abstraction* (assert *decompose-cache*))
-(when *decompose-cache* (assert *no-identical-nonterminal-outputs*)) 
 
 ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
 ;;;;;;;;;;;;;;;;;;;;;;;;;;;;       Utilities      ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
@@ -502,9 +514,16 @@
     (dotimes [_ 2] (evaluate! root-stub))
     (get-stub-output! root-stub)))
 
-(defn implicit-fah-a*-eval2 [henv]
-  (binding [summaries/*cache-method* :eager
-            *decompose-cache* (when *decompose-cache* (HashMap.))]
+(defn implicit-fah-a*-eval2 [henv & {gather :gather d :d s :s c :cache
+                                     :or {gather true s :eager d true c :eager}}]
+  (assert (contains? #{nil false :eager :deliberate} s))
+  (when s (assert d))
+  (when d (assert gather)) 
+  (assert (contains? #{:lazy :eager} c))
+  (binding [*no-identical-nonterminal-outputs* gather
+            *decompose-cache* (when d (HashMap.))
+            *state-abstraction* s
+            summaries/*cache-method* c]
     (summaries/solve
      (tree-summarizer (apply get-root-subproblem (fs/make-init-pair henv)))
      #(evaluate! (last (filter can-evaluate? %)))
