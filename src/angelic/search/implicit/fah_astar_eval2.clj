@@ -30,28 +30,35 @@
 ;;   Generator knows how to take input set and produce stub., etc.
 ;;   For now, seems like too much complexity for too little gain.
 
-;; TODO: tail (i.e., pair) caching?
-;; TODO: cache refine-inputs?
-;; TODO: cache children of output-collector?
-;; TODO: garbage collect dead stuff
 
+;;;;; Features
 ;; TODO: pessimistic
 
+;;;;; Summaries and solving
 ;; TODO: pseudo-solve
 ;; TODO: smarter summary updates (i.e., pass child)
 ;; TODO: halfway eager prop -- eager about cost, not contents.
 
+;;;;; SP caching
+;; TODO: tail (i.e., pair) caching?
+;; TODO: cache refine-inputs?
+;; TODO: cache children of output-collector?
+
+;;;;; Misc
+;; TODO: garbage collect dead stuff
 ;; TODO: improve top-down propagation of bounds
 ;; TODO: better subusmption.
-
 ;; TODO: add options to search alg.
+
+
+
 
 (set! *warn-on-reflection* true)
 
 
-(def *no-identical-nonterminal-outputs* false)
-(def *decompose-cache*     nil #_ true) ;; nil for none, or bind to hashmap
-(def *state-abstraction*   nil #_ :eager #_ :deliberate) ;; Or lazy or nil.
+(def *no-identical-nonterminal-outputs* true)
+(def *decompose-cache*      true) ;; nil for none, or bind to hashmap
+(def *state-abstraction*    :eager #_ :deliberate) ;; Or lazy or nil.
 
 (assert (contains? #{nil :eager :deliberate} *state-abstraction*))
 (when *state-abstraction* (assert *decompose-cache*))
@@ -272,7 +279,7 @@
               (summaries/summary-changed! ret))
           (do (if (#{:SA :OS} (first (subproblem-name o))) 
                 (add-sp-child! ret o)
-                (connect-and-watch-stub! ret (make-output-collecting-stub (stub o)) #(add-sp-child! ret %)))))))    ;; TODO: missing update?
+                (connect-and-watch-stub! ret (make-output-collecting-stub (stub o)) #(add-sp-child! ret %))))))) ;; No update needed
     ret))
 
 ;;;;;;;;;;;;;;;;;;;;;;;;;;;     State Abstraction     ;;;;;;;;;;;;;;;;;;;;;;;;;;
@@ -426,7 +433,7 @@
                        (add-watcher! left-sp (fn [o] (def *sum* [s left-sp o])
                                                (throw (RuntimeException. "Solved and children."))))
                        (connect-and-watch-stub! s (make-pair-stub2 subsuming-sp left-sp (stub right-sp))
-                                           (fn [os] (connect-and-watch! s os #(add-sp-child! s %))))) ;; TODO: updates?                     
+                                           (fn [os] (connect-and-watch! s os #(add-sp-child! s %))))) ;; no update needed                     
                      (summaries/or-summary s b))))             
              (fn [s ri] (make-pair-stub1 s (refine-input left-sp ri)
                           (subproblem-name right-sp) #(refine-input right-sp %)))
