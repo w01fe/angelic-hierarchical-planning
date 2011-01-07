@@ -46,16 +46,12 @@
 
 ;; TODO: add options to search alg.
 
-;; TODO: update subproblems the same way as stubs -- call summary-changed-local if 
-;;   -- call summary-changed-local if passed on,
-;;   -- or summary-changed! if absorbed.
-
 (set! *warn-on-reflection* true)
 
 
-(def *no-identical-nonterminal-outputs* true)
-(def *decompose-cache*     true) ;; nil for none, or bind to hashmap
-(def *state-abstraction*   :eager #_ :deliberate) ;; Or lazy or nil.
+(def *no-identical-nonterminal-outputs* false)
+(def *decompose-cache*     nil #_ true) ;; nil for none, or bind to hashmap
+(def *state-abstraction*   nil #_ :eager #_ :deliberate) ;; Or lazy or nil.
 
 (assert (contains? #{nil :eager :deliberate} *state-abstraction*))
 (when *state-abstraction* (assert *decompose-cache*))
@@ -266,7 +262,8 @@
   (let [ts  (tree-summarizer inner-sp)
         ret (traits/reify-traits 
              [(simple-subproblem stb (output-set inner-sp) ts false
-                                 #(doto (refine-input inner-sp %2) (-> stub-name first #{:SA :OS} assert)))]
+                                 #(doto (if (= (input-set stb) %2) stb (refine-input inner-sp %2)) ;Needed when SA off
+                                    (-> stub-name first #{:SA :OS} assert)))]
              summaries/Summarizable (summarize [s] (summaries/or-summary s (top-down-bound ts))))]
     (connect-and-watch! ret inner-sp
       (fn child-watch [o]
