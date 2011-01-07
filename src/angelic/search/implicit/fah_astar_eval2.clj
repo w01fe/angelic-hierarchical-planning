@@ -19,7 +19,13 @@
 ;; Here we properly deal with weirdness of stubs/inner-sps decreaseing as they add
 ;; children, by makig sure to do the updates synchronously.
 
-;; TODO: don't bother with names?  Or make names primary...
+;; TODO: find cleaner overall architecture.  Right now, names
+;;   don't really do anything, and there's too much worrying about types, etc.
+;;   Solution may be to have Generator (takes place of name) --> Stub --> SP.
+;;   Generator knows how to take input set and produce stub., etc.
+;;   For now, seems like too much complexity for too little gain.
+
+;; TODO: tail caching?
 ;; TODO: cache refine-inputs and/or other SPs.
 ;; TODO: encapsulate stub/sp behaviors somehow.
 
@@ -115,7 +121,18 @@
   (summaries/summary-changed-local! stub)
   (add-output! stub sp))
 
-(comment (defn get-stub-output [s] (util/safe-singleton (get-outputs s))))
+
+(defn get-stub-output  [s] (first (get-outputs s)))
+(defn get-stub-output! [s] (util/safe-singleton (get-outputs s)))
+
+;; Just give output directly if subproblem is ready
+(defn connect-and-watch-stub! [p c f]
+  (assert (instance? angelic.search.implicit.fah_astar_eval2.Stub c))
+  (if-let [sp (get-stub-output c)]
+    (f sp)
+    (do (summaries/connect! p c false)
+        (add-watcher! c f))))
+
 
 
 ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
@@ -229,7 +246,7 @@
   (assert (not (= (first (stub-name inner-stub)) :SA)))  
   (let [in-set (input-set inner-stub)
         ret (traits/reify-traits [summaries/or-summarizable (simple-stub [:OS (stub-name inner-stub) in-set] in-set)])]
-    (connect-and-watch! ret inner-stub #(set-stub-output! ret (make-output-collecting-subproblem ret %)))
+    (connect-and-watch-stub! ret inner-stub #(set-stub-output! ret (make-output-collecting-subproblem ret %)))
     ret))
 
 
@@ -250,7 +267,7 @@
               (summaries/summary-changed! ret))
           (do (if (#{:SA :OS} (first (stub-name (stub o)))) 
                 (add-sp-child! ret o)
-                (connect-and-watch! ret (make-output-collecting-stub (stub o)) #(add-sp-child! ret %)))))))    
+                (connect-and-watch-stub! ret (make-output-collecting-stub (stub o)) #(add-sp-child! ret %)))))))    
     ret))
 
 ;;;;;;;;;;;;;;;;;;;;;;;;;;;     State Abstraction     ;;;;;;;;;;;;;;;;;;;;;;;;;;
@@ -259,14 +276,14 @@
 (declare make-state-abstracted-subproblem)
 (defn make-eager-state-abstracted-stub [inner-stub in-set]
   (let [ret (traits/reify-traits [summaries/or-summarizable (simple-stub [:SA (stub-name inner-stub) in-set] in-set)])]
-    (connect-and-watch! ret inner-stub #(set-stub-output! ret (make-state-abstracted-subproblem ret %)))
+    (connect-and-watch-stub! ret inner-stub #(set-stub-output! ret (make-state-abstracted-subproblem ret %)))
     ret))
 
 
 ;; DOTO: reduce overhead with deliberate?
 ;; Only wait when inner-stub has no output -- prevent double-wait.
 (defn make-deliberate-state-abstracted-stub [inner-stub in-set]
-  (if-let [out (first (get-outputs inner-stub))]
+  (if-let [out (get-stub-output inner-stub)]
     (let [done? (atom false)  
           ret
           (traits/reify-traits
@@ -300,7 +317,7 @@
         ret (traits/reify-traits
              [summaries/or-summarizable (simple-subproblem stb out ts (terminal? inner-sp) ri-fn)])]
     (connect-and-watch! ret inner-sp
-      (fn [o] (connect-and-watch! ret (make-state-abstracted-stub (stub o) in) #(add-sp-child! ret %))
+      (fn [o] (connect-and-watch-stub! ret (make-state-abstracted-stub (stub o) in) #(add-sp-child! ret %))
         (when (= :deliberate *state-abstraction*) (summaries/summary-changed! ret))))
     ret))
 
@@ -325,14 +342,14 @@
           (let [ret (make-simple-subproblem stub subsuming-sp out-set false summaries/or-summary ri-fn reward)]
             (connect-and-watch! ret subsuming-sp
               (fn [sub-out]
-                (connect-and-watch! ret (refine-input sub-out inp-set) #(add-sp-child! ret %))
+                (connect-and-watch-stub! ret (refine-input sub-out inp-set) #(add-sp-child! ret %))
                 (summaries/summary-changed! ret))) ;; TODO: needed?                       
             ret)
           
           :else 
           (let [ret (make-simple-subproblem stub subsuming-sp out-set false summaries/or-summary ri-fn reward)]
             (doseq [child (map #(make-fs-seq-stub inp-set %) (fs/child-seqs function-set inp-set))]
-              (connect-and-watch! ret child #(add-sp-child! ret %)))
+              (connect-and-watch-stub! ret child #(add-sp-child! ret %)))
             ret))))
 
 ;; Note: this is double-stage to lazily generate children.  Could be simpler single-stage.
@@ -410,7 +427,7 @@
                        (add-watcher! left-sp (fn [o] (def *sum* [s left-sp o])
                                                (throw (RuntimeException. "Solved and children."))))
                        ;; TODO: do more efficiently?
-                       (connect-and-watch! s (make-pair-stub2 subsuming-sp left-sp (stub right-sp))
+                       (connect-and-watch-stub! s (make-pair-stub2 subsuming-sp left-sp (stub right-sp))
                                            (fn [os] (connect-and-watch! s os #(add-sp-child! s %))))
  ;                       (add-sp-child! s (make-pair-subproblem subsuming-sp pair-stub left-sp right-sp))
                        )
@@ -424,7 +441,7 @@
     (add-watcher! watch
       (fn [o]
         (summaries/summary-changed-local! ss)
-        (connect-and-watch! ret (stub-f o) #(add-sp-child! ret %))
+        (connect-and-watch-stub! ret (stub-f o) #(add-sp-child! ret %))
         (summaries/summary-changed! ret))) ;; TODO: efficiency?
     
     ret))
@@ -437,7 +454,7 @@
                            (input-set (stub left-sp)))])]
     (connect-subsuming! ret subsuming-sp)
     (summaries/connect! ret (tree-summarizer left-sp) false)
-    (connect-and-watch! ret right-stub 
+    (connect-and-watch-stub! ret right-stub 
       #(set-stub-output! ret (make-pair-subproblem subsuming-sp ret left-sp %)))
     ret))
 
@@ -446,9 +463,9 @@
                                   (simple-stub [:Pair1 (stub-name left-stub) right-name]
                                                (input-set left-stub))])]
     (connect-subsuming! ret subsuming-sp)
-    (connect-and-watch! ret left-stub 
+    (connect-and-watch-stub! ret left-stub 
       (fn [lo]
-        (connect-and-watch! ret
+        (connect-and-watch-stub! ret
           (make-pair-stub2 subsuming-sp lo (right-stub-fn (output-set lo)))
           #(set-stub-output! ret %))
         (summaries/summary-changed! ret))) ;; TODO: wasteful?
@@ -476,7 +493,7 @@
 (defn- get-root-subproblem [inp-set fs]
   (let [root-stub (make-atomic-stub nil nil inp-set fs)]
     (dotimes [_ 2] (evaluate! root-stub))
-    (util/safe-singleton (get-outputs root-stub))))
+    (get-stub-output! root-stub)))
 
 (defn implicit-fah-a*-eval2 [henv]
   (binding [summaries/*cache-method* :eager
