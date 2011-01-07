@@ -50,15 +50,19 @@
 ;; TODO: better subusmption.
 ;; TODO: add options to search alg.
 
-
-
+;; TODO: why doesn't subsumption help (at all?)
+;; Note: subsumption edges don't help AT ALL, under seemingly any settings
+;;       subsumption in atomic seems to help at most 50%, not at all with D/S.
+;; Part of the reason is that top-down-bound seems to fill similar role -- removing both
+;;   gives modest but small slowdown (x2)
+;; Descriptions are just too accurate ?? (problems too easy?)
 
 (set! *warn-on-reflection* true)
 
 
 (def *no-identical-nonterminal-outputs* true)
-(def *decompose-cache*      true) ;; nil for none, or bind to hashmap
-(def *state-abstraction*    :eager #_ :deliberate) ;; Or lazy or nil.
+(def *decompose-cache*       true) ;; nil for none, or bind to hashmap
+(def *state-abstraction*     :eager #_ :deliberate) ;; Or lazy or nil.
 
 (assert (contains? #{nil :eager :deliberate} *state-abstraction*))
 (when *state-abstraction* (assert *decompose-cache*))
@@ -194,7 +198,7 @@
 (defn tree-summarizer? [s] (instance? angelic.search.implicit.fah_astar_eval2.TreeSummarizer s))
 
 (defn make-tree-summarizer [init-bound]
- (let [tdb-atom (atom init-bound)]
+ (let [tdb-atom (atom  init-bound)]
    (traits/reify-traits [summaries/simple-cached-node]
      TreeSummarizer (top-down-bound [s] @tdb-atom)
                     (add-top-down-bound! [s b]
@@ -204,7 +208,7 @@
                           (when (tree-summarizer? c)
                             (add-top-down-bound! c b)))
                         (summaries/summary-changed! s)))    
-     summaries/Summarizable (summarize [s] (summaries/or-summary s @tdb-atom)))))
+     summaries/Summarizable (summarize [s] (summaries/or-summary s  @tdb-atom)))))
 
 (defn init-tree-summarizer! [ts inner-sp subsuming-sp]
   (connect-and-watch! ts inner-sp
@@ -405,17 +409,14 @@
 
 (declare make-pair-stub1 make-pair-stub2)
 
+;; NOTE: subsumption doesn't seem to help
 ;; TODO: fix up subsuming, parent, etc.
 ;; nils at bottom should chase subsuming-sp.
 ;; Note: this is the only place logic depends on summary.  Potential for problems?
 (defn- make-pair-subproblem [subsuming-sp pair-stub left-sp right-sp]
   (let [expand-right? (and (summary/solved? (summaries/summary left-sp)) (empty? (get-outputs left-sp)))
-        [ss watch stub-f]
-        (if expand-right?
-          [(summaries/make-sum-summarizer [(tree-summarizer left-sp) right-sp])
-           right-sp #(make-pair-stub2 nil left-sp (stub %))]
-          [(summaries/make-sum-summarizer [left-sp (tree-summarizer right-sp)])
-           left-sp #(make-pair-stub2 nil % (refine-input right-sp (output-set %)))])
+        kids (if expand-right? [(tree-summarizer left-sp) right-sp] [left-sp (tree-summarizer right-sp)])
+        ss   (summaries/make-sum-summarizer kids)
         ret (make-simple-subproblem
              pair-stub subsuming-sp (output-set right-sp) false             
              (if (or expand-right? (not *no-identical-nonterminal-outputs*)) summaries/or-summary
@@ -435,11 +436,14 @@
              0)]
 
     (summaries/connect! ret ss false)
-    
-    (add-watcher! watch
-      (fn [o]
-        (summaries/summary-changed-local! ss)
-        (connect-and-watch-stub-up! ret (stub-f o) #(add-sp-child! ret %))))
+
+    (let [[watch stub-f] (if expand-right?
+                           [right-sp #(make-pair-stub2 nil left-sp (stub %))]
+                           [left-sp #(make-pair-stub2 nil % (refine-input right-sp (output-set %)))])]
+      (add-watcher! watch
+         (fn [o]
+           (summaries/summary-changed-local! ss)
+           (connect-and-watch-stub-up! ret (stub-f o) #(add-sp-child! ret %)))))
     
     ret))
 
@@ -506,7 +510,9 @@
      #(evaluate! (last (filter can-evaluate? %)))
      #(let [n (second (subproblem-name %))] (when-not (= (first n) :noop) n)))))
 
-; (do (use '[angelic env hierarchy] 'angelic.domains.nav-switch 'angelic.search.implicit.fah-astar-expand 'angelic.search.implicit.fah-astar-eval 'angelic.search.implicit.fah-astar-eval2 'angelic.domains.discrete-manipulation) (require '[angelic.search.explicit.hierarchical :as his]))
+;; (do (use '[angelic env hierarchy] 'angelic.domains.nav-switch 'angelic.search.implicit.fah-astar-expand 'angelic.search.implicit.fah-astar-eval 'angelic.search.implicit.fah-astar-eval2 'angelic.domains.discrete-manipulation) (require '[angelic.search.explicit.hierarchical :as his]))
+
+;; (do (use '[angelic env hierarchy] 'angelic.domains.nav-switch  'angelic.search.implicit.fah-astar-eval2 'angelic.domains.discrete-manipulation) (require '[angelic.search.explicit.hierarchical :as his]))
 
 ; (do (def s summaries/summarize) (def sc summary/children) (def nc summaries/node-ordinary-children) (def src summary/source))
 ;;(dotimes [_ 1] (reset! summaries/*summary-count* 0) (debug 0 (time (let [h (make-nav-switch-hierarchy (make-random-nav-switch-env 2 1 0) true)]  (println (run-counted #(second (implicit-fah-a*-eval2 h))) @summaries/*summary-count*)))))

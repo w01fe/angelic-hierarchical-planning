@@ -1,6 +1,7 @@
 (ns angelic.search.summary
   (:refer-clojure :exclude [min max >= + ])
-  (:require [edu.berkeley.ai.util :as util]))
+  (:require [edu.berkeley.ai.util :as util])
+  (:import [java.util ArrayList]))
 
 ;; Summaries are essentially sufficient statistics for searches.
 ;; The basic idea here is to separate these statistics and their
@@ -156,27 +157,26 @@
 
 (defn extract-leaf-seq
   ([summary] (extract-leaf-seq summary (comp empty? children)))
-  ([summary stop?-fn]  
-     (if (stop?-fn summary)
-       [summary]
-       (apply concat (map #(extract-leaf-seq % stop?-fn) (children summary))))))
+  ([summary stop?-fn]
+     (let [l   (ArrayList.) ;; functional version slow for some reason...
+           dfs (fn dfs [s]
+                 (if (stop?-fn s)
+                   (.add l s)
+                   (doseq [c (children s)] (dfs c))))]
+       (dfs summary)
+       (seq l))))
 
-(defn extract-leaf-source-seq [summary] (map source (extract-leaf-seq summary)))
+(defn extract-leaf-source-seq [summary]
+  (map source (extract-leaf-seq summary)))
 
 (defn extract-single-leaf [summary stop?-fn]
   (util/safe-singleton (extract-leaf-seq summary stop?-fn)))
 
 
-(defn extract-source-seq [summary]
- ;(when (source summary) (println (angelic.search.implicit.subproblem-eval/subproblem-name (source summary))))
-;  (println "." summary)
-  (if-let [kids (seq (children summary))]
-    (apply concat (map extract-source-seq kids))
-    [(util/make-safe (source summary) "%s" (class summary))]))
 
 (defn extract-solution-pair [summary action-extractor]
   (assert (solved? summary))
-  [(filter identity (map action-extractor (extract-source-seq summary)))
+  [(filter identity (map action-extractor (extract-leaf-source-seq summary)))
    (max-reward summary)])
 
 (def *last-solution* nil)
