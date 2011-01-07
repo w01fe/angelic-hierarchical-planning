@@ -46,7 +46,9 @@
 
 ;; TODO: add options to search alg.
 
-
+;; TODO: update subproblems the same way as stubs -- call summary-changed-local if 
+;;   -- call summary-changed-local if passed on,
+;;   -- or summary-changed! if absorbed.
 
 (set! *warn-on-reflection* true)
 
