@@ -290,8 +290,6 @@
   (make-wrapping-stub [[:SA (stub-name inner-stub)] in-set] inner-stub make-state-abstracted-subproblem))
 
 
-;; DOTO: reduce overhead with deliberate?
-;; Only wait when inner-stub has no output -- prevent double-wait.
 (defn make-deliberate-state-abstracted-stub [inner-stub in-set]
   (if-let [out (get-stub-output inner-stub)]
     (let [done? (atom false)  
@@ -388,7 +386,6 @@
     ret))
 
 ;; Note: we must always wrap in S-A stub to get effects out of logger. 
-;; TODO: do something more with subsuming?
 (defn- get-atomic-stub [subsuming-sp inp-set function-set]
   (let [full-name [:Atomic (fs/fs-name function-set)
                    (if *state-abstraction* (fs/extract-context function-set inp-set) inp-set)]
@@ -410,9 +407,6 @@
 
 ;; TODO: fix up subsuming, parent, etc.
 ;; nils at bottom should chase subsuming-sp.
-;; TODO TODO: we should not use tree-summarizer when left-done
-;; How do we know that current output set is actually solved ?
-;; TODO: remove ss ?
 ;; Note: this is the only place logic depends on summary.  Potential for problems?
 (defn- make-pair-subproblem [subsuming-sp pair-stub left-sp right-sp]
   (let [expand-right? (and (summary/solved? (summaries/summary left-sp)) (empty? (get-outputs left-sp)))
@@ -425,11 +419,12 @@
         ret (make-simple-subproblem
              pair-stub subsuming-sp (output-set right-sp) false             
              (if (or expand-right? (not *no-identical-nonterminal-outputs*)) summaries/or-summary
-                 (let [left-done? (atom false)]
+                 (let [left-done? (atom false)] ;; Manually take into account left-solved, when no output message.
                    (fn [s b] 
                      (when (and (not @left-done?) (summary/solved? (summaries/summary left-sp))) 
                        (reset! left-done? true) 
                        (summaries/disconnect! s ss)
+                        ;; Make sure we don't double count, because child will use tree-summarizer of left.
                        (add-watcher! left-sp (fn [o] (def *sum* [s left-sp o])
                                                (throw (RuntimeException. "Solved and children."))))
                        (connect-and-watch-stub! s (make-pair-stub2 subsuming-sp left-sp (stub right-sp))
