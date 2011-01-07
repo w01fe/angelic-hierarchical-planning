@@ -1,4 +1,4 @@
-(ns angelic.search.implicit.fah-astar-eval2
+(ns angelic.search.implicit.dash-astar-opt
   (:require [edu.berkeley.ai.util :as util]
             [edu.berkeley.ai.util.traits :as traits]
             [angelic.env.state :as state]
@@ -45,9 +45,11 @@
 ;;   Generator knows how to take input set and produce stub., etc.
 ;;   For now, seems like too much complexity for too little gain.
 
-;; TODO: if old and new summaries=, keep old !
 ;;;;; Features
-;; TODO: pessimistic (problem: subsets!)
+;; --> TODO: pessimistic (problem: subsets & correspondence!)
+;;      potential solution: revamp to separate following-plans
+;;      and sets-of-reachable states.
+
 ;; TODO: smarter choose-leaf?
 ;; TODO: don't always split-left?
 ;; TODO: smarter output-collector (semantic)
@@ -120,7 +122,7 @@
     (doseq [w (doall (seq watchers))] (swap! *out-count* inc) (w o)))
   (get-outputs [sw] (doall (seq outputs))))
 
-(defn connect-and-watch! [p c f]
+(defn- connect-and-watch! [p c f]
   (summaries/connect! p c false)
   (add-watcher! c f))
 
@@ -137,27 +139,27 @@
   Stub (input-set [s] inp)
        (stub-name [s] name))
 
-(defmethod print-method angelic.search.implicit.fah_astar_eval2.Stub [s o]
+(defmethod print-method angelic.search.implicit.dash_astar_opt.Stub [s o]
   (print-method (format "#<ST$%8h %s>" (System/identityHashCode s) (stub-name s)) o))
 
 ;; Stub must implement Summarizable, optionally implements Evaluable
 
 (defprotocol Evaluable (evaluate! [s]))
-(defn can-evaluate? [s] (instance? angelic.search.implicit.fah_astar_eval2.Evaluable s))
+(defn- can-evaluate? [s] (instance? angelic.search.implicit.dash_astar_opt.Evaluable s))
 
-(defn set-stub-output! [stub sp]
+(defn- set-stub-output! [stub sp]
   (assert (empty? (get-outputs stub)))
   (summaries/summary-changed-local! stub)
   (add-output! stub sp))
 
 
-(defn get-stub-output  [s] (first (get-outputs s)))
-(defn get-stub-output! [s] (util/safe-singleton (get-outputs s)))
+(defn- get-stub-output  [s] (first (get-outputs s)))
+(defn- get-stub-output! [s] (util/safe-singleton (get-outputs s)))
 
 ;; Just give output directly if subproblem is ready
 ;; Return true if waiting
-(defn connect-and-watch-stub! [p c f]
-  (assert (instance? angelic.search.implicit.fah_astar_eval2.Stub c))
+(defn- connect-and-watch-stub! [p c f]
+  (assert (instance? angelic.search.implicit.dash_astar_opt.Stub c))
   (if-let [sp (get-stub-output c)]
     (do (f sp) false)
     (do (summaries/connect! p c false)
@@ -165,10 +167,10 @@
         true)))
 
 ;; Used when p needs update if c does not produce immediate output.
-(defn connect-and-watch-stub-up! [p c f]
+(defn- connect-and-watch-stub-up! [p c f]
   (when (connect-and-watch-stub! p c f) (summaries/summary-changed! p)))
 
-(defn make-wrapping-stub [[name in-set] inner-stub sp-fn]
+(defn- make-wrapping-stub [[name in-set] inner-stub sp-fn]
   (let [ret (traits/reify-traits [summaries/or-summarizable (simple-stub name in-set)])]
     (connect-and-watch-stub! ret inner-stub #(set-stub-output! ret (sp-fn ret %)))
     ret))
@@ -186,16 +188,16 @@
   (terminal?         [s] "Subproblem will not return any outputs.")
   (refine-input      [s refined-input-set] "Return a child stub."))
 
-(defn subproblem-name [s] (stub-name (stub s)))
+(defn- subproblem-name [s] (stub-name (stub s)))
 
-(defmethod print-method angelic.search.implicit.fah_astar_eval2.Subproblem [sp o]
+(defmethod print-method angelic.search.implicit.dash_astar_opt.Subproblem [sp o]
   (print-method (format "#<SP$%8h %s>" (System/identityHashCode (stub sp)) (subproblem-name sp)) o))
 
 
-(defn connect-subsuming! [child subsuming-sp]
+(defn- connect-subsuming! [child subsuming-sp]
   (when subsuming-sp (summaries/connect! child (tree-summarizer subsuming-sp) true)))
 
-(defn add-sp-child! [sp child-sp]
+(defn- add-sp-child! [sp child-sp]
   (assert (not (terminal? sp)))
   (summaries/summary-changed-local! sp)
   (add-output! sp child-sp))
@@ -214,9 +216,9 @@
   (top-down-bound    [s])
   (add-top-down-bound! [s b]))
 
-(defn tree-summarizer? [s] (instance? angelic.search.implicit.fah_astar_eval2.TreeSummarizer s))
+(defn- tree-summarizer? [s] (instance? angelic.search.implicit.dash_astar_opt.TreeSummarizer s))
 
-(defn make-tree-summarizer [init-bound]
+(defn- make-tree-summarizer [init-bound]
  (let [tdb-atom (atom  init-bound)]
    (traits/reify-traits [summaries/simple-cached-node]
      TreeSummarizer (top-down-bound [s] @tdb-atom)
@@ -229,7 +231,7 @@
                         (summaries/summary-changed! s)))    
      summaries/Summarizable (summarize [s] (summaries/or-summary s  @tdb-atom)))))
 
-(defn init-tree-summarizer! [ts inner-sp subsuming-sp]
+(defn- init-tree-summarizer! [ts inner-sp subsuming-sp]
   (connect-and-watch! ts inner-sp
     (fn [child-sp]
       (summaries/connect! ts (tree-summarizer child-sp) false)
@@ -237,13 +239,13 @@
       (summaries/summary-changed! ts))) ;; TODO: speedup by checking child reward? 
   (connect-subsuming! ts subsuming-sp))
 
-(defn get-inner-sp [ts]
+(defn- get-inner-sp [ts]
   (->> (summaries/node-ordinary-children ts)
        (remove tree-summarizer?)
        util/safe-singleton))
 
-(defn ts-str [sp])
-(defmethod print-method angelic.search.implicit.fah_astar_eval2.TreeSummarizer [ts o]
+(defn- ts-str [sp])
+(defmethod print-method angelic.search.implicit.dash_astar_opt.TreeSummarizer [ts o]
   (let [stub (stub (get-inner-sp ts))]
     (print-method (format "#<TS$%8h %s>" (System/identityHashCode stub) (stub-name stub)) o)))
 
@@ -258,7 +260,7 @@
              (refine-input    [s ni] (ri-fn s ni)))
 
 
-(defn make-simple-subproblem [stub subsuming-sp out-set terminal? summary-fn ri-fn init-bound]
+(defn- make-simple-subproblem [stub subsuming-sp out-set terminal? summary-fn ri-fn init-bound]
   (let [ts  (make-tree-summarizer init-bound)
         ret (traits/reify-traits [(simple-subproblem stub out-set ts terminal? ;; Note ni may have different context.
                                                      (fn [s ni] (if (= ni (input-set stub)) stub (ri-fn s ni))))]
@@ -276,7 +278,7 @@
 
 
 (declare make-output-collecting-subproblem)
-(defn make-output-collecting-stub [inner-stub]
+(defn- make-output-collecting-stub [inner-stub]
   (assert (not (= (first (stub-name inner-stub)) :OS)))
   (assert (not (= (first (stub-name inner-stub)) :SA)))
   (make-wrapping-stub
@@ -284,11 +286,11 @@
    inner-stub make-output-collecting-subproblem))
 
 
-(defn =-state-sets [s1 s2]
+(defn- =-state-sets [s1 s2]
   (util/assert-is (= (state/current-context s1) (state/current-context s2)) "%s" [s1 s2])
   (= s1 s2))
 
-(defn make-output-collecting-subproblem [stb inner-sp]
+(defn- make-output-collecting-subproblem [stb inner-sp]
   (let [;        counter (HashMap.)
         ts  (tree-summarizer inner-sp)
         ret (traits/reify-traits 
@@ -314,11 +316,11 @@
 
 
 (declare make-state-abstracted-subproblem)
-(defn make-eager-state-abstracted-stub [inner-stub in-set]
+(defn- make-eager-state-abstracted-stub [inner-stub in-set]
   (make-wrapping-stub [[:SA (stub-name inner-stub)] in-set] inner-stub make-state-abstracted-subproblem))
 
 
-(defn make-deliberate-state-abstracted-stub [inner-stub in-set]
+(defn- make-deliberate-state-abstracted-stub [inner-stub in-set]
   (if-let [out (get-stub-output inner-stub)]
     (let [done? (atom false)  
           ret
@@ -337,7 +339,7 @@
     (make-eager-state-abstracted-stub inner-stub in-set)))
 
 
-(defn make-state-abstracted-stub [inner-stub in-set]
+(defn- make-state-abstracted-stub [inner-stub in-set]
   ((case *state-abstraction*
      :eager make-eager-state-abstracted-stub
      :deliberate make-deliberate-state-abstracted-stub)
@@ -345,7 +347,7 @@
 
 
 ;; Note: subsumed subproblems can have different irrelevant vars
-(defn make-state-abstracted-subproblem [stb inner-sp]
+(defn- make-state-abstracted-subproblem [stb inner-sp]
   (let [ts  (tree-summarizer inner-sp)
         in  (input-set stb)
         out (state/transfer-effects in (output-set inner-sp))
@@ -526,8 +528,8 @@
     (dotimes [_ 2] (evaluate! root-stub))
     (get-stub-output! root-stub)))
 
-(defn implicit-fah-a*-eval2 [henv & {gather :gather d :d s :s c :cache choose-leaf :choose-leaf
-                                     :or {gather true s :eager d true c :eager choose-leaf last}}]
+(defn implicit-dash-a*-opt [henv & {gather :gather d :d s :s c :cache choose-leaf :choose-leaf
+                                    :or {gather true s :eager d true c :eager choose-leaf last}}]
   (assert (contains? #{nil false :eager :deliberate} s))
   (when s (assert d))
   (when d (assert gather)) 
@@ -541,9 +543,9 @@
      #(evaluate! (choose-leaf (filter can-evaluate? %)))
      #(let [n (second (subproblem-name %))] (when-not (= (first n) :noop) n)))))
 
-;; (do (use '[angelic env hierarchy] 'angelic.domains.nav-switch 'angelic.search.implicit.fah-astar-expand 'angelic.search.implicit.fah-astar-eval 'angelic.search.implicit.fah-astar-eval2 'angelic.domains.discrete-manipulation) (require '[angelic.search.explicit.hierarchical :as his]))
+;; (do (use '[angelic env hierarchy] 'angelic.domains.nav-switch 'angelic.search.implicit.fah-astar-expand 'angelic.search.implicit.fah-astar-eval 'angelic.search.implicit.dash-astar-opt 'angelic.domains.discrete-manipulation) (require '[angelic.search.explicit.hierarchical :as his]))
 
-;; (do (use '[angelic env hierarchy] 'angelic.domains.nav-switch  'angelic.search.implicit.fah-astar-eval2 'angelic.domains.discrete-manipulation) (require '[angelic.search.explicit.hierarchical :as his]))
+;; (do (use '[angelic env hierarchy] 'angelic.domains.nav-switch  'angelic.search.implicit.dash-astar-opt 'angelic.domains.discrete-manipulation) (require '[angelic.search.explicit.hierarchical :as his]))
 
 ; (do (def s summaries/summarize) (def sc summary/children) (def nc summaries/node-ordinary-children) (def src summary/source))
 ;;(dotimes [_ 1] (reset! summaries/*summary-count* 0) (debug 0 (time (let [h (make-nav-switch-hierarchy (make-random-nav-switch-env 2 1 0) true)]  (println (run-counted #(second (implicit-fah-a*-eval2 h))) @summaries/*summary-count*)))))
