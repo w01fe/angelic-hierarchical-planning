@@ -19,19 +19,22 @@
 ;; Here we properly deal with weirdness of stubs/inner-sps decreaseing as they add
 ;; children, by makig sure to do the updates synchronously.
 
+;; Compared to old dash_astar_summary:
+;;  excluded-child-set went away, since we're now eager about pushing new outputs
+;;   output-constraints went away since we have refine-input.
+
+
 ;; TODO: find cleaner overall architecture.  Right now, names
 ;;   don't really do anything, and there's too much worrying about types, etc.
 ;;   Solution may be to have Generator (takes place of name) --> Stub --> SP.
 ;;   Generator knows how to take input set and produce stub., etc.
 ;;   For now, seems like too much complexity for too little gain.
 
-;; TODO: tail caching?
-;; TODO: cache refine-inputs and/or other SPs.
-;; TODO: encapsulate stub/sp behaviors somehow.
+;; TODO: tail (i.e., pair) caching?
+;; TODO: cache refine-inputs?
+;; TODO: cache children of output-collector?
 ;; TODO: garbage collect dead stuff
 
-;; TODO: remove extra stub indirection step when not needed?
-;; (i.e., either reverse directions, or just have get-stub-output when known..)
 ;; TODO: pessimistic
 
 ;; TODO: pseudo-solve
@@ -43,9 +46,6 @@
 
 ;; TODO: add options to search alg.
 
-;; TODO: think about relation to old dash_astar_summary --
-;;   i.e. where did excluded-child-set go ?
-;;   where did output-constraints go ?
 
 
 (set! *warn-on-reflection* true)
@@ -238,13 +238,9 @@
 ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;     Wrappers     ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
 ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
 
-;; TODO: simplify these, avoid extra stub steps when possible ?
-
 ;;;;;;;;;;;;;;;;;;;;;;;;;;;     Output Collection     ;;;;;;;;;;;;;;;;;;;;;;;;;;
 
 
-
-;; TODO: collect children too ?
 (declare make-output-collecting-subproblem)
 (defn make-output-collecting-stub [inner-stub]
   (assert (not (= (first (stub-name inner-stub)) :OS)))
@@ -258,11 +254,11 @@
   (util/assert-is (= (state/current-context s1) (state/current-context s2)) "%s" [s1 s2])
   (= s1 s2))
 
-;; TODO: is refine-input right ?
 (defn make-output-collecting-subproblem [stb inner-sp]
   (let [ts  (tree-summarizer inner-sp)
-        ret (traits/reify-traits ;; TODO: RI correct?
-             [(simple-subproblem stb (output-set inner-sp) ts false #(refine-input inner-sp %2))]
+        ret (traits/reify-traits 
+             [(simple-subproblem stb (output-set inner-sp) ts false
+                                 #(doto (refine-input inner-sp %2) (-> stub-name first #{:SA :OS} assert)))]
              summaries/Summarizable (summarize [s] (summaries/or-summary s (top-down-bound ts))))]
     (connect-and-watch! ret inner-sp
       (fn child-watch [o]
@@ -407,9 +403,9 @@
 ;; TODO TODO: we should not use tree-summarizer when left-done
 ;; How do we know that current output set is actually solved ?
 ;; TODO: remove ss ?
-;; Note: this is the only place logic depends on summary.  Potential for problems? 
+;; Note: this is the only place logic depends on summary.  Potential for problems?
 (defn- make-pair-subproblem [subsuming-sp pair-stub left-sp right-sp]
-  (let [expand-right? (not (or (summary/live? (summaries/summary left-sp)) (seq (get-outputs left-sp))))
+  (let [expand-right? (and (summary/solved? (summaries/summary left-sp)) (empty? (get-outputs left-sp)))
         [ss watch stub-f]
         (if expand-right?
           [(summaries/make-sum-summarizer [(tree-summarizer left-sp) right-sp])
@@ -422,8 +418,7 @@
                  (let [left-done? (atom false)]
                    (fn [s b] 
                      (when (and (not @left-done?)
-                                (not (summary/live? (summaries/summary left-sp)))
-                                (not (= Double/NEGATIVE_INFINITY (summary/max-reward (summaries/summary left-sp))))) ;; TODO:??
+                                (summary/solved? (summaries/summary left-sp))) ;; TODO:??
                        (reset! left-done? true) 
                        (summaries/disconnect! s ss)
                        (add-watcher! left-sp (fn [o] (def *sum* [s left-sp o])
@@ -444,6 +439,11 @@
         (summaries/summary-changed! ret))) ;; TODO: efficiency?
     
     ret))
+
+(comment
+  ;; Old test used this -- do we need to split on right for blocked left?
+  (not (summary/live? (summaries/summary left-sp)))                                
+ (not (= Double/NEGATIVE_INFINITY (summary/max-reward (summaries/summary left-sp)))))
 
 (defn- make-pair-stub2 [subsuming-sp left-sp right-stub]
   (let [nm [:Pair (subproblem-name left-sp) (stub-name right-stub)]
@@ -470,8 +470,7 @@
          (connect-and-watch-stub! ret
            (make-pair-stub2 subsuming-sp lo (right-stub-fn (output-set lo)))
            #(set-stub-output! ret %))
-         (summaries/summary-changed! ret))) ;; TODO: wasteful?
-    
+         (summaries/summary-changed! ret))) ;; TODO: wasteful?    
      ret)))
 
 
