@@ -110,16 +110,17 @@
 ;; In retrospect, probably would be better to bite the bullet and say
 ;; "a node has a cache", but for now we just hack it with binding?
 
-;; Can be :uncached, :eager, :lazy, :less-eager, ...?
+;; Can be :uncached, :eager, :lazy, :eager-nosub, :eager-content, ...?
+;; TODO: offer a variant of :eager-content that just extracts a leaf.
 (def *cache-method* nil)
 
-;; Try to keep consistency ... not sure if it's worth it.
+
 (traits/deftrait summary-cache [] [cache (atom nil)] []
   SummaryCache
   (summary [n]
     (if (= :uncached *cache-method*)
       (summarize n)
-      (or @cache (do (assert (#{:eager :lazy :less-eager} *cache-method*))
+      (or @cache (do (assert (#{:eager :eager-nosub :eager-nokids :lazy } *cache-method*))
                      (reset! cache (summarize n))))))
   (summary-changed! [n]
     (when-let [old @cache]
@@ -127,21 +128,27 @@
         (when *assert-consistency*
           (util/assert-is (<= (summary/max-reward new) (summary/max-reward old))))
         (when-not (summary/solved? old)
-          (let [lazy? (= :lazy *cache-method*)
-                equal? (= old new)]
-            (when-not equal? (reset! cache new))
-            (when-not (if lazy? (summary/>= old new) equal?)
-              (doseq [p (doall ((if (= :less-eager *cache-method*) node-ordinary-parents node-parents) n))]
-                (summary-changed! p))))))))
-  (summary-changed-local! [n] (reset! cache nil) 
-    (when-not (= :uncached *cache-method*)
-      (let [new (summarize n)]
+          (if (#{:eager :eager-nosub} *cache-method*)
+            (when-not (= old new)
+              (reset! cache new)
+              (doseq [p (doall ((case *cache-method* :eager-nosub node-ordinary-parents :eager node-parents) n))]
+                (summary-changed! p)))
+            (do (reset! cache new)
+                (when-not ((case *cache-method* :lazy summary/>= :eager-nokids summary/eq) old new)
+                  (doseq [p (doall (node-parents n))]
+                    (summary-changed! p)))))))))
+  (summary-changed-local! [n]
+    (if  (#{:eager :eager-nosub} *cache-method*)
+      ;      when-let [old @cache] ;; TODO: why does this hurt?
+       (let [new (summarize n)]
         (when-not (= @cache new)
-          (reset! cache new)))))
+          (reset! cache new)))
+      (reset! cache nil)))
   (verified-summary [n min-summary]
-    (if (= :lazy *cache-method*)
-      (let [os @cache
-            cs (reset! cache (summarize n))]
+   (case *cache-method*
+     :lazy
+     (let [os @cache
+           cs (reset! cache (summarize n))]
 ;       (swap! *summary-count* dec)
        (when os (util/assert-is (<= (summary/max-reward cs) (summary/max-reward os))))
        (when (summary/>= cs min-summary)
@@ -149,9 +156,27 @@
            (if (every? identity verified-children)
              (reset! cache (summary/re-child cs verified-children))
              (recur min-summary)))))
+
+     :eager-nokids
       (let [cs (summary n)]
         (when (summary/>= cs min-summary)
+          (let [verified-children (map #(verified-summary (summary/source %) %) (summary/children cs))]
+            (assert (every? identity verified-children))
+            (reset! cache (summary/re-child cs verified-children)))))
+      
+      
+      (let [cs (summary n)] ;else
+        (when (summary/>= cs min-summary)
           cs)))))
+
+(comment ;;mods for better consistency -- didn't really help
+            (when-not equal? (reset! cache new))
+  
+  (when-not (= :uncached *cache-method*) ;; for local
+      (let [new (summarize n)]
+        (when-not (= @cache new)
+          (reset! cache new))))  
+ )
 
 
 

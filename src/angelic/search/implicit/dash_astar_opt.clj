@@ -45,6 +45,8 @@
 ;;   Generator knows how to take input set and produce stub., etc.
 ;;   For now, seems like too much complexity for too little gain.
 
+;; TODO: think about how this actually works and what propagates.
+
 ;;;;; Features
 ;; --> TODO: pessimistic (problem: subsets & correspondence!)
 ;;      potential solution: revamp to separate following-plans
@@ -65,6 +67,7 @@
 ;; TODO: cache children of output-collector? ~15 examples >1 in dm 4-3...
 
 ;;;;; Misc
+;; TODO: investigate building seqs right-to-left.
 ;; TODO: garbage collect dead stuff
 ;; TODO: improve top-down propagation of bounds
 ;; TODO: better subusmption.
@@ -84,7 +87,8 @@
 (set! *warn-on-reflection* true)
 
 
-(def *no-identical-nonterminal-outputs* true)
+(def *left-recursive* true) ;; Use left, not right recursion for seqs (((a . b) . c) . d) 
+(def *no-identical-nonterminal-outputs* true) ;; Collect identical output sets
 (def *decompose-cache*       true) ;; nil for none, or bind to hashmap
 (def *state-abstraction*     :eager ) ;; Or lazy or nil.
 
@@ -506,15 +510,28 @@
      ret)))
 
 
-(defn- make-fs-seq-stub
-  ([inp-set fs] (make-fs-seq-stub inp-set fs (map fs/fs-name fs)))
+;; Experimental version -- switched order.
+(defn- make-left-recursive-fs-seq-stub
+  ([inp-set fs] (make-left-recursive-fs-seq-stub inp-set fs (map fs/fs-name fs)))
+  ([inp-set [first-fs & rest-fs] fs-names]
+     (loop [left-stub (get-atomic-stub nil inp-set first-fs) rest-fs rest-fs fs-names (rest fs-names)]
+       (if (empty? rest-fs)
+         left-stub
+         (recur (make-pair-stub1 nil left-stub (first fs-names) #(get-atomic-stub nil % (first rest-fs)))
+                (rest rest-fs) (rest fs-names))))))
+
+(defn- make-right-recursive-fs-seq-stub
+  ([inp-set fs] (make-right-recursive-fs-seq-stub inp-set fs (map fs/fs-name fs)))
   ([inp-set [first-fs & rest-fs] fs-names]
      (let [left-stub (get-atomic-stub nil inp-set first-fs)]
        (if (empty? rest-fs)
          left-stub
          (make-pair-stub1 nil left-stub (rest fs-names)
-                          #(make-fs-seq-stub % rest-fs (rest fs-names)))))))
+                          #(make-right-recursive-fs-seq-stub % rest-fs (rest fs-names)))))))
 
+(defn- make-fs-seq-stub [inp-set fs]
+  ((if *left-recursive* make-left-recursive-fs-seq-stub make-right-recursive-fs-seq-stub)
+   inp-set fs))
 
   
 
@@ -528,16 +545,17 @@
     (dotimes [_ 2] (evaluate! root-stub))
     (get-stub-output! root-stub)))
 
-(defn implicit-dash-a*-opt [henv & {gather :gather d :d s :s c :cache choose-leaf :choose-leaf
-                                    :or {gather true s :eager d true c :eager choose-leaf last}}]
+(defn implicit-dash-a*-opt [henv & {gather :gather d :d s :s c :cache choose-leaf :choose-leaf lr :lr
+                                    :or {gather true s :eager d true c :eager-nokids choose-leaf last lr true}}]
   (assert (contains? #{nil false :eager :deliberate} s))
   (when s (assert d))
   (when d (assert gather)) 
-  (assert (contains? #{:lazy :eager :less-eager} c))
+  (assert (contains? #{:lazy :eager  :eager-nosub :eager-nokids} c))
   (binding [*no-identical-nonterminal-outputs* gather
             *decompose-cache* (when d (HashMap.))
             *state-abstraction* s
-            summaries/*cache-method* c]
+            summaries/*cache-method* c
+            *left-recursive* lr]
     (summaries/solve
      (tree-summarizer (apply get-root-subproblem (fs/make-init-pair henv)))
      #(evaluate! (choose-leaf (filter can-evaluate? %)))
