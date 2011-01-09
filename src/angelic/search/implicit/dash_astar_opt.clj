@@ -23,6 +23,7 @@
 ;;  excluded-child-set went away, since we're now eager about pushing new outputs
 ;;   output-constraints went away since we have refine-input.
 
+;; Note: these are out-of-date, before new summary infrastructure.
 ;; Timing breakdown on DM 4-3 is:
 ;; 10% extract-leaf-seq
 ;; 20% lfss-empty?
@@ -32,10 +33,6 @@
 
 ;; Actually just about 1/3 in apply-opt, counting primitives, 10% in immediate-refs
 ;; (almost half in primitives -- close enough).
-
-;; For nav-switch, becomes 80% summary-changed!
-;; Of this, 25% is =summary, unclear where rest is....
-;; 20% of total time is extracting parents from node
 
 ;; Explicit is still faster on small or easy instances, slower on hard ones.
 
@@ -56,7 +53,7 @@
 ;; TODO: don't always split-left?
 ;; TODO: smarter output-collector (semantic)
 
-;;;;; Summaries and solving (if only 30% of time, who cares!)
+;;;;; Summaries and solving 
 ;; TODO: pseudo-solve
 ;; TODO: smarter summary updates (i.e., pass child)
 ;; TODO: enforce consistency across the board.

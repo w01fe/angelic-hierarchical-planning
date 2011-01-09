@@ -131,9 +131,9 @@
 ;; TODO: pseudo-option ? 
 ;; TODO: (def *enforce-consistency* false)
 
-(def *lazy-cache*  true #_ false) 
+(def *lazy-cache*  false) 
 (def *no-subsumption* false) ;; Don't notify subsumption parents
-(def *assume-consistency*  true #_ false) ;; Don't propagate lazy increases.
+(def *assume-consistency*  false) ;; Don't propagate lazy increases.
 
 
 (traits/deftrait summary-cache [] [cache (atom nil)] []
