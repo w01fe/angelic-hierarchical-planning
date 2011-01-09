@@ -59,7 +59,7 @@
 ;;;;; Summaries and solving (if only 30% of time, who cares!)
 ;; TODO: pseudo-solve
 ;; TODO: smarter summary updates (i.e., pass child)
-;; TODO: halfway eager prop -- eager about cost, not contents.
+;; TODO: enforce consistency across the board.
 
 ;;;;; SP caching
 ;; TODO: tail (i.e., pair) caching? -- Only help for >2 len refs...
@@ -88,7 +88,7 @@
 
 
 (def *left-recursive* true) ;; Use left, not right recursion for seqs (((a . b) . c) . d) 
-(def *no-identical-nonterminal-outputs* true) ;; Collect identical output sets
+(def *collect-equal-outputs* true) ;; Collect identical output sets
 (def *decompose-cache*       true) ;; nil for none, or bind to hashmap
 (def *state-abstraction*     :eager ) ;; Or lazy or nil.
 
@@ -424,7 +424,7 @@
   (let [full-name [:Atomic (fs/fs-name function-set)
                    (if *state-abstraction* (fs/extract-context function-set inp-set) inp-set)]
         make-stub #(let [r (make-atomic-stub [:Atomic (fs/fs-name function-set)] subsuming-sp % function-set)]
-                     (if *no-identical-nonterminal-outputs* (make-output-collecting-stub r) r))]
+                     (if *collect-equal-outputs* (make-output-collecting-stub r) r))]
     (if-let [^HashMap dc *decompose-cache*]
       (if *state-abstraction*
         (let [stub (util/cache-with dc full-name (make-stub (fs/get-logger function-set inp-set)))]
@@ -449,7 +449,7 @@
         ss   (summaries/make-sum-summarizer kids)
         ret (make-simple-subproblem
              pair-stub subsuming-sp (output-set right-sp) false             
-             (if (or expand-right? (not *no-identical-nonterminal-outputs*)) summaries/or-summary
+             (if (or expand-right? (not *collect-equal-outputs*)) summaries/or-summary
                  (let [left-done? (atom false)] ;; Manually take into account left-solved, when no output message.
                    (fn [s b] 
                      (when (and (not @left-done?) (summary/solved? (summaries/summary left-sp))) 
@@ -545,20 +545,29 @@
     (dotimes [_ 2] (evaluate! root-stub))
     (get-stub-output! root-stub)))
 
-(defn implicit-dash-a*-opt [henv & {gather :gather d :d s :s c :cache choose-leaf :choose-leaf lr :lr
-                                    :or {gather true s :eager d true c :eager-nokids choose-leaf last lr true}}]
+(def *lazy-cache* false) 
+(def *no-subsumption* false)
+(def *assume-consistency* false) ;; Don't propagate lazy increases.
+
+;; TODO: sa options...
+(defn implicit-dash-a*-opt
+  [henv & {gather :gather d :d   s :s    choice-fn :choice-fn local? :local?  dir :dir :as m
+      :or {gather true   d true s :eager choice-fn last       local? true     dir :right}}]
+  (assert (every? #{:gather :d :s :choice-fn :local? :dir} (keys m)))
+  (assert (contains? #{:left :right} dir))
   (assert (contains? #{nil false :eager :deliberate} s))
   (when s (assert d))
   (when d (assert gather)) 
-  (assert (contains? #{:lazy :eager  :eager-nosub :eager-nokids} c))
-  (binding [*no-identical-nonterminal-outputs* gather
-            *decompose-cache* (when d (HashMap.))
-            *state-abstraction* s
-            summaries/*cache-method* c
-            *left-recursive* lr]
+;  (assert (contains? #{:uncached :lazy :eager  :eager-nosub :eager-nokids} c))
+  (binding [*collect-equal-outputs* gather
+            *decompose-cache*       (when d (HashMap.))
+            *state-abstraction*     s
+            *left-recursive*        (= dir :left)
+ ;            summaries/*cache-method* c
+            ]
     (summaries/solve
      (tree-summarizer (apply get-root-subproblem (fs/make-init-pair henv)))
-     #(evaluate! (choose-leaf (filter can-evaluate? %)))
+     choice-fn local? evaluate!
      #(let [n (second (subproblem-name %))] (when-not (= (first n) :noop) n)))))
 
 ;; (do (use '[angelic env hierarchy] 'angelic.domains.nav-switch 'angelic.search.implicit.fah-astar-expand 'angelic.search.implicit.fah-astar-eval 'angelic.search.implicit.dash-astar-opt 'angelic.domains.discrete-manipulation) (require '[angelic.search.explicit.hierarchical :as his]))
@@ -566,15 +575,15 @@
 ;; (do (use '[angelic env hierarchy] 'angelic.domains.nav-switch  'angelic.search.implicit.dash-astar-opt 'angelic.domains.discrete-manipulation) (require '[angelic.search.explicit.hierarchical :as his]))
 
 ; (do (def s summaries/summarize) (def sc summary/children) (def nc summaries/node-ordinary-children) (def src summary/source))
-;;(dotimes [_ 1] (reset! summaries/*summary-count* 0) (debug 0 (time (let [h (make-nav-switch-hierarchy (make-random-nav-switch-env 2 1 0) true)]  (println (run-counted #(second (implicit-fah-a*-eval2 h))) @summaries/*summary-count*)))))
+;;(dotimes [_ 1] (reset! summaries/*summary-count* 0) (debug 0 (time (let [h (make-nav-switch-hierarchy (make-random-nav-switch-env 2 1 0) true)]  (println (run-counted #(second (implicit-dash-a*-opt h))) @summaries/*summary-count*)))))
 
 
-;; (dotimes [_ 1] (reset! summaries/*summary-count* 0) (debug 0 (let [h (make-discrete-manipulation-hierarchy  (make-discrete-manipulation-env [5 3] [1 1] [ [ [2 2] [3 2] ] ] [ [:a [2 2] [ [3 2] [3 2] ] ] ] 1))]  (time (println (run-counted #(identity (implicit-fah-a*-eval2 h))) @summaries/*summary-count*)) )))
+;; (dotimes [_ 1] (reset! summaries/*summary-count* 0) (debug 0 (let [h (make-discrete-manipulation-hierarchy  (make-discrete-manipulation-env [5 3] [1 1] [ [ [2 2] [3 2] ] ] [ [:a [2 2] [ [3 2] [3 2] ] ] ] 1))]  (time (println (run-counted #(identity (implicit-dash-a*-opt h))) @summaries/*summary-count*)) )))
 
 
-;;(dotimes [_ 1] (reset! summaries/*summary-count* 0) (reset! *out-count* 0) (debug 0 (let [h (make-discrete-manipulation-hierarchy (make-random-hard-discrete-manipulation-env 2 3))]  (time (println (run-counted #(identity (implicit-fah-a*-eval2 h))) @summaries/*summary-count* @*out-count*)) (time (println (run-counted #(identity (his/explicit-simple-dash-a* h ))) @summaries/*summary-count* @*out-count*)) )))
+;;(dotimes [_ 1] (reset! summaries/*summary-count* 0) (reset! *out-count* 0) (debug 0 (let [h (make-discrete-manipulation-hierarchy (make-random-hard-discrete-manipulation-env 2 3))]  (time (println (run-counted #(identity (implicit-dash-a*-opt h))) @summaries/*summary-count* @*out-count*)) (time (println (run-counted #(identity (his/explicit-simple-dash-a* h ))) @summaries/*summary-count* @*out-count*)) )))
 
-; (dotimes [_ 1] (reset! summaries/*summary-count* 0) (reset! *out-count* 0) (debug 0 (let [h (make-discrete-manipulation-hierarchy (make-random-discrete-manipulation-env 4 3))]  (time (println (run-counted #(identity (implicit-fah-a*-eval2 h))) @summaries/*summary-count* @*out-count*)) )))
+; (dotimes [_ 1] (reset! summaries/*summary-count* 0) (reset! *out-count* 0) (debug 0 (let [h (make-discrete-manipulation-hierarchy (make-random-discrete-manipulation-env 4 3))]  (time (println (run-counted #(identity (implicit-dash-a*-opt h))) @summaries/*summary-count* @*out-count*)) )))
 
 
 

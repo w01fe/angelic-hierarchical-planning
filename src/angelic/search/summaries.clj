@@ -31,7 +31,9 @@
   (summary [n] "Possibly cached version of summarize")
   (summary-changed! [n] "Update summary and notify parents as needed")
   (summary-changed-local! [n] "Just update local summary, no parent notification (pot'l unsafe)")
-  (verified-summary [n min-summary] "Return a current exact best summary >= min-summary, or nil"))
+  (verified-summary [n min-summary] "Return a current exact best summary >= min-summary, or nil.
+                                     Child sources will be correct but grandchildren may be stale.
+                                     (i.e., call (comp summary source) on children if traversing)"))
 
 
 
@@ -103,6 +105,22 @@
 
 ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;; SummaryCache ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
 
+
+;; This doesn't seem worth of a runtime option, make it compile-time.
+(defn default-verified-summary [n min-summary]
+  (let [cs (summary n)]
+    (when (summary/>= cs min-summary)
+      cs)))
+
+(traits/deftrait uncached-summarizer-node [] [] []
+  SummaryCache
+  (summary [n] (summarize n))
+  (summary-changed! [n] nil)
+  (summary-changed-local! [n] nil)
+  (verified-summary [n min-summary] (default-verified-summary n min-summary)))
+
+
+
 ;; Problem with making these true traits are that:
 ;; (1) no enforcement that all nodes use the same trait
 ;; (2) no way to select at runtime.
@@ -110,74 +128,42 @@
 ;; In retrospect, probably would be better to bite the bullet and say
 ;; "a node has a cache", but for now we just hack it with binding?
 
-;; Can be :uncached, :eager, :lazy, :eager-nosub, :eager-content, ...?
-;; TODO: offer a variant of :eager-content that just extracts a leaf.
-(def *cache-method* nil)
+;; TODO: pseudo-option ? 
+;; TODO: (def *enforce-consistency* false)
+
+(def *lazy-cache*  true #_ false) 
+(def *no-subsumption* false) ;; Don't notify subsumption parents
+(def *assume-consistency*  true #_ false) ;; Don't propagate lazy increases.
 
 
 (traits/deftrait summary-cache [] [cache (atom nil)] []
   SummaryCache
-  (summary [n]
-    (if (= :uncached *cache-method*)
-      (summarize n)
-      (or @cache (do (assert (#{:eager :eager-nosub :eager-nokids :lazy } *cache-method*))
-                     (reset! cache (summarize n))))))
+  (summary [n] (or @cache (reset! cache (summarize n))))
   (summary-changed! [n]
     (when-let [old @cache]
       (let [new (summarize n)]
         (when *assert-consistency*
           (util/assert-is (<= (summary/max-reward new) (summary/max-reward old))))
         (when-not (summary/solved? old)
-          (if (#{:eager :eager-nosub} *cache-method*)
-            (when-not (= old new)
-              (reset! cache new)
-              (doseq [p (doall ((case *cache-method* :eager-nosub node-ordinary-parents :eager node-parents) n))]
-                (summary-changed! p)))
-            (do (reset! cache new)
-                (when-not ((case *cache-method* :lazy summary/>= :eager-nokids summary/eq) old new)
-                  (doseq [p (doall (node-parents n))]
-                    (summary-changed! p)))))))))
-  (summary-changed-local! [n]
-    (if  (#{:eager :eager-nosub} *cache-method*)
-      ;      when-let [old @cache] ;; TODO: why does this hurt?
-       (let [new (summarize n)]
-        (when-not (= @cache new)
-          (reset! cache new)))
-      (reset! cache nil)))
-  (verified-summary [n min-summary]
-   (case *cache-method*
-     :lazy
+          (reset! cache new)
+          (when (cond (and *lazy-cache* *assume-consistency*) (summary/solved? new)
+                      *lazy-cache* (not (summary/>= old new))
+                      :else        (not (summary/eq old new)))
+            (doseq [p (doall ((if *no-subsumption* node-ordinary-parents node-parents) n))]
+              (summary-changed! p)))))))
+  (summary-changed-local! [n] (reset! cache nil))
+  (verified-summary [n min-summary] #_ (println "Verify" n min-summary)
+   (if *lazy-cache*  
      (let [os @cache
            cs (reset! cache (summarize n))]
-;       (swap! *summary-count* dec)
-       (when os (util/assert-is (<= (summary/max-reward cs) (summary/max-reward os))))
+       (when (and os (not *assume-consistency*))
+         (util/assert-is (<= (summary/max-reward cs) (summary/max-reward os))))       
        (when (summary/>= cs min-summary)
-         (let [verified-children (map #(verified-summary (summary/source %) %) (util/unchunk (summary/children cs)))]
-           (if (every? identity verified-children)
-             (reset! cache (summary/re-child cs verified-children))
-             (recur min-summary)))))
-
-     :eager-nokids
-      (let [cs (summary n)]
-        (when (summary/>= cs min-summary)
-          (let [verified-children (map #(verified-summary (summary/source %) %) (summary/children cs))]
-            (assert (every? identity verified-children))
-            (reset! cache (summary/re-child cs verified-children)))))
-      
-      
-      (let [cs (summary n)] ;else
-        (when (summary/>= cs min-summary)
-          cs)))))
-
-(comment ;;mods for better consistency -- didn't really help
-            (when-not equal? (reset! cache new))
-  
-  (when-not (= :uncached *cache-method*) ;; for local
-      (let [new (summarize n)]
-        (when-not (= @cache new)
-          (reset! cache new))))  
- )
-
+         (if (or (summary/solved? cs)
+                 (every? #(verified-summary (summary/source %) %) (summary/children cs)))
+           cs
+           (recur min-summary))))
+     (default-verified-summary n min-summary))))
 
 
 (comment 
@@ -251,15 +237,38 @@
 
 ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;; Searching ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
 
+(defn extract-live-leaf-source-seq [summ]
+  (let [l   (ArrayList.) ;; functional version slow for some reason...
+        dfs (fn dfs [summ]
+              (if-let [kids (seq (summary/children summ))]
+                (let [fresh-kids (map (comp summary summary/source) kids)
+                      live-kids (filter summary/live? fresh-kids)]
+                  (doseq [c live-kids] (dfs c)))
+                (.add l (summary/source summ))))]
+    (dfs summ)
+    (seq l)))
+
+(defn extract-single-live-leaf [summ choice-fn]
+  (let [kids (map summary/source (summary/children summ))]
+    (if (empty? kids)
+      (summary/source summ)
+      (let [live-kids (filter (comp summary/live? summary) kids)]
+        (assert (seq live-kids))
+        (recur (summary (or (util/singleton live-kids) (choice-fn live-kids))) choice-fn)))))
+
+
 (def *root* nil)
-(defn solve [root-summarizable operate-on-best-leaf-seq! action-extractor]
+(defn solve [root-summarizable choice-fn local-choice? op!-fn action-extractor]
   (def *root* root-summarizable)
   (summary/solve
    #(verified-summary root-summarizable summary/+worst-simple-summary+)
-   #(operate-on-best-leaf-seq! (summary/extract-leaf-source-seq %))
+   #(op!-fn (if local-choice?
+             (extract-single-live-leaf % choice-fn)
+             (choice-fn (extract-live-leaf-source-seq %))))
    action-extractor))
 
-
+;; What should bthe interface be ? Choose shallowest ?
+;; Maybe two -- 
 
 
 
@@ -361,10 +370,6 @@
   (doseq [p (doall (node-ordinary-parents n))]
     (summary-changed! p)))
 
-(defn default-verified-summary [n min-summary]
-  (let [cs (summary n)]
-    (when (summary/>= cs min-summary)
-      cs)))
 
 (defn update-cache! [n cache-atom]
   (when-let [old @cache-atom]
@@ -376,13 +381,6 @@
         (reset! cache-atom new)
         (not (= old new))))))
 
-
-(traits/deftrait uncached-summarizer-node [] [] []
-  SummaryCache
-  (summary [n] (summarize n))
-  (summary-changed! [n] nil)
-  (summary-changed-local! [n] nil)
-  (verified-summary [n min-summary] (default-verified-summary n min-summary)))
 
 
 (traits/deftrait eager-cached-summarizer-node [] [] []
