@@ -57,6 +57,14 @@
 ;; TODO: pseudo-solve
 ;; TODO: smarter summary updates (i.e., pass child)
 ;; TODO: enforce consistency across the board.
+;; TODO: Fix lazy updates.
+;;    Top-down bounds render these untenable, since an apparent decrease may be an increase? (See hard-dm 3-3)
+;;    I.e., live decrease -50 to -49, now blocked sibling becomes best; above is -50 TDB;
+
+;; !!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!
+;; TODO: actually, top-down bounds break a lot of things -- ?
+;;   I.e., if we have TDB, blocked status can hide behind unblocked, expand things needlessly.
+;;   How can we fix this?
 
 ;;;;; SP caching
 ;; TODO: tail (i.e., pair) caching? -- Only help for >2 len refs...

@@ -128,41 +128,43 @@
 ;; In retrospect, probably would be better to bite the bullet and say
 ;; "a node has a cache", but for now we just hack it with binding?
 
+;; Note: Interaction between laziness and top-down bounds; 
+
 ;; TODO: pseudo-option ? 
 ;; TODO: (def *enforce-consistency* false)
 
-(def *lazy-cache*  false) 
+(def *lazy-cache*    false ) 
 (def *no-subsumption* false) ;; Don't notify subsumption parents
-(def *assume-consistency*  false) ;; Don't propagate lazy increases.
+(def *assume-consistency* false) ;; Don't propagate lazy increases.  This often hurts without consistency enforcement...
 
-
+;; TODO: assert consistency on nil cache, and with lazy...
 (traits/deftrait summary-cache [] [cache (atom nil)] []
   SummaryCache
-  (summary [n] (or @cache (reset! cache (summarize n))))
+  (summary [n] (or @cache (do (reset! cache (summarize n)))))
   (summary-changed! [n]
     (when-let [old @cache]
-      (let [new (summarize n)]
-        (when *assert-consistency*
-          (util/assert-is (<= (summary/max-reward new) (summary/max-reward old))))
-        (when-not (summary/solved? old)
+      (when (summary/live? old)
+        (let [new (summarize n)]
+          (when *assert-consistency*
+            (util/assert-is (<= (summary/max-reward new) (summary/max-reward old))))
           (reset! cache new)
-          (when (cond (and *lazy-cache* *assume-consistency*) (summary/solved? new)
-                      *lazy-cache* (not (summary/>= old new))
+          (when (cond (and *lazy-cache* *assume-consistency*) (not (summary/live? new))
+                      *lazy-cache* (or (not (summary/>= old new)) (not (summary/live? new)))
                       :else        (not (summary/eq old new)))
             (doseq [p (doall ((if *no-subsumption* node-ordinary-parents node-parents) n))]
               (summary-changed! p)))))))
-  (summary-changed-local! [n] (reset! cache nil))
+  (summary-changed-local! [n] (reset! cache nil #_ (summarize n)))
   (verified-summary [n min-summary] #_ (println "Verify" n min-summary)
    (if *lazy-cache*  
-     (let [os @cache
-           cs (reset! cache (summarize n))]
-       (when (and os (not *assume-consistency*))
-         (util/assert-is (<= (summary/max-reward cs) (summary/max-reward os))))       
+     (let [cs (summary n)] (assert nil) ;; Lazy not working currently, see discussion in dash_astar_opt. 
        (when (summary/>= cs min-summary)
-         (if (or (summary/solved? cs)
+         (if (or (not (summary/live? cs))
                  (every? #(verified-summary (summary/source %) %) (summary/children cs)))
            cs
-           (recur min-summary))))
+           (let [ns (summarize n)]
+             (when-not *assume-consistency* (util/assert-is (summary/>= cs ns) "%s" [(def *bad* n)]))
+             (reset! cache ns)
+             (recur min-summary)))))     
      (default-verified-summary n min-summary))))
 
 
@@ -253,7 +255,7 @@
     (if (empty? kids)
       (summary/source summ)
       (let [live-kids (filter (comp summary/live? summary) kids)]
-        (assert (seq live-kids))
+        (util/assert-is (seq live-kids) "%s" [(def *bad* summ)])
         (recur (summary (or (util/singleton live-kids) (choice-fn live-kids))) choice-fn)))))
 
 
