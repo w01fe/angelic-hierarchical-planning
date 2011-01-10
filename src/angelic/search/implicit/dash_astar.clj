@@ -17,7 +17,7 @@
 ;; TODO: SP has hash table from (state-abstracted context) input set to stub (?).
 ;; TODO: stub has link back to parent SP
 ;; TODO: How are subsumption links handled?  
-;; 
+;; What if we create tree summarizer with stub ? ? ?   ?  ?? ? ?  ?  ? ?
 
 (set! *warn-on-reflection* true)
 
@@ -148,7 +148,34 @@
 ;; TODO: we need to make sure tree sums get called on add-output! first to ensure
 ;;       consistency with top-down-bounds ? 
 ;; TODO: top-down bound business does not actually help at all
+
 ;;  (except ensuring consistency if we're asserting it...)
+;; When we create a stub, we also get: tree summarizer, subsumption-thing.
+;; (subsumption-children are parent tree-summarizers).
+;; Subsumption-thing is subsumption-child of stub, summarizer, tree-summarizer.
+;; Tree-summarizers also remember best bound, this gives us consistency
+;; How do they pass to children, though?
+;; Apparent cycle -- tree summarizer has children that are child tree-summarizers,
+;; And, these children should have the parent TS as a subsumption child.
+;; Key: this is only to preserve info from original SP, subsumption..
+;; This info should go into subsumption-thing.
+;; Subsumption-thing is just ordinary max over children, + self, + TS?
+;; ->>(We rely on eager updates to make sure it gets updated?)
+
+;; TDB should not actually go into TS, children should be directly bounded?
+;; All children, including inner SP, should do it fine.
+;; This means that every thing has exactly one subsumption parent ... which is nice.
+;; How does consistency get approached ?
+;; We just have the cycle, but would be great if we didn't have to go in child --> ts --> st --> children
+;; cycle every time things to up -- maybe ST just doesn't update ord. parents.
+;; TODO: figure this out later. 
+
+
+;; Can goall the way down to nearest sum, I guess...
+;; Subsumer gets attached to subsumer of any child (or inner child?)
+
+;; What do we do about multiple ways to express a given plan ? ? ? ?
+;; Can normalize or not, interesting question... start without. 
 
 (defprotocol TreeSummarizer
   (top-down-bound    [s])
