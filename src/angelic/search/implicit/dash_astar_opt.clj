@@ -57,7 +57,7 @@
 ;; TODO: pseudo-solve
 ;; TODO: smarter summary updates (i.e., pass child)
 ;; TODO: enforce consistency across the board.
-;; TODO: Fix lazy updates.
+;; Note: regular lazy seems impossible, need at least some pseudo...
 ;;    Top-down bounds render these untenable, since an apparent decrease may be an increase? (See hard-dm 3-3)
 ;;    I.e., live decrease -50 to -49, now blocked sibling becomes best; above is -50 TDB;
 
@@ -65,6 +65,14 @@
 ;; TODO: actually, top-down bounds break a lot of things -- ?
 ;;   I.e., if we have TDB, blocked status can hide behind unblocked, expand things needlessly.
 ;;   How can we fix this?
+;;   ;; (This includes subsumption parents, as well).
+;;   One could try to build top-down bounding into all summaries ... but
+;;   it may actually be unfixable, in the presence of sums
+;;    (keeping bounds across sums means downwards updates with every up...)
+
+;; Note: with good descriptions, subsumption/TDB has two purposes?
+;;  1.  Give stubs a bound before evaluated.
+;;  2.  Account for necessary inconsistency with implicit descriptions.
 
 ;;;;; SP caching
 ;; TODO: tail (i.e., pair) caching? -- Only help for >2 len refs...
