@@ -2,7 +2,7 @@
   (:require [edu.berkeley.ai.util :as util]
             [edu.berkeley.ai.util.traits :as traits]            
             [angelic.search.summary :as summary]            
-            [angelic.search.summaries :as summaries]))
+            [angelic.search.summaries_old :as summaries]))
 
 ;; A first version of implicit subproblems, where computation steps are expansions
 ;; (and evaluations are always eager).  

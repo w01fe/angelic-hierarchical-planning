@@ -2,7 +2,7 @@
   (:require [edu.berkeley.ai.util :as util]
             [edu.berkeley.ai.util.traits :as traits]            
             [angelic.search.summary :as summary]            
-            [angelic.search.summaries :as summaries]))
+            [angelic.search.summaries_old :as summaries]))
 
 ;; Subproblems where we allow explicit evaluation, along with lazy child generation.
 ;; Putting the focus on evaluation gives us finer granularity,
