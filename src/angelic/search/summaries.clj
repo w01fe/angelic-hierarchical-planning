@@ -236,6 +236,8 @@
     (doseq [kid kids] (connect! ret kid false))
     ret))
 
+(traits/deftrait worst-summarizable [] [] []
+  Summarizable (summarize [s] summary/+worst-simple-summary+))
 
 ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;; Searching ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
 
