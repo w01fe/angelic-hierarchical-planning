@@ -27,31 +27,33 @@
   (extract-context [sk input-set] "Relevant parts of input-set, for state abstraction")
   (get-logger  [sk input-set] "Relevant parts of input-set, for state abstraction"))
 
+(defn- make-fs [action status-fn child-seq-fn]
+  (let [n (env/action-name action)]
+   (reify
+    Object
+    (hashCode [fs] (hash n))
+    (equals   [fs ofs] (and (instance? angelic.search.function_sets.FunctionSet ofs)
+                            (= n (fs-name ofs))))    
+    FunctionSet
+    (fs-name    [sk]           n)
+    (apply-opt  [sk input-set]
+      (let [[opt rew :as p] (angelic/optimistic-set-and-reward action input-set)]
+        (when (and p (not (state-set/empty? opt)) (> rew Double/NEGATIVE_INFINITY))
+          p)))    
+    (status     [sk input-set] (status-fn input-set))
+    (child-seqs [sk input-set] (child-seq-fn input-set))
+    (extract-context [sk input-set]
+      (state/extract-context input-set (angelic/precondition-context-set action input-set)))
+    (get-logger  [sk input-set]
+      (state/get-logger input-set (angelic/precondition-context-set action input-set))))))
+
+
 ;; Child-seqs must obey the containment property for subsets of input-set.
 
 ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;; Implementations ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
 
-(defn viable-or-nil [[opt rew :as p]]
-  (when (and p (not (state-set/empty? opt)) (> rew Double/NEGATIVE_INFINITY))
-    p))
-
-
-(defn extract-context* [action input-set]
-  (state/extract-context input-set (angelic/precondition-context-set action input-set)))
-
-(defn get-logger* [action input-set]
-  (state/get-logger input-set (angelic/precondition-context-set action input-set)))
-
 (defn make-primitive-fs [action]
-  (reify
-   FunctionSet
-   (fs-name    [sk]           (env/action-name action))
-   (apply-opt  [sk input-set] (viable-or-nil (angelic/optimistic-set-and-reward action input-set)))
-   (status     [sk input-set] :solved)
-   (child-seqs [sk input-set] (throw (UnsupportedOperationException.)))
-   (extract-context [sk input-set] (extract-context* action input-set))
-   (get-logger  [sk input-set] (get-logger* action input-set))   
-   ))
+  (make-fs action (constantly :solved) (fn [i] (throw (UnsupportedOperationException.)))))
 
 (defn- simple-immediate-refinements-set [a input-set]
   (for [[constraint ref] (angelic/immediate-refinements-set a input-set)]
@@ -62,19 +64,12 @@
        ref)
       ref)))
 
-
 (defn make-hla-fs [action]
-  (reify
-   FunctionSet
-   (fs-name [sk] (env/action-name action))
-   (apply-opt [sk input-set] (viable-or-nil (angelic/optimistic-set-and-reward action input-set)))
-   (status  [sk input-set] (if (angelic/can-refine-from-set? action input-set) :live :blocked))
-   (child-seqs [sk input-set]
-     (for [ref (simple-immediate-refinements-set action input-set)]
+  (make-fs action
+    #(if (angelic/can-refine-from-set? action %) :live :blocked)
+    #(for [ref (simple-immediate-refinements-set action %)]
        (for [a ref]
-         ((if (env/primitive? a) make-primitive-fs make-hla-fs) a))))
-   (extract-context [sk input-set] (extract-context* action input-set))
-   (get-logger  [sk input-set] (get-logger* action input-set))   ))
+         ((if (env/primitive? a) make-primitive-fs make-hla-fs) a)))))
 
 
 ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;; Constructor ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
