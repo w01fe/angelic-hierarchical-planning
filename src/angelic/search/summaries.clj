@@ -96,6 +96,8 @@
 
 (def *subsumption* true)
 
+(def *kill* true) ;; Remove dead children of OR-nodes.  Doesn't seem to really help or hurt...
+
 (defn update-bound! [n bound-atom b]
   (when (and *subsumption* (< b @bound-atom))
 #_    (println n @bound-atom b)
@@ -122,9 +124,9 @@
   (summary-changed! [n] #_(println "SC" n @cache @bound)
     (when-let [old @cache]
       (when (summary/live? old)
-        (when (not (summary/eq old (update-summary! n cache bound)))
+        (when (not (summary/eq old (update-summary! n cache bound)))          
           (doseq [p (doall (parent-nodes n))]
-            (summary-changed! p))))))
+            (summary-changed! p))))))  
   (summary-changed-local! [n] (reset! cache nil))
   (verified-summary [n min-summary] 
     (let [cs (summary n)]
@@ -141,7 +143,11 @@
 
 (defn or-summary [n]
   (swap! *summary-count* inc)
-  (summary/or-combine (map summary (child-nodes n)) n (get-bound n)))
+  (if *kill*
+    (let [[good-kids bad-kids] (util/separate #(summary/viable? (summary %)) (doall (child-nodes n)))]
+      (doseq [k bad-kids] (remove-child! n k))
+      (summary/or-combine (map summary good-kids) n (get-bound n)))    
+    (summary/or-combine (map summary (child-nodes n)) n (get-bound n))))
 
 (traits/deftrait or-summarizable [] [] []
   Summarizable (summarize [s] (or-summary s)))

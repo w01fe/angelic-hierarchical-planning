@@ -61,7 +61,8 @@
 
 ;; TODO: need to wrap seqs too ?
 
-;; TODO: auto-disconnect.  When I go -inf, update everyone then disconnect self and die.
+
+;; TODO: remove refs to stubs in TS so dead weight can be GC'd?
 
 (set! *warn-on-reflection* true)
 
