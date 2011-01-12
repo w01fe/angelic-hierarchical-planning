@@ -98,20 +98,20 @@
 ;; TODO: now this will never be true; how to avoid extra connections ?
 (defprotocol TreeSummarizer
   (ts-stub [ts])
-  (subsuming-tss [ts]) ; True tree summarizers subsuming this one.
-  (add-subsuming-ts! [ts subsuming-ts]))  
+  (subsuming-sps [ts]) ; True tree summarizers subsuming this one.
+  (add-subsuming-sp! [ts subsuming-sp]))  
   
 
 (defn- make-tree-summarizer [stb]
-  (let [subsuming-tss-list (ArrayList.)
+  (let [subsuming-sp-list (ArrayList.)
         ret (traits/reify-traits [summaries/or-summarizable summaries/simple-cached-node]
               TreeSummarizer
               (ts-stub [ts] stb)
-              (subsuming-tss [ts] (seq subsuming-tss-list))
-              (add-subsuming-ts! [ts subsuming-ts]
-                (util/assert-is (= (norm-name (stub-name stb)) (norm-name (stub-name (ts-stub subsuming-ts)))))                 
-                (.add subsuming-tss-list subsuming-ts)
-                (summaries/connect-subsumed! subsuming-ts ts)))]
+              (subsuming-sps [ts] (seq subsuming-sp-list))
+              (add-subsuming-sp! [ts subsuming-sp]
+                (util/assert-is (= (norm-name (stub-name stb)) (norm-name (sp-name subsuming-sp))))                 
+                (.add subsuming-sp-list subsuming-sp)
+                (summaries/connect-subsumed! (sp-ts subsuming-sp) ts)))]
     (when-not (get-stub-output stb)
       (summaries/connect! ret stb)
       (summaries/connect-subsumed! ret stb))
@@ -212,7 +212,7 @@
     ret))
 
 
-(defmulti get-stub (fn [nm inp subsuming-sp] (first nm)))
+(defmulti get-stub (fn get-stub-dispatch [nm inp] (first nm)))
 
 ;; TODO: canonicalize in make-stub, for everyone ? 
 ;; TODO: do lookups via normalized sequences? 
@@ -254,7 +254,7 @@
        (if (= ni (input-set stub))
          stub
          (let [subsumed-stub (ri-fn s ni)]
-           (add-subsuming-ts! (tree-summarizer subsumed-stub) (tree-summarizer stub))
+           (add-subsuming-sp! (tree-summarizer subsumed-stub) s)
            subsumed-stub))))]
    summaries/Summarizable (summarize [s] (summary-fn s))))
 
@@ -385,30 +385,31 @@
 
 ;; TODO: we keep reward for :blocked case
 ;; Note: weirdly, sometimes ignoring it helps. (not always)
-(defn- make-atomic-subproblem [stb out-set reward status subsuming-sp]
+(defn- make-atomic-subproblem [stb out-set reward status]
   (let [inp-set  (input-set stb)
-        ri-fn    (fn [s ri] (get-stub (stub-name stb) ri s))]
-    (cond (not (= status :live))
-          (make-simple-subproblem
-           stb out-set true
-           (fn [s] (summary/make-simple-summary (min (summaries/get-bound s) reward) status s)) ri-fn)
+        ri-fn    (fn [s ri] (get-stub (stub-name stb) ri))]
+    (util/cond-let [subsuming-sp]
+      (not (= status :live))
+      (make-simple-subproblem
+       stb out-set true
+       (fn [s] (summary/make-simple-summary (min (summaries/get-bound s) reward) status s)) ri-fn)
+
+      ;; TODO: order?
+      (util/find-first #(not (terminal? %)) (subsuming-sps (tree-summarizer stb))) 
+      (let [ret (make-simple-subproblem stb out-set false summaries/or-summary ri-fn)]
+        (connect-and-watch! ret subsuming-sp
+          (fn [sub-out]
+            (connect-and-watch-stub-up! ret (refine-input sub-out inp-set) #(add-sp-child! ret %))))
+        ret)
           
-          (and subsuming-sp (not (terminal? subsuming-sp))) 
-          (let [ret (make-simple-subproblem stb out-set false summaries/or-summary ri-fn)]
-            (connect-and-watch! ret subsuming-sp
-              (fn [sub-out]
-                (connect-and-watch-stub-up! ret (refine-input sub-out inp-set) #(add-sp-child! ret %))))
-            ret)
-          
-          :else 
-          (let [ret (make-simple-subproblem stb out-set false summaries/or-summary ri-fn)]
-            (doseq [child-name (map make-fs-seq-name (fs/child-seqs (second (stub-name stb)) inp-set))]
-              (connect-and-watch-stub! ret (get-stub child-name inp-set nil)
-                 #(add-sp-child! ret %)))
-            ret))))
+      :else 
+      (let [ret (make-simple-subproblem stb out-set false summaries/or-summary ri-fn)]
+        (doseq [child-name (map make-fs-seq-name (fs/child-seqs (second (stub-name stb)) inp-set))]
+          (connect-and-watch-stub! ret (get-stub child-name inp-set) #(add-sp-child! ret %)))
+        ret))))
 
 ;; Note: this is double-stage to lazily generate children.  Could be simpler single-stage.
-(defn make-atomic-stub [nm inp-set subsuming-sp]
+(defn make-atomic-stub [nm inp-set]
   (let [state (atom :ready)]  ;; set to [out-set reward] after first eval, then :go after second.
     (traits/reify-traits [(simple-stub nm inp-set)]
       summaries/Summarizable
@@ -427,16 +428,16 @@
 ;              (println "eval" nm inp-set reward status)
               (if (or (not ready?) (not (= status :live)))
                 (do (reset! state :go)
-                    (->> (make-atomic-subproblem s out-set reward status subsuming-sp)
+                    (->> (make-atomic-subproblem s out-set reward status)
                          (set-stub-output! s)))
                 (do (reset! state op) (summaries/summary-changed! s))))
             (do (reset! state :go) (summaries/summary-changed! s))))))))
 
 
 ;; Note: we must always wrap in S-A stub to get effects out of logger.
-(defmethod get-stub :Atomic [[_ fs :as n] inp-set subsuming-sp]
+(defmethod get-stub :Atomic [[_ fs :as n] inp-set]
   (let [full-name [n (if *state-abstraction* (fs/extract-context fs inp-set) inp-set)]
-        make-stub #(let [r (make-atomic-stub n % subsuming-sp)]
+        make-stub #(let [r (make-atomic-stub n %)]
                      (if *collect-equal-outputs* (make-output-collecting-stub r) r))]
      (if-let [^HashMap dc *decompose-cache*]
        (if *state-abstraction*
@@ -513,9 +514,8 @@
             #(set-stub-output! ret %))))
       ret)))
 
-(defmethod get-stub :Pair [[_ left-name right-name :as n] inp subsuming-sp]
-  (assert (nil? subsuming-sp))
-  (make-pair-stub1 n (get-stub left-name inp nil) #(get-stub right-name % nil)))
+(defmethod get-stub :Pair [[_ left-name right-name :as n] inp]
+  (make-pair-stub1 n (get-stub left-name inp) #(get-stub right-name %)))
 
 
 ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
@@ -524,7 +524,7 @@
 
 
 (defn- get-root-summarizer [inp-set fs]
-  (tree-summarizer (make-atomic-stub (atomic-name fs) inp-set nil)))
+  (tree-summarizer (make-atomic-stub (atomic-name fs) inp-set )))
 
 (def *lazy-cache* false) 
 (def *no-subsumption* false)
