@@ -43,8 +43,15 @@
 
 ;;   X --> Y ==> for all child keys k, child(X, k) --> child(Y, k)
 
-;; TODO: we seem to be losing sa/oc sometimes ...
-;; TODO: wrapping names don't match pair-stub1.  Drop them for now, restore?
+;; --> TODO: every SP should watch all subsuming SPs for children with matching
+;;     names, add these as subsumption parents.
+;; (Except any direct parents)
+;; --> TODO: this should happen as soon as stub is created, not have to wait for SP.
+;; This means that TS needs to know about stubs-in-training.
+
+;; TODO: wrapping names don't match pair-stub1.  Get rid of norm-name hack?
+
+
 
 (set! *warn-on-reflection* true)
 
@@ -52,6 +59,7 @@
 (def *collect-equal-outputs* true) ;; Collect identical output sets
 (def *decompose-cache*       true) ;; nil for none, or bind to hashmap
 (def *state-abstraction*     :eager ) ;; Or lazy or nil.
+(def *propagate-subusmption* false)
 
 
 ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
@@ -232,12 +240,27 @@
 (defn- sp-ts   [s] (tree-summarizer (stub s)))
 
 (defmethod print-method angelic.search.implicit.dash_astar.Subproblem [sp o]
-  (print-method (format "#<SP$%8h %s>" (System/identityHashCode (stub sp)) (sp-name sp)) o))
+ (print-method (format "#<SP$%8h %s>" (System/identityHashCode (stub sp)) (sp-name sp)) o))
 
-(defn- add-sp-child! [sp child-sp]
+(defn direct-sp? [sp] (= (ts-stub (sp-ts sp)) (stub sp)))
+
+(defn- add-sp-child!* [sp child-sp]
   (assert (not (terminal? sp)))
   (summaries/summary-changed-local! sp)
   (add-output! sp child-sp))
+
+(defn- add-sp-child! [sp child-sp]
+  (when (direct-sp? sp) #_ ::TODO)
+  (add-sp-child!* sp child-sp))
+
+(defn- add-sp-child-stub! [sp child-stub]
+  (when (direct-sp? sp) #_ ::TODO)  
+  (connect-and-watch-stub! sp child-stub #(add-sp-child!* sp %)))
+
+(defn- add-sp-child-stub-up! [sp child-stub]
+  (when (direct-sp? sp) #_ ::TODO)  
+  (connect-and-watch-stub-up! sp child-stub #(add-sp-child!* sp %)))
+
 
 (traits/deftrait simple-subproblem [stb out-set term? ri-fn] [] [watched-node]
   Subproblem (stub            [s] stb)
@@ -294,8 +317,7 @@
               (summaries/summary-changed! ret))
           (if (#{:SA :OC} (first (sp-name o))) 
             (add-sp-child! ret o)
-            (connect-and-watch-stub! ret (make-output-collecting-stub (stub o))
-              #(add-sp-child! ret %)))))) ;; No update needed
+            (add-sp-child-stub! ret (make-output-collecting-stub (stub o)))))))
     ret))
 
 
@@ -345,7 +367,7 @@
         ret (traits/reify-traits
              [summaries/or-summarizable (simple-subproblem stb out (terminal? inner-sp) ri-fn)])]
     (connect-and-watch! ret inner-sp
-      (fn [o] (connect-and-watch-stub-up! ret (make-state-abstracted-stub (stub o) in) #(add-sp-child! ret %))))
+      (fn [o] (add-sp-child-stub-up! ret (make-state-abstracted-stub (stub o) in))))
     ret))
 
 
@@ -385,27 +407,20 @@
 
 ;; TODO: we keep reward for :blocked case
 ;; Note: weirdly, sometimes ignoring it helps. (not always)
+;; Three cases here: terminal, subsuming sp to piggyback, fresh.
 (defn- make-atomic-subproblem [stb out-set reward status]
   (let [inp-set  (input-set stb)
         ri-fn    (fn [s ri] (get-stub (stub-name stb) ri))]
-    (util/cond-let [subsuming-sp]
-      (not (= status :live))
-      (make-simple-subproblem
-       stb out-set true
-       (fn [s] (summary/make-simple-summary (min (summaries/get-bound s) reward) status s)) ri-fn)
-
-      ;; TODO: order?
-      (util/find-first #(not (terminal? %)) (subsuming-sps (tree-summarizer stb))) 
+    (if (not (= status :live))
+      (let [leaf-s #(summary/make-simple-summary (min (summaries/get-bound %) reward) status %)]
+        (make-simple-subproblem stb out-set true leaf-s ri-fn))
       (let [ret (make-simple-subproblem stb out-set false summaries/or-summary ri-fn)]
-        (connect-and-watch! ret subsuming-sp
-          (fn [sub-out]
-            (connect-and-watch-stub-up! ret (refine-input sub-out inp-set) #(add-sp-child! ret %))))
-        ret)
-          
-      :else 
-      (let [ret (make-simple-subproblem stb out-set false summaries/or-summary ri-fn)]
-        (doseq [child-name (map make-fs-seq-name (fs/child-seqs (second (stub-name stb)) inp-set))]
-          (connect-and-watch-stub! ret (get-stub child-name inp-set) #(add-sp-child! ret %)))
+        (if-let [subsuming-sps (seq (filter #(not (terminal? %)) (subsuming-sps (tree-summarizer stb))))]
+          (connect-and-watch! ret (apply min-key (comp summary/max-reward summaries/summary sp-ts) subsuming-sps)
+            (fn [sub-out]
+              (add-sp-child-stub-up! ret (refine-input sub-out inp-set))))
+          (doseq [child-name (map make-fs-seq-name (fs/child-seqs (second (stub-name stb)) inp-set))]
+            (add-sp-child-stub! ret (get-stub child-name inp-set)))) 
         ret))))
 
 ;; Note: this is double-stage to lazily generate children.  Could be simpler single-stage.
@@ -453,37 +468,38 @@
 
 (declare make-pair-stub1 make-pair-stub2)
 
+
+
+(defn init-pair-sp! [sp r? l-sp r-sp]
+  (let [ss (summaries/make-sum-summarizer (if r? [(sp-ts l-sp) r-sp] [l-sp (sp-ts r-sp)]))]
+    (summaries/connect! sp ss)
+    (let [[watch stub-f] (if r? [r-sp #(make-pair-stub2 l-sp (stub %))]
+                                [l-sp #(make-pair-stub2 % (refine-input r-sp (output-set %)))])]
+      (add-watcher! watch
+        (fn [o]
+          (summaries/summary-changed-local! ss)
+          (add-sp-child-stub-up! sp (stub-f o)))))))
+
 ;; Note: disconnect is needed since blocked trumps live.
 ;; TODO: get rid of disconnect -- just need to kill at the right time ?
 ;; Note: this is the only place logic depends on summary.  Potential for problems?
 (defn- make-pair-subproblem [stb left-sp right-sp]
   (let [expand-right? (and (summary/solved? (summaries/summary left-sp)) (empty? (get-outputs left-sp)))
-        kids (if expand-right? [(sp-ts left-sp) right-sp] [left-sp (sp-ts right-sp)])
-        ss   (summaries/make-sum-summarizer kids)
         ret (make-simple-subproblem
              stb (output-set right-sp) false             
-             (if (or expand-right? (not *collect-equal-outputs*)) summaries/or-summary
-                 (let [left-done? (atom false)] ;; Manually take into account left-solved, when no output message.
-                   (fn [s] 
-                     (when (and (not @left-done?) (summary/solved? (summaries/summary left-sp))
-                                (empty? (get-outputs left-sp)))
-;                       (print ".")
-                       (reset! left-done? true)
-                       (summaries/disconnect! s ss )
-                        ;; Make sure we don't double count, because child will use tree-summarizer of left.
-                       (add-watcher! left-sp (fn [o] (def *bad* [stb left-sp right-sp])
-                                               (throw (RuntimeException. "Solved and children."))))
-                       (add-sp-child! s (get-stub-output! (make-pair-stub2 left-sp (stub right-sp)))))       
-                     (summaries/or-summary s))))             
+             (if (or expand-right? (not *collect-equal-outputs*)) ;; Switch to right when left solved, no output.
+               summaries/or-summary
+               (let [left-done? (atom false)]
+                 (fn [s] 
+                   (when (and (not @left-done?) (summary/solved? (summaries/summary left-sp))
+                              (empty? (get-outputs left-sp)))
+                     (reset! left-done? true)
+                     (summaries/disconnect! s (util/safe-singleton (summaries/child-nodes s)))
+                     (add-watcher! left-sp (fn [o] (throw (RuntimeException. "Solved and children."))))                     
+                     (init-pair-sp! s true left-sp right-sp))       
+                   (summaries/or-summary s))))             
              (fn [s ri] (make-pair-stub1 (stub-name stb) (refine-input left-sp ri) #(refine-input right-sp %))))]
-    (summaries/connect! ret ss)
-    (let [[watch stub-f] (if expand-right?
-                           [right-sp #(make-pair-stub2 left-sp (stub %))]
-                           [left-sp #(make-pair-stub2 % (refine-input right-sp (output-set %)))])]
-      (add-watcher! watch
-         (fn [o]
-           (summaries/summary-changed-local! ss)
-           (connect-and-watch-stub-up! ret (stub-f o) #(add-sp-child! ret %)))))
+    (init-pair-sp! ret expand-right? left-sp right-sp)
     ret))
 
 
