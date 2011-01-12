@@ -25,6 +25,7 @@
 
 ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;; Protocol ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
 
+;; TODO: re-source and re-child can go away.
 (defprotocol Summary
   (max-reward       [s] "Admissible reward bound")
   (status           [s] "Status: :blocked, :solved, or :live")
@@ -118,9 +119,43 @@
 
 
 ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
-;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;; Helpers ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
+;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;; IntervalSummary ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
 ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
 
+(defn is-vec [is] [(:min-rew is Double/NEGATIVE_INFINITY) #_ (max-reward is) (status-val (status is))])
+
+
+(defrecord IntervalSummary [min-rew max-rew stat src chldren]
+  Summary
+  (max-reward       [s] max-rew)
+  (status           [s] stat)
+  (source           [s] src)
+  (children         [s] chldren)
+  (re-source        [s new-src bound stat-bound] (throw (RuntimeException.)))
+  (re-child         [s new-children] (throw (RuntimeException.)))
+  (+                [s other src] (throw (RuntimeException.)))
+  (eq               [s other] (= (is-vec s) (is-vec other)))
+  (>=               [s other] (not (neg? (compare (is-vec s) (is-vec other)))))
+  (+                [s other new-src bound]
+   (IntervalSummary.
+     (clojure.core/min (clojure.core/+ min-rew (:min-rew other Double/NEGATIVE_INFINITY)) bound)                     
+     (clojure.core/min (clojure.core/+ max-rew (max-reward other)) bound)
+     (min-key status-val stat (status other))
+     new-src [s other])))
+
+(defn make-interval-summary [min-reward max-reward status source]
+  (util/assert-is (contains? statuses-set status))
+  (IntervalSummary. min-reward max-reward status source nil))
+
+
+(defn iv-summary-str [s] (str "IVSum:" [(:min-rew s) (max-reward s)] (status s)))
+(defmethod print-method IntervalSummary [s o] (print-method (iv-summary-str s) o))
+
+
+
+;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
+;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;; Helpers ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
+;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
 
 
 

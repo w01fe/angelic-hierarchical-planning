@@ -61,8 +61,12 @@
 
 ;; TODO: need to wrap seqs too ?
 
-
 ;; TODO: remove refs to stubs in TS so dead weight can be GC'd?
+
+;; TODO first: propagate subsumption links.
+;; TODO second: add pessimistic variant. (primitives shared!)
+
+;; TODO: bounding of pessimistic descriptions ? (assume consistency for now).
 
 (set! *warn-on-reflection* true)
 
