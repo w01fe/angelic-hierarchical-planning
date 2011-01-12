@@ -26,47 +26,25 @@
 
 ;;  (except ensuring consistency if we're asserting it...)
 ;; When we create a stub, we also get: tree summarizer, subsumption-thing.
-;; (subsumption-children are parent tree-summarizers).
-;; Subsumption-thing is subsumption-child of stub, summarizer, tree-summarizer.
-;; Tree-summarizers also remember best bound, this gives us consistency
-;; How do they pass to children, though?
-;; Apparent cycle -- tree summarizer has children that are child tree-summarizers,
-;; And, these children should have the parent TS as a subsumption child.
-;; Key: this is only to preserve info from original SP, subsumption..
-;; This info should go into subsumption-thing.
-;; Subsumption-thing is just ordinary max over children, + self, + TS?
-;; ->>(We rely on eager updates to make sure it gets updated?)
-
-;; TDB should not actually go into TS, children should be directly bounded?
-;; All children, including inner SP, should do it fine.
-;; This means that every thing has exactly one subsumption parent ... which is nice.
-;; How does consistency get approached ?
-;; We just have the cycle, but would be great if we didn't have to go in child --> ts --> st --> children
-;; cycle every time things to up -- maybe ST just doesn't update ord. parents.
-;; TODO: figure this out later. 
 ;; TODO: tests ! 
-
-;; Can goall the way down to nearest sum, I guess...
-;; Subsumer gets attached to subsumer of any child (or inner child?)
 
 ;; What do we do about multiple ways to express a given plan ? ? ? ?
 ;; Can normalize or not, interesting question... start without. 
 
-;; TODO: things are propagating in the wrong order !
-;; Act SP gets added as output of Act stub.
-;; This is watched by both Top SP and Act TS.
-;; Top SP gets it first.
-;; We need to make sure we present consistent picture.
-;; This means putting add-stub-output in TS ?
-
-;; TODO: need to wrap seqs too ?
-
 ;; TODO: remove refs to stubs in TS so dead weight can be GC'd?
-
 ;; TODO first: propagate subsumption links.
 ;; TODO second: add pessimistic variant. (primitives shared!)
 
 ;; TODO: bounding of pessimistic descriptions ? (assume consistency for now).
+
+;; Two basic kinds of subsumption propagation:
+;;   X --> Y ==> for all child keys k, child(X, k) --> child(Y, k)
+;;   This taken into account for atomic, not pairs now.
+
+;;   X --> Y ==> for all child keys k, child(X, k) --> child(Y, k)
+
+;; TODO: we seem to be losing sa/oc sometimes ...
+;; TODO: wrapping names don't match pair-stub1.  Drop them for now, restore?
 
 (set! *warn-on-reflection* true)
 
@@ -115,16 +93,25 @@
 
 ;;;;;;;;;;;;;;;;;;;;;;;;;;      Tree Summarizers      ;;;;;;;;;;;;;;;;;;;;;;;;;;
 
-(declare sp-ts get-stub-output)
+(declare sp-ts get-stub-output norm-name)
 
-;; Does not need to watch stub, that happens automatically to ensure ordering.
 ;; TODO: now this will never be true; how to avoid extra connections ?
-
-(defprotocol TreeSummarizer (ts-stub [ts]))
+(defprotocol TreeSummarizer
+  (ts-stub [ts])
+  (subsuming-tss [ts]) ; True tree summarizers subsuming this one.
+  (add-subsuming-ts! [ts subsuming-ts]))  
+  
 
 (defn- make-tree-summarizer [stb]
-  (let [ret (traits/reify-traits [summaries/or-summarizable summaries/simple-cached-node]
-              TreeSummarizer (ts-stub [ts] stb))]
+  (let [subsuming-tss-list (ArrayList.)
+        ret (traits/reify-traits [summaries/or-summarizable summaries/simple-cached-node]
+              TreeSummarizer
+              (ts-stub [ts] stb)
+              (subsuming-tss [ts] (seq subsuming-tss-list))
+              (add-subsuming-ts! [ts subsuming-ts]
+                (util/assert-is (= (norm-name (stub-name stb)) (norm-name (stub-name (ts-stub subsuming-ts)))))                 
+                (.add subsuming-tss-list subsuming-ts)
+                (summaries/connect-subsumed! subsuming-ts ts)))]
     (when-not (get-stub-output stb)
       (summaries/connect! ret stb)
       (summaries/connect-subsumed! ret stb))
@@ -135,10 +122,6 @@
 (defmethod print-method angelic.search.implicit.dash_astar.TreeSummarizer [s o]
  (let [s (ts-stub s)]
   (print-method (format "#<TS$%8h %s>" (System/identityHashCode s) (stub-name s)) o)))
-
-;; TODO: this basically looks just like old version now.
-;; Main new idea was to be: auto-propagate subsumption arcs forward...
-;; This is also what's needed for pess?
 
 ;; TODO: think about status of published output -- does it need updating ? 
 
@@ -161,10 +144,6 @@
 
 ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;; Used by stubs ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
 
-(defn- with-subsuming-sp! [subsuming-sp stub]
-  (when subsuming-sp
-    (summaries/connect-subsumed! (sp-ts subsuming-sp) (tree-summarizer stub)))
-  stub)
 
 ;; TODO: set stub to -inf here, simplify other code? 
 ;; TODO: efficiency?
@@ -224,7 +203,6 @@
     (set-stub-output! ret (sp-fn ret))
     ret))
 
-;; TODO: Connect ts to something ??
 (defn- make-wrapping-stub [[nm in-set] inner-stub sp-fn]
   (let [ret (traits/reify-traits [summaries/or-summarizable watched-node]
               Stub (stub-name       [s] nm)
@@ -273,7 +251,11 @@
    [(simple-subproblem
      stub out-set terminal? ;; Note ni may have different context.
      (fn [s ni]
-       (if (= ni (input-set stub)) stub (with-subsuming-sp! s (ri-fn s ni)))))]
+       (if (= ni (input-set stub))
+         stub
+         (let [subsumed-stub (ri-fn s ni)]
+           (add-subsuming-ts! (tree-summarizer subsumed-stub) (tree-summarizer stub))
+           subsumed-stub))))]
    summaries/Summarizable (summarize [s] (summary-fn s))))
 
 
@@ -315,11 +297,6 @@
             (connect-and-watch-stub! ret (make-output-collecting-stub (stub o))
               #(add-sp-child! ret %)))))) ;; No update needed
     ret))
-
-(comment
- (defmethod make-stub* :OC [[_ inner-name :as n] inp subsuming-sp]
-            (assert (nil? subsuming-sp))
-            (make-output-collecting-stub (make-stub* inner-name inp nil))))
 
 
 ;;;;;;;;;;;;;;;;;;;;;;;;;;;     State Abstraction     ;;;;;;;;;;;;;;;;;;;;;;;;;;
@@ -371,10 +348,6 @@
       (fn [o] (connect-and-watch-stub-up! ret (make-state-abstracted-stub (stub o) in) #(add-sp-child! ret %))))
     ret))
 
-(comment
-  (defmethod make-stub* :SA [[_ inner-name :as n] inp subsuming-sp]
-    (assert (nil? subsuming-sp))
-    (make-state-abstracted-stub (make-stub* inner-name inp nil) inp)))
 
 ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
 ;;;;;;;;;;;;;;;;;;;;;;;;;;     Core Subproblems     ;;;;;;;;;;;;;;;;;;;;;;;;;;;;
@@ -382,25 +355,29 @@
 
 ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;      Names       ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
 
-
 (defn atomic-name [fs] [:Atomic fs])
 (defn pair-name [l r] [:Pair l r])
 
 (defn left-factor [is]
   (loop [s (next is) ret (first is)]
-    (if s
-      (recur (next s) (pair-name ret (first s)))
-      ret)))
+    (if s (recur (next s) (pair-name ret (first s))) ret)))
 
 (defn right-factor [[f & r]]
-  (if (seq r)
-    (pair-name f (right-factor r))
-    f))
+  (if (seq r) (pair-name f (right-factor r)) f))
 
 (defn- make-fs-seq-name [fs-seq]
   (assert (seq fs-seq))
   ((if *left-recursive* left-factor right-factor)
    (map atomic-name fs-seq)))
+
+;; TODO: flatten as well?
+(defn norm-name [n]
+  (case (first n)
+    :Atomic n
+    :Pair   [:Pair (norm-name (nth n 1)) (norm-name (nth n 2))]
+    :SA     (norm-name (second n))
+    :OC     (norm-name (second n))))
+
 
 ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;      Atomic       ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
 
@@ -456,7 +433,6 @@
             (do (reset! state :go) (summaries/summary-changed! s))))))))
 
 
-;; (since it may already exist)!
 ;; Note: we must always wrap in S-A stub to get effects out of logger.
 (defmethod get-stub :Atomic [[_ fs :as n] inp-set subsuming-sp]
   (let [full-name [n (if *state-abstraction* (fs/extract-context fs inp-set) inp-set)]
@@ -511,6 +487,8 @@
 
 
 (defn- make-pair-stub2 [left-sp right-stub]
+;  (util/assert-is (= (first (sp-name left-sp)) :SA))
+;  (util/assert-is (= (first (stub-name right-stub)) :SA))  
   (let [nm (pair-name (sp-name left-sp) (stub-name right-stub))
         is (input-set (stub left-sp))]
     (assert (= (output-set left-sp) (input-set right-stub)))
@@ -523,6 +501,7 @@
         ret))))
 
 ;; Note, potential to learn about additioan lsubsumption here, however, must be taken into account.
+;; TODO: name does not match wrapping names.
 (defn- make-pair-stub1 [nm left-stub right-stub-fn]
   (if-let [left-sp (get-stub-output left-stub)]
     (make-pair-stub2 left-sp (right-stub-fn (output-set left-sp)))
