@@ -83,7 +83,8 @@
 (def *subsumption* true)
 
 (defn update-bound! [n bound-atom b]
-  (when (< b @bound-atom)
+  (when (and *subsumption* (< b @bound-atom))
+#_    (println n @bound-atom b)
     (reset! bound-atom b)
     (doseq [s (doall (subsumed-nodes n))]
       (add-bound! s b))
@@ -92,6 +93,7 @@
 (defn update-summary! [n summary-atom bound-atom]
   (let [s (summarize n),
         r (summary/max-reward s)]
+#_    (println "US" n  @summary-atom s @bound-atom)
     (assert (<= r @bound-atom))
     (reset! summary-atom s)
     (update-bound! n bound-atom r)
@@ -103,7 +105,7 @@
   (get-bound        [n]   @bound)
   (add-bound!       [n b] (when (update-bound! n bound b) (summary-changed! n)))
   (summary [n] (or @cache (update-summary! n cache bound)))
-  (summary-changed! [n]
+  (summary-changed! [n] #_(println "SC" n @cache @bound)
     (when-let [old @cache]
       (when (summary/live? old)
         (when (not (summary/eq old (update-summary! n cache bound)))
@@ -170,8 +172,11 @@
 (def *root* nil)
 (defn solve [root-summarizable choice-fn local-choice? op!-fn action-extractor]
   (def *root* root-summarizable)
+  (def *c* (atom 34))
   (summary/solve
-   #(verified-summary root-summarizable summary/+worst-simple-summary+)
+    #(verified-summary root-summarizable summary/+worst-simple-summary+)
+   #_#(do (when (<= (swap! *c* dec) 0) (assert nil))
+        (verified-summary root-summarizable summary/+worst-simple-summary+))
    #(op!-fn (if local-choice?
              (extract-single-live-leaf % choice-fn)
              (choice-fn (extract-live-leaf-source-seq %))))

@@ -16,11 +16,8 @@
 
 ;; All TODOs from dash_astar_opt also apply here.
 
-;; TODO: Split out SP "name" from stub
 ;; TODO: SP has hash table from (state-abstracted context) input set to stub (?).
-;; TODO: stub has link back to parent SP
 ;; TODO: How are subsumption links handled?  
-;; What if we create tree summarizer with stub ? ? ?   ?  ?? ? ?  ?  ? ?
 
 ;; TODO: add pess
 
@@ -55,6 +52,12 @@
 ;; What do we do about multiple ways to express a given plan ? ? ? ?
 ;; Can normalize or not, interesting question... start without. 
 
+;; TODO: things are propagating in the wrong order !
+;; Act SP gets added as output of Act stub.
+;; This is watched by both Top SP and Act TS.
+;; Top SP gets it first.
+;; We need to make sure we present consistent picture.
+;; This means putting add-stub-output in TS ? 
 
 (set! *warn-on-reflection* true)
 
@@ -93,7 +96,7 @@
     (.add watchers w) 
     (doseq [o (doall (seq outputs))] (swap! *out-count* inc) (w o)) )
   (add-output! [sw o] ;               (println :AO sw o) (Thread/sleep 10)
-    (.add outputs o)
+    (.add outputs o) (assert (not (= sw o)))
     (doseq [w (doall (seq watchers))] (swap! *out-count* inc) (w o)))
   (get-outputs [sw] (doall (seq outputs))))
 
@@ -105,22 +108,22 @@
 
 (declare sp-ts get-stub-output)
 
-;; TODO: what updates are needed here?
-(defn- make-tree-summarizer [stub]
-  (let [ret (traits/reify-traits [summaries/or-summarizable summaries/simple-cached-node])        
-        sp-watch! (fn [sp]
-                   (summaries/connect-subsumed! ret sp)
-                   (connect-and-watch! ret sp
-                     (fn [child-sp]
-                       (let [child-ts (sp-ts child-sp)]
-                         (summaries/connect! ret child-ts)
-                         (summaries/connect-subsumed! ret child-ts)
-                         (summaries/summary-changed! ret)))))]
-    (if-let [sp (get-stub-output stub)]
-      (sp-watch! sp)
-      (do (summaries/connect-subsumed! ret stub)
-          (connect-and-watch! ret stub #(do (sp-watch! %) (summaries/summary-changed! ret)))))
+;; Does not need to watch stub, that happens automatically to ensure ordering.
+;; TODO: now this will never be true; how to avoid extra connections ?
+
+(defprotocol TreeSummarizer (ts-stub [ts]))
+
+(defn- make-tree-summarizer [stb]
+  (let [ret (traits/reify-traits [summaries/or-summarizable summaries/simple-cached-node]
+              TreeSummarizer (ts-stub [ts] stb))]
+    (when-not (get-stub-output stb)
+      (summaries/connect! ret stb)
+      (summaries/connect-subsumed! ret stb))
     ret))
+
+(defmethod print-method angelic.search.implicit.dash_astar.TreeSummarizer [s o]
+ (let [s (ts-stub s)]
+  (print-method (format "#<TS$%8h %s>" (System/identityHashCode s) (stub-name s)) o)))
 
 ;; TODO: this basically looks just like old version now.
 ;; Main new idea was to be: auto-propagate subsumption arcs forward...
@@ -152,10 +155,24 @@
     (summaries/connect-subsumed! (sp-ts subsuming-sp) (tree-summarizer stub)))
   stub)
 
+;; TODO: set stub to -inf here, simplify other code? 
+;; TODO: efficiency?
 (defn- set-stub-output! [stub sp]
   (assert (empty? (get-outputs stub)))
-  (summaries/summary-changed-local! stub)
-  (add-output! stub sp))
+  (let [b  (summaries/get-bound stub)
+        ts (tree-summarizer stub)]
+    (summaries/summary-changed-local! stub)    
+    (summaries/connect-subsumed! ts sp)
+    (connect-and-watch! ts sp
+       (fn [child-sp]
+         (let [child-ts (sp-ts child-sp)]
+           (summaries/connect! ts child-ts)
+           (summaries/connect-subsumed! ts child-ts)
+           (summaries/summary-changed! ts))))
+;    (println "SO" stub b (summary/max-reward (summaries/summary sp)))
+    (summaries/add-bound! ts b) ;; TODO: ???
+    (summaries/summary-changed! ts)
+    (add-output! stub sp)))
 
 (defn- get-stub-output  [s] (first (get-outputs s)))
 (defn- get-stub-output! [s] (util/safe-singleton (get-outputs s)))
@@ -191,11 +208,10 @@
 
 ;; TODO: Connect ts to something ??
 (defn- make-wrapping-stub [[nm in-set] inner-stub sp-fn]
-  (let [ts  (tree-summarizer inner-stub)
-        ret (traits/reify-traits [summaries/or-summarizable]
+  (let [ret (traits/reify-traits [summaries/or-summarizable]
               Stub (stub-name       [s] nm)
                    (input-set       [s] in-set)
-                   (tree-summarizer [s] ts))]
+                   (tree-summarizer [s] (tree-summarizer inner-stub)))]
     (connect-and-watch-stub! ret inner-stub #(set-stub-output! ret (sp-fn ret %)))
     ret))
 
@@ -299,7 +315,7 @@
    [(sa-name (stub-name inner-stub)) in-set]
    inner-stub make-state-abstracted-subproblem))
 
-
+;; tODO: force ts? reward?
 (defn- make-deliberate-state-abstracted-stub [inner-stub in-set]
   (if-let [out (get-stub-output inner-stub)]
     (let [done? (atom false)  
@@ -372,6 +388,8 @@
 
 (declare make-fs-seq-stub get-atomic-stub)
 
+;; TODO: weird forcing of tree-summarizer...
+;; TODO: remove reward from args?
 (defn- make-atomic-subproblem [stb out-set reward status subsuming-sp]
   (let [inp-set  (input-set stb)
         ri-fn    (fn [s ri] (get-stub (stub-name stb) inp-set s))]
@@ -411,6 +429,7 @@
               ready? (= :ready @state)]
           (if-let [[out-set reward :as op] (if ready? (fs/apply-opt fs inp-set) @state)]
             (let [status (if ready? (fs/status fs inp-set)   :live)]
+;              (println "eval" nm inp-set reward status)
               (if (or (not ready?) (not (= status :live)))
                 (do (reset! state :go)
                     (->> (make-atomic-subproblem s out-set reward status subsuming-sp)
@@ -442,8 +461,7 @@
 ;; TODO: put back disconnect ? 
 ;; Note: this is the only place logic depends on summary.  Potential for problems?
 (defn- make-pair-subproblem [stb left-sp right-sp]
-  (let [nm (stub-name stb)
-        expand-right? (and (summary/solved? (summaries/summary left-sp)) (empty? (get-outputs left-sp)))
+  (let [expand-right? (and (summary/solved? (summaries/summary left-sp)) (empty? (get-outputs left-sp)))
         kids (if expand-right? [(sp-ts left-sp) right-sp] [left-sp (sp-ts right-sp)])
         ss   (summaries/make-sum-summarizer kids)
         ret (make-simple-subproblem
@@ -451,18 +469,19 @@
              (if (or expand-right? (not *collect-equal-outputs*)) summaries/or-summary
                  (let [left-done? (atom false)] ;; Manually take into account left-solved, when no output message.
                    (fn [s] 
-                     (when (and (not @left-done?) (summary/solved? (summaries/summary left-sp))) 
+                     (when (and (not @left-done?) (summary/solved? (summaries/summary left-sp)))
+                       (print ".")
                        (reset! left-done? true) 
                         ;; Make sure we don't double count, because child will use tree-summarizer of left.
                        (add-watcher! left-sp (fn [o] (throw (RuntimeException. "Solved and children."))))
-                       (add-sp-child! s (get-stub-output! (make-pair-stub2 nm left-sp (stub right-sp))))
+                       (add-sp-child! s (get-stub-output! (make-pair-stub2 left-sp (stub right-sp))))
                        (summaries/add-bound! s Double/NEGATIVE_INFINITY))                     
                      (summaries/or-summary s))))             
-             (fn [s ri] (make-pair-stub1 nm (refine-input left-sp ri) #(refine-input right-sp %))))]
+             (fn [s ri] (make-pair-stub1 (stub-name stb) (refine-input left-sp ri) #(refine-input right-sp %))))]
     (summaries/connect! ret ss)
     (let [[watch stub-f] (if expand-right?
-                           [right-sp #(make-pair-stub2 nm left-sp (stub %))]
-                           [left-sp #(make-pair-stub2 nm % (refine-input right-sp (output-set %)))])]
+                           [right-sp #(make-pair-stub2 left-sp (stub %))]
+                           [left-sp #(make-pair-stub2 % (refine-input right-sp (output-set %)))])]
       (add-watcher! watch
          (fn [o]
            (summaries/summary-changed-local! ss)
@@ -470,8 +489,9 @@
     ret))
 
 
-(defn- make-pair-stub2 [nm left-sp right-stub]
-  (let [is (input-set (stub left-sp))]
+(defn- make-pair-stub2 [left-sp right-stub]
+  (let [nm (pair-name (sp-name left-sp) (stub-name right-stub))
+        is (input-set (stub left-sp))]
     (if-let [right-sp (get-stub-output right-stub)] ;; short-circuit the mess below
       (make-evaluated-stub nm is #(make-pair-subproblem % left-sp right-sp))
       (let [ret (traits/reify-traits [summaries/sum-summarizable (simple-stub nm is)])]
@@ -483,12 +503,12 @@
 ;; Note, potential to learn about additioan lsubsumption here, however, must be taken into account.
 (defn- make-pair-stub1 [nm left-stub right-stub-fn]
   (if-let [left-sp (get-stub-output left-stub)]
-    (make-pair-stub2 nm left-sp (right-stub-fn (output-set left-sp)))
+    (make-pair-stub2 left-sp (right-stub-fn (output-set left-sp)))
     (let [ret (traits/reify-traits [summaries/or-summarizable (simple-stub nm (input-set left-stub))])]
       (connect-and-watch-stub! ret left-stub 
         (fn [lo]
           (connect-and-watch-stub-up! ret
-            (make-pair-stub2 nm lo (right-stub-fn (output-set lo)))
+            (make-pair-stub2 lo (right-stub-fn (output-set lo)))
             #(set-stub-output! ret %))))
       ret)))
 
@@ -536,7 +556,8 @@
 
 ; (require '[angelic.search.implicit.dash-astar :as da] '[angelic.search.implicit.dash-astar-opt :as dao])
 
-; (do (def s summaries/summarize) (def sc summary/children) (def nc summaries/node-ordinary-children) (def src summary/source))
+;;(do (defn s [x]  (summaries/summarize x)) (defn sc [x] (summary/children x))  (defn src [x] (summary/source x)) (defn nc [x] (summaries/child-nodes x)))
+
 ;;(dotimes [_ 1] (reset! summaries/*summary-count* 0) (debug 0 (time (let [h (make-nav-switch-hierarchy (make-random-nav-switch-env 2 1 0) true)]  (println (run-counted #(second (implicit-dash-a* h))) @summaries/*summary-count*)))))
 
 

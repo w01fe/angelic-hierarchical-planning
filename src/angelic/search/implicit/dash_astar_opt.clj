@@ -598,7 +598,7 @@
 
 ; (dotimes [_ 1] (reset! summaries/*summary-count* 0) (reset! *out-count* 0) (debug 0 (let [h (make-discrete-manipulation-hierarchy (make-random-discrete-manipulation-env 4 3))]  (time (println (run-counted #(identity (implicit-dash-a*-opt h))) @summaries/*summary-count* @*out-count*)) )))
 
-
+;; (dotimes [_ 1] (reset! summaries/*summary-count* 0) (reset! summaries-old/*summary-count* 0) (reset! da/*out-count* 0) (reset! dao/*out-count* 0) (debug 0 (let [h (make-nav-switch-hierarchy (make-random-nav-switch-env 5 3 0) true)]  (time (println (run-counted #(identity (da/implicit-dash-a* h :gather false :d false :s nil))) @summaries/*summary-count* @da/*out-count*))  (time (println (run-counted #(identity (dao/implicit-dash-a*-opt h :gather false :d false :s nil))) @summaries-old/*summary-count*  @dao/*out-count*)) )))
 
 
 
