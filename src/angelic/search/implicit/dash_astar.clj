@@ -5,7 +5,7 @@
             [angelic.search.summary :as summary]            
             [angelic.search.summaries :as summaries]
             [angelic.search.function-sets :as fs])
-  (:import [java.util HashMap ArrayList]))
+  (:import [java.util HashMap ArrayList IdentityHashMap]))
 
 ;; A revampting of dash_astar_opt, to move subsumption relationships and caching
 ;; out into a separate class.  This is necessary to keep pessimistic and optimistic
@@ -50,6 +50,7 @@
 ;; This means that TS needs to know about stubs-in-training.
 
 ;; TODO: wrapping names don't match pair-stub1.  Get rid of norm-name hack?
+;; TODO: subsumptin should be sets, not lists? 
 
 
 
@@ -111,15 +112,16 @@
   
 
 (defn- make-tree-summarizer [stb]
-  (let [subsuming-sp-list (ArrayList.)
+  (let [subsuming-sp-set (IdentityHashMap.)
         ret (traits/reify-traits [summaries/or-summarizable summaries/simple-cached-node]
               TreeSummarizer
               (ts-stub [ts] stb)
-              (subsuming-sps [ts] (seq subsuming-sp-list))
+              (subsuming-sps [ts] (keys subsuming-sp-set))
               (add-subsuming-sp! [ts subsuming-sp]
                 (util/assert-is (= (norm-name (stub-name stb)) (norm-name (sp-name subsuming-sp))))                 
-                (.add subsuming-sp-list subsuming-sp)
-                (summaries/connect-subsumed! (sp-ts subsuming-sp) ts)))]
+                (when-not (.containsKey subsuming-sp-set subsuming-sp)
+                  (.put subsuming-sp-set subsuming-sp true)
+                  (summaries/connect-subsumed! (sp-ts subsuming-sp) ts))))]
     (when-not (get-stub-output stb)
       (summaries/connect! ret stb)
       (summaries/connect-subsumed! ret stb))
@@ -185,18 +187,14 @@
 ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;; Used on stubs ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
 
 ;; Just give output directly if subproblem is ready; return true if waiting
-(defn- connect-and-watch-stub! [p c f]
-;  (assert (not (tree-summarizer? p)))
+;; if up?, updates p if c does not produce immediate output.
+(defn- connect-and-watch-stub! [p c up? f]
   (assert (instance? angelic.search.implicit.dash_astar.Stub c))
   (if-let [sp (get-stub-output c)]
-    (do (f sp) false)
+    (f sp)
     (do (summaries/connect! p c)
         (add-watcher! c f)
-        true)))
-
-;; Used when p needs update if c does not produce immediate output.
-(defn- connect-and-watch-stub-up! [p c f]
-  (when (connect-and-watch-stub! p c f) (summaries/summary-changed! p)))
+        (when up? (summaries/summary-changed! p)))))
 
 ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;; Making stubs ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
 
@@ -216,7 +214,7 @@
               Stub (stub-name       [s] nm)
                    (input-set       [s] in-set)
                    (tree-summarizer [s] (tree-summarizer inner-stub)))]
-    (connect-and-watch-stub! ret inner-stub #(set-derived-stub-output! ret (sp-fn ret %)))
+    (connect-and-watch-stub! ret inner-stub false #(set-derived-stub-output! ret (sp-fn ret %)))
     ret))
 
 
@@ -242,24 +240,17 @@
 (defmethod print-method angelic.search.implicit.dash_astar.Subproblem [sp o]
  (print-method (format "#<SP$%8h %s>" (System/identityHashCode (stub sp)) (sp-name sp)) o))
 
-(defn direct-sp? [sp] (= (ts-stub (sp-ts sp)) (stub sp)))
+(defn direct-sp? [sp] )
 
-(defn- add-sp-child!* [sp child-sp]
-  (assert (not (terminal? sp)))
-  (summaries/summary-changed-local! sp)
-  (add-output! sp child-sp))
-
-(defn- add-sp-child! [sp child-sp]
-  (when (direct-sp? sp) #_ ::TODO)
-  (add-sp-child!* sp child-sp))
-
-(defn- add-sp-child-stub! [sp child-stub]
-  (when (direct-sp? sp) #_ ::TODO)  
-  (connect-and-watch-stub! sp child-stub #(add-sp-child!* sp %)))
-
-(defn- add-sp-child-stub-up! [sp child-stub]
-  (when (direct-sp? sp) #_ ::TODO)  
-  (connect-and-watch-stub-up! sp child-stub #(add-sp-child!* sp %)))
+(defn- add-sp-child-stub! [sp child-stub up?]
+  (when (= (ts-stub (sp-ts sp)) (stub sp)) ;; not a wrapper; don't double-copy!
+    ;; TODO
+    )
+  (connect-and-watch-stub! sp child-stub up?
+    (fn [child-sp]
+      (assert (not (terminal? sp)))
+      (summaries/summary-changed-local! sp)
+      (add-output! sp child-sp))))
 
 
 (traits/deftrait simple-subproblem [stb out-set term? ri-fn] [] [watched-node]
@@ -315,9 +306,8 @@
         (if (=-state-sets (output-set inner-sp) (output-set o))
           (do (connect-and-watch! ret o child-watch)
               (summaries/summary-changed! ret))
-          (if (#{:SA :OC} (first (sp-name o))) 
-            (add-sp-child! ret o)
-            (add-sp-child-stub! ret (make-output-collecting-stub (stub o)))))))
+          (let [c (if (#{:SA :OC} (first (sp-name o))) (stub o) (make-output-collecting-stub (stub o)))]
+            (add-sp-child-stub! ret c false)))))
     ret))
 
 
@@ -367,7 +357,7 @@
         ret (traits/reify-traits
              [summaries/or-summarizable (simple-subproblem stb out (terminal? inner-sp) ri-fn)])]
     (connect-and-watch! ret inner-sp
-      (fn [o] (add-sp-child-stub-up! ret (make-state-abstracted-stub (stub o) in))))
+      (fn [o] (add-sp-child-stub! ret (make-state-abstracted-stub (stub o) in) true)))
     ret))
 
 
@@ -418,9 +408,9 @@
         (if-let [subsuming-sps (seq (filter #(not (terminal? %)) (subsuming-sps (tree-summarizer stb))))]
           (connect-and-watch! ret (apply min-key (comp summary/max-reward summaries/summary sp-ts) subsuming-sps)
             (fn [sub-out]
-              (add-sp-child-stub-up! ret (refine-input sub-out inp-set))))
+              (add-sp-child-stub! ret (refine-input sub-out inp-set) true)))
           (doseq [child-name (map make-fs-seq-name (fs/child-seqs (second (stub-name stb)) inp-set))]
-            (add-sp-child-stub! ret (get-stub child-name inp-set)))) 
+            (add-sp-child-stub! ret (get-stub child-name inp-set) false))) 
         ret))))
 
 ;; Note: this is double-stage to lazily generate children.  Could be simpler single-stage.
@@ -478,7 +468,7 @@
       (add-watcher! watch
         (fn [o]
           (summaries/summary-changed-local! ss)
-          (add-sp-child-stub-up! sp (stub-f o)))))))
+          (add-sp-child-stub! sp (stub-f o) true))))))
 
 ;; Note: disconnect is needed since blocked trumps live.
 ;; TODO: get rid of disconnect -- just need to kill at the right time ?
@@ -513,7 +503,7 @@
       (make-evaluated-stub nm is #(make-pair-subproblem % left-sp right-sp))
       (let [ret (traits/reify-traits [summaries/sum-summarizable (simple-stub nm is)])]
         (summaries/connect! ret (sp-ts left-sp))
-        (connect-and-watch-stub! ret right-stub 
+        (connect-and-watch-stub! ret right-stub false
           #(set-stub-output! ret (make-pair-subproblem ret left-sp %)))
         ret))))
 
@@ -523,10 +513,11 @@
   (if-let [left-sp (get-stub-output left-stub)]
     (make-pair-stub2 left-sp (right-stub-fn (output-set left-sp)))
     (let [ret (traits/reify-traits [summaries/or-summarizable (simple-stub nm (input-set left-stub))])]
-      (connect-and-watch-stub! ret left-stub 
+      (connect-and-watch-stub! ret left-stub false
         (fn [lo]
-          (connect-and-watch-stub-up! ret
+          (connect-and-watch-stub! ret
             (make-pair-stub2 lo (right-stub-fn (output-set lo)))
+            true
             #(set-stub-output! ret %))))
       ret)))
 
