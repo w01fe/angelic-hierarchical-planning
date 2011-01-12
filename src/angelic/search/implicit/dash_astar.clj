@@ -44,7 +44,7 @@
 ;; We just have the cycle, but would be great if we didn't have to go in child --> ts --> st --> children
 ;; cycle every time things to up -- maybe ST just doesn't update ord. parents.
 ;; TODO: figure this out later. 
-
+;; TODO: tests ! 
 
 ;; Can goall the way down to nearest sum, I guess...
 ;; Subsumer gets attached to subsumer of any child (or inner child?)
@@ -57,7 +57,9 @@
 ;; This is watched by both Top SP and Act TS.
 ;; Top SP gets it first.
 ;; We need to make sure we present consistent picture.
-;; This means putting add-stub-output in TS ? 
+;; This means putting add-stub-output in TS ?
+
+;; TODO: need to wrap seqs too ? 
 
 (set! *warn-on-reflection* true)
 
@@ -121,6 +123,8 @@
       (summaries/connect-subsumed! ret stb))
     ret))
 
+(defn tree-summarizer? [x] (instance? angelic.search.implicit.dash_astar.TreeSummarizer x))
+
 (defmethod print-method angelic.search.implicit.dash_astar.TreeSummarizer [s o]
  (let [s (ts-stub s)]
   (print-method (format "#<TS$%8h %s>" (System/identityHashCode s) (stub-name s)) o)))
@@ -166,6 +170,7 @@
     (connect-and-watch! ts sp
        (fn [child-sp]
          (let [child-ts (sp-ts child-sp)]
+           (assert (tree-summarizer? child-ts))
            (summaries/connect! ts child-ts)
            (summaries/connect-subsumed! ts child-ts)
            (summaries/summary-changed! ts))))
@@ -173,6 +178,11 @@
     (summaries/add-bound! ts b) ;; TODO: ???
     (summaries/summary-changed! ts)
     (add-output! stub sp)))
+
+(defn- set-derived-stub-output! [stub sp]
+  (assert (empty? (get-outputs stub)))
+  (summaries/summary-changed-local! stub)    
+  (add-output! stub sp))
 
 (defn- get-stub-output  [s] (first (get-outputs s)))
 (defn- get-stub-output! [s] (util/safe-singleton (get-outputs s)))
@@ -182,6 +192,7 @@
 
 ;; Just give output directly if subproblem is ready; return true if waiting
 (defn- connect-and-watch-stub! [p c f]
+;  (assert (not (tree-summarizer? p)))
   (assert (instance? angelic.search.implicit.dash_astar.Stub c))
   (if-let [sp (get-stub-output c)]
     (do (f sp) false)
@@ -208,11 +219,11 @@
 
 ;; TODO: Connect ts to something ??
 (defn- make-wrapping-stub [[nm in-set] inner-stub sp-fn]
-  (let [ret (traits/reify-traits [summaries/or-summarizable]
+  (let [ret (traits/reify-traits [summaries/or-summarizable watched-node]
               Stub (stub-name       [s] nm)
                    (input-set       [s] in-set)
                    (tree-summarizer [s] (tree-summarizer inner-stub)))]
-    (connect-and-watch-stub! ret inner-stub #(set-stub-output! ret (sp-fn ret %)))
+    (connect-and-watch-stub! ret inner-stub #(set-derived-stub-output! ret (sp-fn ret %)))
     ret))
 
 
@@ -368,8 +379,8 @@
 (defn atomic-name [fs] [:Atomic fs])
 (defn pair-name [l r] [:Pair l r])
 
-(defn left-factor [s]
-  (loop [s (next s) ret (first s)]
+(defn left-factor [is]
+  (loop [s (next is) ret (first is)]
     (if s
       (recur (next s) (pair-name ret (first s)))
       ret)))
@@ -392,14 +403,14 @@
 ;; TODO: remove reward from args?
 (defn- make-atomic-subproblem [stb out-set reward status subsuming-sp]
   (let [inp-set  (input-set stb)
-        ri-fn    (fn [s ri] (get-stub (stub-name stb) inp-set s))]
+        ri-fn    (fn [s ri] (get-stub (stub-name stb) ri s))]
     (cond (not (= status :live))
           (make-simple-subproblem
            stb out-set true
            (fn [s] (summary/make-simple-summary (min (summaries/get-bound s) reward) status s)) ri-fn)
           
           (and subsuming-sp (not (terminal? subsuming-sp))) 
-          (let [ret (make-simple-subproblem stb subsuming-sp out-set false summaries/or-summary ri-fn)]
+          (let [ret (make-simple-subproblem stb out-set false summaries/or-summary ri-fn)]
             (connect-and-watch! ret subsuming-sp
               (fn [sub-out]
                 (connect-and-watch-stub-up! ret (refine-input sub-out inp-set) #(add-sp-child! ret %))))
@@ -469,11 +480,13 @@
              (if (or expand-right? (not *collect-equal-outputs*)) summaries/or-summary
                  (let [left-done? (atom false)] ;; Manually take into account left-solved, when no output message.
                    (fn [s] 
-                     (when (and (not @left-done?) (summary/solved? (summaries/summary left-sp)))
-                       (print ".")
+                     (when (and (not @left-done?) (summary/solved? (summaries/summary left-sp))
+                                (empty? (get-outputs left-sp)))
+;                       (print ".")
                        (reset! left-done? true) 
                         ;; Make sure we don't double count, because child will use tree-summarizer of left.
-                       (add-watcher! left-sp (fn [o] (throw (RuntimeException. "Solved and children."))))
+                       (add-watcher! left-sp (fn [o] (def *bad* [stb left-sp right-sp])
+                                               (throw (RuntimeException. "Solved and children."))))
                        (add-sp-child! s (get-stub-output! (make-pair-stub2 left-sp (stub right-sp))))
                        (summaries/add-bound! s Double/NEGATIVE_INFINITY))                     
                      (summaries/or-summary s))))             
@@ -492,6 +505,7 @@
 (defn- make-pair-stub2 [left-sp right-stub]
   (let [nm (pair-name (sp-name left-sp) (stub-name right-stub))
         is (input-set (stub left-sp))]
+    (assert (= (output-set left-sp) (input-set right-stub)))
     (if-let [right-sp (get-stub-output right-stub)] ;; short-circuit the mess below
       (make-evaluated-stub nm is #(make-pair-subproblem % left-sp right-sp))
       (let [ret (traits/reify-traits [summaries/sum-summarizable (simple-stub nm is)])]
