@@ -19,9 +19,11 @@
 
 (defprotocol Node
   (add-child!     [n child-node])
+  (remove-child!  [n child-node])
   (child-nodes    [n])
 
   (add-parent!    [n parent-node])
+  (remove-parent! [n parent-node])
   (parent-nodes   [n])
 
   (add-subsumed!  [n subsumed-node])
@@ -52,14 +54,22 @@
 
 ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;; Node ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
 
+(defn remove! [^java.util.ArrayList list item]
+  (let [i (util/position-if #(identical? % item) list)]
+    (.remove list (int i))))
+
 (traits/deftrait simple-node [] [^java.util.ArrayList children (java.util.ArrayList.)
                                  ^java.util.ArrayList parents  (java.util.ArrayList.)
                                  ^java.util.ArrayList subsumed (java.util.ArrayList.)] []
   Node
   (add-child!     [n c] (.add children c))
+  (remove-child!  [n c] (remove! children c))  
   (child-nodes    [n]   (seq children))
+  
   (add-parent!    [n p] (.add parents p))
+  (remove-parent! [n p] (remove! parents p))    
   (parent-nodes   [n]   (seq parents))
+  
   (add-subsumed!  [n s] (.add subsumed s))
   (subsumed-nodes [n]   (seq subsumed)))
 
@@ -67,6 +77,10 @@
 (defn connect! [parent child]
   (add-parent! child parent)
   (add-child! parent child))
+
+(defn disconnect! [parent child]
+  (remove-parent! child parent)
+  (remove-child! parent child))
 
 ;; TODO: correct?
 (defn connect-subsumed! [node subsumed-parent]

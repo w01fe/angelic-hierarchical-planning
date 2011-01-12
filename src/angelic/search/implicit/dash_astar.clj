@@ -59,7 +59,9 @@
 ;; We need to make sure we present consistent picture.
 ;; This means putting add-stub-output in TS ?
 
-;; TODO: need to wrap seqs too ? 
+;; TODO: need to wrap seqs too ?
+
+;; TODO: auto-disconnect.  When I go -inf, update everyone then disconnect self and die.
 
 (set! *warn-on-reflection* true)
 
@@ -399,8 +401,8 @@
 
 (declare make-fs-seq-stub get-atomic-stub)
 
-;; TODO: weird forcing of tree-summarizer...
-;; TODO: remove reward from args?
+;; TODO: we keep reward for :blocked case
+;; Note: weirdly, sometimes ignoring it helps. (not always)
 (defn- make-atomic-subproblem [stb out-set reward status subsuming-sp]
   (let [inp-set  (input-set stb)
         ri-fn    (fn [s ri] (get-stub (stub-name stb) ri s))]
@@ -469,7 +471,8 @@
 
 (declare make-pair-stub1 make-pair-stub2)
 
-;; TODO: put back disconnect ? 
+;; Note: disconnect is needed since blocked trumps live.
+;; TODO: get rid of disconnect -- just need to kill at the right time ?
 ;; Note: this is the only place logic depends on summary.  Potential for problems?
 (defn- make-pair-subproblem [stb left-sp right-sp]
   (let [expand-right? (and (summary/solved? (summaries/summary left-sp)) (empty? (get-outputs left-sp)))
@@ -483,12 +486,12 @@
                      (when (and (not @left-done?) (summary/solved? (summaries/summary left-sp))
                                 (empty? (get-outputs left-sp)))
 ;                       (print ".")
-                       (reset! left-done? true) 
+                       (reset! left-done? true)
+                       (summaries/disconnect! s ss )
                         ;; Make sure we don't double count, because child will use tree-summarizer of left.
                        (add-watcher! left-sp (fn [o] (def *bad* [stb left-sp right-sp])
                                                (throw (RuntimeException. "Solved and children."))))
-                       (add-sp-child! s (get-stub-output! (make-pair-stub2 left-sp (stub right-sp))))
-                       (summaries/add-bound! s Double/NEGATIVE_INFINITY))                     
+                       (add-sp-child! s (get-stub-output! (make-pair-stub2 left-sp (stub right-sp)))))       
                      (summaries/or-summary s))))             
              (fn [s ri] (make-pair-stub1 (stub-name stb) (refine-input left-sp ri) #(refine-input right-sp %))))]
     (summaries/connect! ret ss)
