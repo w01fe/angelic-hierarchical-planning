@@ -47,6 +47,8 @@
     (get-logger  [sk input-set]
       (state/get-logger input-set (angelic/precondition-context-set action input-set))))))
 
+(defmethod print-method angelic.search.function_sets.FunctionSet [s o]
+           (print-method (fs-name s) o))
 
 ;; Child-seqs must obey the containment property for subsets of input-set.
 
