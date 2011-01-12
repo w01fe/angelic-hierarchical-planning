@@ -11,6 +11,9 @@
 ;; out into a separate class.  This is necessary to keep pessimistic and optimistic
 ;; things in sync, and should help simplify and generalize subsumption stuff.
 
+;; Here we replace all subsumption with consistency-maintaining and TDBs in summaries.
+;; This simplifies problems with cycles that arrise when doing subsumption right.
+
 ;; All TODOs from dash_astar_opt also apply here.
 
 ;; TODO: Split out SP "name" from stub
@@ -21,10 +24,8 @@
 
 ;; TODO: add pess
 
-;; TODO: propagate top-down-bounds downward in smarter way using existing IS?
 ;; TODO: we need to make sure tree sums get called on add-output! first to ensure
 ;;       consistency with top-down-bounds ? 
-;; TODO: top-down bound business does not actually help at all
 
 ;;  (except ensuring consistency if we're asserting it...)
 ;; When we create a stub, we also get: tree summarizer, subsumption-thing.
@@ -97,52 +98,35 @@
   (get-outputs [sw] (doall (seq outputs))))
 
 (defn- connect-and-watch! [p c f]
-  (summaries/connect! p c false)
+  (summaries/connect! p c)
   (add-watcher! c f))
 
 ;;;;;;;;;;;;;;;;;;;;;;;;;;      Tree Summarizers      ;;;;;;;;;;;;;;;;;;;;;;;;;;
 
-;; Every child of TS is also a subsumption parent.
-;; Then, TS has:
-;; Children:
-;;  Ordinary: stub, SP, TS of outputs
-;;  Subsuming: Subsuming TS's
-;; Parents:
-;;  Ordinary: whoever
-;;  Subsuming: stub, SP, TS of outputs,
-;; Note alternative: separate TS and ST - -but cycle is needed for memory, no matter what?.
-
 (declare sp-ts get-stub-output)
 
-;; Note: at least duriung creation, cycles *are* actually vicious -- lead to StackOverflow.
-;; TODO: fix cycles by making subsumption updates only happen when strictly < reward.
 ;; TODO: what updates are needed here?
 (defn- make-tree-summarizer [stub]
-  (let [bound-atom (atom 0)
-        ret (traits/reify-traits [summaries/simple-cached-node]
-              summaries/Summarizable
-              (summarize [s] 
-                (let [sum (summaries/or-summary s @bound-atom)]
-                  (println s sum @bound-atom) (Thread/sleep 100) 
-                  (reset! bound-atom (summary/max-reward sum))
-                  sum)))        
+  (let [ret (traits/reify-traits [summaries/or-summarizable summaries/simple-cached-node])        
         sp-watch! (fn [sp]
-                   (summaries/connect! sp ret true)
+                   (summaries/connect-subsumed! ret sp)
                    (connect-and-watch! ret sp
                      (fn [child-sp]
                        (let [child-ts (sp-ts child-sp)]
-                         (summaries/connect! ret child-ts false)
-                         (summaries/connect! child-ts ret true)
+                         (summaries/connect! ret child-ts)
+                         (summaries/connect-subsumed! ret child-ts)
                          (summaries/summary-changed! ret)))))]
     (if-let [sp (get-stub-output stub)]
       (sp-watch! sp)
-      (do (summaries/connect! stub ret true)
-          (connect-and-watch! ret stub sp-watch!)))
+      (do (summaries/connect-subsumed! ret stub)
+          (connect-and-watch! ret stub #(do (sp-watch! %) (summaries/summary-changed! ret)))))
     ret))
 
 ;; TODO: this basically looks just like old version now.
 ;; Main new idea was to be: auto-propagate subsumption arcs forward...
 ;; This is also what's needed for pess?
+
+;; TODO: think about status of published output -- does it need updating ? 
 
 ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
 ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;     Stubs     ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
@@ -165,7 +149,7 @@
 
 (defn- with-subsuming-sp! [subsuming-sp stub]
   (when subsuming-sp
-    (summaries/connect! (tree-summarizer stub) (sp-ts subsuming-sp) true))
+    (summaries/connect-subsumed! (sp-ts subsuming-sp) (tree-summarizer stub)))
   stub)
 
 (defn- set-stub-output! [stub sp]
@@ -184,7 +168,7 @@
   (assert (instance? angelic.search.implicit.dash_astar.Stub c))
   (if-let [sp (get-stub-output c)]
     (do (f sp) false)
-    (do (summaries/connect! p c false)
+    (do (summaries/connect! p c)
         (add-watcher! c f)
         true)))
 
@@ -225,6 +209,7 @@
 ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;     Subproblems     ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
 ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
 
+;; TODO: jsut incorporate Or into SP semantics?
 (defprotocol Subproblem
   (stub              [s])
   (output-set        [s])
@@ -255,7 +240,7 @@
      stub out-set terminal? ;; Note ni may have different context.
      (fn [s ni]
        (if (= ni (input-set stub)) stub (with-subsuming-sp! s (ri-fn s ni)))))]
-   summaries/Summarizable (summarize [s] (summary-fn s 0))))
+   summaries/Summarizable (summarize [s] (summary-fn s))))
 
 
 
@@ -329,7 +314,7 @@
            Evaluable
            (evaluate! [s] (reset! done? true)
             (set-stub-output! s (make-state-abstracted-subproblem s out))))]
-      (summaries/connect! ret out false)
+      (summaries/connect! ret out)
       ret)
     (make-eager-state-abstracted-stub inner-stub in-set)))
 
@@ -393,7 +378,7 @@
     (cond (not (= status :live))
           (make-simple-subproblem
            stb out-set true
-           (fn [s b] (summary/make-simple-summary (min (summaries/subsuming-bound s) b reward) status s)) ri-fn)
+           (fn [s] (summary/make-simple-summary (min (summaries/get-bound s) reward) status s)) ri-fn)
           
           (and subsuming-sp (not (terminal? subsuming-sp))) 
           (let [ret (make-simple-subproblem stb subsuming-sp out-set false summaries/or-summary ri-fn)]
@@ -415,10 +400,10 @@
     (traits/reify-traits [(simple-stub nm inp-set)]
       summaries/Summarizable
       (summarize [s]
-       (cond (= :ready @state) (summary/make-live-simple-summary (summaries/subsuming-bound s) s)
+       (cond (= :ready @state) (summary/make-live-simple-summary (summaries/get-bound s) s)
              (= :go    @state) summary/+worst-simple-summary+
              :else             (summary/make-live-simple-summary
-                                (min (summaries/subsuming-bound s) (second @state)) s)))   
+                                (min (summaries/get-bound s) (second @state)) s)))   
       Evaluable
       (evaluate! [s]
         (assert (not (= :go @state)))
@@ -454,6 +439,7 @@
 
 (declare make-pair-stub1 make-pair-stub2)
 
+;; TODO: put back disconnect ? 
 ;; Note: this is the only place logic depends on summary.  Potential for problems?
 (defn- make-pair-subproblem [stb left-sp right-sp]
   (let [nm (stub-name stb)
@@ -464,18 +450,16 @@
              stb (output-set right-sp) false             
              (if (or expand-right? (not *collect-equal-outputs*)) summaries/or-summary
                  (let [left-done? (atom false)] ;; Manually take into account left-solved, when no output message.
-                   (fn [s b] 
+                   (fn [s] 
                      (when (and (not @left-done?) (summary/solved? (summaries/summary left-sp))) 
                        (reset! left-done? true) 
-                       (summaries/disconnect! s ss)
                         ;; Make sure we don't double count, because child will use tree-summarizer of left.
-                       (add-watcher! left-sp (fn [o] (def *sum* [s left-sp o])
-                                               (throw (RuntimeException. "Solved and children."))))
-                       (connect-and-watch-stub! s (make-pair-stub2 nm left-sp (stub right-sp))
-                          (fn [os] (connect-and-watch! s os #(add-sp-child! s %))))) ;; no update needed 
-                     (summaries/or-summary s b))))             
+                       (add-watcher! left-sp (fn [o] (throw (RuntimeException. "Solved and children."))))
+                       (add-sp-child! s (get-stub-output! (make-pair-stub2 nm left-sp (stub right-sp))))
+                       (summaries/add-bound! s Double/NEGATIVE_INFINITY))                     
+                     (summaries/or-summary s))))             
              (fn [s ri] (make-pair-stub1 nm (refine-input left-sp ri) #(refine-input right-sp %))))]
-    (summaries/connect! ret ss false)
+    (summaries/connect! ret ss)
     (let [[watch stub-f] (if expand-right?
                            [right-sp #(make-pair-stub2 nm left-sp (stub %))]
                            [left-sp #(make-pair-stub2 nm % (refine-input right-sp (output-set %)))])]
@@ -491,7 +475,7 @@
     (if-let [right-sp (get-stub-output right-stub)] ;; short-circuit the mess below
       (make-evaluated-stub nm is #(make-pair-subproblem % left-sp right-sp))
       (let [ret (traits/reify-traits [summaries/sum-summarizable (simple-stub nm is)])]
-        (summaries/connect! ret (sp-ts left-sp) false)
+        (summaries/connect! ret (sp-ts left-sp))
         (connect-and-watch-stub! ret right-stub 
           #(set-stub-output! ret (make-pair-subproblem ret left-sp %)))
         ret))))
@@ -544,11 +528,13 @@
     (summaries/solve
      (apply get-root-summarizer (fs/make-init-pair henv))
      choice-fn local? evaluate!
-     #(let [n (second (sp-name %))] (when-not (= (first n) :noop) n)))))
+     #(let [n (fs/fs-name (second (sp-name %)))] (when-not (= (first n) :noop) n)))))
 
 ;; (do (use '[angelic env hierarchy] 'angelic.domains.nav-switch 'angelic.search.implicit.fah-astar-expand 'angelic.search.implicit.fah-astar-eval 'angelic.search.implicit.dash-astar 'angelic.domains.discrete-manipulation) (require '[angelic.search.explicit.hierarchical :as his]))
 
 ;; (do (use '[angelic env hierarchy] 'angelic.domains.nav-switch  'angelic.search.implicit.dash-astar 'angelic.domains.discrete-manipulation) (require '[angelic.search.explicit.hierarchical :as his]))
+
+; (require '[angelic.search.implicit.dash-astar :as da] '[angelic.search.implicit.dash-astar-opt :as dao])
 
 ; (do (def s summaries/summarize) (def sc summary/children) (def nc summaries/node-ordinary-children) (def src summary/source))
 ;;(dotimes [_ 1] (reset! summaries/*summary-count* 0) (debug 0 (time (let [h (make-nav-switch-hierarchy (make-random-nav-switch-env 2 1 0) true)]  (println (run-counted #(second (implicit-dash-a* h))) @summaries/*summary-count*)))))
@@ -562,5 +548,5 @@
 ; (dotimes [_ 1] (reset! summaries/*summary-count* 0) (reset! *out-count* 0) (debug 0 (let [h (make-discrete-manipulation-hierarchy (make-random-discrete-manipulation-env 4 3))]  (time (println (run-counted #(identity (implicit-dash-a* h))) @summaries/*summary-count* @*out-count*)) )))
 
 
-
+; (dotimes [_ 1] (reset! summaries/*summary-count* 0) (reset! da/*out-count* 0) (reset! dao/*out-count* 0) (debug 0 (let [h (make-nav-switch-hierarchy (make-random-nav-switch-env 2 1 0) true)]  (time (println (run-counted #(identity (da/implicit-dash-a* h :gather false :d false :s nil))) @summaries/*summary-count* @da/*out-count*)) (time (println (run-counted #(identity (dao/implicit-dash-a*-opt h :gather false :d false :s nil))) @summaries/*summary-count*  @dao/*out-count*)) )))
 
