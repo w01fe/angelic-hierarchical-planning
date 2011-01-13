@@ -176,13 +176,7 @@
     (let [b  (summaries/get-bound stb)
           ts (tree-summarizer stb)]
       (summaries/connect-subsumed! ts sp)
-      (connect-and-watch! ts sp
-        (fn [child-sp]
-          (let [child-ts (sp-ts child-sp)]
-            (assert (tree-summarizer? child-ts))
-            (summaries/connect! ts child-ts)
-            (summaries/connect-subsumed! ts child-ts)
-            (summaries/summary-changed! ts))))
+      (summaries/connect! ts sp)
       (summaries/add-bound! ts b) ;; TODO: ???
       (summaries/summary-changed! ts)))
   (add-output! stb sp))
@@ -253,10 +247,16 @@
 ;; Doing it all with stubs makes subsumption forwarding easier.
 (defn- add-sp-child-stub! [sp child-stub up?]
   (assert (not (terminal? sp)))
-  (connect-and-watch-stub! sp child-stub up?
-    (fn [child-sp]
-      (summaries/summary-changed-local! sp)
-      (add-output! sp child-sp))))
+  (let [ts (sp-ts sp)]
+   (connect-and-watch-stub! sp child-stub up?
+     (fn [child-sp]
+       (summaries/summary-changed-local! sp)
+       (when (identical? (ts-stub ts) (stub sp))
+         (let [child-ts (sp-ts child-sp)]
+           (summaries/connect! ts child-ts)
+           (summaries/connect-subsumed! ts child-ts)
+           (summaries/summary-changed! ts)))
+       (add-output! sp child-sp)))))
 
 (comment
 ;; TODO: propagation could be done more efficiently using a separate,
