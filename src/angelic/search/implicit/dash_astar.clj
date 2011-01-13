@@ -163,8 +163,11 @@
 ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;; Used by stubs ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
 
 
+;; Note: putting ts stuff here rather than watching above ensures things happen
+;; in desired order.
 ;; TODO: set stub to -inf here, simplify other code? 
 ;; TODO: efficiency?
+;; TODO: stb is redundant here...
 (defn- set-stub-output! [stb sp]
   (assert (empty? (get-outputs stb)))
   (assert (identical? (stub sp) stb))
@@ -244,17 +247,27 @@
 (defmethod print-method angelic.search.implicit.dash_astar.Subproblem [sp o]
  (print-method (format "#<SP$%8h %s>" (System/identityHashCode (stub sp)) (sp-name sp)) o))
 
-(defn direct-sp? [sp] )
 
+;; TODO: Must be careful to account for wrappers
+;; All SP children are added through this interface.
+;; Doing it all with stubs makes subsumption forwarding easier.
 (defn- add-sp-child-stub! [sp child-stub up?]
-  (when (= (ts-stub (sp-ts sp)) (stub sp)) ;; not a wrapper; don't double-copy!
-    ;; TODO
-    )
+  (assert (not (terminal? sp)))
   (connect-and-watch-stub! sp child-stub up?
     (fn [child-sp]
-      (assert (not (terminal? sp)))
       (summaries/summary-changed-local! sp)
       (add-output! sp child-sp))))
+
+(comment
+;; TODO: propagation could be done more efficiently using a separate,
+;;   single tracker per SP that hashes on name, for instance.
+  #_(declare norm-name)
+  (when (and *propagate-subsumption* (= (ts-stub (sp-ts sp)) (stub sp))) ;; not wrapper
+    (let [child-name (norm-name (stub-name child-stub))]
+      (doseq [])
+      )
+    ))
+
 
 
 (traits/deftrait simple-subproblem [stb out-set term? ri-fn] [] [watched-node]
