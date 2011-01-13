@@ -24,6 +24,7 @@
   (child-seqs [sk input-set] "seq of seqs of FunctionSets. Only valid if above is :live.
                               (= :live (status sk s)) ==>
                                  (subset? (child-seqs sk s-subset) (child-seqs sk s)) (for names)")
+  (precondition-context-set [sk input-set])
   (extract-context [sk input-set] "Relevant parts of input-set, for state abstraction")
   (get-logger  [sk input-set] "Relevant parts of input-set, for state abstraction"))
 
@@ -42,6 +43,7 @@
           p)))    
     (status     [sk input-set] (status-fn input-set))
     (child-seqs [sk input-set] (child-seq-fn input-set))
+    (precondition-context-set [sk input-set] (angelic/precondition-context-set action input-set))
     (extract-context [sk input-set]
       (state/extract-context input-set (angelic/precondition-context-set action input-set)))
     (get-logger  [sk input-set]

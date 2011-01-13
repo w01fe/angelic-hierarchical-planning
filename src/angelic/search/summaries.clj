@@ -64,7 +64,7 @@
   Node
   (add-child!     [n c] (.add children c))
   (remove-child!  [n c] (remove! children c))  
-  (child-nodes    [n]   (seq children))
+  (child-nodes    [n]   (doall (seq children)))
   
   (add-parent!    [n p] (.add parents p))
   (remove-parent! [n p] (remove! parents p))    

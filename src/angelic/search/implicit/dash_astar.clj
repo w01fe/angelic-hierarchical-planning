@@ -38,7 +38,7 @@
 
 ;; TODO: investigate plan seq  normalization. (flattening)
 ;; TODO: put back kill
-
+;; TODO: figure out cause of comodification for children, e.g., d-m 3-3 -- seems to be pair
 
 (set! *warn-on-reflection* true)
 
@@ -273,8 +273,7 @@
      (fn summarize [s] (@sm-fn s)))))
 
 (defmethod get-subproblem :Atomic [[_ fs :as n] inp-set] 
-  (make-atomic-subproblem fs (if *state-abstraction* (fs/get-logger fs inp-set) inp-set)))          
-
+  (make-atomic-subproblem fs inp-set))          
 
 ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;      Pair      ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
 
@@ -329,6 +328,7 @@
 
 ;;;;;;;;;;;;;;;;;;;;;;;;;;;     Output Collection     ;;;;;;;;;;;;;;;;;;;;;;;;;;
 
+;; TODO: Logger can get lost when we have non-atomic inside.
 (defn oc-name [inner-name] [:OC inner-name])
 
 (defn- =-state-sets [s1 s2]
@@ -337,7 +337,14 @@
 
 (defn wrapper? [sp] (#{:OC :SA} (first (sp-name sp))))
 
-(defn- make-output-collecting-subproblem [inner-sp]
+(defn atomic-name-fs [n] (util/match [[:Atomic ~fs] n] fs))
+(defn log-input [fs inp-set] (if *state-abstraction* (fs/get-logger fs inp-set) inp-set))
+
+(defn get-cache-key [atomic-n inp-set]
+  [atomic-n
+   (if *state-abstraction* (fs/extract-context (atomic-name-fs atomic-n) inp-set) inp-set)])
+
+(defn- make-output-collecting-subproblem [fs inner-sp]
   (make-wrapped-subproblem
    (oc-name (sp-name inner-sp)) (input-set inner-sp) #{:Atomic :Pair} inner-sp
    identity
@@ -346,7 +353,7 @@
        (do (connect-and-watch! sp child-sp nil #(child-watch sp %2))
            (summaries/summary-changed! sp))
        (add-sp-child! sp 
-         (if (wrapper? child-sp) child-sp (make-output-collecting-subproblem child-sp))
+         (if (wrapper? child-sp) child-sp (make-output-collecting-subproblem fs child-sp))
          false)))
    (fn refine-input [s ni]
      (if (= (input-set s) ni)
@@ -355,15 +362,12 @@
          (let [ret (get-subproblem (sp-name s) ni)]
            (add-subsuming-sp! (canonicalize ret) inner-sp)
            ret)
-         (make-output-collecting-subproblem (refine-input inner-sp ni)))))))
+         (make-output-collecting-subproblem fs (refine-input inner-sp (log-input fs ni))))))))
 
-(defn atomic-name-fs [n] (util/match [[:Atomic ~fs] n] fs))
-(defn get-cache-key [atomic-n inp-set]
-  [atomic-n
-   (if *state-abstraction* (fs/extract-context (atomic-name-fs atomic-n) inp-set) inp-set)])
 
 (defmethod get-subproblem :OC [[_ inner-n :as n] inp-set]
-  (let [make-sp #(make-output-collecting-subproblem (get-subproblem inner-n inp-set))]
+  (let [fs (atomic-name-fs inner-n)
+        make-sp #(make-output-collecting-subproblem fs (get-subproblem inner-n (log-input fs inp-set)))]
     (if-let [^HashMap dc *decompose-cache*]
       (util/cache-with dc (get-cache-key inner-n inp-set) (make-sp))
       (make-sp))))
@@ -377,13 +381,13 @@
 (declare make-state-abstracted-subproblem)
 
 ;; Note: subsumed subproblems can have different irrelevant vars
-(defn- make-eager-state-abstracted-subproblem [inner-sp inp-set]
+(defn- make-eager-state-abstracted-subproblem [fs inner-sp inp-set]
   (make-wrapped-subproblem
    (sa-name (sp-name inner-sp)) inp-set #{:OC} inner-sp
-   #(state/transfer-effects inp-set %)
-   (fn [sp child-sp] (add-sp-child! sp (make-state-abstracted-subproblem child-sp inp-set) true))
-   (fn [sp ni] (if (=-state-sets ni inp-set) sp (make-state-abstracted-subproblem (refine-input inner-sp ni) ni)))))
-
+   #(do (assert (= (state/current-context %) (fs/precondition-context-set fs inp-set)))
+        (state/transfer-effects inp-set %))
+   (fn [sp child-sp] (add-sp-child! sp (make-eager-state-abstracted-subproblem fs child-sp inp-set) true))
+   (fn [sp ni] (if (=-state-sets ni inp-set) sp (make-eager-state-abstracted-subproblem fs (refine-input inner-sp ni) ni)))))
 
 
 (declare make-deliberate-state-abstracted-subproblem)
@@ -413,7 +417,8 @@
    inner-sp inp-set))
 
 (defmethod get-subproblem :SA [[_ inner-n :as n] inp-set]
-  (make-state-abstracted-subproblem (get-subproblem inner-n inp-set) inp-set))
+  (let [fs (atomic-name-fs (second inner-n))] 
+    (make-eager-state-abstracted-subproblem fs (get-subproblem inner-n inp-set) inp-set)))
 
 
 ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
