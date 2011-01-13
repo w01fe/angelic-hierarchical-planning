@@ -49,13 +49,9 @@
 ;; --> TODO: this should happen as soon as stub is created, not have to wait for SP.
 ;; This means that TS needs to know about stubs-in-training.
 
-;; TODO: wrapping names don't match pair-stub1.  Get rid of norm-name hack?
-;; TODO: subsumptin should be sets, not lists? 
+;; TODO: investigate name normalization.
+;; TODO: put back kill
 
-;; TODO TODO: fix names.
-;; TODO: turn kill back on
-
-;; --> TODO: merge stubs and subproblems!
 
 (set! *warn-on-reflection* true)
 
@@ -70,226 +66,176 @@
 ;;;;;;;;;;;;;;;;;;;;;;;;;;;;       Utilities      ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
 ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
 
-;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;      Watches      ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
+;;;;;;;;;;;;;;;;;;;;;;;;;;      Tree Summarizers      ;;;;;;;;;;;;;;;;;;;;;;;;;;
 
-;; Stubs have at most one output (SP), SPs have any number
 
-(defprotocol Watched
-  (add-watcher! [s w] "Add a watcher to be notified of all outputs to this.
-                       A watcher is just a fn of new-subproblem.")
-  (add-output!  [sw o] "O is a subproblem.  sw may have an updated summary,
-                        but will not call summary-changed! on its parents.
-                        The receiver is responsible for handling this change.
-                        This allows handling decrease+increase in lock-step. ")
-  (get-outputs  [sw]  "List current outputs"))
+(defprotocol TreeSummarizer (ts-sp [ts]))
+
+(defn- make-tree-summarizer [sp]
+  (let [ret (traits/reify-traits [summaries/or-summarizable summaries/simple-cached-node]
+              TreeSummarizer (ts-sp [ts] sp))]
+    (summaries/connect! ret sp)
+    (summaries/connect-subsumed! ret sp)
+    ret))
+
+(defmethod print-method angelic.search.implicit.dash_astar.TreeSummarizer [s o]
+  (print-method (format "#<TS %s>" (print-str (ts-sp s))) o))
+
+
+;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
+;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;  Subproblems  ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
+;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
+
+;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;  Protocol  ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
+
+(defprotocol Subproblem
+  (sp-name             [s])
+  (input-set           [s])
+  (sp-ts               [s] "Summarizer that includes outputs/children.")
+  (evaluate!           [s] "Evaluate or throw exception if not evaluable.")
+
+  (get-output-set      [s]  "Return output or nil")
+  (add-output-watcher! [s w] "Add watcher to be notified of self when has output.")
+
+  (get-children        [s]  "List current outputs, for debugging only.")
+  (add-child-watcher!  [s w] "Add a watcher to be notified of all child sps.")
+
+  (subsuming-sps       [ts] "subproblems with same name, >= inp-set") 
+  (add-subsuming-sp!   [ts subsuming-sp]) 
+
+  (refine-input        [s refined-input-set] "Return a child sp. Must have output.")
+
+  
+  ;; Internal interface
+  (add-sp-child!*      [s o] "O is a subproblem.  sw may have an updated summary,
+                              but will not call summary-changed! on its parents.
+                              The receiver is responsible for handling this change.
+                              This allows handling decrease+increase in lock-step. ")
+  (set-output-set!    [s o] "Set output set. "))
+
+(defn get-output-set! [sp] (let [o (get-output-set sp)] (assert o) o))
+
+(defn terminal? [sp]
+  (and (empty? (get-children sp))
+       (not (summary/live? (summaries/summary sp)))))
+
+
+(defmethod print-method angelic.search.implicit.dash_astar.Subproblem [sp o]
+  (print-method (format "#<SP$%8h %s %s>" (System/identityHashCode sp) (sp-name sp)
+                        (if (get-output-set sp) :OUT :STUB)) o))
+
+
+;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;  Generic Trait  ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
 
 (def *out-count* (atom 1))
 
-(traits/deftrait watched-node
-  []
-  [^ArrayList watchers (ArrayList.)
-   ^ArrayList outputs (ArrayList.)]
+(defn underived? [sp] (identical? sp (ts-sp (sp-ts sp))))
+
+(traits/deftrait simple-subproblem
+  [nm inp-set wrapped-ts eval!-fn ri-fn]
+  [                 ts-atom          (atom wrapped-ts)
+   ^ArrayList       output-watchers  (ArrayList.)
+                    out-set-atom     (atom nil)
+   ^ArrayList       child-watchers   (ArrayList.)
+   ^ArrayList       child-list       (ArrayList.)
+   ^IdentityHashMap subsuming-sp-set (IdentityHashMap.)]
   [summaries/simple-cached-node]
-  Watched
-  (add-watcher! [sw w] #_(println :AW sw w) 
-    (.add watchers w) 
-    (doseq [o (doall (seq outputs))] (swap! *out-count* inc) (w o)) )
-  (add-output! [sw o] ;               (println :AO sw o) (Thread/sleep 10)
-    (.add outputs o) (assert (not (= sw o)))
-    (doseq [w (doall (seq watchers))] (swap! *out-count* inc) (w o)))
-  (get-outputs [sw] (doall (seq outputs))))
-
-(defn- connect-and-watch! [p c f]
-  (summaries/connect! p c)
-  (add-watcher! c f))
-
-;;;;;;;;;;;;;;;;;;;;;;;;;;      Tree Summarizers      ;;;;;;;;;;;;;;;;;;;;;;;;;;
-
-(declare sp-ts get-stub-output stub-name sp-name tree-summarizer)
-
-(defprotocol TreeSummarizer
-  (ts-stub [ts])
-  (subsuming-sps [ts]) ; True tree summarizers subsuming this one.
-  (add-subsuming-sp! [ts subsuming-sp])
-  (add-child-stub! [ts child-stub])) ; Add stub whose output will become output of sp.
+  Subproblem
+  (sp-name             [s] nm)
+  (input-set           [s] inp-set)
+  (sp-ts               [s] (or @ts-atom (reset! ts-atom (make-tree-summarizer s))))
+  (evaluate!           [s] (eval!-fn s))
   
+  (get-output-set      [s] @out-set-atom)
+  (add-output-watcher! [s w] (if @out-set-atom (w s) (.add output-watchers w)))
+  (set-output-set!    [s o]
+    (assert (nil? @out-set-atom))
+    (reset! out-set-atom o)
+    (summaries/summary-changed-local! s)
+    (when (underived? s) 
+      (summaries/summary-changed! (sp-ts s)))    
+    (doseq [w output-watchers] (w s)))
 
-;; TODO: (when-not (get-stub-output stb)  ) on stub connections; can't work now.
+  (get-children        [s] (doall (seq child-list)))
+  (add-child-watcher!  [s w]
+    (.add child-watchers w)                   
+    (doseq [c (get-children s)] (swap! *out-count* inc) (w s c)))
+  (add-sp-child!*      [s c] 
+    (assert (and (not (identical? s c)) (get-output-set c)))
+    (.add child-list c)
+    (summaries/summary-changed-local! s)
+    (when (underived? s)
+      (summaries/connect! (sp-ts s) (sp-ts c))
+      (summaries/summary-changed! (sp-ts s)))    
+    (doseq [w (doall (seq child-watchers))] (swap! *out-count* inc) (w s c)))
 
-(defn- make-tree-summarizer [stb]
-  (let [subsuming-sp-set (IdentityHashMap.)
-        ret (traits/reify-traits [summaries/or-summarizable summaries/simple-cached-node]
-              TreeSummarizer
-              (ts-stub [ts] stb)
-              (subsuming-sps [ts] (keys subsuming-sp-set))
-              (add-subsuming-sp! [ts subsuming-sp]
-                (util/assert-is (= (stub-name stb) (sp-name subsuming-sp)))                 
-                (when-not (.containsKey subsuming-sp-set subsuming-sp)
-                  (.put subsuming-sp-set subsuming-sp true)
-                  (summaries/connect-subsumed! (sp-ts subsuming-sp) ts)))
-              (add-child-stub! [ts child-stub]
-                (summaries/connect-subsumed! ts (tree-summarizer child-stub))
-                #_ ::TODO-propagate             
-                ))]
-    (summaries/connect! ret stb)
-    (summaries/connect-subsumed! ret stb)
+  (subsuming-sps [s] (keys subsuming-sp-set))
+  (add-subsuming-sp! [s subsuming-sp]
+    (util/assert-is (= nm (sp-name subsuming-sp)))                 
+    (when-not (.containsKey subsuming-sp-set subsuming-sp)
+      (.put subsuming-sp-set subsuming-sp true)
+      (summaries/connect-subsumed! (sp-ts subsuming-sp) (sp-ts s))))
+  
+  (refine-input    [s ni] (let [ret (ri-fn s ni)] (util/assert-is (= nm (sp-name ret))) ret)))
+
+
+;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;  Utils  ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
+
+(defn- connect-and-watch! [p c out-f child-f]
+  (summaries/connect! p c)
+  (when out-f (add-output-watcher! c out-f))
+  (add-child-watcher! c child-f))
+
+(defn- connect-and-watch-ts! [p c out-f]
+  (summaries/connect! p (sp-ts c))
+  (if (get-output-set c)
+    (do (out-f c) false)
+    (do (add-output-watcher! c out-f) true)))
+
+(defn- add-sp-child! [sp child-sp up?]
+;  (println sp child-sp) (Thread/sleep 100)
+  (when (underived? sp)
+    (summaries/connect-subsumed! (sp-ts sp) (sp-ts child-sp))
+    ;; TODO: propagate!
+    )
+  (if (get-output-set child-sp)
+    (add-sp-child!* sp child-sp)
+    (do (summaries/connect! sp child-sp)
+        (add-output-watcher! child-sp
+          (fn [child-sp]
+            (summaries/disconnect! sp child-sp)
+            (add-sp-child!* sp child-sp)))
+        (when up? (summaries/summary-changed! sp)))))
+
+;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;  Constructors  ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
+
+(defn noeval [s] (throw (RuntimeException. (print-str s "not evaluable!"))))
+
+(defn make-wrapped-subproblem [nm inp-set prefix-set inner-sp output-wrap child-watch ri-fn]
+  (assert (prefix-set (first (sp-name inner-sp))))
+  (let [ret (traits/reify-traits
+             [summaries/or-summarizable
+              (simple-subproblem nm inp-set (sp-ts inner-sp) noeval ri-fn)])]
+    (connect-and-watch! ret inner-sp
+      (fn [inner-sp] (set-output-set! ret (output-wrap (get-output-set! inner-sp))))
+      (fn [inner-sp inner-child] (child-watch ret inner-child)))
     ret))
 
-
-(defn tree-summarizer? [x] (instance? angelic.search.implicit.dash_astar.TreeSummarizer x))
-
-(defmethod print-method angelic.search.implicit.dash_astar.TreeSummarizer [s o]
- (let [s (ts-stub s)]
-  (print-method (format "#<TS$%8h %s>" (System/identityHashCode s) (stub-name s)) o)))
-
-;; TODO: think about status of published output -- does it need updating ? 
-
-;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
-;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;     Stubs     ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
-;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
-
-;; Stub must implement Summarizable, optionally implements Evaluable
-
-(defprotocol Stub
-  (stub-name       [s])
-  (input-set       [s])
-  (tree-summarizer [s] "Summarizer that includes outputs/children."))
-
-(defprotocol Evaluable (evaluate! [s]))
-
-(defmethod print-method angelic.search.implicit.dash_astar.Stub [s o]
-  (print-method (format "#<ST$%8h %s>" (System/identityHashCode s) (stub-name s)) o))
-
-
-;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;; Used by stubs ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
-
-(declare stub)
-;; Note: putting ts stuff here rather than watching above ensures things happen
-;; in desired order.
-;; TODO: set stub to -inf here, simplify other code? 
-;; TODO: efficiency?
-;; TODO: stb is redundant here...
-(defn- set-stub-output! [stb sp]
-  (assert (empty? (get-outputs stb)))
-  (assert (identical? (stub sp) stb))
-  (summaries/summary-changed-local! stb)
-  (when (identical? stb (ts-stub (tree-summarizer stb)))
-    (let [b  (summaries/get-bound stb)
-          ts (tree-summarizer stb)]
-      (summaries/connect-subsumed! ts sp)
-      (summaries/connect! ts sp)
-      (summaries/add-bound! ts b) ;; TODO: ???
-      (summaries/summary-changed! ts)))
-  (add-output! stb sp))
-
-(defn- get-stub-output  [s] (first (get-outputs s)))
-(defn- get-stub-output! [s] (util/safe-singleton (get-outputs s)))
-
-
-;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;; Used on stubs ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
-
-;; Just give output directly if subproblem is ready; return true if waiting
-;; if up?, updates p if c does not produce immediate output.
-(defn- connect-and-watch-stub! [p c up? f]
-  (assert (instance? angelic.search.implicit.dash_astar.Stub c))
-  (if-let [sp (get-stub-output c)]
-    (f sp)
-    (do (summaries/connect! p c)
-        (add-watcher! c f)
-        (when up? (summaries/summary-changed! p)))))
-
-;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;; Making stubs ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
-
-(traits/deftrait simple-stub [nm inp] [ts-atom (atom nil)] [watched-node]
-  Stub
-  (stub-name       [s] nm)
-  (input-set       [s] inp)
-  (tree-summarizer [s] (or @ts-atom (reset! ts-atom (make-tree-summarizer s)))))
-
-(defn- make-evaluated-stub [nm in-set sp-fn]
-  (let [ret (traits/reify-traits [summaries/worst-summarizable (simple-stub nm in-set)])]
-    (set-stub-output! ret (sp-fn ret))
-    ret))
-
-(defn- make-wrapping-stub [[nm in-set] inner-stub sp-fn]
-  (let [ret (traits/reify-traits [summaries/or-summarizable watched-node]
-              Stub (stub-name       [s] nm)
-                   (input-set       [s] in-set)
-                   (tree-summarizer [s] (tree-summarizer inner-stub)))]
-    (connect-and-watch-stub! ret inner-stub false #(set-stub-output! ret (sp-fn ret %)))
-    ret))
-
-
-(defmulti get-stub (fn get-stub-dispatch [nm inp] (first nm)))
-
-;; TODO: canonicalize in make-stub, for everyone ? 
-;; TODO: do lookups via normalized sequences? 
-
-;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
-;;;;;;;;;;;;;;;;;;;;;;;;;;;;;     Subproblems     ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
-;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
-
-;; TODO: jsut incorporate Or into SP semantics?
-(defprotocol Subproblem
-  (stub              [s])
-  (output-set        [s])
-  (terminal?         [s] "Subproblem will not return any outputs.")
-  (refine-input      [s refined-input-set] "Return a child stub."))
-
-(defn- sp-name [s] (stub-name (stub s)))
-(defn- sp-ts   [s] (tree-summarizer (stub s)))
-
-(defmethod print-method angelic.search.implicit.dash_astar.Subproblem [sp o]
- (print-method (format "#<SP$%8h %s>" (System/identityHashCode (stub sp)) (sp-name sp)) o))
-
-
-;; All SP children are added through this interface.
-;; Doing it all with stubs makes subsumption forwarding easier.
-(defn- add-sp-child-stub! [sp child-stub up?]
-  (assert (not (terminal? sp)))
-  (let [ts (sp-ts sp)
-        underived? (identical? (ts-stub ts) (stub sp))]
-    (when underived? (add-child-stub! ts child-stub))
-    (connect-and-watch-stub! sp child-stub up?
-      (fn [child-sp]
-        (summaries/summary-changed-local! sp)
-        (when underived?
-          (summaries/connect! ts (tree-summarizer child-stub))
-          (summaries/summary-changed! ts))
-        (add-output! sp child-sp)))))
-
-(comment
-;; TODO: propagation could be done more efficiently using a separate,
-;;   single tracker per SP that hashes on name, for instance.
-  #_(declare norm-name)
-  (when (and *propagate-subsumption* (= (ts-stub (sp-ts sp)) (stub sp))) ;; not wrapper
-    (let [child-name (norm-name (stub-name child-stub))]
-      (doseq [])
-      )
-    ))
-
-
-
-(traits/deftrait simple-subproblem [stb out-set term? ri-fn] [] [watched-node]
-  Subproblem (stub            [s] stb)
-             (output-set      [s] out-set)
-             (terminal?       [s] term?)
-             (refine-input    [s ni] #_ (ri-fn s ni)
-                              (let [ret  (ri-fn s ni)] (util/assert-is (= (stub-name stb) (stub-name ret))) ret)))
 
 ;; Note: summary-fn should take subsuming-bound into account.
-(defn- make-simple-subproblem [stub out-set terminal? summary-fn ri-fn]
+(defn- make-simple-subproblem [nm inp-set ri-fn eval-fn summary-fn]
   (traits/reify-traits
    [(simple-subproblem
-     stub out-set terminal? ;; Note ni may have different context.
-     (fn [s ni]
-       (if (= ni (input-set stub))
-         stub
-         (let [subsumed-stub (ri-fn s ni)]
-           (add-subsuming-sp! (tree-summarizer subsumed-stub) s)
-           subsumed-stub))))]
+     nm inp-set nil eval-fn
+     (fn [s ni] ;; Note ni may have different context.
+       (if (= ni inp-set) s
+         (let [subsumed-sp (ri-fn s ni)]
+           (add-subsuming-sp! (sp-ts subsumed-sp) s)
+           subsumed-sp))))]
    summaries/Summarizable (summarize [s] (summary-fn s))))
 
+;; Get a fresh subproblem with the given name and input.
+(defmulti get-subproblem (fn get-subproblem-dispatch [nm inp] (first nm)))
 
 
 
@@ -297,172 +243,94 @@
 ;;;;;;;;;;;;;;;;;;;;;;;;;;     Core Subproblems     ;;;;;;;;;;;;;;;;;;;;;;;;;;;;
 ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
 
-;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;      Names       ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
+;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;      Atomic       ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
+
+(declare refinement-names)
 
 (defn atomic-name [fs] [:Atomic fs])
 
-(declare oc-name sa-name)
-(defn wrapped-atomic-name [fs]
-  (let [in  (atomic-name fs)
-        mid (if *collect-equal-outputs* (oc-name in) in)]
-    (if *state-abstraction* (sa-name mid) mid)))
+;; Note: this is double-stage to lazily generate children.  Could be simpler single-stage.
+(defn- make-atomic-subproblem [fs inp-set]
+  (let [nm    (atomic-name fs)
+        state (atom :ready) ;; set to out-set after first eval, then :go after second.
+        sm-fn (atom #(summary/make-live-simple-summary (summaries/get-bound %) %))] 
+    (make-simple-subproblem
+     nm inp-set
+     (fn [s ri] (assert (not *collect-equal-outputs*)) (get-subproblem nm  ri))
+     (fn evaluate! [s]
+;;       (println "eval" nm)
+       (assert (not (= :go @state)))
+       (if (not (= :ready @state))
+         (let [out-set @state] ;; Go live with chilren
+           (reset! state :go)
+           (if-let [subsuming-sps (seq (filter #(not (terminal? %)) (subsuming-sps s)))]
+             (connect-and-watch! s (apply min-key (comp summaries/get-bound sp-ts) subsuming-sps)
+               (fn ignore-output [sub] nil)
+               (fn [sub sub-out] (add-sp-child! s (refine-input sub-out inp-set) true)))
+             (doseq [ref-name (refinement-names fs inp-set)] #_ (println fs ref-name)
+               (add-sp-child! s (get-subproblem ref-name inp-set) false))) ;; TODO: watch ? 
+           (reset! sm-fn summaries/or-summary)
+           (set-output-set! s out-set))           
+         (if-let [[out-set reward] (fs/apply-opt fs inp-set)]
+           (let [status (fs/status fs inp-set)]
+             (if (= status :live)
+               (do (reset! state out-set) ;; Wait to generate children
+                   (summaries/add-bound! s reward))
+               (do (reset! state :go) ;; Fixed (blocked/solved)
+                   (reset! sm-fn #(summary/make-simple-summary (min (summaries/get-bound %) reward) status %))
+                   (set-output-set! s out-set))))
+           (do (reset! state :go) ;; Die
+               (summaries/add-bound! s Double/NEGATIVE_INFINITY)))))     
+     (fn summarize [s] (@sm-fn s)))))
+
+(defmethod get-subproblem :Atomic [[_ fs :as n] inp-set] 
+  (make-atomic-subproblem fs (if *state-abstraction* (fs/get-logger fs inp-set) inp-set)))          
+
+
+;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;      Pair      ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
 
 (defn pair-name [l r] [:Pair l r])
 
-(defn left-factor [is]
-  (loop [s (next is) ret (first is)]
-    (if s (recur (next s) (pair-name ret (first s))) ret)))
-
-(defn right-factor [[f & r]]
-  (if (seq r) (pair-name f (right-factor r)) f))
-
-(defn- make-fs-seq-name [fs-seq]
-  (assert (seq fs-seq))
-  ((if *left-recursive* left-factor right-factor)
-   (map wrapped-atomic-name fs-seq)))
-
-;; TODO: flatten as well?
-(comment
-  (defn norm-name [n]
-   (case (first n)
-     :Atomic n
-     :Pair   [:Pair (norm-name (nth n 1)) (norm-name (nth n 2))]
-     :SA     (norm-name (second n))
-     :OC     (norm-name (second n)))))
-
-;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;      Atomic       ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
-
-(declare make-fs-seq-stub get-atomic-stub)
-
-;; TODO: we keep reward for :blocked case
-;; Note: weirdly, sometimes ignoring it helps. (not always)
-;; Three cases here: terminal, subsuming sp to piggyback, fresh.
-(defn- make-atomic-subproblem [stb out-set reward status]
-  (let [inp-set  (input-set stb)
-        ri-fn    (fn [s ri] (get-stub (stub-name stb) ri))]
-    (if (not (= status :live))
-      (let [leaf-s #(summary/make-simple-summary (min (summaries/get-bound %) reward) status %)]
-        (make-simple-subproblem stb out-set true leaf-s ri-fn))
-      (let [ret (make-simple-subproblem stb out-set false summaries/or-summary ri-fn)]
-        (if-let [subsuming-sps (seq (filter #(not (terminal? %)) (subsuming-sps (tree-summarizer stb))))]
-          (connect-and-watch! ret (apply min-key (comp summary/max-reward summaries/summary sp-ts) subsuming-sps)
-            (fn [sub-out]
-              (add-sp-child-stub! ret (refine-input sub-out inp-set) true)))
-          (doseq [child-name (map make-fs-seq-name (fs/child-seqs (second (stub-name stb)) inp-set))]
-            (add-sp-child-stub! ret (get-stub child-name inp-set) false))) 
-        ret))))
-
-;; Note: this is double-stage to lazily generate children.  Could be simpler single-stage.
-(defn make-atomic-stub [nm inp-set]
-  (let [state (atom :ready)]  ;; set to [out-set reward] after first eval, then :go after second.
-    (traits/reify-traits [(simple-stub nm inp-set)]
-      summaries/Summarizable
-      (summarize [s]
-       (cond (= :ready @state) (summary/make-live-simple-summary (summaries/get-bound s) s)
-             (= :go    @state) summary/+worst-simple-summary+
-             :else             (summary/make-live-simple-summary
-                                (min (summaries/get-bound s) (second @state)) s)))   
-      Evaluable
-      (evaluate! [s]
-        (assert (not (= :go @state)))
-        (let [fs     (second nm)
-              ready? (= :ready @state)]
-          (if-let [[out-set reward :as op] (if ready? (fs/apply-opt fs inp-set) @state)]
-            (let [status (if ready? (fs/status fs inp-set)   :live)]
-;              (println "eval" nm inp-set reward status)
-              (if (or (not ready?) (not (= status :live)))
-                (do (reset! state :go)
-                    (->> (make-atomic-subproblem s out-set reward status)
-                         (set-stub-output! s)))
-                (do (reset! state op) (summaries/summary-changed! s))))
-            (do (reset! state :go) (summaries/summary-changed! s))))))))
-
-
-(defmethod get-stub :Atomic [[_ fs :as n] inp-set] 
-  (make-atomic-stub n (if *state-abstraction* (fs/get-logger fs inp-set) inp-set)))          
-
-
-;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;   Sequences    ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
-
-(declare make-pair-stub1 make-pair-stub2)
-
-
-
-(defn init-pair-sp! [sp r? l-sp r-sp]
-  (let [ss (summaries/make-sum-summarizer (if r? [(sp-ts l-sp) r-sp] [l-sp (sp-ts r-sp)]))]
-    (summaries/connect! sp ss)
-    (let [[watch stub-f] (if r? [r-sp #(make-pair-stub2 l-sp (stub %))]
-                                [l-sp #(make-pair-stub2 % (refine-input r-sp (output-set %)))])]
-      (add-watcher! watch
-        (fn [o]
-          (summaries/summary-changed-local! ss)
-          (add-sp-child-stub! sp (stub-f o) true))))))
-
-;; Note: disconnect is needed since blocked trumps live.
-;; TODO: get rid of disconnect -- just need to kill at the right time ?
-;; Note: this is the only place logic depends on summary.  Potential for problems?
-(defn- make-pair-subproblem [stb left-sp right-sp]
-  (let [expand-right? (and (summary/solved? (summaries/summary left-sp)) (empty? (get-outputs left-sp)))
-        ret (make-simple-subproblem
-             stb (output-set right-sp) false             
-             (if (or expand-right? (not *collect-equal-outputs*)) ;; Switch to right when left solved, no output.
-               summaries/or-summary
-               (let [left-done? (atom false)]
+;; TODO: short circuit when left terminal?
+(defn- make-pair-subproblem
+  ([left-sp right-sp] (make-pair-subproblem left-sp (sp-name right-sp) (constantly right-sp)))
+  ([left-sp right-name right-sp-fn]
+;     (println "mps" left-sp right-name) (Thread/sleep 10)
+     (let [nm (pair-name (sp-name left-sp) right-name)
+           right-sp (delay (right-sp-fn (get-output-set! left-sp)))
+           right?-atom (atom false) ;; Expand on right
+           ri-fn    (fn [s ni] (make-pair-subproblem (refine-input left-sp ni) right-name #(refine-input @right-sp %)))
+           ss (summaries/make-sum-summarizer nil)
+           ret (make-simple-subproblem nm (input-set left-sp) ri-fn noeval
                  (fn [s] 
-                   (when (and (not @left-done?) (summary/solved? (summaries/summary left-sp))
-                              (empty? (get-outputs left-sp)))
-                     (reset! left-done? true)
-                     (summaries/disconnect! s (util/safe-singleton (summaries/child-nodes s)))
-                     (add-watcher! left-sp (fn [o] (throw (RuntimeException. "Solved and children."))))                     
-                     (init-pair-sp! s true left-sp right-sp))       
-                   (summaries/or-summary s))))             
-             (fn [s ri] (make-pair-stub1 (stub-name stb) (refine-input left-sp ri) #(refine-input right-sp %))))]
-    (init-pair-sp! ret expand-right? left-sp right-sp)
-    ret))
+                   (when (and *collect-equal-outputs*
+                              (not @right?-atom)
+                              (summary/solved? (summaries/summary left-sp))
+                              (empty? (get-children left-sp)))
+                     (reset! right?-atom true)
+                     (summaries/disconnect! ss (sp-ts @right-sp))
+                     (add-child-watcher! left-sp (fn [o c] (throw (RuntimeException. "Solved and children."))))
+                     (connect-and-watch! ss @right-sp
+                       (fn ignore-output [o] nil)
+                       (fn right-child [right-sp right-child]
+                         (summaries/summary-changed-local! ss)
+                         (add-sp-child! s (make-pair-subproblem left-sp right-child) true))))
+                   (summaries/or-summary s)))]    
+       (summaries/connect! ret ss)
+       (connect-and-watch! ss left-sp
+         (fn left-output [left-sp]
+           (summaries/summary-changed-local! ss)
+           (when (connect-and-watch-ts! ss @right-sp
+                   (fn [right-sp] (set-output-set! ret (get-output-set! right-sp))))
+             (summaries/summary-changed! ret)))
+         (fn left-child [left-sp left-child]
+           (summaries/summary-changed-local! ss)
+           (add-sp-child! ret (make-pair-subproblem left-child right-name #(refine-input @right-sp %)) true)))
+       ret)))
 
 
-(defn- make-pair-stub2 [left-sp right-stub]
-;  (util/assert-is (= (first (sp-name left-sp)) :SA))
-;  (util/assert-is (= (first (stub-name right-stub)) :SA))  
-  (let [nm (pair-name (sp-name left-sp) (stub-name right-stub))
-        is (input-set (stub left-sp))]
-    (assert (= (output-set left-sp) (input-set right-stub)))
-    (if-let [right-sp (get-stub-output right-stub)] ;; short-circuit the mess below
-      (make-evaluated-stub nm is #(make-pair-subproblem % left-sp right-sp))
-      (let [ret (traits/reify-traits [summaries/sum-summarizable (simple-stub nm is)])]
-        (summaries/connect! ret (sp-ts left-sp))
-        (connect-and-watch-stub! ret right-stub false
-          #(set-stub-output! ret (make-pair-subproblem ret left-sp %)))
-        ret))))
-
-
-;; Note: this allows us to assert stub-sp matching.
-;; TODO: get rido f this
-(defn make-echo-subproblem [stb sp]
-  (let [ret (make-simple-subproblem stb (output-set sp) (terminal? sp) summaries/or-summary
-                                    (fn [s ri] (refine-input sp ri)))]
-    (connect-and-watch! ret sp #(add-sp-child-stub! ret (stub %) false))
-    ret))
-
-
-;; TODO: remove extra level of indirection?
-;; TODO: name does not match wrapping names.
-
-(defn- make-pair-stub1 [nm left-stub right-stub-fn]
-  (if-let [left-sp (get-stub-output left-stub)]
-    (make-pair-stub2 left-sp (right-stub-fn (output-set left-sp)))
-    (let [ret (traits/reify-traits [summaries/or-summarizable (simple-stub nm (input-set left-stub))])]
-      (connect-and-watch-stub! ret left-stub false
-        (fn [lo]
-          (connect-and-watch-stub! ret
-            (make-pair-stub2 lo (right-stub-fn (output-set lo)))
-            true
-            #(set-stub-output! ret (make-echo-subproblem ret %))))) ;; eek!
-      ret)))
-
-(defmethod get-stub :Pair [[_ left-name right-name :as n] inp]
-  (make-pair-stub1 n (get-stub left-name inp) #(get-stub right-name %)))
-
+(defmethod get-subproblem :Pair [[_ left-name right-name :as n] inp]
+  (make-pair-subproblem (get-subproblem left-name inp) right-name #(get-subproblem right-name %)))
 
 
 ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
@@ -473,50 +341,42 @@
 
 (defn oc-name [inner-name] [:OC inner-name])
 
-(declare make-output-collecting-subproblem)
-(defn- make-output-collecting-stub [inner-stub]
-  (assert (not (= (first (stub-name inner-stub)) :OC)))
-  (assert (not (= (first (stub-name inner-stub)) :SA)))
-  (make-wrapping-stub 
-   [(oc-name (stub-name inner-stub)) (input-set inner-stub)]
-   inner-stub make-output-collecting-subproblem))
-
 (defn- =-state-sets [s1 s2]
   (util/assert-is (= (state/current-context s1) (state/current-context s2)) "%s" [s1 s2])
   (= s1 s2))
 
-(defn- make-output-collecting-subproblem [stb inner-sp]
-  (let [ret (traits/reify-traits ;; TODO: can we use make-simple-sub?
-             [summaries/or-summarizable
-              (simple-subproblem stb (output-set inner-sp) false
-                (fn [s ni]
-                  (if (= (input-set stb) ni)
-                    stb
-                    (if (= :Atomic (-> stb stub-name second first))
-                      (let [ret (get-stub (stub-name stb) ni)]
-                        (add-subsuming-sp! (tree-summarizer ret) inner-sp)
-                        ret)
-                      (make-output-collecting-stub (refine-input inner-sp ni))))))])]
-    (connect-and-watch! ret inner-sp
-      (fn child-watch [o]
-        (if (=-state-sets (output-set inner-sp) (output-set o))
-          (do (connect-and-watch! ret o child-watch)
-              (summaries/summary-changed! ret))
-          (let [c (if (#{:SA :OC} (first (sp-name o))) (stub o) (make-output-collecting-stub (stub o)))]
-            (add-sp-child-stub! ret c false)))))
-    ret))
+(defn wrapper? [sp] (#{:OC :SA} (first (sp-name sp))))
 
-(defn get-cache-key [atomic-name inp-set]
-  [atomic-name
-   (if *state-abstraction*
-     (util/match [[:Atomic ~fs] atomic-name] (fs/extract-context fs inp-set))
-     inp-set)])
+(defn- make-output-collecting-subproblem [inner-sp]
+  (make-wrapped-subproblem
+   (oc-name (sp-name inner-sp)) (input-set inner-sp) #{:Atomic :Pair} inner-sp
+   identity
+   (fn child-watch [sp child-sp]
+     (if (=-state-sets (get-output-set! inner-sp) (get-output-set! child-sp))
+       (do (connect-and-watch! sp child-sp nil #(child-watch sp %2))
+           (summaries/summary-changed! sp))
+       (add-sp-child! sp 
+         (if (wrapper? child-sp) child-sp (make-output-collecting-subproblem child-sp))
+         false)))
+   (fn refine-input [s ni]
+     (if (= (input-set s) ni)
+       s
+       (if (= :Atomic (first (sp-name inner-sp)))
+         (let [ret (get-subproblem (sp-name s) ni)]
+           (add-subsuming-sp! (sp-ts ret) inner-sp) ;; TODO: new syntax?
+           ret)
+         (make-output-collecting-subproblem (refine-input inner-sp ni)))))))
 
-(defmethod get-stub :OC [[_ inner-n :as n] inp-set]
-  (let [make-stub #(make-output-collecting-stub (get-stub inner-n inp-set))]
+(defn atomic-name-fs [n] (util/match [[:Atomic ~fs] n] fs))
+(defn get-cache-key [atomic-n inp-set]
+  [atomic-n
+   (if *state-abstraction* (fs/extract-context (atomic-name-fs atomic-n) inp-set) inp-set)])
+
+(defmethod get-subproblem :OC [[_ inner-n :as n] inp-set]
+  (let [make-sp #(make-output-collecting-subproblem (get-subproblem inner-n inp-set))]
     (if-let [^HashMap dc *decompose-cache*]
-      (util/cache-with dc (get-cache-key inner-n inp-set) (make-stub))
-      (make-stub))))
+      (util/cache-with dc (get-cache-key inner-n inp-set) (make-sp))
+      (make-sp))))
 
 
 
@@ -526,60 +386,73 @@
 
 (declare make-state-abstracted-subproblem)
 
-(defn- make-eager-state-abstracted-stub [inner-stub in-set]
-  (make-wrapping-stub
-   [(sa-name (stub-name inner-stub)) in-set]
-   inner-stub make-state-abstracted-subproblem))
-
-;; tODO: force ts? reward?
-(defn- make-deliberate-state-abstracted-stub [inner-stub in-set]
-  (if-let [out (get-stub-output inner-stub)]
-    (let [done? (atom false)  
-          ret
-          (traits/reify-traits
-           [(simple-stub [:SA (stub-name inner-stub) in-set] in-set)]
-           summaries/Summarizable
-           (summarize [s]
-            (if @done? summary/+worst-simple-summary+
-                (summary/make-live-simple-summary
-                 (summary/max-reward (summaries/summary (sp-ts out))) s)))   
-           Evaluable
-           (evaluate! [s] (reset! done? true)
-            (set-stub-output! s (make-state-abstracted-subproblem s out))))]
-      (summaries/connect! ret out)
-      ret)
-    (make-eager-state-abstracted-stub inner-stub in-set)))
-
-
-(defn- make-state-abstracted-stub [inner-stub in-set]
-  (assert (= :OC (first (stub-name inner-stub))))
-  ((case *state-abstraction*
-     :eager make-eager-state-abstracted-stub
-     :deliberate make-deliberate-state-abstracted-stub)
-   inner-stub in-set))
-
-
 ;; Note: subsumed subproblems can have different irrelevant vars
-(defn- make-state-abstracted-subproblem [stb inner-sp]
-  (let [in  (input-set stb)
-        out (state/transfer-effects in (output-set inner-sp))
-        ri-fn #(if (=-state-sets %2 in) stb (make-state-abstracted-stub (refine-input inner-sp %2) %2))
-        ret (traits/reify-traits
-             [summaries/or-summarizable (simple-subproblem stb out (terminal? inner-sp) ri-fn)])]
-    (connect-and-watch! ret inner-sp
-      (fn [o] (add-sp-child-stub! ret (make-state-abstracted-stub (stub o) in) true)))
-    ret))
+(defn- make-eager-state-abstracted-subproblem [inner-sp inp-set]
+  (make-wrapped-subproblem
+   (sa-name (sp-name inner-sp)) inp-set #{:OC} inner-sp
+   #(state/transfer-effects inp-set %)
+   (fn [sp child-sp] (add-sp-child! sp (make-state-abstracted-subproblem child-sp inp-set) true))
+   (fn [sp ni] (if (=-state-sets ni inp-set) sp (make-state-abstracted-subproblem (refine-input inner-sp ni) ni)))))
 
-(defmethod get-stub :SA [[_ inner-n :as n] inp-set]
-  (make-state-abstracted-stub (get-stub inner-n inp-set) inp-set))
+
+
+(declare make-deliberate-state-abstracted-subproblem)
+(comment TODO
+ (defn- make-deliberate-state-abstracted-subproblem [nm inner-sp inp-set]
+   (if-let [out (get-output-set inner-sp)]
+     (let [done? (atom false)  
+           ret;; TODO!
+           (traits/reify-traits
+            [(simple-stub [:SA (stub-name inner-stub) in-set] in-set)]
+            summaries/Summarizable
+            (summarize [s]
+                       (if @done? summary/+worst-simple-summary+
+                           (summary/make-live-simple-summary
+                            (summary/max-reward (summaries/summary (sp-ts out))) s)))   
+            Evaluable
+            (evaluate! [s] (reset! done? true)
+                       (set-stub-output! s (make-state-abstracted-subproblem s out))))]
+       (summaries/connect! ret out)
+       ret)
+     (make-eager-state-abstracted-subprolbem nm inner-sp inp-set))))
+
+(defn make-state-abstracted-subproblem [inner-sp inp-set]
+  ((case *state-abstraction*
+     :eager make-eager-state-abstracted-subproblem
+     :deliberate make-deliberate-state-abstracted-subproblem)
+   inner-sp inp-set))
+
+(defmethod get-subproblem :SA [[_ inner-n :as n] inp-set]
+  (make-state-abstracted-subproblem (get-subproblem inner-n inp-set) inp-set))
+
+
+;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
+;;;;;;;;;;;;;;;;;;;;;;;;;;     Refinement Names     ;;;;;;;;;;;;;;;;;;;;;;;;;;;;
+;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
+
+(defn- wrapped-atomic-name [fs]
+  (let [in  (atomic-name fs)
+        mid (if *collect-equal-outputs* (oc-name in) in)]
+    (if *state-abstraction* (sa-name mid) mid)))
+
+(defn- left-factor [is]
+  (loop [s (next is) ret (first is)]
+    (if s (recur (next s) (pair-name ret (first s))) ret)))
+
+(defn- right-factor [[f & r]]
+  (if (seq r) (pair-name f (right-factor r)) f))
+
+(defn- refinement-names [fs inp-set]
+  (for [fs-seq (fs/child-seqs fs inp-set)]
+    ((if *left-recursive* left-factor right-factor)
+     (map wrapped-atomic-name fs-seq))))
 
 ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
 ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;; Planning ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
 ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
 
 
-(defn- get-root-summarizer [inp-set fs]
-  (tree-summarizer (make-atomic-stub (atomic-name fs) inp-set )))
+(defn- get-root-summarizer [inp-set fs] (sp-ts (make-atomic-subproblem fs inp-set )))
 
 (def *lazy-cache* false) 
 (def *no-subsumption* false)
@@ -612,8 +485,7 @@
 
 ;; (do (use '[angelic env hierarchy] 'angelic.domains.nav-switch  'angelic.search.implicit.dash-astar 'angelic.domains.discrete-manipulation) (require '[angelic.search.explicit.hierarchical :as his]))
 
-; (require '[angelic.search.implicit.dash-astar :as da] '[angelic.search.implicit.dash-astar-opt :as dao])
-
+;; (require '[angelic.search.implicit.dash-astar :as da] '[angelic.search.implicit.dash-astar-opt :as dao] '[angelic.search.summaries_old :as summaries-old])
 ;;(do (defn s [x]  (summaries/summarize x)) (defn sc [x] (summary/children x))  (defn src [x] (summary/source x)) (defn nc [x] (summaries/child-nodes x)))
 
 ;;(dotimes [_ 1] (reset! summaries/*summary-count* 0) (debug 0 (time (let [h (make-nav-switch-hierarchy (make-random-nav-switch-env 2 1 0) true)]  (println (run-counted #(second (implicit-dash-a* h))) @summaries/*summary-count*)))))

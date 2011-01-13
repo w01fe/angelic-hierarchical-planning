@@ -96,7 +96,7 @@
 
 (def *subsumption* true)
 
-(def *kill* false #_ true) ;; Remove dead children of OR-nodes.  Doesn't seem to really help or hurt...
+(def *kill* false #_true) ;; Remove dead children of OR-nodes.  Doesn't seem to really help or hurt...
 
 (defn update-bound! [n bound-atom b]
   (when (and *subsumption* (< b @bound-atom))
@@ -155,9 +155,10 @@
 
 (defn sum-summary [s]
   (swap! *summary-count* inc)
-  (let [[c1 c2 :as children] (child-nodes s)]
-    (assert (= (count children) 2))
-    (summary/+ (summary c1) (summary c2) s (get-bound s))))
+  (let [kids (child-nodes s)]
+    (case (count kids)
+      1 (summary/re-source (summary (first kids)) s (get-bound s) :solved)
+      2 (summary/+ (summary (first kids)) (summary (second kids)) s (get-bound s)))))
 
 (traits/deftrait sum-summarizable [] [] []
   Summarizable (summarize [s] (sum-summary s)))
