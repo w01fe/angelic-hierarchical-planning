@@ -100,8 +100,8 @@
   (get-children        [s]  "List current outputs, for debugging only.")
   (add-child-watcher!  [s w] "Add a watcher to be notified of all child sps.")
 
-  (subsuming-sps       [ts] "subproblems with same name, >= inp-set") 
-  (add-subsuming-sp!   [ts subsuming-sp]) 
+  (subsuming-sps       [s] "subproblems with same name, >= inp-set") 
+  (add-subsuming-sp!   [s subsuming-sp]) 
 
   (refine-input        [s refined-input-set] "Return a child sp. Must have output.")
 
@@ -160,13 +160,13 @@
   (add-child-watcher!  [s w]
     (.add child-watchers w)                   
     (doseq [c (get-children s)] (swap! *out-count* inc) (w s c)))
-  (add-sp-child!*      [s c] 
-    (assert (and (not (identical? s c)) (get-output-set c)))
+  (add-sp-child!*      [s c] ;; TODO: wait if output not set yet, send them above?
+    (util/assert-is (and (not (identical? s c)) (get-output-set s) (get-output-set c)))
     (.add child-list c)
     (summaries/summary-changed-local! s)
     (when (underived? s)
       (summaries/connect! (sp-ts s) (sp-ts c))
-      (summaries/summary-changed! (sp-ts s)))    
+      (summaries/summary-changed! (sp-ts s))) ;; TODO: remove this overhead from atomic.   
     (doseq [w (doall (seq child-watchers))] (swap! *out-count* inc) (w s c)))
 
   (subsuming-sps [s] (keys subsuming-sp-set))
@@ -230,7 +230,7 @@
      (fn [s ni] ;; Note ni may have different context.
        (if (= ni inp-set) s
          (let [subsumed-sp (ri-fn s ni)]
-           (add-subsuming-sp! (sp-ts subsumed-sp) s)
+           (add-subsuming-sp! subsumed-sp s)
            subsumed-sp))))]
    summaries/Summarizable (summarize [s] (summary-fn s))))
 
@@ -351,7 +351,7 @@
   (make-wrapped-subproblem
    (oc-name (sp-name inner-sp)) (input-set inner-sp) #{:Atomic :Pair} inner-sp
    identity
-   (fn child-watch [sp child-sp]
+   (fn child-watch [sp child-sp] #_ (println inner-sp sp child-sp)
      (if (=-state-sets (get-output-set! inner-sp) (get-output-set! child-sp))
        (do (connect-and-watch! sp child-sp nil #(child-watch sp %2))
            (summaries/summary-changed! sp))
@@ -363,7 +363,7 @@
        s
        (if (= :Atomic (first (sp-name inner-sp)))
          (let [ret (get-subproblem (sp-name s) ni)]
-           (add-subsuming-sp! (sp-ts ret) inner-sp) ;; TODO: new syntax?
+           (add-subsuming-sp! ret inner-sp)
            ret)
          (make-output-collecting-subproblem (refine-input inner-sp ni)))))))
 
@@ -501,3 +501,12 @@
 
 ; (dotimes [_ 1] (reset! summaries/*summary-count* 0) (reset! da/*out-count* 0) (reset! dao/*out-count* 0) (debug 0 (let [h (make-nav-switch-hierarchy (make-random-nav-switch-env 2 1 0) true)]  (time (println (run-counted #(identity (da/implicit-dash-a* h :gather false :d false :s nil))) @summaries/*summary-count* @da/*out-count*)) (time (println (run-counted #(identity (dao/implicit-dash-a*-opt h :gather false :d false :s nil))) @summaries/*summary-count*  @dao/*out-count*)) )))
 
+
+
+;; tODODS:
+
+;; (dotimes [_ 1] (reset! summaries/*summary-count* 0) (reset! summaries-old/*summary-count* 0) (reset! da/*out-count* 0) (reset! dao/*out-count* 0) (debug 0 (let [opts [:gather false :d false :s nil :dir :right] h (make-discrete-manipulation-hierarchy  (make-random-hard-discrete-manipulation-env 1 4))]  (time (println (run-counted #(identity (apply da/implicit-dash-a* h opts))) @summaries/*summary-count* @da/*out-count*))  (time (println (run-counted #(identity (apply dao/implicit-dash-a*-opt h opts))) @summaries-old/*summary-count*  @dao/*out-count*)) )))
+
+;; (dotimes [_ 1] (reset! summaries/*summary-count* 0) (reset! summaries-old/*summary-count* 0) (reset! da/*out-count* 0) (reset! dao/*out-count* 0) (debug 0 (let [opts [:gather true :d true :s :eager :dir :right] h (make-nav-switch-hierarchy (make-random-nav-switch-env 2 1 0) true)]  (time (println (run-counted #(identity (apply da/implicit-dash-a* h opts))) @summaries/*summary-count* @da/*out-count*))  (time (println (run-counted #(identity (apply dao/implicit-dash-a*-opt h opts))) @summaries-old/*summary-count*  @dao/*out-count*)) )))
+
+;; Deal with children-before-outputs in atomic.
