@@ -55,6 +55,7 @@
 ;; TODO TODO: fix names.
 ;; TODO: turn kill back on
 
+;; --> TODO: merge stubs and subproblems!
 
 (set! *warn-on-reflection* true)
 
@@ -104,7 +105,7 @@
 
 ;;;;;;;;;;;;;;;;;;;;;;;;;;      Tree Summarizers      ;;;;;;;;;;;;;;;;;;;;;;;;;;
 
-(declare sp-ts get-stub-output norm-name)
+(declare sp-ts get-stub-output stub-name sp-name tree-summarizer)
 
 (defprotocol TreeSummarizer
   (ts-stub [ts])
@@ -122,7 +123,7 @@
               (ts-stub [ts] stb)
               (subsuming-sps [ts] (keys subsuming-sp-set))
               (add-subsuming-sp! [ts subsuming-sp]
-                (util/assert-is (= (norm-name (stub-name stb)) (norm-name (sp-name subsuming-sp))))                 
+                (util/assert-is (= (stub-name stb) (sp-name subsuming-sp)))                 
                 (when-not (.containsKey subsuming-sp-set subsuming-sp)
                   (.put subsuming-sp-set subsuming-sp true)
                   (summaries/connect-subsumed! (sp-ts subsuming-sp) ts)))
@@ -162,7 +163,7 @@
 
 ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;; Used by stubs ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
 
-
+(declare stub)
 ;; Note: putting ts stuff here rather than watching above ensures things happen
 ;; in desired order.
 ;; TODO: set stub to -inf here, simplify other code? 
@@ -273,7 +274,8 @@
   Subproblem (stub            [s] stb)
              (output-set      [s] out-set)
              (terminal?       [s] term?)
-             (refine-input    [s ni] (ri-fn s ni)))
+             (refine-input    [s ni] #_ (ri-fn s ni)
+                              (let [ret  (ri-fn s ni)] (util/assert-is (= (stub-name stb) (stub-name ret))) ret)))
 
 ;; Note: summary-fn should take subsuming-bound into account.
 (defn- make-simple-subproblem [stub out-set terminal? summary-fn ri-fn]
@@ -292,98 +294,19 @@
 
 
 ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
-;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;     Wrappers     ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
-;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
-
-;;;;;;;;;;;;;;;;;;;;;;;;;;;     Output Collection     ;;;;;;;;;;;;;;;;;;;;;;;;;;
-
-(defn oc-name [inner-name] [:OC inner-name])
-
-(declare make-output-collecting-subproblem)
-(defn- make-output-collecting-stub [inner-stub]
-  (assert (not (= (first (stub-name inner-stub)) :OC)))
-  (assert (not (= (first (stub-name inner-stub)) :SA)))
-  (make-wrapping-stub 
-   [(oc-name (stub-name inner-stub)) (input-set inner-stub)]
-   inner-stub make-output-collecting-subproblem))
-
-(defn- =-state-sets [s1 s2]
-  (util/assert-is (= (state/current-context s1) (state/current-context s2)) "%s" [s1 s2])
-  (= s1 s2))
-
-(defn- make-output-collecting-subproblem [stb inner-sp]
-  (let [ret (traits/reify-traits 
-             [summaries/or-summarizable
-              (simple-subproblem stb (output-set inner-sp) false
-                #(doto (if (= (input-set stb) %2) stb (refine-input inner-sp %2))
-                   (-> stub-name first #{:SA :OC} assert)))])] ;Needed when SA off
-    (connect-and-watch! ret inner-sp
-      (fn child-watch [o]
-        (if (=-state-sets (output-set inner-sp) (output-set o))
-          (do (connect-and-watch! ret o child-watch)
-              (summaries/summary-changed! ret))
-          (let [c (if (#{:SA :OC} (first (sp-name o))) (stub o) (make-output-collecting-stub (stub o)))]
-            (add-sp-child-stub! ret c false)))))
-    ret))
-
-
-;;;;;;;;;;;;;;;;;;;;;;;;;;;     State Abstraction     ;;;;;;;;;;;;;;;;;;;;;;;;;;
-
-(defn sa-name [inner-name] [:SA inner-name])
-
-(declare make-state-abstracted-subproblem)
-
-(defn- make-eager-state-abstracted-stub [inner-stub in-set]
-  (make-wrapping-stub
-   [(sa-name (stub-name inner-stub)) in-set]
-   inner-stub make-state-abstracted-subproblem))
-
-;; tODO: force ts? reward?
-(defn- make-deliberate-state-abstracted-stub [inner-stub in-set]
-  (if-let [out (get-stub-output inner-stub)]
-    (let [done? (atom false)  
-          ret
-          (traits/reify-traits
-           [(simple-stub [:SA (stub-name inner-stub) in-set] in-set)]
-           summaries/Summarizable
-           (summarize [s]
-            (if @done? summary/+worst-simple-summary+
-                (summary/make-live-simple-summary
-                 (summary/max-reward (summaries/summary (sp-ts out))) s)))   
-           Evaluable
-           (evaluate! [s] (reset! done? true)
-            (set-stub-output! s (make-state-abstracted-subproblem s out))))]
-      (summaries/connect! ret out)
-      ret)
-    (make-eager-state-abstracted-stub inner-stub in-set)))
-
-
-(defn- make-state-abstracted-stub [inner-stub in-set]
-  ((case *state-abstraction*
-     :eager make-eager-state-abstracted-stub
-     :deliberate make-deliberate-state-abstracted-stub)
-   inner-stub in-set))
-
-
-;; Note: subsumed subproblems can have different irrelevant vars
-(defn- make-state-abstracted-subproblem [stb inner-sp]
-  (let [in  (input-set stb)
-        out (state/transfer-effects in (output-set inner-sp))
-        ri-fn #(if (=-state-sets %2 in) stb (refine-input inner-sp %2))
-        ret (traits/reify-traits
-             [summaries/or-summarizable (simple-subproblem stb out (terminal? inner-sp) ri-fn)])]
-    (connect-and-watch! ret inner-sp
-      (fn [o] (add-sp-child-stub! ret (make-state-abstracted-stub (stub o) in) true)))
-    ret))
-
-
-;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
 ;;;;;;;;;;;;;;;;;;;;;;;;;;     Core Subproblems     ;;;;;;;;;;;;;;;;;;;;;;;;;;;;
 ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
 
 ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;      Names       ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
 
 (defn atomic-name [fs] [:Atomic fs])
+
+(declare oc-name sa-name)
+(defn wrapped-atomic-name [fs]
+  (let [in  (atomic-name fs)
+        mid (if *collect-equal-outputs* (oc-name in) in)]
+    (if *state-abstraction* (sa-name mid) mid)))
+
 (defn pair-name [l r] [:Pair l r])
 
 (defn left-factor [is]
@@ -396,16 +319,16 @@
 (defn- make-fs-seq-name [fs-seq]
   (assert (seq fs-seq))
   ((if *left-recursive* left-factor right-factor)
-   (map atomic-name fs-seq)))
+   (map wrapped-atomic-name fs-seq)))
 
 ;; TODO: flatten as well?
-(defn norm-name [n]
-  (case (first n)
-    :Atomic n
-    :Pair   [:Pair (norm-name (nth n 1)) (norm-name (nth n 2))]
-    :SA     (norm-name (second n))
-    :OC     (norm-name (second n))))
-
+(comment
+  (defn norm-name [n]
+   (case (first n)
+     :Atomic n
+     :Pair   [:Pair (norm-name (nth n 1)) (norm-name (nth n 2))]
+     :SA     (norm-name (second n))
+     :OC     (norm-name (second n)))))
 
 ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;      Atomic       ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
 
@@ -455,31 +378,8 @@
             (do (reset! state :go) (summaries/summary-changed! s))))))))
 
 
-;; Note: we must always wrap in S-A stub to get effects out of logger.
-(defmethod get-stub :Atomic [[_ fs :as n] inp-set]
-  (let [cache-key [n (if *state-abstraction* (fs/extract-context fs inp-set) inp-set)]
-        output-collect #(if *collect-equal-outputs* (make-output-collecting-stub %) %)
-        make-stub #(output-collect (make-atomic-stub n %))]
-    (if-let [^HashMap dc *decompose-cache*]
-      (if *state-abstraction*
-        (let [stub (util/cache-with dc cache-key (make-stub (fs/get-logger fs inp-set)))]
-          (make-state-abstracted-stub stub inp-set))   
-        (util/cache-with dc cache-key (make-stub inp-set)))
-      (make-stub inp-set))))
-
-;; TO do names properly, outers should always guard inners. ?
-;; 
-(comment
- (defmethod get-stub :OC [[_ inner-n :as n] inp-set]
-            (make-output-collecting-stub (get-stub inner-n inp-set)))
-
-;; Gotta go all the way in.
- (defmethod get-stub :SA [[_ inner-n :as n] inp-set]
-            (make-state-abstracted-stub (get-stub inner-n (fs/get-logger )))
-
-            (make-output-collecting-stub (get-stub inner-n inp-set))))
-
-
+(defmethod get-stub :Atomic [[_ fs :as n] inp-set] 
+  (make-atomic-stub n (if *state-abstraction* (fs/get-logger fs inp-set) inp-set)))          
 
 
 ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;   Sequences    ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
@@ -564,6 +464,115 @@
   (make-pair-stub1 n (get-stub left-name inp) #(get-stub right-name %)))
 
 
+
+;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
+;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;     Wrappers     ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
+;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
+
+;;;;;;;;;;;;;;;;;;;;;;;;;;;     Output Collection     ;;;;;;;;;;;;;;;;;;;;;;;;;;
+
+(defn oc-name [inner-name] [:OC inner-name])
+
+(declare make-output-collecting-subproblem)
+(defn- make-output-collecting-stub [inner-stub]
+  (assert (not (= (first (stub-name inner-stub)) :OC)))
+  (assert (not (= (first (stub-name inner-stub)) :SA)))
+  (make-wrapping-stub 
+   [(oc-name (stub-name inner-stub)) (input-set inner-stub)]
+   inner-stub make-output-collecting-subproblem))
+
+(defn- =-state-sets [s1 s2]
+  (util/assert-is (= (state/current-context s1) (state/current-context s2)) "%s" [s1 s2])
+  (= s1 s2))
+
+(defn- make-output-collecting-subproblem [stb inner-sp]
+  (let [ret (traits/reify-traits ;; TODO: can we use make-simple-sub?
+             [summaries/or-summarizable
+              (simple-subproblem stb (output-set inner-sp) false
+                (fn [s ni]
+                  (if (= (input-set stb) ni)
+                    stb
+                    (if (= :Atomic (-> stb stub-name second first))
+                      (let [ret (get-stub (stub-name stb) ni)]
+                        (add-subsuming-sp! (tree-summarizer ret) inner-sp)
+                        ret)
+                      (make-output-collecting-stub (refine-input inner-sp ni))))))])]
+    (connect-and-watch! ret inner-sp
+      (fn child-watch [o]
+        (if (=-state-sets (output-set inner-sp) (output-set o))
+          (do (connect-and-watch! ret o child-watch)
+              (summaries/summary-changed! ret))
+          (let [c (if (#{:SA :OC} (first (sp-name o))) (stub o) (make-output-collecting-stub (stub o)))]
+            (add-sp-child-stub! ret c false)))))
+    ret))
+
+(defn get-cache-key [atomic-name inp-set]
+  [atomic-name
+   (if *state-abstraction*
+     (util/match [[:Atomic ~fs] atomic-name] (fs/extract-context fs inp-set))
+     inp-set)])
+
+(defmethod get-stub :OC [[_ inner-n :as n] inp-set]
+  (let [make-stub #(make-output-collecting-stub (get-stub inner-n inp-set))]
+    (if-let [^HashMap dc *decompose-cache*]
+      (util/cache-with dc (get-cache-key inner-n inp-set) (make-stub))
+      (make-stub))))
+
+
+
+;;;;;;;;;;;;;;;;;;;;;;;;;;;     State Abstraction     ;;;;;;;;;;;;;;;;;;;;;;;;;;
+
+(defn sa-name [inner-name] [:SA inner-name])
+
+(declare make-state-abstracted-subproblem)
+
+(defn- make-eager-state-abstracted-stub [inner-stub in-set]
+  (make-wrapping-stub
+   [(sa-name (stub-name inner-stub)) in-set]
+   inner-stub make-state-abstracted-subproblem))
+
+;; tODO: force ts? reward?
+(defn- make-deliberate-state-abstracted-stub [inner-stub in-set]
+  (if-let [out (get-stub-output inner-stub)]
+    (let [done? (atom false)  
+          ret
+          (traits/reify-traits
+           [(simple-stub [:SA (stub-name inner-stub) in-set] in-set)]
+           summaries/Summarizable
+           (summarize [s]
+            (if @done? summary/+worst-simple-summary+
+                (summary/make-live-simple-summary
+                 (summary/max-reward (summaries/summary (sp-ts out))) s)))   
+           Evaluable
+           (evaluate! [s] (reset! done? true)
+            (set-stub-output! s (make-state-abstracted-subproblem s out))))]
+      (summaries/connect! ret out)
+      ret)
+    (make-eager-state-abstracted-stub inner-stub in-set)))
+
+
+(defn- make-state-abstracted-stub [inner-stub in-set]
+  (assert (= :OC (first (stub-name inner-stub))))
+  ((case *state-abstraction*
+     :eager make-eager-state-abstracted-stub
+     :deliberate make-deliberate-state-abstracted-stub)
+   inner-stub in-set))
+
+
+;; Note: subsumed subproblems can have different irrelevant vars
+(defn- make-state-abstracted-subproblem [stb inner-sp]
+  (let [in  (input-set stb)
+        out (state/transfer-effects in (output-set inner-sp))
+        ri-fn #(if (=-state-sets %2 in) stb (make-state-abstracted-stub (refine-input inner-sp %2) %2))
+        ret (traits/reify-traits
+             [summaries/or-summarizable (simple-subproblem stb out (terminal? inner-sp) ri-fn)])]
+    (connect-and-watch! ret inner-sp
+      (fn [o] (add-sp-child-stub! ret (make-state-abstracted-stub (stub o) in) true)))
+    ret))
+
+(defmethod get-stub :SA [[_ inner-n :as n] inp-set]
+  (make-state-abstracted-stub (get-stub inner-n inp-set) inp-set))
+
 ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
 ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;; Planning ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
 ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
@@ -596,6 +605,8 @@
      (apply get-root-summarizer (fs/make-init-pair henv))
      choice-fn local? evaluate!
      #(let [n (fs/fs-name (second (sp-name %)))] (when-not (= (first n) :noop) n)))))
+
+
 
 ;; (do (use '[angelic env hierarchy] 'angelic.domains.nav-switch 'angelic.search.implicit.fah-astar-expand 'angelic.search.implicit.fah-astar-eval 'angelic.search.implicit.dash-astar 'angelic.domains.discrete-manipulation) (require '[angelic.search.explicit.hierarchical :as his]))
 
