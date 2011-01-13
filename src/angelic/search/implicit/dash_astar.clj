@@ -106,12 +106,14 @@
 
 (declare sp-ts get-stub-output norm-name)
 
-;; TODO: now this will never be true; how to avoid extra connections ?
 (defprotocol TreeSummarizer
   (ts-stub [ts])
   (subsuming-sps [ts]) ; True tree summarizers subsuming this one.
-  (add-subsuming-sp! [ts subsuming-sp]))  
+  (add-subsuming-sp! [ts subsuming-sp])
+  (add-child-stub! [ts child-stub])) ; Add stub whose output will become output of sp.
   
+
+;; TODO: (when-not (get-stub-output stb)  ) on stub connections; can't work now.
 
 (defn- make-tree-summarizer [stb]
   (let [subsuming-sp-set (IdentityHashMap.)
@@ -123,11 +125,15 @@
                 (util/assert-is (= (norm-name (stub-name stb)) (norm-name (sp-name subsuming-sp))))                 
                 (when-not (.containsKey subsuming-sp-set subsuming-sp)
                   (.put subsuming-sp-set subsuming-sp true)
-                  (summaries/connect-subsumed! (sp-ts subsuming-sp) ts))))]
-    (when-not (get-stub-output stb)
-      (summaries/connect! ret stb)
-      (summaries/connect-subsumed! ret stb))
+                  (summaries/connect-subsumed! (sp-ts subsuming-sp) ts)))
+              (add-child-stub! [ts child-stub]
+                (summaries/connect-subsumed! ts (tree-summarizer child-stub))
+                #_ ::TODO-propagate             
+                ))]
+    (summaries/connect! ret stb)
+    (summaries/connect-subsumed! ret stb)
     ret))
+
 
 (defn tree-summarizer? [x] (instance? angelic.search.implicit.dash_astar.TreeSummarizer x))
 
