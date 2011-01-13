@@ -242,7 +242,6 @@
  (print-method (format "#<SP$%8h %s>" (System/identityHashCode (stub sp)) (sp-name sp)) o))
 
 
-;; TODO: Must be careful to account for wrappers
 ;; All SP children are added through this interface.
 ;; Doing it all with stubs makes subsumption forwarding easier.
 (defn- add-sp-child-stub! [sp child-stub up?]
@@ -459,15 +458,17 @@
 ;; Note: we must always wrap in S-A stub to get effects out of logger.
 (defmethod get-stub :Atomic [[_ fs :as n] inp-set]
   (let [cache-key [n (if *state-abstraction* (fs/extract-context fs inp-set) inp-set)]
-        make-stub #(let [r (make-atomic-stub n %)]
-                     (if *collect-equal-outputs* (make-output-collecting-stub r) r))]
-     (if-let [^HashMap dc *decompose-cache*]
-       (if *state-abstraction*
-         (let [stub (util/cache-with dc cache-key (make-stub (fs/get-logger fs inp-set)))]
-           (make-state-abstracted-stub stub inp-set))   
-         (util/cache-with dc cache-key (make-stub inp-set)))
-       (make-stub inp-set))))
+        output-collect #(if *collect-equal-outputs* (make-output-collecting-stub %) %)
+        make-stub #(output-collect (make-atomic-stub n %))]
+    (if-let [^HashMap dc *decompose-cache*]
+      (if *state-abstraction*
+        (let [stub (util/cache-with dc cache-key (make-stub (fs/get-logger fs inp-set)))]
+          (make-state-abstracted-stub stub inp-set))   
+        (util/cache-with dc cache-key (make-stub inp-set)))
+      (make-stub inp-set))))
 
+;; TO do names properly, outers should always guard inners. ?
+;; 
 (comment
  (defmethod get-stub :OC [[_ inner-n :as n] inp-set]
             (make-output-collecting-stub (get-stub inner-n inp-set)))
