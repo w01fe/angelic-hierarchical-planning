@@ -52,6 +52,8 @@
 ;; TODO: wrapping names don't match pair-stub1.  Get rid of norm-name hack?
 ;; TODO: subsumptin should be sets, not lists? 
 
+;; TODO TODO: fix names.
+;; TODO: turn kill back on
 
 
 (set! *warn-on-reflection* true)
@@ -442,15 +444,25 @@
 
 ;; Note: we must always wrap in S-A stub to get effects out of logger.
 (defmethod get-stub :Atomic [[_ fs :as n] inp-set]
-  (let [full-name [n (if *state-abstraction* (fs/extract-context fs inp-set) inp-set)]
+  (let [cache-key [n (if *state-abstraction* (fs/extract-context fs inp-set) inp-set)]
         make-stub #(let [r (make-atomic-stub n %)]
                      (if *collect-equal-outputs* (make-output-collecting-stub r) r))]
      (if-let [^HashMap dc *decompose-cache*]
        (if *state-abstraction*
-         (let [stub (util/cache-with dc full-name (make-stub (fs/get-logger fs inp-set)))]
+         (let [stub (util/cache-with dc cache-key (make-stub (fs/get-logger fs inp-set)))]
            (make-state-abstracted-stub stub inp-set))   
-         (util/cache-with dc full-name (make-stub inp-set)))
+         (util/cache-with dc cache-key (make-stub inp-set)))
        (make-stub inp-set))))
+
+(comment
+ (defmethod get-stub :OC [[_ inner-n :as n] inp-set]
+            (make-output-collecting-stub (get-stub inner-n inp-set)))
+
+;; Gotta go all the way in.
+ (defmethod get-stub :SA [[_ inner-n :as n] inp-set]
+            (make-state-abstracted-stub (get-stub inner-n (fs/get-logger )))
+
+            (make-output-collecting-stub (get-stub inner-n inp-set))))
 
 
 
