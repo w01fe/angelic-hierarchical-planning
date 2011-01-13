@@ -17,39 +17,26 @@
 ;; All TODOs from dash_astar_opt also apply here.
 
 ;; TODO: SP has hash table from (state-abstracted context) input set to stub (?).
-;; TODO: How are subsumption links handled?  
-
-;; TODO: add pess
 
 ;; TODO: we need to make sure tree sums get called on add-output! first to ensure
 ;;       consistency with top-down-bounds ? 
 
-;;  (except ensuring consistency if we're asserting it...)
-;; When we create a stub, we also get: tree summarizer, subsumption-thing.
 ;; TODO: tests ! 
 
-;; What do we do about multiple ways to express a given plan ? ? ? ?
-;; Can normalize or not, interesting question... start without. 
-
-;; TODO: remove refs to stubs in TS so dead weight can be GC'd?
 ;; TODO first: propagate subsumption links.
 ;; TODO second: add pessimistic variant. (primitives shared!)
 
 ;; TODO: bounding of pessimistic descriptions ? (assume consistency for now).
 
-;; Two basic kinds of subsumption propagation:
+;; One basic kinds of subsumption propagation:
 ;;   X --> Y ==> for all child keys k, child(X, k) --> child(Y, k)
 ;;   This taken into account for atomic, not pairs now.
-
-;;   X --> Y ==> for all child keys k, child(X, k) --> child(Y, k)
 
 ;; --> TODO: every SP should watch all subsuming SPs for children with matching
 ;;     names, add these as subsumption parents.
 ;; (Except any direct parents)
-;; --> TODO: this should happen as soon as stub is created, not have to wait for SP.
-;; This means that TS needs to know about stubs-in-training.
 
-;; TODO: investigate name normalization.
+;; TODO: investigate plan seq  normalization. (flattening)
 ;; TODO: put back kill
 
 
@@ -154,20 +141,21 @@
     (summaries/summary-changed-local! s)
     (when (underived? s) 
       (summaries/summary-changed! (sp-ts s)))    
-    (doseq [w output-watchers] (w s)))
-
+    (doseq [w output-watchers] (w s))
+    (doseq [c (get-children s), w (doall (seq child-watchers))] (w s c)))
+  
   (get-children        [s] (doall (seq child-list)))
   (add-child-watcher!  [s w]
     (.add child-watchers w)                   
-    (doseq [c (get-children s)] (swap! *out-count* inc) (w s c)))
+    (when (get-output-set s)) (doseq [c (get-children s)] (swap! *out-count* inc) (w s c)))
   (add-sp-child!*      [s c] ;; TODO: wait if output not set yet, send them above?
-    (util/assert-is (and (not (identical? s c)) (get-output-set s) (get-output-set c)))
+    (util/assert-is (and (not (identical? s c)) (get-output-set c)))
     (.add child-list c)
     (summaries/summary-changed-local! s)
     (when (underived? s)
       (summaries/connect! (sp-ts s) (sp-ts c))
-      (summaries/summary-changed! (sp-ts s))) ;; TODO: remove this overhead from atomic.   
-    (doseq [w (doall (seq child-watchers))] (swap! *out-count* inc) (w s c)))
+      (when (get-output-set s) (summaries/summary-changed! (sp-ts s)))) ;; TODO: remove this overhead from atomic.   
+    (when (get-output-set s) (doseq [w (doall (seq child-watchers))] (swap! *out-count* inc) (w s c))))
 
   (subsuming-sps [s] (keys subsuming-sp-set))
   (add-subsuming-sp! [s subsuming-sp]
@@ -306,7 +294,8 @@
                    (when (and *collect-equal-outputs*
                               (not @right?-atom)
                               (summary/solved? (summaries/summary left-sp))
-                              (empty? (get-children left-sp)))
+                              (empty? (get-children left-sp))
+                              (get-output-set @right-sp))                     
                      (reset! right?-atom true)
                      (summaries/disconnect! ss (sp-ts @right-sp))
                      (add-child-watcher! left-sp (fn [o c] (throw (RuntimeException. "Solved and children."))))
