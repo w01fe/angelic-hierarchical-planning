@@ -167,27 +167,22 @@
 ;; TODO: efficiency?
 (defn- set-stub-output! [stb sp]
   (assert (empty? (get-outputs stb)))
-  (assert (identical? (stub sp) stb)) 
-  (let [b  (summaries/get-bound stb)
-        ts (tree-summarizer stb)]
-    (summaries/summary-changed-local! stb)    
-    (summaries/connect-subsumed! ts sp)
-    (connect-and-watch! ts sp
-       (fn [child-sp]
-         (let [child-ts (sp-ts child-sp)]
-           (assert (tree-summarizer? child-ts))
-           (summaries/connect! ts child-ts)
-           (summaries/connect-subsumed! ts child-ts)
-           (summaries/summary-changed! ts))))
-;    (println "SO" stb b (summary/max-reward (summaries/summary sp)))
-    (summaries/add-bound! ts b) ;; TODO: ???
-    (summaries/summary-changed! ts)
-    (add-output! stb sp)))
-
-(defn- set-derived-stub-output! [stub sp]
-  (assert (empty? (get-outputs stub)))
-  (summaries/summary-changed-local! stub)    
-  (add-output! stub sp))
+  (assert (identical? (stub sp) stb))
+  (summaries/summary-changed-local! stb)
+  (when (identical? stb (ts-stub (tree-summarizer stb)))
+    (let [b  (summaries/get-bound stb)
+          ts (tree-summarizer stb)]
+      (summaries/connect-subsumed! ts sp)
+      (connect-and-watch! ts sp
+        (fn [child-sp]
+          (let [child-ts (sp-ts child-sp)]
+            (assert (tree-summarizer? child-ts))
+            (summaries/connect! ts child-ts)
+            (summaries/connect-subsumed! ts child-ts)
+            (summaries/summary-changed! ts))))
+      (summaries/add-bound! ts b) ;; TODO: ???
+      (summaries/summary-changed! ts)))
+  (add-output! stb sp))
 
 (defn- get-stub-output  [s] (first (get-outputs s)))
 (defn- get-stub-output! [s] (util/safe-singleton (get-outputs s)))
@@ -223,7 +218,7 @@
               Stub (stub-name       [s] nm)
                    (input-set       [s] in-set)
                    (tree-summarizer [s] (tree-summarizer inner-stub)))]
-    (connect-and-watch-stub! ret inner-stub false #(set-derived-stub-output! ret (sp-fn ret %)))
+    (connect-and-watch-stub! ret inner-stub false #(set-stub-output! ret (sp-fn ret %)))
     ret))
 
 
