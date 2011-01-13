@@ -249,12 +249,12 @@
   (assert (not (terminal? sp)))
   (let [ts (sp-ts sp)
         underived? (identical? (ts-stub ts) (stub sp))]
+    (when underived? (add-child-stub! ts child-stub))
     (connect-and-watch-stub! sp child-stub up?
       (fn [child-sp]
         (summaries/summary-changed-local! sp)
         (when underived?
           (summaries/connect! ts (tree-summarizer child-stub))
-          (summaries/connect-subsumed! ts (tree-summarizer child-stub))
           (summaries/summary-changed! ts))
         (add-output! sp child-sp)))))
 
