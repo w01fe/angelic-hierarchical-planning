@@ -116,7 +116,8 @@
 
 (def *out-count* (atom 1))
 
-(defn underived? [sp] (identical? sp (ts-sp (sp-ts sp))))
+(defn canonicalize [sp] (ts-sp (sp-ts sp)))
+(defn canonical? [sp] (identical? sp (ts-sp (sp-ts sp))))
 
 (traits/deftrait simple-subproblem
   [nm inp-set wrapped-ts eval!-fn ri-fn]
@@ -139,7 +140,7 @@
     (assert (nil? @out-set-atom))
     (reset! out-set-atom o)
     (summaries/summary-changed-local! s)
-    (when (underived? s) 
+    (when (canonical? s) 
       (summaries/summary-changed! (sp-ts s)))    
     (doseq [w output-watchers] (w s))
     (doseq [c (get-children s), w (doall (seq child-watchers))] (w s c)))
@@ -152,7 +153,7 @@
     (util/assert-is (and (not (identical? s c)) (get-output-set c)))
     (.add child-list c)
     (summaries/summary-changed-local! s)
-    (when (underived? s)
+    (when (canonical? s)
       (summaries/connect! (sp-ts s) (sp-ts c))
       (when (get-output-set s) (summaries/summary-changed! (sp-ts s)))) ;; TODO: remove this overhead from atomic.   
     (when (get-output-set s) (doseq [w (doall (seq child-watchers))] (swap! *out-count* inc) (w s c))))
@@ -182,7 +183,7 @@
 
 (defn- add-sp-child! [sp child-sp up?]
 ;  (println sp child-sp) (Thread/sleep 100)
-  (when (underived? sp)
+  (when (canonical? sp)
     (summaries/connect-subsumed! (sp-ts sp) (sp-ts child-sp))
     ;; TODO: propagate!
     )
@@ -309,8 +310,8 @@
        (connect-and-watch! ss left-sp
          (fn left-output [left-sp]
            (summaries/summary-changed-local! ss)
-           (when (connect-and-watch-ts! ss @right-sp
-                   (fn [right-sp] (set-output-set! ret (get-output-set! right-sp))))
+           (when (connect-and-watch-ts! ss @right-sp ;; TODO: too eager/ 
+                   (fn [right-sp] (summaries/summary-changed-local! ss) (set-output-set! ret (get-output-set! right-sp))))
              (summaries/summary-changed! ret)))
          (fn left-child [left-sp left-child]
            (summaries/summary-changed-local! ss)
@@ -352,7 +353,7 @@
        s
        (if (= :Atomic (first (sp-name inner-sp)))
          (let [ret (get-subproblem (sp-name s) ni)]
-           (add-subsuming-sp! ret inner-sp)
+           (add-subsuming-sp! (canonicalize ret) inner-sp)
            ret)
          (make-output-collecting-subproblem (refine-input inner-sp ni)))))))
 
