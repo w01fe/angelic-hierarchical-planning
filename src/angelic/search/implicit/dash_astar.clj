@@ -157,11 +157,12 @@
 
 ;; TODO: set stub to -inf here, simplify other code? 
 ;; TODO: efficiency?
-(defn- set-stub-output! [stub sp]
-  (assert (empty? (get-outputs stub)))
-  (let [b  (summaries/get-bound stub)
-        ts (tree-summarizer stub)]
-    (summaries/summary-changed-local! stub)    
+(defn- set-stub-output! [stb sp]
+  (assert (empty? (get-outputs stb)))
+  (assert (identical? (stub sp) stb)) 
+  (let [b  (summaries/get-bound stb)
+        ts (tree-summarizer stb)]
+    (summaries/summary-changed-local! stb)    
     (summaries/connect-subsumed! ts sp)
     (connect-and-watch! ts sp
        (fn [child-sp]
@@ -170,10 +171,10 @@
            (summaries/connect! ts child-ts)
            (summaries/connect-subsumed! ts child-ts)
            (summaries/summary-changed! ts))))
-;    (println "SO" stub b (summary/max-reward (summaries/summary sp)))
+;    (println "SO" stb b (summary/max-reward (summaries/summary sp)))
     (summaries/add-bound! ts b) ;; TODO: ???
     (summaries/summary-changed! ts)
-    (add-output! stub sp)))
+    (add-output! stb sp)))
 
 (defn- set-derived-stub-output! [stub sp]
   (assert (empty? (get-outputs stub)))
@@ -507,8 +508,19 @@
           #(set-stub-output! ret (make-pair-subproblem ret left-sp %)))
         ret))))
 
-;; Note, potential to learn about additioan lsubsumption here, however, must be taken into account.
+
+;; Note: this allows us to assert stub-sp matching.
+;; TODO: get rido f this
+(defn make-echo-subproblem [stb sp]
+  (let [ret (make-simple-subproblem stb (output-set sp) (terminal? sp) summaries/or-summary
+                                    (fn [s ri] (refine-input sp ri)))]
+    (connect-and-watch! ret sp #(add-sp-child-stub! ret (stub %) false))
+    ret))
+
+
+;; TODO: remove extra level of indirection?
 ;; TODO: name does not match wrapping names.
+
 (defn- make-pair-stub1 [nm left-stub right-stub-fn]
   (if-let [left-sp (get-stub-output left-stub)]
     (make-pair-stub2 left-sp (right-stub-fn (output-set left-sp)))
@@ -518,7 +530,7 @@
           (connect-and-watch-stub! ret
             (make-pair-stub2 lo (right-stub-fn (output-set lo)))
             true
-            #(set-stub-output! ret %))))
+            #(set-stub-output! ret (make-echo-subproblem ret %))))) ;; eek!
       ret)))
 
 (defmethod get-stub :Pair [[_ left-name right-name :as n] inp]
