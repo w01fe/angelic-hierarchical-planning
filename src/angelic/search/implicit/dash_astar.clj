@@ -40,6 +40,13 @@
 ;; TODO: put back kill
 ;; TODO: figure out cause of comodification for children, e.g., d-m 3-3 -- seems to be pair
 
+;; What's happening now is that output gets set for atomic;
+;; that flows up, eventually triggers summary-changed! at pair.
+;; That forces summaries all the way down --
+;;  and children are somehow in inconsistent state.
+;; (because children are ready and queued, but not released -- and
+;;  not summarized either.  Cannot queue like we are now!)
+
 (set! *warn-on-reflection* true)
 
 (def *left-recursive*        true) ;; Use left, not right recursion for seqs (((a . b) . c) . d) 
@@ -119,6 +126,9 @@
 (defn canonicalize [sp] (ts-sp (sp-ts sp)))
 (defn canonical? [sp] (identical? sp (ts-sp (sp-ts sp))))
 
+(defn notify-output-set! [w s] #_ (println "NO" s w) (w))
+(defn notify-child! [w s c] #_ (println "NC" s c w) (swap! *out-count* inc) (w c))
+
 (traits/deftrait simple-subproblem
   [nm inp-set wrapped-ts eval!-fn ri-fn]
   [                 ts-atom          (atom wrapped-ts)
@@ -135,20 +145,20 @@
   (evaluate!           [s] (eval!-fn s))
   
   (get-output-set      [s] @out-set-atom)
-  (add-output-watcher! [s w] (if @out-set-atom (w) (.add output-watchers w)))
+  (add-output-watcher! [s w] (if @out-set-atom (notify-output-set! w s) (.add output-watchers w)))
   (set-output-set!    [s o]
     (assert (nil? @out-set-atom))
     (reset! out-set-atom o)
     (summaries/summary-changed-local! s)
     (when (canonical? s) 
       (summaries/summary-changed! (sp-ts s)))    
-    (doseq [w output-watchers] (w))
-    (doseq [c (get-children s), w (doall (seq child-watchers))] (w c)))
+    (doseq [w output-watchers] (notify-output-set! w s))
+    (doseq [c (get-children s), w (doall (seq child-watchers))] (notify-child! w s c)))
   
   (get-children        [s] (doall (seq child-list)))
   (add-child-watcher!  [s w]
     (.add child-watchers w)                   
-    (when (get-output-set s)) (doseq [c (get-children s)] (swap! *out-count* inc) (w c)))
+    (when (get-output-set s)) (doseq [c (get-children s)] (notify-child! w s c)))
   (add-sp-child!*      [s c] ;; TODO: wait if output not set yet, send them above?
     (util/assert-is (and (not (identical? s c)) (get-output-set c)))
     (.add child-list c)
@@ -249,7 +259,7 @@
      nm inp-set
      (fn [s ri] (assert (not *collect-equal-outputs*)) (get-subproblem nm  ri))
      (fn evaluate! [s]
-;;       (println "eval" nm)
+       (println "eval" nm)
        (assert (not (= :go @state)))
        (if (not (= :ready @state))
          (let [out-set @state] ;; Go live with chilren
@@ -354,7 +364,7 @@
   (make-wrapped-subproblem
    (oc-name (sp-name inner-sp)) (input-set inner-sp) #{:Atomic :Pair #_ ::TODO??? :SA :OC} inner-sp
    identity
-   (fn child-watch [sp child-sp] #_ (println inner-sp sp child-sp)
+   (fn child-watch [sp child-sp] (println sp child-sp (def *bad* [sp child-sp]))
      (if (=-state-sets (get-output-set! inner-sp) (get-output-set! child-sp))
        (do (connect-and-watch! sp child-sp nil #(child-watch sp %))
            (summaries/summary-changed! sp))
