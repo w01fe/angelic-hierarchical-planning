@@ -109,7 +109,7 @@
 (defn update-summary! [n summary-atom bound-atom]
   (let [s (summarize n),
         r (summary/max-reward s)]
-;    (println "US" n  @summary-atom s @bound-atom)
+#_    (println "US" n  @summary-atom s @bound-atom)
     (assert (<= r @bound-atom))
     (reset! summary-atom s)
     (update-bound! n bound-atom r) 
@@ -123,10 +123,10 @@
   (summary [n] (or @cache #_ (println "S" n) (update-summary! n cache bound)))
   (summary-changed! [n] #_(println "SC" n @cache @bound)
     (when-let [old @cache]
-#_      (println "SC" n old)
-      (when-not (summary/viable? old)
-        (util/assert-is (not (summary/viable? (summarize n))) "%s" [(def *bad* n) n old (summarize n)])) ;; TODO: remove!
-      (when (summary/live? old) 
+;      (println "SC" n old)
+;      (when-not (summary/viable? old)
+;      (util/assert-is (not (summary/viable? (summarize n))) "%s" [(def *bad* n) n old (summarize n)])) 
+      (when true #_(summary/live? old)  ;; TODO: ???
         (when (not (summary/eq old (update-summary! n cache bound)))          
           (doseq [p (doall (parent-nodes n))]
             (summary-changed! p))))))  
@@ -184,13 +184,18 @@
     (dfs summ)
     (seq l)))
 
-(defn extract-single-live-leaf [summ choice-fn]
+(defn extract-single-live-leaf [summ choice-fn bound]
+  (assert (>= (summary/max-reward summ) bound))
   (let [kids (map summary/source (summary/children summ))]
     (if (empty? kids)
       (summary/source summ)
       (let [live-kids (filter (comp summary/live? summary) kids)]
         (util/assert-is (seq live-kids) "%s" [(def *bad* summ)])
-        (recur (summary (or (util/singleton live-kids) (choice-fn live-kids))) choice-fn)))))
+        (assert (>= (reduce + (map (comp summary/max-reward summary) kids)) bound))        
+        (if-let [s (util/singleton live-kids)]
+          (recur (summary s) choice-fn bound)
+          (let [s (summary (choice-fn live-kids))]
+            (recur s choice-fn (summary/max-reward s))))))))
 
 
 (def *root* nil)
@@ -202,7 +207,7 @@
    #_#(do (when (<= (swap! *c* dec) 0) (assert nil))
         (verified-summary root-summarizable summary/+worst-simple-summary+))
    #(op!-fn (if local-choice?
-             (extract-single-live-leaf % choice-fn)
+             (extract-single-live-leaf % choice-fn (summary/max-reward %))
              (choice-fn (extract-live-leaf-source-seq %))))
    action-extractor))
 

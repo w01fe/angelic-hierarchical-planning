@@ -129,6 +129,10 @@
   (and (empty? (get-children sp))
        (not (summary/live? (summaries/summary sp)))))
 
+(defn solved-terminal? [sp]
+  (and (empty? (get-children sp))
+       (summary/solved? (summaries/summary sp))))
+
 
 (defmethod print-method angelic.search.implicit.dash_astar.Subproblem [sp o]
   (print-method (format "#<SP$%8h %s %s>" (System/identityHashCode sp) (sp-name sp)
@@ -175,10 +179,7 @@
   (add-sp-child!*      [s c] 
     (util/assert-is (and (not (identical? s c)) (get-output-set s) (get-output-set c)))
     (.add child-list c)
-    (summaries/summary-changed-local! s)
-    (when (canonical? s)
-      (summaries/connect! (sp-ts s) (sp-ts c))
-      (summaries/summary-changed! (sp-ts s))) ;; TODO: remove this overhead from atomic.   
+    (when (canonical? s) (summaries/connect! (sp-ts s) (sp-ts c)))
     (doseq [w (doall (seq child-watchers))] (swap! *out-count* inc) (w c)))
 
   (subsuming-sps [s] (keys subsuming-sp-set))
@@ -206,6 +207,7 @@
     (do (out-f) false)
     (do (add-output-watcher! c out-f) true)))
 
+;; TODO: subsumption should prevent child from gettong output before parent ??
 (defn- add-sp-child! [sp child-sp up?]
 ;  (println sp child-sp) (Thread/sleep 100)
   (when (canonical? sp)
@@ -215,10 +217,12 @@
   (if (get-output-set child-sp)
     (do (add-sp-child!* sp child-sp))
     (do (summaries/connect! sp child-sp)
-        (add-output-watcher! child-sp
-          (fn []
-            (summaries/disconnect! sp child-sp)
-            (add-sp-child!* sp child-sp)))
+        (add-output-watcher! sp ;; TODO: this feels hacky...
+          (fn [] (add-output-watcher! child-sp
+                   (fn [] (util/assert-is (get-output-set sp) "%s" [sp child-sp])
+                     (summaries/disconnect! sp child-sp)
+                     (add-sp-child!* sp child-sp)
+                     (summaries/summary-changed! sp)))))
         (when up? (summaries/summary-changed! sp)))))
 
 ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;  Constructors  ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
@@ -295,7 +299,7 @@
                (do (reset! state :go) ;; Fixed (blocked/solved)
                    (reset! sm-fn #(summary/make-simple-summary (min (summaries/get-bound %) reward) status %))
                    (set-output-set! s out-set)
-                   (summaries/summary-changed! s)))) ;; TODO?           
+                   (summaries/summary-changed! s)))) ;; TODO? 
            (do (reset! state :go) ;; Die
                (summaries/add-bound! s Double/NEGATIVE_INFINITY)))))     
      (fn summarize [s] (@sm-fn s)))))
@@ -307,7 +311,9 @@
 
 (defn pair-name [l r] [:Pair l r])
 
+;; TODO: with gather off, we have no way to expand right? !
 ;; TODO: short circuit when left terminal?
+;; tODO: no right output when right blocked? 
 (defn- make-pair-subproblem
   ([left-sp right-sp] (make-pair-subproblem left-sp (sp-name right-sp) (constantly right-sp)))
   ([left-sp right-name right-sp-fn]
@@ -315,33 +321,36 @@
      (let [nm (pair-name (sp-name left-sp) right-name)
            right-sp (delay (right-sp-fn (get-output-set! left-sp)))
            right?-atom (atom false) ;; Expand on right
+            
            ri-fn    (fn [s ni] (make-pair-subproblem (refine-input left-sp ni) right-name #(refine-input @right-sp %)))
            ss (summaries/make-sum-summarizer nil)
+           setup-right! (fn [s]
+                          (reset! right?-atom true)                          
+                          (add-child-watcher! left-sp (fn [c] (throw (RuntimeException. "Solved and children."))))
+                          (connect-and-watch! ss @right-sp
+                            (fn right-output [] (when-not (get-output-set s) (set-output-set! s (get-output-set! @right-sp))))
+                            (fn right-child [right-child] (add-sp-child! s (make-pair-subproblem left-sp right-child) true)))
+                          (summaries/summary-changed-local! ss))           
            ret (make-simple-subproblem nm (input-set left-sp) ri-fn noeval
                  (fn [s] 
                    (when (and *collect-equal-outputs*
                               (not @right?-atom)
-                              (summary/solved? (summaries/summary left-sp))
-                              (empty? (get-children left-sp))
-                              (get-output-set @right-sp))                     
-                     (reset! right?-atom true)
+                              (solved-terminal? left-sp)
+                              (get-output-set @right-sp))
+;                     (println "!!!" left-sp @right-sp)
                      (summaries/disconnect! ss (sp-ts @right-sp))
-                     (add-child-watcher! left-sp (fn [c] (throw (RuntimeException. "Solved and children."))))
-                     (connect-and-watch! ss @right-sp
-                       (fn ignore-output [] nil)
-                       (fn right-child [right-child]
-                         (summaries/summary-changed-local! ss)
-                         (add-sp-child! s (make-pair-subproblem left-sp right-child) true))))
+                     (setup-right! s))                   
                    (summaries/or-summary s)))]    
        (summaries/connect! ret ss)
        (connect-and-watch! ss left-sp
          (fn left-output []
-           (summaries/summary-changed-local! ss)
-           (when (connect-and-watch-ts! ss @right-sp ;; TODO: too eager?
-                   (fn [] (summaries/summary-changed-local! ss) (set-output-set! ret (get-output-set! @right-sp))))
-             (summaries/summary-changed! ret)))
+           (if (solved-terminal? left-sp)
+             (do (setup-right! ret)
+                 (summaries/summary-changed! ret))             
+             (do (connect-and-watch-ts! ss @right-sp 
+                   (fn [] (set-output-set! ret (get-output-set! @right-sp))))
+                 (summaries/summary-changed! ss))))
          (fn left-child [left-child]
-           (summaries/summary-changed-local! ss)
            (add-sp-child! ret (make-pair-subproblem left-child right-name #(refine-input @right-sp %)) true)))
        ret)))
 
@@ -382,8 +391,7 @@
    identity
    (fn child-watch [sp child-sp] ;     (println sp child-sp (def *bad* [sp child-sp]))
      (if (=-state-sets (get-output-set! inner-sp) (get-output-set! child-sp))
-       (do (connect-and-watch! sp child-sp nil #(child-watch sp %))
-           (summaries/summary-changed! sp))
+       (do (connect-and-watch! sp child-sp nil #(child-watch sp %)))
        (add-sp-child! sp (make-output-collecting-subproblem fs child-sp) false)))
    (fn refine-input [s ni]
      (if (= (input-set s) ni)
@@ -414,7 +422,7 @@
 (defn- make-eager-state-abstracted-subproblem [fs inner-sp inp-set]
   (make-wrapped-subproblem
    (sa-name (sp-name inner-sp)) inp-set #{:OC} inner-sp
-   #(do (assert (= (state/current-context %) (fs/precondition-context-set fs inp-set)))
+   #(do ;      (assert (= (state/current-context %) (fs/precondition-context-set fs inp-set)))
         (state/transfer-effects inp-set %))
    (fn [sp child-sp] (add-sp-child! sp (make-eager-state-abstracted-subproblem fs child-sp inp-set) true))
    (fn [sp ni] (if (=-state-sets ni inp-set) sp (make-eager-state-abstracted-subproblem fs (refine-input inner-sp ni) ni)))))
@@ -530,8 +538,13 @@
 
 ;; tODODS:
 
-;; (dotimes [_ 1] (reset! summaries/*summary-count* 0) (reset! summaries-old/*summary-count* 0) (reset! da/*out-count* 0) (reset! dao/*out-count* 0) (debug 0 (let [opts [:gather false :d false :s nil :dir :right] h (make-discrete-manipulation-hierarchy  (make-random-hard-discrete-manipulation-env 1 4))]  (time (println (run-counted #(identity (apply da/implicit-dash-a* h opts))) @summaries/*summary-count* @da/*out-count*))  (time (println (run-counted #(identity (apply dao/implicit-dash-a*-opt h opts))) @summaries-old/*summary-count*  @dao/*out-count*)) )))
+;; (dotimes [_ 1] (reset! summaries/*summary-count* 0) (reset! summaries-old/*summary-count* 0) (reset! da/*out-count* 0) (reset! dao/*out-count* 0) (debug 0 (let [opts [:gather false :d false :s nil :dir :right] h (make-discrete-manipulation-hierarchy  (make-random-hard-discrete-manipulation-env 2 4))]  (time (println (run-counted #(identity (apply da/implicit-dash-a* h opts))) @summaries/*summary-count* @da/*out-count*))  (time (println (run-counted #(identity (apply dao/implicit-dash-a*-opt h opts))) @summaries-old/*summary-count*  @dao/*out-count*)) )))
+;; fails
 
-;; (dotimes [_ 1] (reset! summaries/*summary-count* 0) (reset! summaries-old/*summary-count* 0) (reset! da/*out-count* 0) (reset! dao/*out-count* 0) (debug 0 (let [opts [:gather true :d true :s :eager :dir :right] h (make-nav-switch-hierarchy (make-random-nav-switch-env 2 1 0) true)]  (time (println (run-counted #(identity (apply da/implicit-dash-a* h opts))) @summaries/*summary-count* @da/*out-count*))  (time (println (run-counted #(identity (apply dao/implicit-dash-a*-opt h opts))) @summaries-old/*summary-count*  @dao/*out-count*)) )))
+;; Also greater counts.
 
-;; Deal with children-before-outputs in atomic.
+;(dotimes [_ 1] (reset! summaries/*summary-count* 0) (reset! summaries-old/*summary-count* 0) (reset! da/*out-count* 0) (reset! dao/*out-count* 0) (debug 0 (let [opts [:gather false :d false :s nil :dir :right] h (make-discrete-manipulation-hierarchy  (make-random-hard-discrete-manipulation-env 1 4))]  (time (println (run-counted #(identity (apply da/implicit-dash-a* h opts))) @summaries/*summary-count* @da/*out-count*))  (time (println (run-counted #(identity (apply dao/implicit-dash-a*-opt h opts))) @summaries-old/*summary-count*  @dao/*out-count*)) )))
+
+
+
+
