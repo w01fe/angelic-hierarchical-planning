@@ -135,20 +135,20 @@
   (evaluate!           [s] (eval!-fn s))
   
   (get-output-set      [s] @out-set-atom)
-  (add-output-watcher! [s w] (if @out-set-atom (w s) (.add output-watchers w)))
+  (add-output-watcher! [s w] (if @out-set-atom (w) (.add output-watchers w)))
   (set-output-set!    [s o]
     (assert (nil? @out-set-atom))
     (reset! out-set-atom o)
     (summaries/summary-changed-local! s)
     (when (canonical? s) 
       (summaries/summary-changed! (sp-ts s)))    
-    (doseq [w output-watchers] (w s))
-    (doseq [c (get-children s), w (doall (seq child-watchers))] (w s c)))
+    (doseq [w output-watchers] (w))
+    (doseq [c (get-children s), w (doall (seq child-watchers))] (w c)))
   
   (get-children        [s] (doall (seq child-list)))
   (add-child-watcher!  [s w]
     (.add child-watchers w)                   
-    (when (get-output-set s)) (doseq [c (get-children s)] (swap! *out-count* inc) (w s c)))
+    (when (get-output-set s)) (doseq [c (get-children s)] (swap! *out-count* inc) (w c)))
   (add-sp-child!*      [s c] ;; TODO: wait if output not set yet, send them above?
     (util/assert-is (and (not (identical? s c)) (get-output-set c)))
     (.add child-list c)
@@ -156,10 +156,12 @@
     (when (canonical? s)
       (summaries/connect! (sp-ts s) (sp-ts c))
       (when (get-output-set s) (summaries/summary-changed! (sp-ts s)))) ;; TODO: remove this overhead from atomic.   
-    (when (get-output-set s) (doseq [w (doall (seq child-watchers))] (swap! *out-count* inc) (w s c))))
+    (when (get-output-set s) (doseq [w (doall (seq child-watchers))] (swap! *out-count* inc) (w c))))
 
   (subsuming-sps [s] (keys subsuming-sp-set))
   (add-subsuming-sp! [s subsuming-sp]
+    (util/assert-is (canonical? s))
+    (util/assert-is (canonical? subsuming-sp))                     
     (util/assert-is (= nm (sp-name subsuming-sp)))                 
     (when-not (.containsKey subsuming-sp-set subsuming-sp)
       (.put subsuming-sp-set subsuming-sp true)
@@ -178,7 +180,7 @@
 (defn- connect-and-watch-ts! [p c out-f]
   (summaries/connect! p (sp-ts c))
   (if (get-output-set c)
-    (do (out-f c) false)
+    (do (out-f) false)
     (do (add-output-watcher! c out-f) true)))
 
 (defn- add-sp-child! [sp child-sp up?]
@@ -191,7 +193,7 @@
     (add-sp-child!* sp child-sp)
     (do (summaries/connect! sp child-sp)
         (add-output-watcher! child-sp
-          (fn [child-sp]
+          (fn []
             (summaries/disconnect! sp child-sp)
             (add-sp-child!* sp child-sp)))
         (when up? (summaries/summary-changed! sp)))))
@@ -201,13 +203,13 @@
 (defn noeval [s] (throw (RuntimeException. (print-str s "not evaluable!"))))
 
 (defn make-wrapped-subproblem [nm inp-set prefix-set inner-sp output-wrap child-watch ri-fn]
-  (assert (prefix-set (first (sp-name inner-sp))))
+  (util/assert-is (contains? prefix-set (first (sp-name inner-sp))))
   (let [ret (traits/reify-traits
              [summaries/or-summarizable
               (simple-subproblem nm inp-set (sp-ts inner-sp) noeval ri-fn)])]
     (connect-and-watch! ret inner-sp
-      (fn [inner-sp] (set-output-set! ret (output-wrap (get-output-set! inner-sp))))
-      (fn [inner-sp inner-child] (child-watch ret inner-child)))
+      (fn [] (set-output-set! ret (output-wrap (get-output-set! inner-sp))))
+      (fn [inner-child] (child-watch ret inner-child)))
     ret))
 
 
@@ -254,8 +256,8 @@
            (reset! state :go)
            (if-let [subsuming-sps (seq (filter #(not (terminal? %)) (subsuming-sps s)))]
              (connect-and-watch! s (apply min-key (comp summaries/get-bound sp-ts) subsuming-sps)
-               (fn ignore-output [sub] nil)
-               (fn [sub sub-out] (add-sp-child! s (refine-input sub-out inp-set) true)))
+               (fn ignore-output [] nil)
+               (fn [sub-out] (add-sp-child! s (refine-input sub-out inp-set) true)))
              (doseq [ref-name (refinement-names fs inp-set)] #_ (println fs ref-name)
                (add-sp-child! s (get-subproblem ref-name inp-set) false))) ;; TODO: watch ? 
            (reset! sm-fn summaries/or-summary)
@@ -298,21 +300,21 @@
                               (get-output-set @right-sp))                     
                      (reset! right?-atom true)
                      (summaries/disconnect! ss (sp-ts @right-sp))
-                     (add-child-watcher! left-sp (fn [o c] (throw (RuntimeException. "Solved and children."))))
+                     (add-child-watcher! left-sp (fn [c] (throw (RuntimeException. "Solved and children."))))
                      (connect-and-watch! ss @right-sp
-                       (fn ignore-output [o] nil)
-                       (fn right-child [right-sp right-child]
+                       (fn ignore-output [] nil)
+                       (fn right-child [right-child]
                          (summaries/summary-changed-local! ss)
                          (add-sp-child! s (make-pair-subproblem left-sp right-child) true))))
                    (summaries/or-summary s)))]    
        (summaries/connect! ret ss)
        (connect-and-watch! ss left-sp
-         (fn left-output [left-sp]
+         (fn left-output []
            (summaries/summary-changed-local! ss)
-           (when (connect-and-watch-ts! ss @right-sp ;; TODO: too eager/ 
-                   (fn [right-sp] (summaries/summary-changed-local! ss) (set-output-set! ret (get-output-set! right-sp))))
+           (when (connect-and-watch-ts! ss @right-sp ;; TODO: too eager?
+                   (fn [] (summaries/summary-changed-local! ss) (set-output-set! ret (get-output-set! @right-sp))))
              (summaries/summary-changed! ret)))
-         (fn left-child [left-sp left-child]
+         (fn left-child [left-child]
            (summaries/summary-changed-local! ss)
            (add-sp-child! ret (make-pair-subproblem left-child right-name #(refine-input @right-sp %)) true)))
        ret)))
@@ -335,7 +337,11 @@
   (util/assert-is (= (state/current-context s1) (state/current-context s2)) "%s" [s1 s2])
   (= s1 s2))
 
-(defn wrapper? [sp] (#{:OC :SA} (first (sp-name sp))))
+;; Note: must always wrap (at least with SA), or we lose context.
+;; TODO: only :Atomic or :Pair inside, when SA off 
+;;(defn wrapper? [sp] (#{:OC :SA} (first (sp-name sp))))
+;; (comment  (if (wrapper? child-sp) child-sp (make-output-collecting-subproblem fs child-sp)))
+
 
 (defn atomic-name-fs [n] (util/match [[:Atomic ~fs] n] fs))
 (defn log-input [fs inp-set] (if *state-abstraction* (fs/get-logger fs inp-set) inp-set))
@@ -346,15 +352,13 @@
 
 (defn- make-output-collecting-subproblem [fs inner-sp]
   (make-wrapped-subproblem
-   (oc-name (sp-name inner-sp)) (input-set inner-sp) #{:Atomic :Pair} inner-sp
+   (oc-name (sp-name inner-sp)) (input-set inner-sp) #{:Atomic :Pair #_ ::TODO??? :SA :OC} inner-sp
    identity
    (fn child-watch [sp child-sp] #_ (println inner-sp sp child-sp)
      (if (=-state-sets (get-output-set! inner-sp) (get-output-set! child-sp))
-       (do (connect-and-watch! sp child-sp nil #(child-watch sp %2))
+       (do (connect-and-watch! sp child-sp nil #(child-watch sp %))
            (summaries/summary-changed! sp))
-       (add-sp-child! sp 
-         (if (wrapper? child-sp) child-sp (make-output-collecting-subproblem fs child-sp))
-         false)))
+       (add-sp-child! sp (make-output-collecting-subproblem fs child-sp) false)))
    (fn refine-input [s ni]
      (if (= (input-set s) ni)
        s
