@@ -85,7 +85,7 @@
 ;; TODO: correct?
 (defn connect-subsumed! [node subsumed-parent]
   (add-subsumed! node subsumed-parent)
-  #_ (add-bound! subsumed-parent (get-bound node))) ;; TODO: put back!
+  (add-bound! subsumed-parent (get-bound node))) 
 
 
 ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;; SummaryCache ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
@@ -109,10 +109,10 @@
 (defn update-summary! [n summary-atom bound-atom]
   (let [s (summarize n),
         r (summary/max-reward s)]
-    (println "US" n  @summary-atom s @bound-atom)
+;    (println "US" n  @summary-atom s @bound-atom)
     (assert (<= r @bound-atom))
     (reset! summary-atom s)
-    #_(update-bound! n bound-atom r) ;; TODO: put back
+    (update-bound! n bound-atom r) 
     s))
 
 ;; TODO: assert consistency on nil cache, and with lazy...
@@ -120,10 +120,10 @@
   SummaryCache
   (get-bound        [n]   @bound)
   (add-bound!       [n b] (when (update-bound! n bound b) (summary-changed! n)))
-  (summary [n] (or @cache (println "S" n) (update-summary! n cache bound)))
+  (summary [n] (or @cache #_ (println "S" n) (update-summary! n cache bound)))
   (summary-changed! [n] #_(println "SC" n @cache @bound)
     (when-let [old @cache]
-      (println "SC" n old)
+#_      (println "SC" n old)
       (when-not (summary/viable? old)
         (util/assert-is (not (summary/viable? (summarize n))) "%s" [(def *bad* n) n old (summarize n)])) ;; TODO: remove!
       (when (summary/live? old) 

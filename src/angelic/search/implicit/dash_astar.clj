@@ -47,6 +47,22 @@
 ;; (because children are ready and queued, but not released -- and
 ;;  not summarized either.  Cannot queue like we are now!)
 
+;; Can we produce children before we have output?  Does anyone care?
+;; Or, rather, do we need to run updates with output ?
+
+;; TODO: missing updates on children -- need to think up a consistent scheme
+;; Ways summary change can be initiated --
+;;  sending out a child?
+;;  receiving a child?
+;;  explicit bound changes
+;;  explicit summary changed initiations ...
+;; (Output, not for now...)
+
+;; Various protocols we could do
+;; Require output before children?
+;; Require children have output?
+;; In interest of limiting branching, both seem like good ideas.
+
 (set! *warn-on-reflection* true)
 
 (def *left-recursive*        true) ;; Use left, not right recursion for seqs (((a . b) . c) . d) 
@@ -149,24 +165,21 @@
   (set-output-set!    [s o]
     (assert (nil? @out-set-atom))
     (reset! out-set-atom o)
-    (summaries/summary-changed-local! s)
-    (when (canonical? s) 
-      (summaries/summary-changed! (sp-ts s)))    
-    (doseq [w output-watchers] (notify-output-set! w s))
-    (doseq [c (get-children s), w (doall (seq child-watchers))] (notify-child! w s c)))
+ ;    TODO: summary-changed-local at least?
+    (doseq [w output-watchers] (notify-output-set! w s)))
   
   (get-children        [s] (doall (seq child-list)))
   (add-child-watcher!  [s w]
     (.add child-watchers w)                   
     (when (get-output-set s)) (doseq [c (get-children s)] (notify-child! w s c)))
-  (add-sp-child!*      [s c] ;; TODO: wait if output not set yet, send them above?
-    (util/assert-is (and (not (identical? s c)) (get-output-set c)))
+  (add-sp-child!*      [s c] 
+    (util/assert-is (and (not (identical? s c)) (get-output-set s) (get-output-set c)))
     (.add child-list c)
     (summaries/summary-changed-local! s)
     (when (canonical? s)
       (summaries/connect! (sp-ts s) (sp-ts c))
-      (when (get-output-set s) (summaries/summary-changed! (sp-ts s)))) ;; TODO: remove this overhead from atomic.   
-    (when (get-output-set s) (doseq [w (doall (seq child-watchers))] (swap! *out-count* inc) (w c))))
+      (summaries/summary-changed! (sp-ts s))) ;; TODO: remove this overhead from atomic.   
+    (doseq [w (doall (seq child-watchers))] (swap! *out-count* inc) (w c)))
 
   (subsuming-sps [s] (keys subsuming-sp-set))
   (add-subsuming-sp! [s subsuming-sp]
@@ -200,7 +213,7 @@
     ;; TODO: propagate!
     )
   (if (get-output-set child-sp)
-    (add-sp-child!* sp child-sp)
+    (do (add-sp-child!* sp child-sp))
     (do (summaries/connect! sp child-sp)
         (add-output-watcher! child-sp
           (fn []
@@ -259,11 +272,13 @@
      nm inp-set
      (fn [s ri] (assert (not *collect-equal-outputs*)) (get-subproblem nm  ri))
      (fn evaluate! [s]
-       (println "eval" nm)
+;       (println "eval" nm )
        (assert (not (= :go @state)))
        (if (not (= :ready @state))
          (let [out-set @state] ;; Go live with chilren
            (reset! state :go)
+           (set-output-set! s out-set)
+           ;; TODO: all of following is potentially really wasteful?
            (if-let [subsuming-sps (seq (filter #(not (terminal? %)) (subsuming-sps s)))]
              (connect-and-watch! s (apply min-key (comp summaries/get-bound sp-ts) subsuming-sps)
                (fn ignore-output [] nil)
@@ -271,7 +286,7 @@
              (doseq [ref-name (refinement-names fs inp-set)] #_ (println fs ref-name)
                (add-sp-child! s (get-subproblem ref-name inp-set) false))) ;; TODO: watch ? 
            (reset! sm-fn summaries/or-summary)
-           (set-output-set! s out-set))           
+           (summaries/summary-changed! s))         
          (if-let [[out-set reward] (fs/apply-opt fs inp-set)]
            (let [status (fs/status fs inp-set)]
              (if (= status :live)
@@ -279,7 +294,8 @@
                    (summaries/add-bound! s reward))
                (do (reset! state :go) ;; Fixed (blocked/solved)
                    (reset! sm-fn #(summary/make-simple-summary (min (summaries/get-bound %) reward) status %))
-                   (set-output-set! s out-set))))
+                   (set-output-set! s out-set)
+                   (summaries/summary-changed! s)))) ;; TODO?           
            (do (reset! state :go) ;; Die
                (summaries/add-bound! s Double/NEGATIVE_INFINITY)))))     
      (fn summarize [s] (@sm-fn s)))))
@@ -364,7 +380,7 @@
   (make-wrapped-subproblem
    (oc-name (sp-name inner-sp)) (input-set inner-sp) #{:Atomic :Pair #_ ::TODO??? :SA :OC} inner-sp
    identity
-   (fn child-watch [sp child-sp] (println sp child-sp (def *bad* [sp child-sp]))
+   (fn child-watch [sp child-sp] ;     (println sp child-sp (def *bad* [sp child-sp]))
      (if (=-state-sets (get-output-set! inner-sp) (get-output-set! child-sp))
        (do (connect-and-watch! sp child-sp nil #(child-watch sp %))
            (summaries/summary-changed! sp))
