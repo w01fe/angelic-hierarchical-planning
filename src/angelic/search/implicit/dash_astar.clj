@@ -146,6 +146,27 @@
 (defmethod print-method angelic.search.implicit.dash_astar.TreeSummarizer [s o]
   (print-method (format "#<TS %s>" (print-str (ts-sp s))) o))
 
+;;;;;;;;;;;;;;;;;;;;;;;;;      Change Scheduling      ;;;;;;;;;;;;;;;;;;;;;;;;;;
+
+(def *increases* (ArrayList.))
+(def *decreases* (ArrayList.))
+(def *subsumes* (ArrayList.))
+
+(defn schedule-decrease! [sp] (.add ^ArrayList *decreases* sp))
+(defn schedule-increase! [sp] (.add ^ArrayList *increases* sp))
+(defn schedule-subsumption! [ts subsumed-ts] (.add ^ArrayList *subsumes* [ts subsumed-ts]))
+
+(defn do-changes! [^ArrayList a f]
+  (doseq [sp a] (f sp))
+  (.clear a))
+
+(declare evaluate!)
+
+(defn evaluate-and-update! [s]
+  (evaluate! s)
+  (do-changes! *increases* summaries/summary-changed!)
+  (do-changes! *subsumes* (fn [[ts subsumed-ts]] (summaries/connect-subsumed! ts subsumed-ts)))
+  (do-changes! *decreases* summaries/summary-changed!))
 
 ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
 ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;  Subproblems  ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
@@ -225,7 +246,6 @@
     (util/print-debug 2 "SO" s)
     (assert (nil? @out-set-atom))
     (reset! out-set-atom o)
- ;    TODO: summary-changed-local at least?
     (doseq [w output-watchers] (notify-output-set! w s)))
   
   (get-children        [s] (doall (seq child-list)))
@@ -235,7 +255,9 @@
   (add-sp-child!*      [s c] 
     (util/assert-is (and (not (identical? s c)) (get-output-set s) (get-output-set c)))
     (.add child-list c)
-    (when (canonical? s) (summaries/connect! (sp-ts s) (sp-ts c)))
+    (when (canonical? s)
+      (summaries/connect! (sp-ts s) (sp-ts c))
+      (schedule-increase! (sp-ts s)))    
     (doseq [w (doall (seq child-watchers))] (swap! *out-count* inc) (w c)))
 
   (subsuming-sps [s] (keys subsuming-sp-set))
@@ -245,7 +267,7 @@
     (util/assert-is (= nm (sp-name subsuming-sp)))                 
     (when-not (.containsKey subsuming-sp-set subsuming-sp)
       (.put subsuming-sp-set subsuming-sp true)
-      (summaries/connect-subsumed! (sp-ts subsuming-sp) (sp-ts s))))
+      (schedule-subsumption! (sp-ts subsuming-sp) (sp-ts s))))
   
   (refine-input    [s ni] (let [ret (ri-fn s ni)] (util/assert-is (= nm (sp-name ret))) ret)))
 
@@ -267,20 +289,20 @@
 (defn- add-sp-child! [sp child-sp up?]
    (util/print-debug 2 "AC" sp child-sp)
 ;  (println sp child-sp) (Thread/sleep 100)
-  (when (canonical? sp)
-    (summaries/connect-subsumed! (sp-ts sp) (sp-ts child-sp))
+   (when (canonical? sp)
+     (schedule-subsumption! (sp-ts sp) (sp-ts child-sp))
     ;; TODO: propagate!
-    )
-  (if (get-output-set child-sp)
+     )
+   (if (get-output-set child-sp)
     (do (add-sp-child!* sp child-sp))
     (do (summaries/connect! sp child-sp)
         (add-output-watcher! sp ;; TODO: this feels hacky...
           (fn [] (add-output-watcher! child-sp
                    (fn [] (util/assert-is (get-output-set sp) "%s" [sp child-sp])
-                     (add-sp-child!* sp child-sp) ;; TODO: order? 
+                     (add-sp-child!* sp child-sp) 
                      (summaries/disconnect! sp child-sp)
-                     (summaries/summary-changed! sp)))))
-        (when up? (summaries/summary-changed! sp)))))
+                     (schedule-decrease! sp)))))
+        (when up? (schedule-increase! sp)))))
 
 ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;  Constructors  ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
 
@@ -347,7 +369,7 @@
              (doseq [ref-name (refinement-names fs inp-set)] #_ (println fs ref-name)
                (add-sp-child! s (get-subproblem ref-name inp-set) false))) ;; TODO: watch ? 
            (reset! sm-fn summaries/or-summary)
-           (summaries/summary-changed! s))         
+           (schedule-decrease! s))         
          (if-let [[out-set reward] (fs/apply-opt fs inp-set)]
            (let [status (fs/status fs inp-set)]
              (if (= status :live)
@@ -356,7 +378,7 @@
                (do (reset! state :go) ;; Fixed (blocked/solved)
                    (reset! sm-fn #(summary/make-simple-summary (min (summaries/get-bound %) reward) status %))
                    (set-output-set! s out-set)
-                   (summaries/summary-changed! s)))) ;; TODO? 
+                   (schedule-decrease! s)))) ;; TODO? 
            (do (reset! state :go) ;; Die
                (summaries/add-bound! s Double/NEGATIVE_INFINITY)))))     
      (fn summarize [s] (@sm-fn s)))))
@@ -381,27 +403,30 @@
            right?-atom (atom false) ;; Expand on right            
            ri-fn    (fn [s ni] (make-pair-subproblem (refine-input left-sp ni) right-name #(refine-input @right-sp %)))
            ss (summaries/make-sum-summarizer nil)
-           ret (make-simple-subproblem nm (input-set left-sp) ri-fn noeval
+           go-right! (fn [s]
+                       (reset! right?-atom true)                          
+                       (summaries/disconnect! ss (sp-ts @right-sp))
+                       (add-child-watcher! left-sp (fn [c] (def *bad* [s c]) (throw (RuntimeException. "Solved and children."))))
+                       (summaries/summary-changed-local! ss)
+                       (connect-and-watch! ss @right-sp
+                         (fn ignore-output [] nil) 
+                         (fn right-child [right-child] (add-sp-child! s (make-pair-subproblem left-sp right-child) true))))
+           ret (make-simple-subproblem nm (input-set left-sp) ri-fn
+                 (fn eval! [s] (schedule-decrease! s) (go-right! s))
                  (fn [s] 
-                   (when (and (not @right?-atom)
-                              (solved-terminal? left-sp)
-                               #_ (get-output-set @right-sp)) ;; TODO: this can't work!
-;                    (println "!!!" left-sp @right-sp)
-                     (reset! right?-atom true)                          
-                     (summaries/disconnect! ss (sp-ts @right-sp))
-                     (add-child-watcher! left-sp (fn [c] (def *bad* [s c]) (throw (RuntimeException. "Solved and children."))))
-;                     (add-watch! (get-output-set @right-sp))
-                     (connect-and-watch! ss @right-sp
-                       (fn ignore-output [] nil) 
-                       (fn right-child [right-child] (add-sp-child! s (make-pair-subproblem left-sp right-child) true))) ;; TODO: was true
-                     (summaries/summary-changed-local! ss))                   
-                   (summaries/or-summary s)))]    
+                   (or (and (not @right?-atom)
+                            (solved-terminal? left-sp)
+                            (if (empty? (get-children @right-sp))
+                              (do (go-right! s) nil)
+                              (summary/make-live-simple-summary
+                               (min (summary/max-reward (summaries/summary ss)) (summaries/get-bound s)) s)))
+                       (summaries/or-summary s))))]    
        (summaries/connect! ret ss)
        (connect-and-watch! ss left-sp
          (fn left-output []
            (connect-and-watch-ts! ss @right-sp 
              (fn [] (set-output-set! ret (get-output-set! @right-sp))))
-           (summaries/summary-changed! ss))
+           (schedule-decrease! ss)) ;; TODO:
          (fn left-child [left-child]
            (add-sp-child! ret (make-pair-subproblem left-child right-name #(refine-input @right-sp %)) true))) ;; TODO: was true
        ret)))
@@ -536,7 +561,6 @@
 ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;; Planning ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
 ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
 
-
 (defn- get-root-summarizer [inp-set fs] (sp-ts (make-atomic-subproblem fs inp-set )))
 
 (def *lazy-cache* false) 
@@ -561,7 +585,7 @@
             ]
     (summaries/solve
      (apply get-root-summarizer (fs/make-init-pair henv))
-     choice-fn local? evaluate!
+     choice-fn local? evaluate-and-update!
      #(let [n (fs/fs-name (second (sp-name %)))] (when-not (= (first n) :noop) n)))))
 
 

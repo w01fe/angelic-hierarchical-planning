@@ -196,7 +196,7 @@
       (summary/source summ)
       (let [live-kids (filter (comp summary/live? summary) kids)]
         (util/assert-is (seq live-kids) "%s" [(def *bad* summ)])
-        (assert (>= (reduce + (map (comp summary/max-reward summary) kids)) bound))        
+        (util/assert-is (>= (reduce + (map (comp summary/max-reward summary) kids)) bound) "%s" [(def *bad* summ)])        
         (if-let [s (util/singleton live-kids)]
           (recur (summary s) choice-fn bound)
           (let [s (summary (choice-fn live-kids))]
