@@ -75,10 +75,48 @@
 ;;  --> Make sure no updates see an inconsistent state.
 ;; (made more challenging by fact that outputs can trigger children,
 ;;  children can trigger updates, updates can trigger more children (from pair), ...).
+;; However, nothing can trigger outputs except outputs and evaluation.
+;;  -- and children which create pair children that get outputs. . .. .
 ;; IF we just remove latter dependency, can do all tree modifications, then all updates.
 ;; We try to manage this now, but potentially fail.
 ;;  Alternative is old way, with summary-changed-local!
 ;; Or, a combination -- although not clear how S-C-L helps then...
+
+;; Clearly, problem is with solved.
+;; Can we propagate solved first, or something?
+;; Can clearly propagate just solved info.  Doing it with summaries seems awkward.
+;; If we do this right, could lead to solution to lazy problem as well ...?
+;; Nah, summary is just too closely tied to status. (i.e., OC is solved if MAX-REWARD child is SOLVED)
+;; This makes any sort of separate "solved-signal" painful -- including fresh outputs
+
+;; Without the pair thing, we could do all our propagation.
+;; Then, do subsumption connections, then update things with new children (incr),
+;;  and finally update the evaluated leaf and anyone who gave up children (dec).
+;; (where, exactly, should evaluated leaf go in this???).
+;; (subsumption may be do more than we want, though).
+
+;; Then, only problem is pair thing.
+;; That will always happen in "increase" phase.
+;; Problem: pair cannot return a correct status until it shifts and
+;; potentially spits out new outputs.
+;; Solution(?) -- we can still defer the decreases.
+;; I.e., do al the increases first?
+;; This is always guaranteed to be safe...?
+;; This means that we always have to leave tree in consistent state-- Ugh.
+
+;; Another idea: just try to make sure each operation is consistent, instead of batching everything.
+;; I.e., release a child or output, wait for it to be fully "absorbed", do updates, then release next, etc.
+
+;; Or, we can try to break dependence of pair on summary, e.g., by pushing solved as output.
+
+;; Or, we can prevent further tree modifications by pair switch.
+;; For instance, iff right has outputs already, it becomes live, must be evaluated to switch directions.
+
+;; We can even take this one step further & do it automatically.
+
+;; Forget about OC and 
+
+;; Or, we can 
 
 (set! *warn-on-reflection* true)
 
