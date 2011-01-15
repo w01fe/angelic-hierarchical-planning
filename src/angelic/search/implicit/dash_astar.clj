@@ -63,6 +63,23 @@
 ;; Require children have output?
 ;; In interest of limiting branching, both seem like good ideas.
 
+;; One issue: when I add a child right now, I may not update summary at all.
+;;  That might be fine, except that
+;;   (1) nobody may have computed summary child -- this means that pair splitting won't happen
+;;   (2) child *can* actually spell increase, when solved ! .
+;; TODO: just add *check-consistency* function ???
+
+;; OK!  Basic goal of all this nonsense:
+;;  --> Make sure all updates are made.
+;;    --> Roots: evaluated SP, "freed" child, "captured" child (solved only?)
+;;  --> Make sure no updates see an inconsistent state.
+;; (made more challenging by fact that outputs can trigger children,
+;;  children can trigger updates, updates can trigger more children (from pair), ...).
+;; IF we just remove latter dependency, can do all tree modifications, then all updates.
+;; We try to manage this now, but potentially fail.
+;;  Alternative is old way, with summary-changed-local!
+;; Or, a combination -- although not clear how S-C-L helps then...
+
 (set! *warn-on-reflection* true)
 
 (def *left-recursive*        true) ;; Use left, not right recursion for seqs (((a . b) . c) . d) 
@@ -167,6 +184,7 @@
   (get-output-set      [s] @out-set-atom)
   (add-output-watcher! [s w] (if @out-set-atom (notify-output-set! w s) (.add output-watchers w)))
   (set-output-set!    [s o]
+    (util/print-debug 2 "SO" s)
     (assert (nil? @out-set-atom))
     (reset! out-set-atom o)
  ;    TODO: summary-changed-local at least?
@@ -209,6 +227,7 @@
 
 ;; TODO: subsumption should prevent child from gettong output before parent ??
 (defn- add-sp-child! [sp child-sp up?]
+   (util/print-debug 2 "AC" sp child-sp)
 ;  (println sp child-sp) (Thread/sleep 100)
   (when (canonical? sp)
     (summaries/connect-subsumed! (sp-ts sp) (sp-ts child-sp))
@@ -220,8 +239,8 @@
         (add-output-watcher! sp ;; TODO: this feels hacky...
           (fn [] (add-output-watcher! child-sp
                    (fn [] (util/assert-is (get-output-set sp) "%s" [sp child-sp])
+                     (add-sp-child!* sp child-sp) ;; TODO: order? 
                      (summaries/disconnect! sp child-sp)
-                     (add-sp-child!* sp child-sp)
                      (summaries/summary-changed! sp)))))
         (when up? (summaries/summary-changed! sp)))))
 
@@ -276,7 +295,7 @@
      nm inp-set
      (fn [s ri] (assert (not *collect-equal-outputs*)) (get-subproblem nm  ri))
      (fn evaluate! [s]
-;       (println "eval" nm )
+       (util/print-debug 1 "eval" nm (= :ready @state))
        (assert (not (= :go @state)))
        (if (not (= :ready @state))
          (let [out-set @state] ;; Go live with chilren
@@ -286,7 +305,7 @@
            (if-let [subsuming-sps (seq (filter #(not (terminal? %)) (subsuming-sps s)))]
              (connect-and-watch! s (apply min-key (comp summaries/get-bound sp-ts) subsuming-sps)
                (fn ignore-output [] nil)
-               (fn [sub-out] (add-sp-child! s (refine-input sub-out inp-set) true)))
+               (fn [sub-out] (add-sp-child! s (refine-input sub-out inp-set) true))) ;; TODO: was true
              (doseq [ref-name (refinement-names fs inp-set)] #_ (println fs ref-name)
                (add-sp-child! s (get-subproblem ref-name inp-set) false))) ;; TODO: watch ? 
            (reset! sm-fn summaries/or-summary)
@@ -313,6 +332,7 @@
 
 ;; TODO: with gather off, we have no way to expand right? !
 ;; TODO: short circuit when left terminal?
+;;   Except, when we get left output we still don't know, under current scheme ...
 ;; tODO: no right output when right blocked? 
 (defn- make-pair-subproblem
   ([left-sp right-sp] (make-pair-subproblem left-sp (sp-name right-sp) (constantly right-sp)))
@@ -320,38 +340,32 @@
 ;     (println "mps" left-sp right-name) (Thread/sleep 10)
      (let [nm (pair-name (sp-name left-sp) right-name)
            right-sp (delay (right-sp-fn (get-output-set! left-sp)))
-           right?-atom (atom false) ;; Expand on right
-            
+           right?-atom (atom false) ;; Expand on right            
            ri-fn    (fn [s ni] (make-pair-subproblem (refine-input left-sp ni) right-name #(refine-input @right-sp %)))
            ss (summaries/make-sum-summarizer nil)
-           setup-right! (fn [s]
-                          (reset! right?-atom true)                          
-                          (add-child-watcher! left-sp (fn [c] (throw (RuntimeException. "Solved and children."))))
-                          (connect-and-watch! ss @right-sp
-                            (fn right-output [] (when-not (get-output-set s) (set-output-set! s (get-output-set! @right-sp))))
-                            (fn right-child [right-child] (add-sp-child! s (make-pair-subproblem left-sp right-child) true)))
-                          (summaries/summary-changed-local! ss))           
            ret (make-simple-subproblem nm (input-set left-sp) ri-fn noeval
                  (fn [s] 
-                   (when (and *collect-equal-outputs*
-                              (not @right?-atom)
+                   (when (and (not @right?-atom)
                               (solved-terminal? left-sp)
-                              (get-output-set @right-sp))
-;                     (println "!!!" left-sp @right-sp)
+                               #_ (get-output-set @right-sp)) ;; TODO: this can't work!
+;                    (println "!!!" left-sp @right-sp)
+                     (reset! right?-atom true)                          
                      (summaries/disconnect! ss (sp-ts @right-sp))
-                     (setup-right! s))                   
+                     (add-child-watcher! left-sp (fn [c] (def *bad* [s c]) (throw (RuntimeException. "Solved and children."))))
+;                     (add-watch! (get-output-set @right-sp))
+                     (connect-and-watch! ss @right-sp
+                       (fn ignore-output [] nil) 
+                       (fn right-child [right-child] (add-sp-child! s (make-pair-subproblem left-sp right-child) true))) ;; TODO: was true
+                     (summaries/summary-changed-local! ss))                   
                    (summaries/or-summary s)))]    
        (summaries/connect! ret ss)
        (connect-and-watch! ss left-sp
          (fn left-output []
-           (if (solved-terminal? left-sp)
-             (do (setup-right! ret)
-                 (summaries/summary-changed! ret))             
-             (do (connect-and-watch-ts! ss @right-sp 
-                   (fn [] (set-output-set! ret (get-output-set! @right-sp))))
-                 (summaries/summary-changed! ss))))
+           (connect-and-watch-ts! ss @right-sp 
+             (fn [] (set-output-set! ret (get-output-set! @right-sp))))
+           (summaries/summary-changed! ss))
          (fn left-child [left-child]
-           (add-sp-child! ret (make-pair-subproblem left-child right-name #(refine-input @right-sp %)) true)))
+           (add-sp-child! ret (make-pair-subproblem left-child right-name #(refine-input @right-sp %)) true))) ;; TODO: was true
        ret)))
 
 
@@ -424,7 +438,7 @@
    (sa-name (sp-name inner-sp)) inp-set #{:OC} inner-sp
    #(do ;      (assert (= (state/current-context %) (fs/precondition-context-set fs inp-set)))
         (state/transfer-effects inp-set %))
-   (fn [sp child-sp] (add-sp-child! sp (make-eager-state-abstracted-subproblem fs child-sp inp-set) true))
+   (fn [sp child-sp] (add-sp-child! sp (make-eager-state-abstracted-subproblem fs child-sp inp-set) false)) ;; TODO: was true
    (fn [sp ni] (if (=-state-sets ni inp-set) sp (make-eager-state-abstracted-subproblem fs (refine-input inner-sp ni) ni)))))
 
 
