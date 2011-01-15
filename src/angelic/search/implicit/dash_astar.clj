@@ -18,9 +18,6 @@
 
 ;; TODO: SP has hash table from (state-abstracted context) input set to stub (?).
 
-;; TODO: we need to make sure tree sums get called on add-output! first to ensure
-;;       consistency with top-down-bounds ? 
-
 ;; TODO: tests ! 
 
 ;; TODO first: propagate subsumption links.
@@ -116,7 +113,9 @@
 
 ;; Forget about OC and 
 
-;; Or, we can 
+;; Or, we can
+
+;; TODO: make summary-increase strictly do increases.
 
 (set! *warn-on-reflection* true)
 
@@ -156,17 +155,22 @@
 (defn schedule-increase! [sp] (.add ^ArrayList *increases* sp))
 (defn schedule-subsumption! [ts subsumed-ts] (.add ^ArrayList *subsumes* [ts subsumed-ts]))
 
+
+
 (defn do-changes! [^ArrayList a f]
   (doseq [sp a] (f sp))
   (.clear a))
 
 (declare evaluate!)
 
+;; Note: doing pairs right away doesn't help.
+;; Must go in this order for correctness!
 (defn evaluate-and-update! [s]
   (evaluate! s)
-  (do-changes! *increases* summaries/summary-changed!)
   (do-changes! *subsumes* (fn [[ts subsumed-ts]] (summaries/connect-subsumed! ts subsumed-ts)))
+  (do-changes! *increases* summaries/summary-changed!)
   (do-changes! *decreases* summaries/summary-changed!))
+
 
 ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
 ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;  Subproblems  ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
@@ -361,13 +365,12 @@
          (let [out-set @state] ;; Go live with chilren
            (reset! state :go)
            (set-output-set! s out-set)
-           ;; TODO: all of following is potentially really wasteful?
            (if-let [subsuming-sps (seq (filter #(not (terminal? %)) (subsuming-sps s)))]
              (connect-and-watch! s (apply min-key (comp summaries/get-bound sp-ts) subsuming-sps)
                (fn ignore-output [] nil)
-               (fn [sub-out] (add-sp-child! s (refine-input sub-out inp-set) true))) ;; TODO: was true
+               (fn [sub-out] (add-sp-child! s (refine-input sub-out inp-set) true))) 
              (doseq [ref-name (refinement-names fs inp-set)] #_ (println fs ref-name)
-               (add-sp-child! s (get-subproblem ref-name inp-set) false))) ;; TODO: watch ? 
+               (add-sp-child! s (get-subproblem ref-name inp-set) false))) 
            (reset! sm-fn summaries/or-summary)
            (schedule-decrease! s))         
          (if-let [[out-set reward] (fs/apply-opt fs inp-set)]
@@ -390,10 +393,9 @@
 
 (defn pair-name [l r] [:Pair l r])
 
-;; TODO: with gather off, we have no way to expand right? !
 ;; TODO: short circuit when left terminal?
 ;;   Except, when we get left output we still don't know, under current scheme ...
-;; tODO: no right output when right blocked? 
+;; TODO: no right output when right blocked? 
 (defn- make-pair-subproblem
   ([left-sp right-sp] (make-pair-subproblem left-sp (sp-name right-sp) (constantly right-sp)))
   ([left-sp right-name right-sp-fn]
@@ -418,17 +420,17 @@
                             (solved-terminal? left-sp)
                             (if (empty? (get-children @right-sp))
                               (do (go-right! s) nil)
-                              (summary/make-live-simple-summary
-                               (min (summary/max-reward (summaries/summary ss)) (summaries/get-bound s)) s)))
+                              (do (add-pear! s) (summary/make-live-simple-summary
+                                (min (summary/max-reward (summaries/summary ss)) (summaries/get-bound s)) s))))
                        (summaries/or-summary s))))]    
        (summaries/connect! ret ss)
        (connect-and-watch! ss left-sp
          (fn left-output []
            (connect-and-watch-ts! ss @right-sp 
              (fn [] (set-output-set! ret (get-output-set! @right-sp))))
-           (schedule-decrease! ss)) ;; TODO:
+           (schedule-decrease! ss))
          (fn left-child [left-child]
-           (add-sp-child! ret (make-pair-subproblem left-child right-name #(refine-input @right-sp %)) true))) ;; TODO: was true
+           (add-sp-child! ret (make-pair-subproblem left-child right-name #(refine-input @right-sp %)) true))) 
        ret)))
 
 
@@ -442,7 +444,6 @@
 
 ;;;;;;;;;;;;;;;;;;;;;;;;;;;     Output Collection     ;;;;;;;;;;;;;;;;;;;;;;;;;;
 
-;; TODO: Logger can get lost when we have non-atomic inside.
 (defn oc-name [inner-name] [:OC inner-name])
 
 (defn- =-state-sets [s1 s2]
@@ -501,7 +502,7 @@
    (sa-name (sp-name inner-sp)) inp-set #{:OC} inner-sp
    #(do ;      (assert (= (state/current-context %) (fs/precondition-context-set fs inp-set)))
         (state/transfer-effects inp-set %))
-   (fn [sp child-sp] (add-sp-child! sp (make-eager-state-abstracted-subproblem fs child-sp inp-set) false)) ;; TODO: was true
+   (fn [sp child-sp] (add-sp-child! sp (make-eager-state-abstracted-subproblem fs child-sp inp-set) false)) 
    (fn [sp ni] (if (=-state-sets ni inp-set) sp (make-eager-state-abstracted-subproblem fs (refine-input inner-sp ni) ni)))))
 
 
@@ -612,15 +613,23 @@
 
 
 
-;; tODODS:
 
 ;; (dotimes [_ 1] (reset! summaries/*summary-count* 0) (reset! summaries-old/*summary-count* 0) (reset! da/*out-count* 0) (reset! dao/*out-count* 0) (debug 0 (let [opts [:gather false :d false :s nil :dir :right] h (make-discrete-manipulation-hierarchy  (make-random-hard-discrete-manipulation-env 2 4))]  (time (println (run-counted #(identity (apply da/implicit-dash-a* h opts))) @summaries/*summary-count* @da/*out-count*))  (time (println (run-counted #(identity (apply dao/implicit-dash-a*-opt h opts))) @summaries-old/*summary-count*  @dao/*out-count*)) )))
 ;; fails
 
-;; Also greater counts.
 
 ;(dotimes [_ 1] (reset! summaries/*summary-count* 0) (reset! summaries-old/*summary-count* 0) (reset! da/*out-count* 0) (reset! dao/*out-count* 0) (debug 0 (let [opts [:gather false :d false :s nil :dir :right] h (make-discrete-manipulation-hierarchy  (make-random-hard-discrete-manipulation-env 1 4))]  (time (println (run-counted #(identity (apply da/implicit-dash-a* h opts))) @summaries/*summary-count* @da/*out-count*))  (time (println (run-counted #(identity (apply dao/implicit-dash-a*-opt h opts))) @summaries-old/*summary-count*  @dao/*out-count*)) )))
 
 
 
 
+
+
+
+
+(comment
+ (def *pears* (IdentityHashMap.))
+ (defn add-pear! [sp] (.put ^IdentityHashMap *pears* sp true))
+ (defn steal-pears! [] (let [ret (doall (map identity (keys ^IdentityHashMap *pears*)))] (.clear ^IdentityHashMap *pears*) ret))
+ #_(loop [pears (seq (steal-pears!))]
+     (when pears  (doseq [p pears] (evaluate-and-update! p)) (recur (seq (steal-pears!))))))

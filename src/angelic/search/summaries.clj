@@ -96,21 +96,21 @@
 
 (def *subsumption* true)
 
-(def *kill* false #_true) ;; Remove dead children of OR-nodes.  Doesn't seem to really help or hurt...
+(def *kill* true) ;; Remove dead children of OR-nodes.  Doesn't seem to really help or hurt...
 
 (defn update-bound! [n bound-atom b] 
   (when (and *subsumption* (< b @bound-atom))
-    (util/print-debug 3 "UB" n @bound-atom b) 
+    #_(util/print-debug 3 "UB" n @bound-atom b) 
     (reset! bound-atom b)
     (doseq [s (doall (subsumed-nodes n))]
       (add-bound! s b))
     true))
 
 (defn update-summary! [n summary-atom bound-atom]
-  (util/print-debug 3 "SUS" n  @summary-atom @bound-atom)
+  #_(util/print-debug 3 "SUS" n  @summary-atom @bound-atom)
   (let [s (summarize n),
         r (summary/max-reward s)]
-    (util/print-debug 3 "US" n  @summary-atom s @bound-atom)
+    #_(util/print-debug 3 "US" n  @summary-atom s @bound-atom)
     (assert (<= r @bound-atom))
     (reset! summary-atom s)
     (update-bound! n bound-atom r) 
@@ -120,19 +120,16 @@
 (traits/deftrait summary-cache [] [cache (atom nil) bound (atom 0)] []
   SummaryCache
   (get-bound        [n]   @bound)
-  (add-bound!       [n b] (when (update-bound! n bound b) 
-                            (when-let [old @cache] (assert (not (summary/solved? old)))) ;; TODO: remove
-                            (summary-changed! n)))
-  (summary [n] (or @cache #_ (println "S" n) (update-summary! n cache bound)))
-  (summary-changed! [n] #_(println "SC" n @cache @bound)
-#_    (when-not @cache
-      (update-summary! n cache bound) (doseq [p (doall (parent-nodes n))] (summary-changed! p))) ;; TODO: Remove!!
+  (add-bound!       [n b] (when (update-bound! n bound b) (summary-changed! n)))
+  (summary [n] (or @cache  (update-summary! n cache bound)))
+  (summary-changed! [n] 
     (when-let [old @cache]
 ;      (println "SC" n old)
-      (when-not (summary/viable? old) ;; TODO: remove
-       (util/assert-is (not (summary/viable? (summarize n))) "%s" [(def *bad* n) n old (summarize n)])) 
-      (when true #_(summary/live? old)  ;; TODO: ???
-        (when (not (summary/eq old (update-summary! n cache bound)))          
+;      (when-not (summary/viable? old) ;; TODO: remove
+;      (util/assert-is (not (summary/viable? (summarize n))) "%s" [(def *bad* n) n old (summarize n)])) 
+      (when  (summary/live? old) ;; TODO: this actually hurts for some reason...
+        (when (not (summary/eq old (update-summary! n cache bound)))
+#_          (util/assert-is (summary/live? old) "%s" [(def *bad* n) n]) ;; can put this in if we remove above check.
           (doseq [p (doall (parent-nodes n))]
             (summary-changed! p))))))  
   (summary-changed-local! [n] (reset! cache nil))
