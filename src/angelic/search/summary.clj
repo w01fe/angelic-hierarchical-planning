@@ -35,7 +35,7 @@
   (re-source [s src bound stat-bound] "Create a new summary with same status, bounded, src, children [s]")
   (re-child [s new-children]          "Change children.")
   (eq  [s other] "equaltiy, just based on reward and status.")
-  (>=  [s other])
+  (>=  [s other] [s other bound])
   (+   [s other new-src] [s other new-src bound]))
 
 
@@ -72,6 +72,13 @@
              (clojure.core/>= (status-val (status s1))
                               (status-val (status s2)))))))
 
+(defn default->=-b [s1 s2 bound]
+  (let [r1 (clojure.core/min bound (max-reward s1)) r2 (clojure.core/min bound (max-reward s2))]
+    (or (> r1 r2)
+        (and (= r1 r2)
+             (clojure.core/>= (status-val (status s1))
+                              (status-val (status s2)))))))
+
 
 ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
 ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;; SimpleSummary ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
@@ -89,6 +96,7 @@
   (re-child        [s new-children] (SimpleSummary. max-rew stat src new-children))
   (eq               [s other] (and (= max-rew (max-reward other)) (= stat (status other))))
   (>=               [s other] (default->= s other))
+  (>=               [s other bound] (default->=-b s other bound))
   (+ [s other src] (+ s other src Double/POSITIVE_INFINITY))
   (+                [s other new-src bound]
     (SimpleSummary.
@@ -176,8 +184,23 @@
 (defn max [& stats] (apply-max stats)
   #_(apply max-compare >= (cons +worst-simple-summary+ stats)))
 
+;; Note: this doesn't account for interaction between max and bound...
 (defn or-combine [summaries new-src bound]
   (let [best (apply-max summaries)]
+    (re-source best new-src bound :solved)))
+
+
+(defn apply-max-b [stats bound]
+  (if-let [stats (seq stats)]
+   (loop [best (first stats) stats (next stats)]
+     (if stats
+       (recur (if (>= (first stats) best bound) (first stats) best) (next stats))
+       best))
+       +worst-simple-summary+))
+
+;; This version takes bound into account
+(defn or-combine-b [summaries new-src bound]
+  (let [best (apply-max-b summaries bound)]
     (re-source best new-src bound :solved)))
 
 (defn liven [summary new-src]

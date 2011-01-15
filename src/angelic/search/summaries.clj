@@ -83,7 +83,6 @@
   (remove-parent! child parent)
   (remove-child! parent child))
 
-;; TODO: correct?
 (defn connect-subsumed! [node subsumed-parent]
   (add-subsumed! node subsumed-parent)
   (add-bound! subsumed-parent (get-bound node))) 
@@ -136,11 +135,13 @@
     (when-let [old @cache]
       (when  true #_ (summary/live? old) 
         (let [new (summarize n)]
-          (when (not (summary/>= old new))
-            (reset! cache new)
-            (doseq [p (doall (parent-nodes n))]
-              (summary-increased! p)))))))  
-  (summary-changed-local! [n] (reset! cache nil))
+          (cond (summary/eq old new) (reset! cache new) ;; Accomodate changed children for live pair...
+                (summary/>= new old) (do (reset! cache new)
+                                         (doseq [p (doall (parent-nodes n))]
+                                           (summary-increased! p)))
+;                :else (throw (RuntimeException. (format "Decrease! %s" [(def *bad* n) n old new]) ))
+                )))))  
+  (summary-changed-local! [n] (reset! cache (summarize n) #_ nil))
   (verified-summary [n min-summary] 
     (let [cs (summary n)]
       (when (summary/>= cs min-summary)
@@ -153,14 +154,13 @@
 (traits/deftrait worst-summarizable [] [] []
   Summarizable (summarize [s] summary/+worst-simple-summary+))
 
-
 (defn or-summary [n]
   (swap! *summary-count* inc)
   (if *kill*
     (let [[good-kids bad-kids] (util/separate #(summary/viable? (summary %)) (doall (child-nodes n)))]
       (doseq [k bad-kids] (remove-child! n k))
-      (summary/or-combine (map summary good-kids) n (get-bound n)))    
-    (summary/or-combine (map summary (child-nodes n)) n (get-bound n))))
+      (summary/or-combine-b (map summary good-kids) n (get-bound n)))    
+    (summary/or-combine-b (map summary (child-nodes n)) n (get-bound n))))
 
 (traits/deftrait or-summarizable [] [] []
   Summarizable (summarize [s] (or-summary s)))
@@ -199,7 +199,7 @@
 ;  (println (summary/source summ) summ) (Thread/sleep 100)
 ;  (def *bad* summ)
   (assert (>= (summary/max-reward summ) bound))
-  (assert (summary/eq summ (-> summ summary/source summarize)))
+  (util/assert-is (summary/eq summ (-> summ summary/source summarize)) "%s" [(def *bad* summ)])
   (let [kids (map summary/source (summary/children summ))]
     (if (empty? kids)
       (summary/source summ)

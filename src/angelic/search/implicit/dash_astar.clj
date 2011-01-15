@@ -115,8 +115,9 @@
 
 ;; Or, we can
 
-;; TODO: make summary-increase strictly do increases.
-;; TODO: debug infinite loop on 4-3.
+;; TODO: top-down-bound should be in two stages -- local, then global with decrease?
+;; TODO: problem may be in add-sp-child! -- we connect but do not watch.
+
 
 (set! *warn-on-reflection* true)
 
@@ -165,11 +166,10 @@
 (declare evaluate!)
 
 ;; Note: doing pairs right away doesn't help.
-;; Must go in this order for correctness!
 (defn evaluate-and-update! [s]
   (evaluate! s)
+  (do-changes! *increases* summaries/summary-increased!) ;; Must go first for correctness.
   (do-changes! *subsumes* (fn [[ts subsumed-ts]] (summaries/connect-subsumed! ts subsumed-ts)))
-  (do-changes! *increases* summaries/summary-changed!)
   (do-changes! *decreases* summaries/summary-changed!))
 
 
@@ -407,16 +407,16 @@
            right?-atom (atom false) ;; Expand on right            
            ri-fn    (fn [s ni] (make-pair-subproblem (refine-input left-sp ni) right-name #(refine-input @right-sp %)))
            ss (summaries/make-sum-summarizer nil)
-           go-right! (fn [s]
+           go-right! (fn [s] 
                        (reset! right?-atom true)                          
                        (summaries/disconnect! ss (sp-ts @right-sp))
                        (add-child-watcher! left-sp (fn [c] (def *bad* [s c]) (throw (RuntimeException. "Solved and children."))))
-                       (summaries/summary-changed-local! ss)
                        (connect-and-watch! ss @right-sp
                          (fn ignore-output [] nil) 
-                         (fn right-child [right-child] (add-sp-child! s (make-pair-subproblem left-sp right-child) true))))
+                         (fn right-child [right-child] (add-sp-child! s (make-pair-subproblem left-sp right-child) true)))
+                       (summaries/summary-changed-local! ss))
            ret (make-simple-subproblem nm (input-set left-sp) ri-fn
-                 (fn eval! [s] (schedule-decrease! s) (go-right! s))
+                 (fn eval! [s] (schedule-decrease! s) (go-right! s)) ;; TODO: ??
                  (fn [s] 
                    (or (and (not @right?-atom)
                             (solved-terminal? left-sp)
@@ -464,7 +464,6 @@
 (defn get-input-key [fs inp-set] (if *state-abstraction* (fs/extract-context fs inp-set) inp-set))
 (defn get-cache-key [atomic-n inp-set] [atomic-n (get-input-key (atomic-name-fs atomic-n) inp-set)])
 
-;; TODO: this is broken, can create infinite loops in refine-input -- see DM 4-3. 
 (defn- make-output-collecting-subproblem [fs inner-sp]
   (make-wrapped-subproblem
    (oc-name (sp-name inner-sp)) (input-set inner-sp) #{:Atomic :Pair #_ ::TODO??? :SA :OC} inner-sp
