@@ -84,6 +84,7 @@
   (source          [s] src)
   (children        [s] chldren)
   (re-source       [s new-src bound stat-bound]
+    (when (solved? s) (assert (clojure.core/>= bound (max-reward s))))
     (SimpleSummary. (clojure.core/min max-rew bound) (min-key status-val stat stat-bound) new-src [s]))
   (re-child        [s new-children] (SimpleSummary. max-rew stat src new-children))
   (eq               [s other] (and (= max-rew (max-reward other)) (= stat (status other))))
@@ -131,7 +132,7 @@
   (status           [s] stat)
   (source           [s] src)
   (children         [s] chldren)
-  (re-source        [s new-src bound stat-bound] (throw (RuntimeException.)))
+  (re-source        [s new-src bound stat-bound] (throw (RuntimeException.))) ;; TODO: needed!
   (re-child         [s new-children] (throw (RuntimeException.)))
   (+                [s other src] (throw (RuntimeException.)))
   (eq               [s other] (= (is-vec s) (is-vec other)))
