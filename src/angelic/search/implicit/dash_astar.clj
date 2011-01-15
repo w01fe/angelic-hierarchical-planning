@@ -115,7 +115,6 @@
 
 ;; Or, we can
 
-;; TODO: top-down-bound should be in two stages -- local, then global with decrease?
 ;; TODO: problem may be in add-sp-child! -- we connect but do not watch.
 
 

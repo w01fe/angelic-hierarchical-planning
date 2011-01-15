@@ -124,7 +124,7 @@
   (summary [n] (or @cache  (update-summary! n cache bound)))
   (summary-changed! [n] 
     (when-let [old @cache]
-;      (when-not (summary/viable? old) ;; TODO: remove
+;      (when-not (summary/viable? old) 
 ;      (util/assert-is (not (summary/viable? (summarize n))) "%s" [(def *bad* n) n old (summarize n)])) 
       (when  (summary/live? old) ;; TODO: this actually hurts for some reason...
         (when (not (summary/eq old (update-summary! n cache bound)))
@@ -194,18 +194,15 @@
     (dfs summ)
     (seq l)))
 
-;; TODO: remove extraneous checks
 (defn extract-single-live-leaf [summ choice-fn bound]
-;  (println (summary/source summ) summ) (Thread/sleep 100)
-;  (def *bad* summ)
   (assert (>= (summary/max-reward summ) bound))
-  (util/assert-is (summary/eq summ (-> summ summary/source summarize)) "%s" [(def *bad* summ)])
+;  (util/assert-is (summary/eq summ (-> summ summary/source summarize)) "%s" [(def *bad* summ)])
   (let [kids (map summary/source (summary/children summ))]
     (if (empty? kids)
       (summary/source summ)
       (let [live-kids (filter (comp summary/live? summary) kids)]
         (util/assert-is (seq live-kids) "%s" [(def *bad* summ)])
-        (util/assert-is (>= (reduce + (map (comp summary/max-reward summary) kids)) bound) "%s" [(def *bad* summ)])        
+;        (util/assert-is (>= (reduce + (map (comp summary/max-reward summary) kids)) bound) "%s" [(def *bad* summ)])        
         (if-let [s (util/singleton live-kids)]
           (recur (summary s) choice-fn bound)
           (let [s (summary (choice-fn live-kids))]
