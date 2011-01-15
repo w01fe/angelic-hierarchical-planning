@@ -116,6 +116,7 @@
 ;; Or, we can
 
 ;; TODO: make summary-increase strictly do increases.
+;; TODO: debug infinite loop on 4-3.
 
 (set! *warn-on-reflection* true)
 
@@ -268,7 +269,8 @@
   (add-subsuming-sp! [s subsuming-sp]
     (util/assert-is (canonical? s))
     (util/assert-is (canonical? subsuming-sp))                     
-    (util/assert-is (= nm (sp-name subsuming-sp)))                 
+    (util/assert-is (= nm (sp-name subsuming-sp)))
+    (util/assert-is (not (identical? s subsuming-sp)))
     (when-not (.containsKey subsuming-sp-set subsuming-sp)
       (.put subsuming-sp-set subsuming-sp true)
       (schedule-subsumption! (sp-ts subsuming-sp) (sp-ts s))))
@@ -420,7 +422,7 @@
                             (solved-terminal? left-sp)
                             (if (empty? (get-children @right-sp))
                               (do (go-right! s) nil)
-                              (do (add-pear! s) (summary/make-live-simple-summary
+                              (do (summary/make-live-simple-summary
                                 (min (summary/max-reward (summaries/summary ss)) (summaries/get-bound s)) s))))
                        (summaries/or-summary s))))]    
        (summaries/connect! ret ss)
@@ -459,23 +461,24 @@
 (defn atomic-name-fs [n] (util/match [[:Atomic ~fs] n] fs))
 (defn log-input [fs inp-set] (if *state-abstraction* (fs/get-logger fs inp-set) inp-set))
 
-(defn get-cache-key [atomic-n inp-set]
-  [atomic-n
-   (if *state-abstraction* (fs/extract-context (atomic-name-fs atomic-n) inp-set) inp-set)])
+(defn get-input-key [fs inp-set] (if *state-abstraction* (fs/extract-context fs inp-set) inp-set))
+(defn get-cache-key [atomic-n inp-set] [atomic-n (get-input-key (atomic-name-fs atomic-n) inp-set)])
 
+;; TODO: this is broken, can create infinite loops in refine-input -- see DM 4-3. 
 (defn- make-output-collecting-subproblem [fs inner-sp]
   (make-wrapped-subproblem
    (oc-name (sp-name inner-sp)) (input-set inner-sp) #{:Atomic :Pair #_ ::TODO??? :SA :OC} inner-sp
    identity
    (fn child-watch [sp child-sp] ;     (println sp child-sp (def *bad* [sp child-sp]))
      (if (=-state-sets (get-output-set! inner-sp) (get-output-set! child-sp))
-       (do (connect-and-watch! sp child-sp nil #(child-watch sp %)))
+       (do (schedule-increase! sp) (connect-and-watch! sp child-sp nil #(child-watch sp %))) ;; TODO: ???
        (add-sp-child! sp (make-output-collecting-subproblem fs child-sp) false)))
    (fn refine-input [s ni]
-     (if (= (input-set s) ni)
+     (if (= (get-input-key fs (input-set s)) (get-input-key fs ni))
        s
        (if (= :Atomic (first (sp-name inner-sp)))
          (let [ret (get-subproblem (sp-name s) ni)]
+           (util/assert-is (not (identical? (canonicalize ret) inner-sp)) "%s" [(def *bad* [s inner-sp (input-set s) ni])])
            (add-subsuming-sp! (canonicalize ret) inner-sp)
            ret)
          (make-output-collecting-subproblem fs (refine-input inner-sp (log-input fs ni))))))))

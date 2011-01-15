@@ -35,6 +35,7 @@
   (add-bound! [n b])
   (summary [n]                      "Possibly cached version of summarize")
   (summary-changed! [n]             "Update summary and notify parents as needed")
+  (summary-increased! [n]           "Update summary and notify parents as needed")
   (summary-changed-local! [n]       "Just update local summary, no parent notification (pot'l unsafe)")
   (verified-summary [n min-summary] "Return a current exact best summary >= min-summary, or nil.
                                      Child sources will be correct but grandchildren may be stale.
@@ -62,7 +63,7 @@
                                  ^java.util.ArrayList parents  (java.util.ArrayList.)
                                  ^java.util.ArrayList subsumed (java.util.ArrayList.)] []
   Node
-  (add-child!     [n c] (.add children c))
+  (add-child!     [n c] (assert (not (identical? n c))) (.add children c))
   (remove-child!  [n c] (remove! children c))  
   (child-nodes    [n]   (doall (seq children)))
   
@@ -107,10 +108,10 @@
     true))
 
 (defn update-summary! [n summary-atom bound-atom]
-  #_(util/print-debug 3 "SUS" n  @summary-atom @bound-atom)
+  (util/print-debug 3 "SUS" n  @summary-atom @bound-atom)
   (let [s (summarize n),
         r (summary/max-reward s)]
-    #_(util/print-debug 3 "US" n  @summary-atom s @bound-atom)
+    (util/print-debug 3 "US" n  @summary-atom s @bound-atom)
     (assert (<= r @bound-atom))
     (reset! summary-atom s)
     (update-bound! n bound-atom r) 
@@ -124,7 +125,6 @@
   (summary [n] (or @cache  (update-summary! n cache bound)))
   (summary-changed! [n] 
     (when-let [old @cache]
-;      (println "SC" n old)
 ;      (when-not (summary/viable? old) ;; TODO: remove
 ;      (util/assert-is (not (summary/viable? (summarize n))) "%s" [(def *bad* n) n old (summarize n)])) 
       (when  (summary/live? old) ;; TODO: this actually hurts for some reason...
@@ -132,6 +132,14 @@
 #_          (util/assert-is (summary/live? old) "%s" [(def *bad* n) n]) ;; can put this in if we remove above check.
           (doseq [p (doall (parent-nodes n))]
             (summary-changed! p))))))  
+  (summary-increased! [n] 
+    (when-let [old @cache]
+      (when  true #_ (summary/live? old) 
+        (let [new (summarize n)]
+          (when (not (summary/>= old new))
+            (reset! cache new)
+            (doseq [p (doall (parent-nodes n))]
+              (summary-increased! p)))))))  
   (summary-changed-local! [n] (reset! cache nil))
   (verified-summary [n min-summary] 
     (let [cs (summary n)]
@@ -186,8 +194,12 @@
     (dfs summ)
     (seq l)))
 
+;; TODO: remove extraneous checks
 (defn extract-single-live-leaf [summ choice-fn bound]
+;  (println (summary/source summ) summ) (Thread/sleep 100)
+;  (def *bad* summ)
   (assert (>= (summary/max-reward summ) bound))
+  (assert (summary/eq summ (-> summ summary/source summarize)))
   (let [kids (map summary/source (summary/children summ))]
     (if (empty? kids)
       (summary/source summ)
