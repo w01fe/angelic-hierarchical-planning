@@ -14,7 +14,10 @@
 ;; Here we replace all subsumption with consistency-maintaining and TDBs in summaries.
 ;; This simplifies problems with cycles that arrise when doing subsumption right.
 
-;; All TODOs from dash_astar_opt also apply here.
+;; Note: with good descriptions, subsumption/TDB has two purposes?
+;;  1.  Give stubs a bound before evaluated.
+;;  2.  Account for necessary inconsistency with implicit descriptions.
+
 
 ;; TODO: tests ! 
 
@@ -35,7 +38,25 @@
 ;; (Except any direct parents)
 
 ;; TODO: investigate plan seq  normalization. (flattening)
+;; TODO: don't release children until they have lower reward or are primitive? \
 
+
+;; TODO: smarter choose-leaf?
+;; TODO: don't always split-left?
+;; TODO: smarter output-collector (semantic) -- problems here though.
+
+;;;;; Summaries and solving 
+;; TODO: lazy/pseudo-solve (regular seems impossible; bounds mean apparent decrease may be increase.
+;;    I.e., live decrease -50 to -49, now blocked sibling becomes best; above is -50 TDB;
+;; TODO: smarter summary updates (i.e., pass child)
+
+;;;;; SP caching
+;; TODO: tail (i.e., pair) caching? -- Only help for >2 len refs...
+;; TODO: cache refine-inputs?
+;; TODO: cache children of output-collector? ~15 examples >1 in dm 4-3...
+
+;;;;; Misc
+;; TODO: make sure dead stuff can be GC'd
 
 
 (set! *warn-on-reflection* true)
@@ -207,7 +228,6 @@
     (do (out-f) false)
     (do (add-output-watcher! c out-f) true)))
 
-;; TODO: why does changing to ts of child matter when assert on ??
 ;; TODO: subsumption should prevent child from gettong output before parent ??
 (defn- add-sp-child! [sp child-sp up?]
    (util/print-debug 2 "AC" sp child-sp)
@@ -516,11 +536,10 @@
 
 
 
-;; (do (use '[angelic env hierarchy] 'angelic.domains.nav-switch 'angelic.search.implicit.fah-astar-expand 'angelic.search.implicit.fah-astar-eval 'angelic.search.implicit.dash-astar 'angelic.domains.discrete-manipulation) (require '[angelic.search.explicit.hierarchical :as his]))
 
-;; (do (use '[angelic env hierarchy] 'angelic.domains.nav-switch  'angelic.search.implicit.dash-astar 'angelic.domains.discrete-manipulation) (require '[angelic.search.explicit.hierarchical :as his]))
+;; (do (use '[angelic env hierarchy] 'angelic.domains.nav-switch  'angelic.search.implicit.dash-astar 'angelic.domains.discrete-manipulation) (require '[angelic.search.implicit.dash-astar :as da] '[angelic.search.implicit.dash-astar-opt :as dao] '[angelic.search.summaries_old :as summaries-old] '[angelic.search.explicit.hierarchical :as his] '[angelic.search.implicit.dash-astar-monolithic :as dam]))
 
-;; (require '[angelic.search.implicit.dash-astar :as da] '[angelic.search.implicit.dash-astar-opt :as dao] '[angelic.search.summaries_old :as summaries-old])
+;; (require )
 ;;(do (defn s [x]  (summaries/summarize x)) (defn sc [x] (summary/children x))  (defn src [x] (summary/source x)) (defn nc [x] (summaries/child-nodes x)))
 
 ;;(dotimes [_ 1] (reset! summaries/*summary-count* 0) (debug 0 (time (let [h (make-nav-switch-hierarchy (make-random-nav-switch-env 2 1 0) true)]  (println (run-counted #(second (implicit-dash-a* h))) @summaries/*summary-count*)))))
@@ -546,7 +565,7 @@
 ;(dotimes [_ 1] (reset! summaries/*summary-count* 0) (reset! summaries-old/*summary-count* 0) (reset! da/*out-count* 0) (reset! dao/*out-count* 0) (debug 0 (let [opts [:gather false :d false :s nil :dir :right] h (make-discrete-manipulation-hierarchy  (make-random-hard-discrete-manipulation-env 1 4))]  (time (println (run-counted #(identity (apply da/implicit-dash-a* h opts))) @summaries/*summary-count* @da/*out-count*))  (time (println (run-counted #(identity (apply dao/implicit-dash-a*-opt h opts))) @summaries-old/*summary-count*  @dao/*out-count*)) )))
 
 ;; Compare all four algs we have so far...
-;; (dotimes [_ 1] (reset! summaries/*summary-count* 0) (reset! summaries-old/*summary-count* 0) (reset! da/*out-count* 0) (reset! dao/*out-count* 0) (debug 0 (let [opts [:gather true :d true :s :eager :dir :right] h (make-discrete-manipulation-hierarchy  (make-random-hard-discrete-manipulation-env 3 3))]   (time (println (run-counted #(identity (apply da/implicit-dash-a* h opts))) @summaries/*summary-count* @da/*out-count*))   (time (println (run-counted #(identity (apply dao/implicit-dash-a*-opt h opts))) @summaries-old/*summary-count*  @dao/*out-count*))   (time (println (run-counted #(identity (angelic.search.implicit.dash-astar-monolithic/implicit-random-dash-a*-monolithic h))) @summaries-old/*summary-count*  @dao/*out-count*))   (time (println (run-counted #(identity (his/explicit-simple-dash-a* h))) @summaries-old/*summary-count*  @dao/*out-count*)) )))
+;; (dotimes [_ 1] (reset! summaries/*summary-count* 0) (reset! summaries-old/*summary-count* 0) (reset! da/*out-count* 0) (reset! dao/*out-count* 0) (debug 0 (let [opts [:gather true :d true :s :eager :dir :right] h (make-discrete-manipulation-hierarchy  (make-random-hard-discrete-manipulation-env 3 3))]   (time (println (run-counted #(identity (apply da/implicit-dash-a* h opts))) @summaries/*summary-count* @da/*out-count*))   (time (println (run-counted #(identity (apply dao/implicit-dash-a*-opt h opts))) @summaries-old/*summary-count*  @dao/*out-count*))   (time (println (run-counted #(identity (dam/implicit-random-dash-a*-monolithic h))) @summaries-old/*summary-count*  @dao/*out-count*))   (time (println (run-counted #(identity (his/explicit-simple-dash-a* h))) @summaries-old/*summary-count*  @dao/*out-count*)) )))
 
 
 

@@ -96,6 +96,8 @@
 ;; Descriptions, esp for move-to-goal, are far too expensive.
 
 
+;; TODO: this has bugs, materialize, e.g., iwth :left, first on dm 3-3.
+
 
 (set! *warn-on-reflection* true)
 
