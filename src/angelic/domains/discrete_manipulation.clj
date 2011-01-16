@@ -941,7 +941,7 @@
                                      (for [o-dst o-dsts]
                                        [[:object-at o-dst] (conj (state/get-var ss [:object-at o-dst]) o
                                                                  (if (= o-dst o-src) nil o))]))))       
-        (+ pickup-reward putdown-reward
+        0 #_ (+ pickup-reward putdown-reward ;; TODO: put back ? 
            (apply max
                   (concat
                                         ; no base movement

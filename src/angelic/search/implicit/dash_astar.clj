@@ -115,7 +115,6 @@
 
 ;; Or, we can
 
-;; TODO: problem may be in add-sp-child! -- we connect but do not watch.
 
 
 (set! *warn-on-reflection* true)
@@ -304,6 +303,7 @@
         (add-output-watcher! sp ;; TODO: this feels hacky...
           (fn [] (add-output-watcher! child-sp
                    (fn [] (util/assert-is (get-output-set sp) "%s" [sp child-sp])
+                     (assert (empty? (get-children child-sp)))
                      (add-sp-child!* sp child-sp) 
                      (summaries/disconnect! sp child-sp)
                      (schedule-decrease! sp)))))
@@ -456,6 +456,7 @@
 ;;(defn wrapper? [sp] (#{:OC :SA} (first (sp-name sp))))
 ;; (comment  (if (wrapper? child-sp) child-sp (make-output-collecting-subproblem fs child-sp)))
 
+(declare get-ocs)
 
 (defn atomic-name-fs [n] (util/match [[:Atomic ~fs] n] fs))
 (defn log-input [fs inp-set] (if *state-abstraction* (fs/get-logger fs inp-set) inp-set))
@@ -463,31 +464,35 @@
 (defn get-input-key [fs inp-set] (if *state-abstraction* (fs/extract-context fs inp-set) inp-set))
 (defn get-cache-key [atomic-n inp-set] [atomic-n (get-input-key (atomic-name-fs atomic-n) inp-set)])
 
-(defn- make-output-collecting-subproblem [fs inner-sp]
+;; Input-key caching not necessary, but speeds things up a lot on, e.g., d-m.
+(defn- make-output-collecting-subproblem [fs inp-key inner-sp]
   (make-wrapped-subproblem
    (oc-name (sp-name inner-sp)) (input-set inner-sp) #{:Atomic :Pair #_ ::TODO??? :SA :OC} inner-sp
    identity
    (fn child-watch [sp child-sp] ;     (println sp child-sp (def *bad* [sp child-sp]))
      (if (=-state-sets (get-output-set! inner-sp) (get-output-set! child-sp))
        (do (schedule-increase! sp) (connect-and-watch! sp child-sp nil #(child-watch sp %))) ;; TODO: ???
-       (add-sp-child! sp (make-output-collecting-subproblem fs child-sp) false)))
+       (add-sp-child! sp (make-output-collecting-subproblem fs inp-key child-sp) false)))
    (fn refine-input [s ni]
-     (if (= (get-input-key fs (input-set s)) (get-input-key fs ni))
-       s
-       (if (= :Atomic (first (sp-name inner-sp)))
-         (let [ret (get-subproblem (sp-name s) ni)]
-           (util/assert-is (not (identical? (canonicalize ret) inner-sp)) "%s" [(def *bad* [s inner-sp (input-set s) ni])])
-           (add-subsuming-sp! (canonicalize ret) inner-sp)
-           ret)
-         (make-output-collecting-subproblem fs (refine-input inner-sp (log-input fs ni))))))))
+     (let [ninp-key (get-input-key fs ni)]
+       (if (= inp-key ninp-key)
+         s
+         (if (= :Atomic (first (sp-name inner-sp)))
+           (let [ret (get-ocs (sp-name inner-sp) fs ninp-key ni)]
+             (util/assert-is (not (identical? (canonicalize ret) inner-sp)) "%s" [(def *bad* [s inner-sp (input-set s) ni])])
+             (add-subsuming-sp! (canonicalize ret) inner-sp)
+             ret)
+           (make-output-collecting-subproblem fs ninp-key (refine-input inner-sp (log-input fs ni)))))))))
 
+(defn get-ocs [inner-n fs inp-key inp-set]
+  (let [make-sp #(make-output-collecting-subproblem fs inp-key (get-subproblem inner-n (log-input fs inp-set)))]
+    (if-let [^HashMap dc *decompose-cache*]
+      (util/cache-with dc [inner-n inp-key] (make-sp))
+      (make-sp))))
 
 (defmethod get-subproblem :OC [[_ inner-n :as n] inp-set]
-  (let [fs (atomic-name-fs inner-n)
-        make-sp #(make-output-collecting-subproblem fs (get-subproblem inner-n (log-input fs inp-set)))]
-    (if-let [^HashMap dc *decompose-cache*]
-      (util/cache-with dc (get-cache-key inner-n inp-set) (make-sp))
-      (make-sp))))
+  (let [fs (atomic-name-fs inner-n)] (get-ocs inner-n fs (get-input-key fs inp-set) inp-set)))
+
 
 
 
