@@ -458,7 +458,7 @@
 
 (declare get-ocs)
 
-(defn atomic-name-fs [n] (util/match [[:Atomic ~fs] n] fs))
+(defn atomic-name-fs [n] (assert (= :Atomic (first n))) (second n))
 (defn log-input [fs inp-set] (if *state-abstraction* (fs/get-logger fs inp-set) inp-set))
 
 (defn get-input-key [fs inp-set] (if *state-abstraction* (fs/extract-context fs inp-set) inp-set))
