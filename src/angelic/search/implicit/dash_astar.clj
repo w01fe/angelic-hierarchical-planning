@@ -22,7 +22,8 @@
 ;; TODO: tests ! 
 
 ;;;;; Subsumption
-;; TODO: propagate subsumption links
+;; TODO: Figure out why subsumption isn't more helpful.
+;; TODO: children wait on one (or more) subsumption parents.
 ;; TODO: wait on subsumption parent(s)?
 
 ;;;;; Pessimistic
@@ -54,7 +55,7 @@
 (def *collect-equal-outputs* true) ;; Collect identical output sets
 (def *decompose-cache*       true) ;; nil for none, or bind to hashmap
 (def *state-abstraction*     :eager ) ;; Or lazy or nil.
-(def *propagate-subusmption* false)
+(def *propagate-subsumption* true)
 
 
 ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
@@ -139,7 +140,7 @@
                                   Updates cost if up? and child must be held before publishing.")
 
   (publish-sp-child!   [s o] "Internal. O is a subproblem with output.  s must have output too.")
-  (get-all-children [s] "Internal.  Get children, including unpublished ones.")
+  (add-all-child-watcher! [s w] "Internal.  Get children, including unpublished ones.")
 
   (subsuming-sps       [s] "subproblems with same name, >= inp-set") 
   (add-subsuming-sp!   [s subsuming-sp]) 
@@ -206,9 +207,7 @@
    (util/print-debug 2 "AC" sp child-sp)
    (when (canonical? sp)
      (schedule-subsumption! (sp-ts sp) (sp-ts child-sp))
-     (publish! all-child-ps child-sp)
-     (when *propagate-subusmption* #_ ::TODO) ;; TODO!!
-     )   
+     (publish! all-child-ps child-sp))   
    (if (and (get-output-set sp) (get-output-set child-sp))
     (publish-sp-child! sp child-sp)
     (do (summaries/connect! sp (sp-ts child-sp)) 
@@ -225,7 +224,7 @@
       (schedule-increase! (sp-ts s)))    
     (publish! child-ps c))
 
-  (get-all-children    [s] (publications all-child-ps))
+  (add-all-child-watcher! [s w] (subscribe! all-child-ps w))
 
     
   (subsuming-sps [s] (keys subsuming-sp-set))
@@ -237,10 +236,19 @@
     (when-not (.containsKey subsuming-sp-set subsuming-sp)
       (.put subsuming-sp-set subsuming-sp true)
       (schedule-subsumption! (sp-ts subsuming-sp) (sp-ts s))
-      (when *propagate-subusmption*
-        #_ (add-child-watcher! )) ;; TODO!!
-
-      ))
+      (when *propagate-subsumption*
+        ;; TODO: efficiency, etc.
+        (add-all-child-watcher! s
+          (fn [child]
+            (let [can-child (canonicalize child)]
+              (add-all-child-watcher! subsuming-sp
+                (fn [subsuming-child]
+                  (let [can-subsuming-child (canonicalize subsuming-child)]
+                    (when (and (not (identical? can-child can-subsuming-child))
+                               (= (sp-name can-child) (sp-name can-subsuming-child)))
+                      #_(print ".")
+                      #_ (println [s subsuming-sp] "==>" [child subsuming-child])
+                      (add-subsuming-sp! can-child can-subsuming-child)))))))))))
   
   (refine-input    [s ni] (let [ret (ri-fn s ni)] (util/assert-is (= nm (sp-name ret))) ret)))
 
@@ -524,9 +532,9 @@
 
 ;; TODO: sa options...
 (defn implicit-dash-a*
-  [henv & {gather :gather d :d   s :s    choice-fn :choice-fn local? :local?  dir :dir :as m
-      :or {gather true   d true s :eager choice-fn last       local? true     dir :right}}]
-  (assert (every? #{:gather :d :s :choice-fn :local? :dir} (keys m)))
+  [henv & {gather :gather d :d   s :s    choice-fn :choice-fn local? :local?  dir :dir   prop :prop :as m
+      :or {gather true   d true s :eager choice-fn last       local? true     dir :right prop true}}]
+  (assert (every? #{:gather :d :s :choice-fn :local? :dir :prop} (keys m)))
   (assert (contains? #{:left :right} dir))
   (assert (contains? #{nil false :eager :deliberate} s))
   (when s (assert d))
@@ -536,6 +544,7 @@
             *decompose-cache*       (when d (HashMap.))
             *state-abstraction*     s
             *left-recursive*        (= dir :left)
+            *propagate-subsumption* prop
  ;            summaries/*cache-method* c
             ]
     (summaries/solve
