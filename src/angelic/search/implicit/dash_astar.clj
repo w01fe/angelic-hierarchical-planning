@@ -298,8 +298,8 @@
      (schedule-subsumption! (sp-ts sp) (sp-ts child-sp))
     ;; TODO: propagate!
      )
-   (if (get-output-set child-sp)
-    (do (add-sp-child!* sp child-sp))
+   (if (and (get-output-set sp) (get-output-set child-sp))
+    (add-sp-child!* sp child-sp)
     (do (summaries/connect! sp (sp-ts child-sp)) ;; Be safe; child could have children before we get output.
         (add-output-watcher! sp 
           (fn [] (add-output-watcher! child-sp
