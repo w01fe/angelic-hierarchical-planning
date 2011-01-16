@@ -91,16 +91,16 @@
 
 (def move-base-step-reward -2)
 
-(defn make-base-dir [s [dirname dir]]
-  (let [const (state/get-var s :const)
-        base  (state/get-var s [:base])
-        nbase (add-pos base dir)]
-    (when (contains? (get const [:freespace]) nbase)
-      (env-util/make-factored-primitive 
-       [:base dirname]
-       {[:base] base [:parked?] false}
-       {[:base] nbase}
-       move-base-step-reward))))
+(defn make-base-dir
+  ([s dp] (make-base-dir (state/get-var s :const)  (state/get-var s [:base]) dp))  
+  ([const base [dirname dir]]
+     (let [nbase (add-pos base dir)]
+       (when (contains? (get const [:freespace]) nbase)
+         (env-util/make-factored-primitive 
+          [:base dirname]
+          {[:base] base [:parked?] false}
+          {[:base] nbase}
+          move-base-step-reward)))))
 
 (def move-gripper-step-reward -1)
 
@@ -365,7 +365,8 @@
            {})))
 
      angelic/ImplicitAngelicAction 
-     (precondition-context-set [a ss] (env/precondition-context a (state-set/some-element ss)))  
+     (precondition-context-set [a ss] (reach-context (state-set/get-known-var ss :const)
+                                                     (state-set/get-known-var ss [:base])))  
      (can-refine-from-set? [a ss] (state-set/vars-known? ss [[:gripper-offset]]))
      (immediate-refinements-set- [a ss]
        (for [p (hierarchy/immediate-refinements- a (state-set/some-element ss))]
@@ -426,7 +427,9 @@
   (pessimistic-map- [_ s] {})
 
   angelic/ImplicitAngelicAction 
-  (precondition-context-set [a ss] (env/precondition-context a (state-set/some-element ss)))  
+  (precondition-context-set [a ss] (conj (reach-context (state-set/get-known-var ss :const)
+                                                        (state-set/get-known-var ss [:base]))
+                                         [:pos o] [:at-goal? o] [:holding]))  
   (can-refine-from-set? [a ss] true)
   (immediate-refinements-set- [a ss]
    (for [p (hierarchy/immediate-refinements- a (state-set/some-element ss))][{} p]))
@@ -487,7 +490,9 @@
   (pessimistic-map- [_ s] {})
 
   angelic/ImplicitAngelicAction 
-  (precondition-context-set [a ss] (env/precondition-context a (state-set/some-element ss)))  
+  (precondition-context-set [a ss] (conj (reach-context (state-set/get-known-var ss :const)
+                                                        (state-set/get-known-var ss [:base]))
+                                         [:holding] [:object-at dst]))  
   (can-refine-from-set? [a ss] true)
   (immediate-refinements-set- [a ss]
    (for [p (hierarchy/immediate-refinements- a (state-set/some-element ss))] [{} p]))
@@ -541,8 +546,13 @@
   angelic/ImplicitAngelicAction 
   (precondition-context-set [a ss] (env/precondition-context a :dummy))  
   (can-refine-from-set? [a ss] true)
-  (immediate-refinements-set- [a ss]
-    (for [p (hierarchy/immediate-refinements- a (state-set/some-element ss))] [{} p]))
+  (immediate-refinements-set- [this ss]
+    (let [const (state-set/get-known-var ss :const)
+          base  (state-set/get-known-var ss [:base])]
+      (if (= dst base) [[{} []]]
+          (for [dir dirs :let [a (make-base-dir const base dir)] :when a]
+            [{} [a this]])))    
+   #_    (for [p (hierarchy/immediate-refinements- a (state-set/some-element ss))] [{} p])) ;slower
   (optimistic-set-and-reward- [a ss]
     (assert (state-set/vars-known? ss [[:base]]))                              
     [(state/set-var ss [:base] #{dst})
@@ -749,7 +759,8 @@
   (pessimistic-map- [_ s] {})
 
   angelic/ImplicitAngelicAction 
-  (precondition-context-set [a ss] (env/precondition-context a (state-set/some-element ss)))  
+  (precondition-context-set [a ss]
+    (conj (reach-to-context (state-set/get-known-var ss :const) o-dst) [:holding] [:object-at o-dst]))  
   (can-refine-from-set? [a ss] true)
   (immediate-refinements-set- [a ss]
     (let [const (state-set/get-known-var ss :const)
@@ -785,6 +796,11 @@
   (pessimistic-set-and-reward- [a ss] nil)
   ))
 
+(defn go-drop-pc [o const]
+  (conj (apply clojure.set/union 
+               (map #(conj (reach-to-context const %) [:object-at %]) 
+                    (get const [:goal o]))) 
+          [:holding]))
 
 (defn make-go-drop-hla [o] 
  (reify
@@ -793,11 +809,7 @@
   (primitive? [_] false)
 
   env/ContextualAction
-  (precondition-context [_ s] 
-    (conj (apply clojure.set/union 
-                 (map #(conj (reach-to-context (state/get-var s :const) %) [:object-at %]) 
-                      (get (state/get-var s :const) [:goal o]))) 
-          [:holding]))
+  (precondition-context [_ s] (go-drop-pc o (state/get-var s :const)))
 
   hierarchy/HighLevelAction
   (immediate-refinements- [_ s]
@@ -814,7 +826,7 @@
   (pessimistic-map- [_ s] {})
 
   angelic/ImplicitAngelicAction 
-  (precondition-context-set [a ss] (env/precondition-context a (state-set/some-element ss)))  
+  (precondition-context-set [a ss] (go-drop-pc o (state-set/get-known-var ss :const)))  
   (can-refine-from-set? [a ss] true)
   (immediate-refinements-set- [a ss]
     (for [o-dst (get (state-set/get-known-var ss :const) [:goal o])]
