@@ -210,9 +210,8 @@
 (defn min [& stats] (apply max-compare (complement >=) (cons +best-simple-summary+ stats)))
 ;(defn sum [& stats] (if (empty? stats) +zero-simple-summary+ (reduce + (first stats) (next stats))))
 
-(comment
- (defn bound [summary reward-bound]
-   (re-source summary #(clojure.core/min % reward-bound))))
+(defn bound [summary reward-bound]
+   (re-source summary (source summary) reward-bound :solved))
 
 (defn extract-leaf-seq
   ([summary] (extract-leaf-seq summary (comp empty? children)))

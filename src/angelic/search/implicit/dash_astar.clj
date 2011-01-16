@@ -16,9 +16,10 @@
 
 ;; All TODOs from dash_astar_opt also apply here.
 
+;; TODO: tests ! 
+
 ;; TODO: SP has hash table from (state-abstracted context) input set to stub (?).
 
-;; TODO: tests ! 
 
 ;; TODO first: propagate subsumption links.
 ;; TODO second: add pessimistic variant. (primitives shared!)
@@ -34,86 +35,6 @@
 ;; (Except any direct parents)
 
 ;; TODO: investigate plan seq  normalization. (flattening)
-;; TODO: put back kill
-;; TODO: figure out cause of comodification for children, e.g., d-m 3-3 -- seems to be pair
-
-;; What's happening now is that output gets set for atomic;
-;; that flows up, eventually triggers summary-changed! at pair.
-;; That forces summaries all the way down --
-;;  and children are somehow in inconsistent state.
-;; (because children are ready and queued, but not released -- and
-;;  not summarized either.  Cannot queue like we are now!)
-
-;; Can we produce children before we have output?  Does anyone care?
-;; Or, rather, do we need to run updates with output ?
-
-;; TODO: missing updates on children -- need to think up a consistent scheme
-;; Ways summary change can be initiated --
-;;  sending out a child?
-;;  receiving a child?
-;;  explicit bound changes
-;;  explicit summary changed initiations ...
-;; (Output, not for now...)
-
-;; Various protocols we could do
-;; Require output before children?
-;; Require children have output?
-;; In interest of limiting branching, both seem like good ideas.
-
-;; One issue: when I add a child right now, I may not update summary at all.
-;;  That might be fine, except that
-;;   (1) nobody may have computed summary child -- this means that pair splitting won't happen
-;;   (2) child *can* actually spell increase, when solved ! .
-;; TODO: just add *check-consistency* function ???
-
-;; OK!  Basic goal of all this nonsense:
-;;  --> Make sure all updates are made.
-;;    --> Roots: evaluated SP, "freed" child, "captured" child (solved only?)
-;;  --> Make sure no updates see an inconsistent state.
-;; (made more challenging by fact that outputs can trigger children,
-;;  children can trigger updates, updates can trigger more children (from pair), ...).
-;; However, nothing can trigger outputs except outputs and evaluation.
-;;  -- and children which create pair children that get outputs. . .. .
-;; IF we just remove latter dependency, can do all tree modifications, then all updates.
-;; We try to manage this now, but potentially fail.
-;;  Alternative is old way, with summary-changed-local!
-;; Or, a combination -- although not clear how S-C-L helps then...
-
-;; Clearly, problem is with solved.
-;; Can we propagate solved first, or something?
-;; Can clearly propagate just solved info.  Doing it with summaries seems awkward.
-;; If we do this right, could lead to solution to lazy problem as well ...?
-;; Nah, summary is just too closely tied to status. (i.e., OC is solved if MAX-REWARD child is SOLVED)
-;; This makes any sort of separate "solved-signal" painful -- including fresh outputs
-
-;; Without the pair thing, we could do all our propagation.
-;; Then, do subsumption connections, then update things with new children (incr),
-;;  and finally update the evaluated leaf and anyone who gave up children (dec).
-;; (where, exactly, should evaluated leaf go in this???).
-;; (subsumption may be do more than we want, though).
-
-;; Then, only problem is pair thing.
-;; That will always happen in "increase" phase.
-;; Problem: pair cannot return a correct status until it shifts and
-;; potentially spits out new outputs.
-;; Solution(?) -- we can still defer the decreases.
-;; I.e., do al the increases first?
-;; This is always guaranteed to be safe...?
-;; This means that we always have to leave tree in consistent state-- Ugh.
-
-;; Another idea: just try to make sure each operation is consistent, instead of batching everything.
-;; I.e., release a child or output, wait for it to be fully "absorbed", do updates, then release next, etc.
-
-;; Or, we can try to break dependence of pair on summary, e.g., by pushing solved as output.
-
-;; Or, we can prevent further tree modifications by pair switch.
-;; For instance, iff right has outputs already, it becomes live, must be evaluated to switch directions.
-
-;; We can even take this one step further & do it automatically.
-
-;; Forget about OC and 
-
-;; Or, we can
 
 
 
@@ -196,10 +117,7 @@
 
   
   ;; Internal interface
-  (add-sp-child!*      [s o] "O is a subproblem.  sw may have an updated summary,
-                              but will not call summary-changed! on its parents.
-                              The receiver is responsible for handling this change.
-                              This allows handling decrease+increase in lock-step. ")
+  (add-sp-child!*      [s o] "O is a subproblem with output.  s must have output too.")
   (set-output-set!    [s o] "Set output set. "))
 
 (defn get-output-set! [sp] (let [o (get-output-set sp)] (assert o) o))
@@ -289,7 +207,7 @@
     (do (out-f) false)
     (do (add-output-watcher! c out-f) true)))
 
-;;; TODO: why does changing to ts of child matter when assert on ??
+;; TODO: why does changing to ts of child matter when assert on ??
 ;; TODO: subsumption should prevent child from gettong output before parent ??
 (defn- add-sp-child! [sp child-sp up?]
    (util/print-debug 2 "AC" sp child-sp)
@@ -627,16 +545,9 @@
 
 ;(dotimes [_ 1] (reset! summaries/*summary-count* 0) (reset! summaries-old/*summary-count* 0) (reset! da/*out-count* 0) (reset! dao/*out-count* 0) (debug 0 (let [opts [:gather false :d false :s nil :dir :right] h (make-discrete-manipulation-hierarchy  (make-random-hard-discrete-manipulation-env 1 4))]  (time (println (run-counted #(identity (apply da/implicit-dash-a* h opts))) @summaries/*summary-count* @da/*out-count*))  (time (println (run-counted #(identity (apply dao/implicit-dash-a*-opt h opts))) @summaries-old/*summary-count*  @dao/*out-count*)) )))
 
+;; Compare all four algs we have so far...
+;; (dotimes [_ 1] (reset! summaries/*summary-count* 0) (reset! summaries-old/*summary-count* 0) (reset! da/*out-count* 0) (reset! dao/*out-count* 0) (debug 0 (let [opts [:gather true :d true :s :eager :dir :right] h (make-discrete-manipulation-hierarchy  (make-random-hard-discrete-manipulation-env 3 3))]   (time (println (run-counted #(identity (apply da/implicit-dash-a* h opts))) @summaries/*summary-count* @da/*out-count*))   (time (println (run-counted #(identity (apply dao/implicit-dash-a*-opt h opts))) @summaries-old/*summary-count*  @dao/*out-count*))   (time (println (run-counted #(identity (angelic.search.implicit.dash-astar-monolithic/implicit-random-dash-a*-monolithic h))) @summaries-old/*summary-count*  @dao/*out-count*))   (time (println (run-counted #(identity (his/explicit-simple-dash-a* h))) @summaries-old/*summary-count*  @dao/*out-count*)) )))
 
 
 
 
-
-
-
-(comment
- (def *pears* (IdentityHashMap.))
- (defn add-pear! [sp] (.put ^IdentityHashMap *pears* sp true))
- (defn steal-pears! [] (let [ret (doall (map identity (keys ^IdentityHashMap *pears*)))] (.clear ^IdentityHashMap *pears*) ret))
- #_(loop [pears (seq (steal-pears!))]
-     (when pears  (doseq [p pears] (evaluate-and-update! p)) (recur (seq (steal-pears!))))))
