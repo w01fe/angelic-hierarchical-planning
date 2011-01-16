@@ -21,42 +21,31 @@
 
 ;; TODO: tests ! 
 
-;; TODO: SP has hash table from (state-abstracted context) input set to stub (?).
+;;;;; Subsumption
+;; TODO: propagate subsumption links
+;; TODO: wait on subsumption parent(s)?
 
+;;;;; Pessimistic
+;; TODO: add pessimistic variants (shared primitives)
+;; TODO: bounding pressimistic descritpions (assume consistency for now)
 
-;; TODO first: propagate subsumption links.
-;; TODO second: add pessimistic variant. (primitives shared!)
-
-;; TODO: bounding of pessimistic descriptions ? (assume consistency for now).
-
-;; One basic kinds of subsumption propagation:
-;;   X --> Y ==> for all child keys k, child(X, k) --> child(Y, k)
-;;   This taken into account for atomic, not pairs now.
-
-;; --> TODO: every SP should watch all subsuming SPs for children with matching
-;;     names, add these as subsumption parents.
-;; (Except any direct parents)
-
-;; TODO: investigate plan seq  normalization. (flattening)
-;; TODO: don't release children until they have lower reward or are primitive? \
-
-
-;; TODO: smarter choose-leaf?
-;; TODO: don't always split-left?
+;;;;; Tree construction
 ;; TODO: smarter output-collector (semantic) -- problems here though.
+;; TODO: don't always split-left?
+;; TODO: don't release children until they have lower reward or are primitive? 
+;; TODO: make sure dead stuff can be GC'd
 
 ;;;;; Summaries and solving 
 ;; TODO: lazy/pseudo-solve (regular seems impossible; bounds mean apparent decrease may be increase.
 ;;    I.e., live decrease -50 to -49, now blocked sibling becomes best; above is -50 TDB;
 ;; TODO: smarter summary updates (i.e., pass child)
+;; TODO: smarter choose-leaf?
 
 ;;;;; SP caching
 ;; TODO: tail (i.e., pair) caching? -- Only help for >2 len refs...
 ;; TODO: cache refine-inputs?
 ;; TODO: cache children of output-collector? ~15 examples >1 in dm 4-3...
-
-;;;;; Misc
-;; TODO: make sure dead stuff can be GC'd
+;; TODO: investigate plan seq  normalization. (flattening)
 
 
 (set! *warn-on-reflection* true)
@@ -86,6 +75,21 @@
 
 (defmethod print-method angelic.search.implicit.dash_astar.TreeSummarizer [s o]
   (print-method (format "#<TS %s>" (print-str (ts-sp s))) o))
+
+;;;;;;;;;;;;;;;;;;;;;;;;;;         PubSubHub          ;;;;;;;;;;;;;;;;;;;;;;;;;;
+
+(defrecord PubSubHub [^ArrayList subscribers ^ArrayList publications])
+(defn make-pubsubhub [] (PubSubHub. (ArrayList.) (ArrayList.)))
+
+(defn publications [psh] (doall (seq (:publications psh))))
+
+(defn publish!     [psh pub]
+  (.add ^ArrayList (:publications psh) pub)
+  (doseq [sub (doall (seq (:subscribers psh)))] (sub pub)))
+
+(defn subscribe!   [psh sub]
+  (.add ^ArrayList (:subscribers psh) sub)
+  (doseq [pub (doall (seq (:publications psh)))] (sub pub)))
 
 ;;;;;;;;;;;;;;;;;;;;;;;;;      Change Scheduling      ;;;;;;;;;;;;;;;;;;;;;;;;;;
 
@@ -127,20 +131,22 @@
 
   (get-output-set      [s]  "Return output or nil")
   (add-output-watcher! [s w] "Add watcher to be notified of self when has output.")
+  (set-output-set!     [s o] "Internal. Set output set. ")
 
   (get-children        [s]  "List current outputs, for debugging only.")
   (add-child-watcher!  [s w] "Add a watcher to be notified of all child sps.")
+  (add-sp-child!       [s o up?] "O is a subproblem child, possibly without output yet.
+                                  Updates cost if up? and child must be held before publishing.")
+
+  (publish-sp-child!   [s o] "Internal. O is a subproblem with output.  s must have output too.")
+  (get-all-children [s] "Internal.  Get children, including unpublished ones.")
 
   (subsuming-sps       [s] "subproblems with same name, >= inp-set") 
   (add-subsuming-sp!   [s subsuming-sp]) 
 
-  (refine-input        [s refined-input-set] "Return a child sp. Must have output.")
+  (refine-input        [s refined-input-set] "Return a child sp. Must have output."))
 
   
-  ;; Internal interface
-  (add-sp-child!*      [s o] "O is a subproblem with output.  s must have output too.")
-  (set-output-set!    [s o] "Set output set. "))
-
 (defn get-output-set! [sp] (let [o (get-output-set sp)] (assert o) o))
 
 (defn terminal? [sp]
@@ -159,21 +165,29 @@
 
 ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;  Generic Trait  ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
 
-(def *out-count* (atom 1))
+;(def *out-count* (atom 1))
 
+;; Canonical SPs are Atomic and Pair; wrappers use TS of inner SP.
 (defn canonicalize [sp] (ts-sp (sp-ts sp)))
 (defn canonical? [sp] (identical? sp (ts-sp (sp-ts sp))))
 
 (defn notify-output-set! [w s] #_ (println "NO" s w) (w))
 (defn notify-child! [w s c] #_ (println "NC" s c w) (swap! *out-count* inc) (w c))
 
+
+;; Note subsumption following is a bit tricky, since we want access to all children
+;; (including unpublished ones).
+;; TODO: remove all-children if it doesn't help?
+;; What we need is a 3-way dependence:
+;; Child, sub child, sub link.?
+
+
 (traits/deftrait simple-subproblem
   [nm inp-set wrapped-ts eval!-fn ri-fn]
   [                 ts-atom          (atom wrapped-ts)
-   ^ArrayList       output-watchers  (ArrayList.)
-                    out-set-atom     (atom nil)
-   ^ArrayList       child-watchers   (ArrayList.)
-   ^ArrayList       child-list       (ArrayList.)
+   ^PubSubHub       output-ps        (make-pubsubhub)
+   ^PubSubHub       child-ps         (make-pubsubhub)
+   ^PubSubHub       all-child-ps     (make-pubsubhub)
    ^IdentityHashMap subsuming-sp-set (IdentityHashMap.)]
   [summaries/simple-cached-node]
   Subproblem
@@ -182,26 +196,38 @@
   (sp-ts               [s] (or @ts-atom (reset! ts-atom (make-tree-summarizer s))))
   (evaluate!           [s] (eval!-fn s))
   
-  (get-output-set      [s] @out-set-atom)
-  (add-output-watcher! [s w] (if @out-set-atom (notify-output-set! w s) (.add output-watchers w)))
-  (set-output-set!    [s o]
-    (util/print-debug 2 "SO" s)
-    (assert (nil? @out-set-atom))
-    (reset! out-set-atom o)
-    (doseq [w output-watchers] (notify-output-set! w s)))
+  (get-output-set      [s] (first (publications output-ps)))
+  (add-output-watcher! [s w] (subscribe! output-ps w))
+  (set-output-set!    [s o] (assert (not (get-output-set s))) (publish! output-ps o))
   
-  (get-children        [s] (doall (seq child-list)))
-  (add-child-watcher!  [s w]
-    (.add child-watchers w)                   
-    (when (get-output-set s)) (doseq [c (get-children s)] (notify-child! w s c)))
-  (add-sp-child!*      [s c] 
+  (get-children        [s] (publications child-ps))
+  (add-child-watcher!  [s w] (subscribe! child-ps w))
+  (add-sp-child!       [sp child-sp up?] ;; TODO: subsumption should prevent child from gettong output before parent ??
+   (util/print-debug 2 "AC" sp child-sp)
+   (when (canonical? sp)
+     (schedule-subsumption! (sp-ts sp) (sp-ts child-sp))
+     (publish! all-child-ps child-sp)
+     (when *propagate-subusmption* #_ ::TODO) ;; TODO!!
+     )   
+   (if (and (get-output-set sp) (get-output-set child-sp))
+    (publish-sp-child! sp child-sp)
+    (do (summaries/connect! sp (sp-ts child-sp)) 
+        (add-output-watcher! sp 
+          (fn [_] (add-output-watcher! child-sp
+                   (fn [_] (publish-sp-child! sp child-sp) 
+                           (summaries/disconnect! sp (sp-ts child-sp))
+                           (schedule-decrease! sp)))))
+        (when up? (schedule-increase! sp)))))
+  (publish-sp-child!      [s c] 
     (util/assert-is (and (not (identical? s c)) (get-output-set s) (get-output-set c)))
-    (.add child-list c)
     (when (canonical? s)
       (summaries/connect! (sp-ts s) (sp-ts c))
       (schedule-increase! (sp-ts s)))    
-    (doseq [w (doall (seq child-watchers))] (swap! *out-count* inc) (w c)))
+    (publish! child-ps c))
 
+  (get-all-children    [s] (publications all-child-ps))
+
+    
   (subsuming-sps [s] (keys subsuming-sp-set))
   (add-subsuming-sp! [s subsuming-sp]
     (util/assert-is (canonical? s))
@@ -210,7 +236,11 @@
     (util/assert-is (not (identical? s subsuming-sp)))
     (when-not (.containsKey subsuming-sp-set subsuming-sp)
       (.put subsuming-sp-set subsuming-sp true)
-      (schedule-subsumption! (sp-ts subsuming-sp) (sp-ts s))))
+      (schedule-subsumption! (sp-ts subsuming-sp) (sp-ts s))
+      (when *propagate-subusmption*
+        #_ (add-child-watcher! )) ;; TODO!!
+
+      ))
   
   (refine-input    [s ni] (let [ret (ri-fn s ni)] (util/assert-is (= nm (sp-name ret))) ret)))
 
@@ -224,29 +254,10 @@
 
 (defn- connect-and-watch-ts! [p c out-f]
   (summaries/connect! p (sp-ts c))
-  (if (get-output-set c)
-    (do (out-f) false)
-    (do (add-output-watcher! c out-f) true)))
+  (add-output-watcher! c out-f))
 
-;; TODO: subsumption should prevent child from gettong output before parent ??
-(defn- add-sp-child! [sp child-sp up?]
-   (util/print-debug 2 "AC" sp child-sp)
-;  (println sp child-sp) (Thread/sleep 100)
-   (when (canonical? sp)
-     (schedule-subsumption! (sp-ts sp) (sp-ts child-sp))
-    ;; TODO: propagate!
-     )
-   (if (and (get-output-set sp) (get-output-set child-sp))
-    (add-sp-child!* sp child-sp)
-    (do (summaries/connect! sp (sp-ts child-sp)) ;; Be safe; child could have children before we get output.
-        (add-output-watcher! sp 
-          (fn [] (add-output-watcher! child-sp
-                   (fn [] (util/assert-is (get-output-set sp) "%s" [sp child-sp])
-;                     (assert (empty? (get-children child-sp)))
-                     (add-sp-child!* sp child-sp) 
-                     (summaries/disconnect! sp (sp-ts child-sp))
-                     (schedule-decrease! sp)))))
-        (when up? (schedule-increase! sp)))))
+
+
 
 ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;  Constructors  ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
 
@@ -258,7 +269,7 @@
              [summaries/or-summarizable
               (simple-subproblem nm inp-set (sp-ts inner-sp) noeval ri-fn)])]
     (connect-and-watch! ret inner-sp
-      (fn [] (set-output-set! ret (output-wrap (get-output-set! inner-sp))))
+      (fn [o] (set-output-set! ret (output-wrap o)))
       (fn [inner-child] (child-watch ret inner-child)))
     ret))
 
@@ -307,7 +318,7 @@
            (set-output-set! s out-set)
            (if-let [subsuming-sps (seq (filter #(not (terminal? %)) (subsuming-sps s)))]
              (connect-and-watch! s (apply min-key (comp summaries/get-bound sp-ts) subsuming-sps)
-               (fn ignore-output [] nil)
+               (fn ignore-output [_] nil)
                (fn [sub-out] (add-sp-child! s (refine-input sub-out inp-set) true))) 
              (doseq [ref-name (refinement-names fs inp-set)] #_ (println fs ref-name)
                (add-sp-child! s (get-subproblem ref-name inp-set) false))) 
@@ -350,7 +361,7 @@
                        (summaries/disconnect! ss (sp-ts @right-sp))
                        (add-child-watcher! left-sp (fn [c] (def *bad* [s c]) (throw (RuntimeException. "Solved and children."))))
                        (connect-and-watch! ss @right-sp
-                         (fn ignore-output [] nil) 
+                         (fn ignore-output [_] nil) 
                          (fn right-child [right-child] (add-sp-child! s (make-pair-subproblem left-sp right-child) true)))
                        (summaries/summary-changed-local! ss))
            ret (make-simple-subproblem nm (input-set left-sp) ri-fn
@@ -365,9 +376,8 @@
                        (summaries/or-summary s))))]    
        (summaries/connect! ret ss)
        (connect-and-watch! ss left-sp
-         (fn left-output []
-           (connect-and-watch-ts! ss @right-sp 
-             (fn [] (set-output-set! ret (get-output-set! @right-sp))))
+         (fn left-output [_]
+           (connect-and-watch-ts! ss @right-sp (fn [o] (set-output-set! ret o)))
            (schedule-decrease! ss))
          (fn left-child [left-child]
            (add-sp-child! ret (make-pair-subproblem left-child right-name #(refine-input @right-sp %)) true))) 
@@ -410,8 +420,8 @@
    identity
    (fn child-watch [sp child-sp] ;     (println sp child-sp (def *bad* [sp child-sp]))
      (if (=-state-sets (get-output-set! inner-sp) (get-output-set! child-sp))
-       (do (schedule-increase! sp) (connect-and-watch! sp child-sp nil #(child-watch sp %))) ;; TODO: ???
-       (add-sp-child! sp (make-output-collecting-subproblem fs inp-key child-sp) false)))
+       (do (schedule-increase! sp) (connect-and-watch! sp child-sp nil #(child-watch sp %))) 
+       (add-sp-child! sp (make-output-collecting-subproblem fs inp-key child-sp) :irrelevant))) 
    (fn refine-input [s ni]
      (let [ninp-key (get-input-key fs ni)]
        (if (= inp-key ninp-key)
@@ -445,9 +455,8 @@
 (defn- make-eager-state-abstracted-subproblem [fs inner-sp inp-set]
   (make-wrapped-subproblem
    (sa-name (sp-name inner-sp)) inp-set #{:OC} inner-sp
-   #(do ;      (assert (= (state/current-context %) (fs/precondition-context-set fs inp-set)))
-        (state/transfer-effects inp-set %))
-   (fn [sp child-sp] (add-sp-child! sp (make-eager-state-abstracted-subproblem fs child-sp inp-set) false)) 
+   #(do (state/transfer-effects inp-set %))
+   (fn [sp child-sp] (add-sp-child! sp (make-eager-state-abstracted-subproblem fs child-sp inp-set) :irrelevant)) 
    (fn [sp ni] (if (=-state-sets ni inp-set) sp (make-eager-state-abstracted-subproblem fs (refine-input inner-sp ni) ni)))))
 
 
