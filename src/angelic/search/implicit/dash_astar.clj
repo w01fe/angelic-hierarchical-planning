@@ -289,6 +289,7 @@
     (do (out-f) false)
     (do (add-output-watcher! c out-f) true)))
 
+;;; TODO: why does changing to ts of child matter when assert on ??
 ;; TODO: subsumption should prevent child from gettong output before parent ??
 (defn- add-sp-child! [sp child-sp up?]
    (util/print-debug 2 "AC" sp child-sp)
@@ -299,13 +300,13 @@
      )
    (if (get-output-set child-sp)
     (do (add-sp-child!* sp child-sp))
-    (do (summaries/connect! sp child-sp)
-        (add-output-watcher! sp ;; TODO: this feels hacky...
+    (do (summaries/connect! sp (sp-ts child-sp)) ;; Be safe; child could have children before we get output.
+        (add-output-watcher! sp 
           (fn [] (add-output-watcher! child-sp
                    (fn [] (util/assert-is (get-output-set sp) "%s" [sp child-sp])
-                     (assert (empty? (get-children child-sp)))
+;                     (assert (empty? (get-children child-sp)))
                      (add-sp-child!* sp child-sp) 
-                     (summaries/disconnect! sp child-sp)
+                     (summaries/disconnect! sp (sp-ts child-sp))
                      (schedule-decrease! sp)))))
         (when up? (schedule-increase! sp)))))
 
