@@ -43,6 +43,7 @@
 ;;    I.e., live decrease -50 to -49, now blocked sibling becomes best; above is -50 TDB;
 ;; TODO: smarter summary updates (i.e., pass child)
 ;; TODO: smarter choose-leaf?
+;; TODO: conspiracy number, weighted, etc.
 
 ;;;;; SP caching
 ;; TODO: tail (i.e., pair) caching? -- Only help for >2 len refs...
@@ -106,19 +107,14 @@
 (def *decreases* (ArrayList.))
 (def *subsumes* (ArrayList.))
 
-(defn schedule-decrease! [sp] (.add ^ArrayList *decreases* sp))
 (defn schedule-increase! [sp] (.add ^ArrayList *increases* sp))
+(defn schedule-decrease! [sp] (.add ^ArrayList *decreases* sp))
 (defn schedule-subsumption! [ts subsumed-ts] (.add ^ArrayList *subsumes* [ts subsumed-ts]))
 
-
-
-(defn do-changes! [^ArrayList a f]
-  (doseq [sp a] (f sp))
-  (.clear a))
+(defn do-changes! [^ArrayList a f] (doseq [sp a] (f sp)) (.clear a))
 
 (declare evaluate!)
 
-;; Note: doing pairs right away doesn't help.
 (defn evaluate-and-update! [s]
   (evaluate! s)
   (do-changes! *increases* summaries/summary-increased!) ;; Must go first for correctness.
@@ -174,29 +170,16 @@
 
 ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;  Generic Trait  ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
 
-;(def *out-count* (atom 1))
-
 ;; Canonical SPs are Atomic and Pair; wrappers use TS of inner SP.
 (defn canonicalize [sp] (ts-sp (sp-ts sp)))
 (defn canonical? [sp] (identical? sp (ts-sp (sp-ts sp))))
-
-(defn notify-output-set! [w s] #_ (println "NO" s w) (w))
-(defn notify-child! [w s c] #_ (println "NC" s c w) (swap! *out-count* inc) (w c))
-
-
-;; Note subsumption following is a bit tricky, since we want access to all children
-;; (including unpublished ones).
-;; TODO: remove all-children if it doesn't help?
-;; What we need is a 3-way dependence:
-;; Child, sub child, sub link.?
-
 
 (traits/deftrait simple-subproblem
   [nm inp-set wrapped-ts eval!-fn ri-fn]
   [                 ts-atom          (atom wrapped-ts)
    ^PubSubHub       output-ps        (make-pubsubhub)
    ^PubSubHub       child-ps         (make-pubsubhub)
-   ^PubSubHub       all-child-ps     (make-pubsubhub)
+   ^PubSubHub       all-child-ps     (make-pubsubhub) ;; For sub-following -- remove if no help.
    ^IdentityHashMap subsuming-sp-set (IdentityHashMap.)]
   [summaries/simple-cached-node]
   Subproblem
@@ -428,9 +411,7 @@
 
 (defn atomic-name-fs [n] (assert (= :Atomic (first n))) (second n))
 (defn log-input [fs inp-set] (if *state-abstraction* (fs/get-logger fs inp-set) inp-set))
-
 (defn get-input-key [fs inp-set] (if *state-abstraction* (fs/extract-context fs inp-set) inp-set))
-(defn get-cache-key [atomic-n inp-set] [atomic-n (get-input-key (atomic-name-fs atomic-n) inp-set)])
 
 ;; Input-key caching not necessary, but speeds things up a lot on, e.g., d-m.
 (defn- make-output-collecting-subproblem [fs inp-key inner-sp]
@@ -536,10 +517,6 @@
 ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
 
 (defn- get-root-summarizer [inp-set fs] (sp-ts (make-atomic-subproblem fs inp-set )))
-
-(def *lazy-cache* false) 
-(def *no-subsumption* false)
-(def *assume-consistency* false) ;; Don't propagate lazy increases.
 
 ;; TODO: sa options...
 (defn implicit-dash-a*
