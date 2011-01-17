@@ -166,18 +166,27 @@
   (and (empty? (get-children sp))
        (summary/solved? (summaries/summary sp))))
 
+(defn- connect-and-watch! [p c out-f child-f]
+  (summaries/connect! p c)
+  (when out-f (add-output-watcher! c out-f))
+  (add-child-watcher! c child-f))
+
+(defn- connect-and-watch-ts! [p c out-f]
+  (summaries/connect! p (sp-ts c))
+  (add-output-watcher! c out-f))
 
 (defmethod print-method angelic.search.implicit.dash_astar.Subproblem [sp o]
   (print-method (format "#<SP$%8h %s %s>" (System/identityHashCode sp) (sp-name sp)
                         (if (get-output-set sp) :OUT :STUB)) o))
 
 
-;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;  Generic Trait  ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
+;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;  Constructors  ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
 
 ;; Canonical SPs are Atomic and Pair; wrappers use TS of inner SP.
 (defn- canonicalize [sp] (ts-sp (sp-ts sp)))
 (defn- canonical? [sp] (identical? sp (ts-sp (sp-ts sp))))
 
+;; Summary-fn should take bound into account.
 (defn- make-subproblem [nm inp-set wrapped-ts eval!-fn ri-fn summary-fn]
  (let [                 ts-atom          (atom wrapped-ts)
        ^PubSubHub       output-ps        (make-pubsubhub)
@@ -249,40 +258,7 @@
       (when (canonical? s) (add-subsuming-sp! ret s))
       ret)))))
 
-
-;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;  Utils  ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
-
-(defn- connect-and-watch! [p c out-f child-f]
-  (summaries/connect! p c)
-  (when out-f (add-output-watcher! c out-f))
-  (add-child-watcher! c child-f))
-
-(defn- connect-and-watch-ts! [p c out-f]
-  (summaries/connect! p (sp-ts c))
-  (add-output-watcher! c out-f))
-
-
-
-;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;  Constructors  ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
-
-(defn noeval [s] (throw (RuntimeException. (print-str s "not evaluable!"))))
-
-(defn make-wrapped-subproblem [nm inp-set prefix-set inner-sp output-wrap child-watch ri-fn]
-  (util/assert-is (contains? prefix-set (first (sp-name inner-sp))))
-  (let [ret (make-subproblem nm inp-set (sp-ts inner-sp) noeval ri-fn summaries/or-summary)]
-    (connect-and-watch! ret inner-sp
-      (fn [o] (set-output-set! ret (output-wrap o)))
-      (fn [inner-child] (child-watch ret inner-child)))
-    ret))
-
-;; Note: summary-fn should take subsuming-bound into account.
-(defn- make-simple-subproblem [nm inp-set ri-fn eval-fn summary-fn]
-  (make-subproblem nm inp-set nil eval-fn (fn [s ni] (if (= ni inp-set) s (ri-fn s ni))) summary-fn))
-
-;; Get a fresh subproblem with the given name and input.
 (defmulti get-subproblem (fn get-subproblem-dispatch [nm inp] (first nm)))
-
-
 
 ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
 ;;;;;;;;;;;;;;;;;;;;;;;;;;     Core Subproblems     ;;;;;;;;;;;;;;;;;;;;;;;;;;;;
@@ -299,9 +275,8 @@
   (let [nm    (atomic-name fs)
         state (atom :ready) ;; set to out-set after first eval, then :go after second.
         sm-fn (atom #(summary/make-live-simple-summary (summaries/get-bound %) %))] 
-    (make-simple-subproblem
-     nm inp-set
-     (fn [s ri] (assert (not *collect-equal-outputs*)) (get-subproblem nm  ri))
+    (make-subproblem
+     nm inp-set nil
      (fn evaluate! [s]
        (util/print-debug 1 "eval" nm (= :ready @state))
        (assert (not (= :go @state)))
@@ -327,7 +302,8 @@
                    (set-output-set! s out-set)
                    (schedule-decrease! s)))) ;; TODO? 
            (do (reset! state :go) ;; Die
-               (summaries/add-bound! s Double/NEGATIVE_INFINITY)))))     
+               (summaries/add-bound! s Double/NEGATIVE_INFINITY)))))
+     (fn [s ri] (assert (not *collect-equal-outputs*)) (if (= ri inp-set) s (get-subproblem nm  ri)))
      (fn summarize [s] (@sm-fn s)))))
 
 (defmethod get-subproblem :Atomic [[_ fs :as n] inp-set] 
@@ -347,7 +323,6 @@
      (let [nm (pair-name (sp-name left-sp) right-name)
            right-sp (delay (right-sp-fn (get-output-set! left-sp)))
            right?-atom (atom false) ;; Expand on right            
-           ri-fn    (fn [s ni] (make-pair-subproblem (refine-input left-sp ni) right-name #(refine-input @right-sp %)))
            ss (summaries/make-sum-summarizer nil)
            go-right! (fn [s] 
                        (reset! right?-atom true)                          
@@ -357,8 +332,11 @@
                          (fn ignore-output [_] nil) 
                          (fn right-child [right-child] (add-sp-child! s (make-pair-subproblem left-sp right-child) true)))
                        (summaries/summary-changed-local! ss))
-           ret (make-simple-subproblem nm (input-set left-sp) ri-fn
+           ret (make-subproblem nm (input-set left-sp) nil 
                  (fn eval! [s] (schedule-decrease! s) (go-right! s)) ;; TODO: ??
+                 (fn [s ni] (if (= ni (input-set left-sp)) s
+                                (make-pair-subproblem (refine-input left-sp ni)
+                                                      right-name #(refine-input @right-sp %))))
                  (fn [s] 
                    (or (and (not @right?-atom)
                             (solved-terminal? left-sp)
@@ -384,6 +362,16 @@
 ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
 ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;     Wrappers     ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
 ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
+
+(defn make-wrapped-subproblem [nm inp-set prefix-set inner-sp output-wrap child-watch ri-fn]
+  (util/assert-is (contains? prefix-set (first (sp-name inner-sp))))
+  (let [ret (make-subproblem nm inp-set (sp-ts inner-sp)
+                             (fn [_] (throw (RuntimeException.)))
+                             ri-fn summaries/or-summary)]
+    (connect-and-watch! ret inner-sp
+      (fn [o] (set-output-set! ret (output-wrap o)))
+      (fn [inner-child] (child-watch ret inner-child)))
+    ret))
 
 ;;;;;;;;;;;;;;;;;;;;;;;;;;;     Output Collection     ;;;;;;;;;;;;;;;;;;;;;;;;;;
 
