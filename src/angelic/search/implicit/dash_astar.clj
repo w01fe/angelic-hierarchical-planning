@@ -276,39 +276,48 @@
   (when-let [[out-set reward] ((case type :opt fs/apply-opt :pess fs/apply-pess) fs inp-set)]
     [[type out-set] reward]))
 
+(defn make-summary [[inp-t] reward bound status src]
+  (case inp-t
+    :opt  (summary/make-simple-summary (if reward (min reward bound) bound) status src)
+    :pess (summary/make-interval-summary (or reward Double/NEGATIVE_INFINITY) bound status src)))
+
+;; Pess should have bound, then eval
+;; -- cannot use add-bound!
+;; Difference is that even if no pess set, we should be live.
+;;  (summary should be other way...)
+;; Pair has to be able to deal with no pess set...
+;; For now, it should just not instantiate right
+;; cleaner way to do this ???
+
 ;; Note: this is double-stage to lazily generate children.  Could be simpler single-stage.
 (defn- make-atomic-subproblem [fs inp-set]
   (let [nm    (atomic-name fs)
         state (atom :ready) ;; set to out-set after first eval, then :go after second.
-        sm-fn (atom #(summary/make-live-simple-summary (summaries/get-bound %) %))] 
+        sm-fn (atom #(make-summary inp-set nil (summaries/get-bound %) :live %))
+        set-sm! (fn [s f] (do (reset! sm-fn f) (schedule-decrease! s)))] 
     (make-subproblem
      nm inp-set nil
      (fn evaluate! [s]
        (util/print-debug 1 "eval" nm (= :ready @state))
        (assert (not (= :go @state)))
-       (if (not (= :ready @state))
+       (if (= :set @state)
          (let [out-set @state] ;; Go live with chilren
            (reset! state :go)
-           (set-output-set! s out-set)
            (if-let [subsuming-sps (seq (filter #(not (terminal? %)) (subsuming-sps s)))]
              (connect-and-watch! s (apply min-key (comp summaries/get-bound sp-ts) subsuming-sps) nil
                (fn [sub-out] (add-sp-child! s (refine-input sub-out inp-set) true))) 
              (doseq [ref-name (refinement-names fs inp-set)] #_ (println fs ref-name)
                (add-sp-child! s (get-subproblem ref-name inp-set) false))) 
-           (reset! sm-fn summaries/or-summary)
-           (schedule-decrease! s))         
+           (set-sm! s summaries/or-summary))         
          (if-let [[out-set reward] (apply-description fs inp-set)]
-           (let [status (fs/status fs (second inp-set))] ;; TODO: pess? 
-             (if (= status :live)
-               (do (reset! state out-set) ;; Wait to generate children
-                   (summaries/add-bound! s reward))
-               (do (reset! state :go) ;; Fixed (blocked/solved)
-                   (reset! sm-fn #(summary/make-simple-summary (min (summaries/get-bound %) reward) status %))
-                   (set-output-set! s out-set)
-                   (schedule-decrease! s)))) ;; TODO? 
+           (let [status (fs/status fs (second inp-set))] ;; TODO: pess?
+             (set-output-set! s out-set)
+             (set-sm! s #(make-summary inp-set reward (summaries/get-bound %) status %))
+             (reset! state (if (= status :live) :set :go)))
            (do (reset! state :go) ;; Die
                (summaries/add-bound! s Double/NEGATIVE_INFINITY)))))
-     (fn [s ri] (assert (not *collect-equal-outputs*)) (if (= ri inp-set) s (get-subproblem nm  ri)))
+     (fn [s ri] #_ (assert (not *collect-equal-outputs*)) ;; TODO: put back?
+       (if (= ri inp-set) s (get-subproblem nm  ri)))
      (fn summarize [s] (@sm-fn s)))))
 
 (defmethod get-subproblem :Atomic [[_ fs :as n] inp-set] 
@@ -346,8 +355,8 @@
                             (solved-terminal? left-sp)
                             (if (empty? (get-children @right-sp))
                               (do (go-right! s) nil)
-                              (do (summary/make-live-simple-summary
-                                (min (summary/max-reward (summaries/summary ss)) (summaries/get-bound s)) s))))
+                              (let [r (min (summary/max-reward (summaries/summary ss)) (summaries/get-bound s))]
+                                (make-summary (input-set left-sp) nil r :live s))))
                        (summaries/or-summary s))))]    
        (summaries/connect! ret ss)
        (connect-and-watch! ss left-sp
@@ -454,12 +463,11 @@
             [(simple-stub [:SA (stub-name inner-stub) in-set] in-set)]
             summaries/Summarizable
             (summarize [s]
-                       (if @done? summary/+worst-simple-summary+
-                           (summary/make-live-simple-summary
-                            (summary/max-reward (summaries/summary (sp-ts out))) s)))   
+             (if @done? summary/+worst-simple-summary+
+                 (make-summary inp-set nil (summary/max-reward (summaries/summary (sp-ts out))) s)))   
             Evaluable
             (evaluate! [s] (reset! done? true)
-                       (set-stub-output! s (make-state-abstracted-subproblem s out))))]
+             (set-stub-output! s (make-state-abstracted-subproblem s out))))]
        (summaries/connect! ret out)
        ret)
      (make-eager-state-abstracted-subprolbem nm inner-sp inp-set))))
@@ -501,12 +509,28 @@
 ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;; Planning ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
 ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
 
-(defn- get-root-summarizer [type inp-set fs] (sp-ts (make-atomic-subproblem fs [type inp-set] )))
+(declare *root*)
+(declare *pess-root*)
 
-;; TODO: sa options...
+(defn solve-opt [root choice-fn local?]
+  (summary/solve
+   #(summaries/summary root)
+   (summaries/best-leaf-operator choice-fn local? evaluate-and-update!)
+   #(let [n (fs/fs-name (second (sp-name %)))] (when-not (= (first n) :noop) n))))
+
+(defn solve-pess [opt-root choice-fn local?]
+  (let [pess-root (refine-input (ts-sp opt-root) [:pess (second (input-set (ts-sp opt-root)))])]
+    (def *pess-root* pess-root)
+    (summary/solve
+     #(summaries/summary opt-root)
+     (summaries/best-leaf-operator choice-fn local? evaluate-and-update!)
+     #(let [n (fs/fs-name (second (sp-name %)))] (when-not (= (first n) :noop) n)))))
+
+(defn- get-root-ts [inp-set fs] (sp-ts (make-atomic-subproblem fs [:opt inp-set] )))
+
 (defn implicit-dash-a*
-  [henv & {gather :gather d :d   s :s    choice-fn :choice-fn local? :local?  dir :dir   prop :prop :as m
-      :or {gather true   d true s :eager choice-fn last       local? true     dir :right prop true}}]
+  [henv & {gather :gather d :d   s :s    choice-fn :choice-fn local? :local?  dir :dir   prop :prop pess? :pess? :as m
+      :or {gather true   d true s :eager choice-fn last       local? true     dir :right prop true  pess? true}}]
   (assert (every? #{:gather :d :s :choice-fn :local? :dir :prop} (keys m)))
   (assert (contains? #{:left :right} dir))
   (assert (contains? #{nil false :eager :deliberate} s))
@@ -517,13 +541,17 @@
             *decompose-cache*       (when d (HashMap.))
             *state-abstraction*     s
             *left-recursive*        (= dir :left)
-            *propagate-subsumption* prop
- ;            summaries/*cache-method* c
-            ]
-    (summaries/solve
-     (apply get-root-summarizer :opt (fs/make-init-pair henv))
-     choice-fn local? evaluate-and-update!
-     #(let [n (fs/fs-name (second (sp-name %)))] (when-not (= (first n) :noop) n)))))
+            *propagate-subsumption* prop]
+    (def *root* (apply get-root-ts (fs/make-init-pair henv)))
+    ((if pess? solve-pess solve-opt) *root* choice-fn local?)))
+
+
+
+
+
+
+
+
 
 
 

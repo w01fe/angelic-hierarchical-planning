@@ -203,16 +203,21 @@
           (let [s (summary (choice-fn live-kids))]
             (recur s choice-fn (summary/max-reward s))))))))
 
-
-(def *root* nil)
-(defn solve [root-summarizable choice-fn local-choice? op!-fn action-extractor]
-  (def *root* root-summarizable)
-  (summary/solve
-   #(summary root-summarizable)
-   #(op!-fn (if local-choice?
+(defn best-leaf-operator [choice-fn local-choice? op!-fn]
+  #(op!-fn (if local-choice?
               (extract-single-live-leaf % choice-fn (summary/max-reward %))
-              (choice-fn (extract-live-leaf-source-seq %))))
-   action-extractor))
+              (choice-fn (extract-live-leaf-source-seq %)))))
+
+
+
+(comment
+ (def *root* nil)
+ (defn solve [root-summarizable choice-fn local-choice? op!-fn action-extractor]
+   (def *root* root-summarizable)
+   (summary/solve
+    #(summary root-summarizable)
+    (best-leaf-operator choice-fn local-choice? op!-fn)
+    action-extractor)))
 
 
 

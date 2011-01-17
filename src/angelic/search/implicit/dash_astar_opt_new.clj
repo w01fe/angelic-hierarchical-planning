@@ -7,6 +7,9 @@
             [angelic.search.function-sets :as fs])
   (:import [java.util HashMap ArrayList IdentityHashMap]))
 
+;; Version of dash_astar before adding some pessimistic stuff
+;; Also missing some cleanups.
+
 ;; A revampting of dash_astar_opt, to move subsumption relationships and caching
 ;; out into a separate class.  This is necessary to keep pessimistic and optimistic
 ;; things in sync, and should help simplify and generalize subsumption stuff.
