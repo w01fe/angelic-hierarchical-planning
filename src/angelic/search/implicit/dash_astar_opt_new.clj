@@ -7,15 +7,12 @@
             [angelic.search.function-sets :as fs])
   (:import [java.util HashMap ArrayList IdentityHashMap]))
 
-;; This is a version of dash_astar_opt just before adding pessimistic descriptions.
-
 ;; A revampting of dash_astar_opt, to move subsumption relationships and caching
 ;; out into a separate class.  This is necessary to keep pessimistic and optimistic
 ;; things in sync, and should help simplify and generalize subsumption stuff.
 
 ;; Here we replace all subsumption with consistency-maintaining and TDBs in summaries.
 ;; This simplifies problems with cycles that arrise when doing subsumption right.
-
 
 ;; Note: with good descriptions, subsumption/TDB has two purposes?
 ;;  1.  Give stubs a bound before evaluated.
@@ -33,6 +30,8 @@
 ;;;;; Pessimistic
 ;; TODO: add pessimistic variants (shared primitives)
 ;; TODO: bounding pressimistic descritpions (assume consistency for now)
+;; TODO: hook up pess/opt with same input set?
+;; TODO: pruning. 
 
 ;;;;; Tree construction
 ;; TODO: smarter output-collector (semantic) -- problems here though.
@@ -131,6 +130,8 @@
 
 ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;  Protocol  ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
 
+;; Here, inputs and outputs are [:opt/:pess actual-set] pairs.
+
 (defprotocol Subproblem
   (sp-name             [s])
   (input-set           [s])
@@ -154,6 +155,11 @@
 
   (refine-input        [s refined-input-set] "Return a child sp. Must have output."))
 
+(defmethod print-method angelic.search.implicit.dash_astar.Subproblem [sp o]
+  (print-method (format "#<SP$%8h %s %s>" (System/identityHashCode sp) (sp-name sp)
+                        (if (get-output-set sp) :OUT :STUB)) o))
+
+;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;  Auxillary fns  ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
   
 (defn get-output-set! [sp] (let [o (get-output-set sp)] (assert o) o))
 
@@ -165,27 +171,34 @@
   (and (empty? (get-children sp))
        (summary/solved? (summaries/summary sp))))
 
+(defn- canonicalize [sp] (ts-sp (sp-ts sp)))
 
-(defmethod print-method angelic.search.implicit.dash_astar.Subproblem [sp o]
-  (print-method (format "#<SP$%8h %s %s>" (System/identityHashCode sp) (sp-name sp)
-                        (if (get-output-set sp) :OUT :STUB)) o))
+(defn- canonical? [sp] (identical? sp (ts-sp (sp-ts sp))))
+
+(defn- connect-and-watch! [p c out-f child-f]
+  (summaries/connect! p c)
+  (when out-f (add-output-watcher! c out-f))
+  (add-child-watcher! c child-f))
+
+(defn- connect-and-watch-ts! [p c out-f]
+  (summaries/connect! p (sp-ts c))
+  (add-output-watcher! c out-f))
 
 
-;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;  Generic Trait  ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
+;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;  Constructors  ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
 
 ;; Canonical SPs are Atomic and Pair; wrappers use TS of inner SP.
-(defn canonicalize [sp] (ts-sp (sp-ts sp)))
-(defn canonical? [sp] (identical? sp (ts-sp (sp-ts sp))))
 
-(traits/deftrait simple-subproblem
-  [nm inp-set wrapped-ts eval!-fn ri-fn]
-  [                 ts-atom          (atom wrapped-ts)
-   ^PubSubHub       output-ps        (make-pubsubhub)
-   ^PubSubHub       child-ps         (make-pubsubhub)
-   ^PubSubHub       all-child-ps     (make-pubsubhub) ;; For sub-following -- remove if no help.
-   ^IdentityHashMap subsuming-sp-set (IdentityHashMap.)]
-  [summaries/simple-cached-node]
-  Subproblem
+;; Summary-fn should take bound into account.
+(defn- make-subproblem [nm inp-set wrapped-ts eval!-fn ri-fn summary-fn]
+ (let [                 ts-atom          (atom wrapped-ts)
+       ^PubSubHub       output-ps        (make-pubsubhub)
+       ^PubSubHub       child-ps         (make-pubsubhub)
+       ^PubSubHub       all-child-ps     (make-pubsubhub) ;; For sub-following -- remove if no help.
+       ^IdentityHashMap subsuming-sp-set (IdentityHashMap.)]
+  (traits/reify-traits [summaries/simple-cached-node]
+   summaries/Summarizable (summarize [s] (summary-fn s))
+   Subproblem
   (sp-name             [s] nm)
   (input-set           [s] inp-set)
   (sp-ts               [s] (or @ts-atom (reset! ts-atom (make-tree-summarizer s))))
@@ -218,16 +231,14 @@
       (schedule-increase! (sp-ts s)))    
     (publish! child-ps c))
 
-  (add-all-child-watcher! [s w] (subscribe! all-child-ps w))
-
-    
+  (add-all-child-watcher! [s w] (subscribe! all-child-ps w))    
   (subsuming-sps [s] (keys subsuming-sp-set))
   (add-subsuming-sp! [s subsuming-sp]
     (util/assert-is (canonical? s))
     (util/assert-is (canonical? subsuming-sp))                     
     (util/assert-is (= nm (sp-name subsuming-sp)))
-    (util/assert-is (not (identical? s subsuming-sp)))
-    (when-not (.containsKey subsuming-sp-set subsuming-sp)
+    (when-not (or (identical? s subsuming-sp)
+                  (.containsKey subsuming-sp-set subsuming-sp))
       (.put subsuming-sp-set subsuming-sp true)
       (schedule-subsumption! (sp-ts subsuming-sp) (sp-ts s))
       (when *propagate-subsumption*
@@ -238,62 +249,19 @@
               (add-all-child-watcher! subsuming-sp
                 (fn [subsuming-child]
                   (let [can-subsuming-child (canonicalize subsuming-child)]
-                    (when (and (not (identical? can-child can-subsuming-child))
-                               (= (sp-name can-child) (sp-name can-subsuming-child)))
-                      #_(print ".")
-                      #_ (println [s subsuming-sp] "==>" [child subsuming-child])
+                    (when (= (sp-name can-child) (sp-name can-subsuming-child))
                       (when (add-subsuming-sp! can-child can-subsuming-child)
                         #_ (println [s subsuming-sp] "==>" [child subsuming-child])
                         )))))))))
       true))
   
-  (refine-input    [s ni] (let [ret (ri-fn s ni)] (util/assert-is (= nm (sp-name ret))) ret)))
+  (refine-input    [s ni]
+    (let [ret (ri-fn s ni)]
+      (util/assert-is (= nm (sp-name ret)))
+      (when (canonical? s) (add-subsuming-sp! ret s))
+      ret)))))
 
-
-;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;  Utils  ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
-
-(defn- connect-and-watch! [p c out-f child-f]
-  (summaries/connect! p c)
-  (when out-f (add-output-watcher! c out-f))
-  (add-child-watcher! c child-f))
-
-(defn- connect-and-watch-ts! [p c out-f]
-  (summaries/connect! p (sp-ts c))
-  (add-output-watcher! c out-f))
-
-
-
-;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;  Constructors  ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
-
-(defn noeval [s] (throw (RuntimeException. (print-str s "not evaluable!"))))
-
-(defn make-wrapped-subproblem [nm inp-set prefix-set inner-sp output-wrap child-watch ri-fn]
-  (util/assert-is (contains? prefix-set (first (sp-name inner-sp))))
-  (let [ret (traits/reify-traits
-             [summaries/or-summarizable
-              (simple-subproblem nm inp-set (sp-ts inner-sp) noeval ri-fn)])]
-    (connect-and-watch! ret inner-sp
-      (fn [o] (set-output-set! ret (output-wrap o)))
-      (fn [inner-child] (child-watch ret inner-child)))
-    ret))
-
-
-;; Note: summary-fn should take subsuming-bound into account.
-(defn- make-simple-subproblem [nm inp-set ri-fn eval-fn summary-fn]
-  (traits/reify-traits
-   [(simple-subproblem
-     nm inp-set nil eval-fn
-     (fn [s ni] ;; Note ni may have different context.
-       (if (= ni inp-set) s
-         (let [subsumed-sp (ri-fn s ni)]
-           (add-subsuming-sp! subsumed-sp s)
-           subsumed-sp))))]
-   summaries/Summarizable (summarize [s] (summary-fn s))))
-
-;; Get a fresh subproblem with the given name and input.
 (defmulti get-subproblem (fn get-subproblem-dispatch [nm inp] (first nm)))
-
-
 
 ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
 ;;;;;;;;;;;;;;;;;;;;;;;;;;     Core Subproblems     ;;;;;;;;;;;;;;;;;;;;;;;;;;;;
@@ -310,9 +278,8 @@
   (let [nm    (atomic-name fs)
         state (atom :ready) ;; set to out-set after first eval, then :go after second.
         sm-fn (atom #(summary/make-live-simple-summary (summaries/get-bound %) %))] 
-    (make-simple-subproblem
-     nm inp-set
-     (fn [s ri] (assert (not *collect-equal-outputs*)) (get-subproblem nm  ri))
+    (make-subproblem
+     nm inp-set nil
      (fn evaluate! [s]
        (util/print-debug 1 "eval" nm (= :ready @state))
        (assert (not (= :go @state)))
@@ -321,8 +288,7 @@
            (reset! state :go)
            (set-output-set! s out-set)
            (if-let [subsuming-sps (seq (filter #(not (terminal? %)) (subsuming-sps s)))]
-             (connect-and-watch! s (apply min-key (comp summaries/get-bound sp-ts) subsuming-sps)
-               (fn ignore-output [_] nil)
+             (connect-and-watch! s (apply min-key (comp summaries/get-bound sp-ts) subsuming-sps) nil
                (fn [sub-out] (add-sp-child! s (refine-input sub-out inp-set) true))) 
              (doseq [ref-name (refinement-names fs inp-set)] #_ (println fs ref-name)
                (add-sp-child! s (get-subproblem ref-name inp-set) false))) 
@@ -338,7 +304,8 @@
                    (set-output-set! s out-set)
                    (schedule-decrease! s)))) ;; TODO? 
            (do (reset! state :go) ;; Die
-               (summaries/add-bound! s Double/NEGATIVE_INFINITY)))))     
+               (summaries/add-bound! s Double/NEGATIVE_INFINITY)))))
+     (fn [s ri] (assert (not *collect-equal-outputs*)) (if (= ri inp-set) s (get-subproblem nm  ri)))
      (fn summarize [s] (@sm-fn s)))))
 
 (defmethod get-subproblem :Atomic [[_ fs :as n] inp-set] 
@@ -358,18 +325,19 @@
      (let [nm (pair-name (sp-name left-sp) right-name)
            right-sp (delay (right-sp-fn (get-output-set! left-sp)))
            right?-atom (atom false) ;; Expand on right            
-           ri-fn    (fn [s ni] (make-pair-subproblem (refine-input left-sp ni) right-name #(refine-input @right-sp %)))
            ss (summaries/make-sum-summarizer nil)
            go-right! (fn [s] 
                        (reset! right?-atom true)                          
                        (summaries/disconnect! ss (sp-ts @right-sp))
                        (add-child-watcher! left-sp (fn [c] (def *bad* [s c]) (throw (RuntimeException. "Solved and children."))))
-                       (connect-and-watch! ss @right-sp
-                         (fn ignore-output [_] nil) 
+                       (connect-and-watch! ss @right-sp nil
                          (fn right-child [right-child] (add-sp-child! s (make-pair-subproblem left-sp right-child) true)))
                        (summaries/summary-changed-local! ss))
-           ret (make-simple-subproblem nm (input-set left-sp) ri-fn
+           ret (make-subproblem nm (input-set left-sp) nil 
                  (fn eval! [s] (schedule-decrease! s) (go-right! s)) ;; TODO: ??
+                 (fn [s ni] (if (= ni (input-set left-sp)) s
+                                (make-pair-subproblem (refine-input left-sp ni)
+                                                      right-name #(refine-input @right-sp %))))
                  (fn [s] 
                    (or (and (not @right?-atom)
                             (solved-terminal? left-sp)
@@ -395,6 +363,16 @@
 ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
 ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;     Wrappers     ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
 ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
+
+(defn make-wrapped-subproblem [nm inp-set prefix-set inner-sp output-wrap child-watch ri-fn]
+  (util/assert-is (contains? prefix-set (first (sp-name inner-sp))))
+  (let [ret (make-subproblem nm inp-set (sp-ts inner-sp)
+                             (fn [_] (throw (RuntimeException.)))
+                             ri-fn summaries/or-summary)]
+    (connect-and-watch! ret inner-sp
+      (fn [o] (set-output-set! ret (output-wrap o)))
+      (fn [inner-child] (child-watch ret inner-child)))
+    ret))
 
 ;;;;;;;;;;;;;;;;;;;;;;;;;;;     Output Collection     ;;;;;;;;;;;;;;;;;;;;;;;;;;
 

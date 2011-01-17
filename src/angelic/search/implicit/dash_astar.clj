@@ -155,6 +155,11 @@
 
   (refine-input        [s refined-input-set] "Return a child sp. Must have output."))
 
+(defmethod print-method angelic.search.implicit.dash_astar.Subproblem [sp o]
+  (print-method (format "#<SP$%8h %s %s>" (System/identityHashCode sp) (sp-name sp)
+                        (if (get-output-set sp) :OUT :STUB)) o))
+
+;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;  Auxillary fns  ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
   
 (defn get-output-set! [sp] (let [o (get-output-set sp)] (assert o) o))
 
@@ -166,6 +171,10 @@
   (and (empty? (get-children sp))
        (summary/solved? (summaries/summary sp))))
 
+(defn- canonicalize [sp] (ts-sp (sp-ts sp)))
+
+(defn- canonical? [sp] (identical? sp (ts-sp (sp-ts sp))))
+
 (defn- connect-and-watch! [p c out-f child-f]
   (summaries/connect! p c)
   (when out-f (add-output-watcher! c out-f))
@@ -175,16 +184,10 @@
   (summaries/connect! p (sp-ts c))
   (add-output-watcher! c out-f))
 
-(defmethod print-method angelic.search.implicit.dash_astar.Subproblem [sp o]
-  (print-method (format "#<SP$%8h %s %s>" (System/identityHashCode sp) (sp-name sp)
-                        (if (get-output-set sp) :OUT :STUB)) o))
-
 
 ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;  Constructors  ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
 
 ;; Canonical SPs are Atomic and Pair; wrappers use TS of inner SP.
-(defn- canonicalize [sp] (ts-sp (sp-ts sp)))
-(defn- canonical? [sp] (identical? sp (ts-sp (sp-ts sp))))
 
 ;; Summary-fn should take bound into account.
 (defn- make-subproblem [nm inp-set wrapped-ts eval!-fn ri-fn summary-fn]
@@ -285,8 +288,7 @@
            (reset! state :go)
            (set-output-set! s out-set)
            (if-let [subsuming-sps (seq (filter #(not (terminal? %)) (subsuming-sps s)))]
-             (connect-and-watch! s (apply min-key (comp summaries/get-bound sp-ts) subsuming-sps)
-               (fn ignore-output [_] nil)
+             (connect-and-watch! s (apply min-key (comp summaries/get-bound sp-ts) subsuming-sps) nil
                (fn [sub-out] (add-sp-child! s (refine-input sub-out inp-set) true))) 
              (doseq [ref-name (refinement-names fs inp-set)] #_ (println fs ref-name)
                (add-sp-child! s (get-subproblem ref-name inp-set) false))) 
@@ -328,8 +330,7 @@
                        (reset! right?-atom true)                          
                        (summaries/disconnect! ss (sp-ts @right-sp))
                        (add-child-watcher! left-sp (fn [c] (def *bad* [s c]) (throw (RuntimeException. "Solved and children."))))
-                       (connect-and-watch! ss @right-sp
-                         (fn ignore-output [_] nil) 
+                       (connect-and-watch! ss @right-sp nil
                          (fn right-child [right-child] (add-sp-child! s (make-pair-subproblem left-sp right-child) true)))
                        (summaries/summary-changed-local! ss))
            ret (make-subproblem nm (input-set left-sp) nil 
