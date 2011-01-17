@@ -75,7 +75,6 @@
 
 ;;;;;;;;;;;;;;;;;;;;;;;;;;      Tree Summarizers      ;;;;;;;;;;;;;;;;;;;;;;;;;;
 
-
 (defprotocol TreeSummarizer (ts-sp [ts]))
 
 (defn- make-tree-summarizer [sp]
@@ -273,6 +272,10 @@
 
 (defn atomic-name [fs] [:Atomic fs])
 
+(defn apply-description [fs [type inp-set]]
+  (when-let [[out-set reward] ((case type :opt fs/apply-opt :pess fs/apply-pess) fs inp-set)]
+    [[type out-set] reward]))
+
 ;; Note: this is double-stage to lazily generate children.  Could be simpler single-stage.
 (defn- make-atomic-subproblem [fs inp-set]
   (let [nm    (atomic-name fs)
@@ -294,8 +297,8 @@
                (add-sp-child! s (get-subproblem ref-name inp-set) false))) 
            (reset! sm-fn summaries/or-summary)
            (schedule-decrease! s))         
-         (if-let [[out-set reward] (fs/apply-opt fs inp-set)]
-           (let [status (fs/status fs inp-set)]
+         (if-let [[out-set reward] (apply-description fs inp-set)]
+           (let [status (fs/status fs (second inp-set))] ;; TODO: pess? 
              (if (= status :live)
                (do (reset! state out-set) ;; Wait to generate children
                    (summaries/add-bound! s reward))
@@ -378,7 +381,7 @@
 
 (defn oc-name [inner-name] [:OC inner-name])
 
-(defn- =-state-sets [s1 s2]
+(defn- =-state-sets [[_ s1] [_ s2]]
   (util/assert-is (= (state/current-context s1) (state/current-context s2)) "%s" [s1 s2])
   (= s1 s2))
 
@@ -390,8 +393,9 @@
 (declare get-ocs)
 
 (defn atomic-name-fs [n] (assert (= :Atomic (first n))) (second n))
-(defn log-input [fs inp-set] (if *state-abstraction* (fs/get-logger fs inp-set) inp-set))
-(defn get-input-key [fs inp-set] (if *state-abstraction* (fs/extract-context fs inp-set) inp-set))
+(defn bind-ss [[type ss] f] [type (f ss)])
+(defn log-input [fs inp-set] (if *state-abstraction* (bind-ss #(fs/get-logger fs %) inp-set) inp-set))
+(defn get-input-key [fs inp-set] (if *state-abstraction* (bind-ss #(fs/extract-context fs %) inp-set) inp-set))
 
 ;; Input-key caching not necessary, but speeds things up a lot on, e.g., d-m.
 (defn- make-output-collecting-subproblem [fs inp-key inner-sp]
@@ -435,7 +439,7 @@
 (defn- make-eager-state-abstracted-subproblem [fs inner-sp inp-set]
   (make-wrapped-subproblem
    (sa-name (sp-name inner-sp)) inp-set #{:OC} inner-sp
-   #(do (state/transfer-effects inp-set %))
+   (fn [o] (bind-ss #(state/transfer-effects inp-set %) o))
    (fn [sp child-sp] (add-sp-child! sp (make-eager-state-abstracted-subproblem fs child-sp inp-set) :irrelevant)) 
    (fn [sp ni] (if (=-state-sets ni inp-set) sp (make-eager-state-abstracted-subproblem fs (refine-input inner-sp ni) ni)))))
 
@@ -487,7 +491,8 @@
 (defn- right-factor [[f & r]]
   (if (seq r) (pair-name f (right-factor r)) f))
 
-(defn- refinement-names [fs inp-set]
+(defn- refinement-names [fs [t inp-set]]
+  (assert (= t :opt))
   (for [fs-seq (fs/child-seqs fs inp-set)]
     ((if *left-recursive* left-factor right-factor)
      (map wrapped-atomic-name fs-seq))))
@@ -496,7 +501,7 @@
 ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;; Planning ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
 ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
 
-(defn- get-root-summarizer [inp-set fs] (sp-ts (make-atomic-subproblem fs inp-set )))
+(defn- get-root-summarizer [type inp-set fs] (sp-ts (make-atomic-subproblem fs [type inp-set] )))
 
 ;; TODO: sa options...
 (defn implicit-dash-a*
@@ -516,7 +521,7 @@
  ;            summaries/*cache-method* c
             ]
     (summaries/solve
-     (apply get-root-summarizer (fs/make-init-pair henv))
+     (apply get-root-summarizer :opt (fs/make-init-pair henv))
      choice-fn local? evaluate-and-update!
      #(let [n (fs/fs-name (second (sp-name %)))] (when-not (= (first n) :noop) n)))))
 
