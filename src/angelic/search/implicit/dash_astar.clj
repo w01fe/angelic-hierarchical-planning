@@ -30,6 +30,8 @@
 ;;;;; Pessimistic
 ;; TODO: add pessimistic variants (shared primitives)
 ;; TODO: bounding pressimistic descritpions (assume consistency for now)
+;; TODO: hook up pess/opt with same input set?
+;; TODO: pruning. 
 
 ;;;;; Tree construction
 ;; TODO: smarter output-collector (semantic) -- problems here though.
@@ -128,6 +130,8 @@
 
 ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;  Protocol  ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
 
+;; Here, inputs and outputs are [:opt/:pess actual-set] pairs.
+
 (defprotocol Subproblem
   (sp-name             [s])
   (input-set           [s])
@@ -171,18 +175,18 @@
 ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;  Generic Trait  ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
 
 ;; Canonical SPs are Atomic and Pair; wrappers use TS of inner SP.
-(defn canonicalize [sp] (ts-sp (sp-ts sp)))
-(defn canonical? [sp] (identical? sp (ts-sp (sp-ts sp))))
+(defn- canonicalize [sp] (ts-sp (sp-ts sp)))
+(defn- canonical? [sp] (identical? sp (ts-sp (sp-ts sp))))
 
-(traits/deftrait simple-subproblem
-  [nm inp-set wrapped-ts eval!-fn ri-fn]
-  [                 ts-atom          (atom wrapped-ts)
-   ^PubSubHub       output-ps        (make-pubsubhub)
-   ^PubSubHub       child-ps         (make-pubsubhub)
-   ^PubSubHub       all-child-ps     (make-pubsubhub) ;; For sub-following -- remove if no help.
-   ^IdentityHashMap subsuming-sp-set (IdentityHashMap.)]
-  [summaries/simple-cached-node]
-  Subproblem
+(defn- make-subproblem [nm inp-set wrapped-ts eval!-fn ri-fn summary-fn]
+ (let [                 ts-atom          (atom wrapped-ts)
+       ^PubSubHub       output-ps        (make-pubsubhub)
+       ^PubSubHub       child-ps         (make-pubsubhub)
+       ^PubSubHub       all-child-ps     (make-pubsubhub) ;; For sub-following -- remove if no help.
+       ^IdentityHashMap subsuming-sp-set (IdentityHashMap.)]
+  (traits/reify-traits [summaries/simple-cached-node]
+   summaries/Summarizable (summarize [s] (summary-fn s))
+   Subproblem
   (sp-name             [s] nm)
   (input-set           [s] inp-set)
   (sp-ts               [s] (or @ts-atom (reset! ts-atom (make-tree-summarizer s))))
@@ -215,16 +219,14 @@
       (schedule-increase! (sp-ts s)))    
     (publish! child-ps c))
 
-  (add-all-child-watcher! [s w] (subscribe! all-child-ps w))
-
-    
+  (add-all-child-watcher! [s w] (subscribe! all-child-ps w))    
   (subsuming-sps [s] (keys subsuming-sp-set))
   (add-subsuming-sp! [s subsuming-sp]
     (util/assert-is (canonical? s))
     (util/assert-is (canonical? subsuming-sp))                     
     (util/assert-is (= nm (sp-name subsuming-sp)))
-    (util/assert-is (not (identical? s subsuming-sp)))
-    (when-not (.containsKey subsuming-sp-set subsuming-sp)
+    (when-not (or (identical? s subsuming-sp)
+                  (.containsKey subsuming-sp-set subsuming-sp))
       (.put subsuming-sp-set subsuming-sp true)
       (schedule-subsumption! (sp-ts subsuming-sp) (sp-ts s))
       (when *propagate-subsumption*
@@ -235,16 +237,17 @@
               (add-all-child-watcher! subsuming-sp
                 (fn [subsuming-child]
                   (let [can-subsuming-child (canonicalize subsuming-child)]
-                    (when (and (not (identical? can-child can-subsuming-child))
-                               (= (sp-name can-child) (sp-name can-subsuming-child)))
-                      #_(print ".")
-                      #_ (println [s subsuming-sp] "==>" [child subsuming-child])
+                    (when (= (sp-name can-child) (sp-name can-subsuming-child))
                       (when (add-subsuming-sp! can-child can-subsuming-child)
                         #_ (println [s subsuming-sp] "==>" [child subsuming-child])
                         )))))))))
       true))
   
-  (refine-input    [s ni] (let [ret (ri-fn s ni)] (util/assert-is (= nm (sp-name ret))) ret)))
+  (refine-input    [s ni]
+    (let [ret (ri-fn s ni)]
+      (util/assert-is (= nm (sp-name ret)))
+      (when (canonical? s) (add-subsuming-sp! ret s))
+      ret)))))
 
 
 ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;  Utils  ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
@@ -266,26 +269,15 @@
 
 (defn make-wrapped-subproblem [nm inp-set prefix-set inner-sp output-wrap child-watch ri-fn]
   (util/assert-is (contains? prefix-set (first (sp-name inner-sp))))
-  (let [ret (traits/reify-traits
-             [summaries/or-summarizable
-              (simple-subproblem nm inp-set (sp-ts inner-sp) noeval ri-fn)])]
+  (let [ret (make-subproblem nm inp-set (sp-ts inner-sp) noeval ri-fn summaries/or-summary)]
     (connect-and-watch! ret inner-sp
       (fn [o] (set-output-set! ret (output-wrap o)))
       (fn [inner-child] (child-watch ret inner-child)))
     ret))
 
-
 ;; Note: summary-fn should take subsuming-bound into account.
 (defn- make-simple-subproblem [nm inp-set ri-fn eval-fn summary-fn]
-  (traits/reify-traits
-   [(simple-subproblem
-     nm inp-set nil eval-fn
-     (fn [s ni] ;; Note ni may have different context.
-       (if (= ni inp-set) s
-         (let [subsumed-sp (ri-fn s ni)]
-           (add-subsuming-sp! subsumed-sp s)
-           subsumed-sp))))]
-   summaries/Summarizable (summarize [s] (summary-fn s))))
+  (make-subproblem nm inp-set nil eval-fn (fn [s ni] (if (= ni inp-set) s (ri-fn s ni))) summary-fn))
 
 ;; Get a fresh subproblem with the given name and input.
 (defmulti get-subproblem (fn get-subproblem-dispatch [nm inp] (first nm)))
