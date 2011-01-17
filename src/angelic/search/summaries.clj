@@ -29,6 +29,8 @@
   (add-subsumed!  [n subsumed-node])
   (subsumed-nodes [n]))
 
+;; Basic idea here is to keep contents of summaries accurate, but children
+;; may be stale.  i.e., call (comp summary source) in traversal.
 
 (defprotocol SummaryCache
   (get-bound  [n])
@@ -36,10 +38,7 @@
   (summary [n]                      "Possibly cached version of summarize")
   (summary-changed! [n]             "Update summary and notify parents as needed")
   (summary-increased! [n]           "Update summary and notify parents as needed")
-  (summary-changed-local! [n]       "Just update local summary, no parent notification (pot'l unsafe)")
-  (verified-summary [n min-summary] "Return a current exact best summary >= min-summary, or nil.
-                                     Child sources will be correct but grandchildren may be stale.
-                                     (i.e., call (comp summary source) on children if traversing)"))
+  (summary-changed-local! [n]       "Just update local summary, no parent notification (pot'l unsafe)"))
 
 
 
@@ -141,11 +140,7 @@
                                            (summary-increased! p)))
 ;                :else (throw (RuntimeException. (format "Decrease! %s" [(def *bad* n) n old new]) ))
                 )))))  
-  (summary-changed-local! [n] (reset! cache (summarize n) #_ nil))
-  (verified-summary [n min-summary] 
-    (let [cs (summary n)]
-      (when (summary/>= cs min-summary)
-        cs))))
+  (summary-changed-local! [n] (reset! cache (summarize n) #_ nil)))
 
 (traits/deftrait simple-cached-node [] [] [simple-node summary-cache])
 
@@ -212,14 +207,11 @@
 (def *root* nil)
 (defn solve [root-summarizable choice-fn local-choice? op!-fn action-extractor]
   (def *root* root-summarizable)
-  (def *c* (atom 34))
   (summary/solve
-    #(verified-summary root-summarizable summary/+worst-simple-summary+)
-   #_#(do (when (<= (swap! *c* dec) 0) (assert nil))
-        (verified-summary root-summarizable summary/+worst-simple-summary+))
+   #(summary root-summarizable)
    #(op!-fn (if local-choice?
-             (extract-single-live-leaf % choice-fn (summary/max-reward %))
-             (choice-fn (extract-live-leaf-source-seq %))))
+              (extract-single-live-leaf % choice-fn (summary/max-reward %))
+              (choice-fn (extract-live-leaf-source-seq %))))
    action-extractor))
 
 

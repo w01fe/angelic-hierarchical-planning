@@ -22,9 +22,10 @@
 ;; TODO: tests ! 
 
 ;;;;; Subsumption
-;; TODO: Figure out why subsumption isn't more helpful.
+;; TODO: Figure out why propagation isn't more helpful.
+;; TODO: propagate to halves of pairs ?
+;; TODO: more generic propagation?  (We know: names, subs. relationships on sets.  Efficient lookups?)
 ;; TODO: children wait on one (or more) subsumption parents.
-;; TODO: wait on subsumption parent(s)?
 
 ;;;;; Pessimistic
 ;; TODO: add pessimistic variants (shared primitives)
@@ -35,6 +36,7 @@
 ;; TODO: don't always split-left?
 ;; TODO: don't release children until they have lower reward or are primitive? 
 ;; TODO: make sure dead stuff can be GC'd
+;; TODO: try holding back children until solved? 
 
 ;;;;; Summaries and solving 
 ;; TODO: lazy/pseudo-solve (regular seems impossible; bounds mean apparent decrease may be increase.
@@ -48,6 +50,12 @@
 ;; TODO: cache children of output-collector? ~15 examples >1 in dm 4-3...
 ;; TODO: investigate plan seq  normalization. (flattening)
 
+
+;; Basic idea behind "wait on subsumption":
+;;   Don't do anything with child of node with subs. parent
+;;   until child has at least one subs. parent (or subs. parents are done.)
+;; Can be implemented by not letting children go until they have subs...
+;;  (and not incorporating into summary, except as bound) .... ?
 
 (set! *warn-on-reflection* true)
 
@@ -248,7 +256,10 @@
                                (= (sp-name can-child) (sp-name can-subsuming-child)))
                       #_(print ".")
                       #_ (println [s subsuming-sp] "==>" [child subsuming-child])
-                      (add-subsuming-sp! can-child can-subsuming-child)))))))))))
+                      (when (add-subsuming-sp! can-child can-subsuming-child)
+                        #_ (println [s subsuming-sp] "==>" [child subsuming-child])
+                        )))))))))
+      true))
   
   (refine-input    [s ni] (let [ret (ri-fn s ni)] (util/assert-is (= nm (sp-name ret))) ret)))
 

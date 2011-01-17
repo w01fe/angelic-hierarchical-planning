@@ -142,9 +142,10 @@
   (children         [s] chldren)
   (re-source        [s new-src bound stat-bound] (throw (RuntimeException.))) ;; TODO: needed!
   (re-child         [s new-children] (throw (RuntimeException.)))
-  (+                [s other src] (throw (RuntimeException.)))
   (eq               [s other] (= (is-vec s) (is-vec other)))
   (>=               [s other] (not (neg? (compare (is-vec s) (is-vec other)))))
+  (>=               [s other bound] (not (neg? (compare (is-vec s) (is-vec other)))))  
+  (+                [s other src] (throw (RuntimeException.)))
   (+                [s other new-src bound]
    (IntervalSummary.
      (clojure.core/min (clojure.core/+ min-rew (:min-rew other Double/NEGATIVE_INFINITY)) bound)                     
@@ -249,31 +250,4 @@
             :else (do (expand!-fn summary)
                       (recur))))))
 
-;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;; Misc. Helpers ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
-
-(comment
-  (defn extract-best-and-summaries
-   "Return [best-item best-summary rest-items rest-summary]"
-   [summary-fn things]
-   (assert (seq things))
-   (loop [best-thing   (first things)
-          best-summary (summary-fn (first things))
-          rest-things  []
-          rest-summary  +worst-summary+
-          more-things  (rest things)]
-     (if-let [[next-thing & even-more-things] (seq more-things)]
-       (let [next-summary (summary-fn next-thing)]
-         (if (better-summary? next-summary best-summary)
-           (recur next-thing next-summary
-                  (conj rest-things best-thing) best-summary even-more-things)
-           (recur best-thing best-summary
-                  (conj rest-things next-thing) (max-summary next-summary rest-summary) even-more-things)))
-       [best-thing best-summary rest-things rest-summary])))
-
-
-  (defmacro assert-valid-summary-change
-    ([old-summary new-summary] ( assert-valid-summary-change old-summary new-summary ""))
-    ([old-summary new-summary msg]
-       `(do (util/assert-is (<= (max-reward ~new-summary) (max-reward ~old-summary)) "%s" [~old-summary ~new-summary ~msg])
-            (when-not (live? ~old-summary) (assert (= ~old-summary ~new-summary)))))))
 
