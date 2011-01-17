@@ -95,7 +95,7 @@
 
 (def *subsumption* true)
 
-(def *kill* true) ;; Remove dead children of OR-nodes.  Doesn't seem to really help or hurt...
+(def *kill* false #_ true) ;; Remove dead children of OR-nodes.  Doesn't seem to really help or hurt...
 
 (defn update-bound! [n bound-atom b] 
   (when (and *subsumption* (< b @bound-atom))
@@ -140,7 +140,7 @@
                                            (summary-increased! p)))
 ;                :else (throw (RuntimeException. (format "Decrease! %s" [(def *bad* n) n old new]) ))
                 )))))  
-  (summary-changed-local! [n] (reset! cache (summarize n) #_ nil)))
+  (summary-changed-local! [n] (reset! cache (summarize n) #_ nil))) ;; TODO: bound? 
 
 (traits/deftrait simple-cached-node [] [] [simple-node summary-cache])
 

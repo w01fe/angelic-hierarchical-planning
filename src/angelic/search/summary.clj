@@ -129,7 +129,8 @@
 ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
 
 (declare make-interval-summary*)
-(defn is-vec [is] [(:min-rew is neg-inf) #_ (max-reward is) (status-val (status is))])
+(defn is-id-vec [is] [(:min-rew is neg-inf) (status-val (status is))])
+(defn is-sort-vec [is] [(:min-rew is neg-inf) (max-reward is) (status-val (status is))])
 
 (defrecord IntervalSummary [min-rew max-rew stat src chldren]
   Summary
@@ -141,8 +142,8 @@
     (make-interval-summary* min-rew (clojure.core/min max-rew bound)
                       (min-key status-val stat stat-bound) new-src [s]))  
   (re-child         [s new-children] (throw (RuntimeException.)))
-  (eq               [s other] (= (is-vec s) (is-vec other)))
-  (>=               [s other] (not (neg? (compare (is-vec s) (is-vec other)))))
+  (eq               [s other] (= (is-id-vec s) (is-id-vec other)))
+  (>=               [s other] (not (neg? (compare (is-sort-vec s) (is-sort-vec other)))))
   (>=               [s other bound] (>= s other)) ;; TODO: ???  
   (+                [s other src] (throw (RuntimeException.)))
   (+                [s other new-src bound]
@@ -185,8 +186,8 @@
        (recur (if (>= (first stats) best) (first stats) best) (next stats))
        best))
    +worst-simple-summary+))
-(defn max [& stats] (apply-max stats)
-  #_(apply max-compare >= (cons +worst-simple-summary+ stats)))
+
+(defn max [& stats] (apply-max stats))
 
 ;; Note: this doesn't account for interaction between max and bound...
 (defn or-combine [summaries new-src bound]

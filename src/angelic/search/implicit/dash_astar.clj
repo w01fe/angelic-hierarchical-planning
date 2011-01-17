@@ -385,9 +385,10 @@
 
 (defn oc-name [inner-name] [:OC inner-name])
 
-(defn- =-state-sets [[_ s1] [_ s2]]
-  (util/assert-is (= (state/current-context s1) (state/current-context s2)) "%s" [s1 s2])
-  (= s1 s2))
+(defn- =-state-sets [[t1 s1] [t2 s2]]
+  (when (= t1 t2)
+    (util/assert-is (= (state/current-context s1) (state/current-context s2)) "%s" [s1 s2])
+    (= s1 s2)))
 
 ;; Note: must always wrap (at least with SA), or we lose context.
 ;; TODO: only :Atomic or :Pair inside, when SA off 
@@ -516,10 +517,12 @@
 (defn solve-pess [opt-root choice-fn local?]
   (let [pess-root (refine-input (ts-sp opt-root) [:pess (second (input-set (ts-sp opt-root)))])]
     (def *pess-root* pess-root)
-    (summary/solve
-     #(summaries/summary opt-root)
-     (summaries/best-leaf-operator choice-fn local? evaluate-and-update!)
-     #(let [n (fs/fs-name (second (sp-name %)))] (when-not (= (first n) :noop) n)))))
+    (util/prog1
+     (summary/solve
+      #(summaries/summary opt-root)
+      (summaries/best-leaf-operator choice-fn local? evaluate-and-update!)
+      #(let [n (fs/fs-name (second (sp-name %)))] (when-not (= (first n) :noop) n)))
+     (dotimes [_ 2] (evaluate-and-update! pess-root)))))
 
 (defn- get-root-ts [inp-set fs] (sp-ts (make-atomic-subproblem fs [:opt inp-set] )))
 
