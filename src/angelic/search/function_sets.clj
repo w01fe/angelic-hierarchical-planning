@@ -20,6 +20,7 @@
 (defprotocol FunctionSet
   (fs-name    [sk]           "Arbitrary name to identify fs")
   (apply-opt  [sk input-set] "[output-set upper-reward-bound] or nil if empty/-inf")
+  (apply-pess [sk input-set] "[output-set upper-reward-bound] or nil if empty/-inf")  
   (status     [sk input-set] ":live, :blocked, or :solved")
   (child-seqs [sk input-set] "seq of seqs of FunctionSets. Only valid if above is :live.
                               (= :live (status sk s)) ==>
@@ -27,6 +28,10 @@
   (precondition-context-set [sk input-set])
   (extract-context [sk input-set] "Relevant parts of input-set, for state abstraction")
   (get-logger  [sk input-set] "Relevant parts of input-set, for state abstraction"))
+
+(defn output-or-nil [[opt rew :as p]]
+  (when (and p (not (state-set/empty? opt)) (> rew Double/NEGATIVE_INFINITY))
+    p))
 
 (defn- make-fs [action status-fn child-seq-fn]
   (let [n (env/action-name action)]
@@ -37,10 +42,8 @@
                             (= n (fs-name ofs))))    
     FunctionSet
     (fs-name    [sk]           n)
-    (apply-opt  [sk input-set]
-      (let [[opt rew :as p] (angelic/optimistic-set-and-reward action input-set)]
-        (when (and p (not (state-set/empty? opt)) (> rew Double/NEGATIVE_INFINITY))
-          p)))    
+    (apply-opt  [sk input-set] (output-or-nil (angelic/optimistic-set-and-reward action input-set)))
+    (apply-pess [sk input-set] (output-or-nil (angelic/pessimistic-set-and-reward action input-set)))        
     (status     [sk input-set] (status-fn input-set))
     (child-seqs [sk input-set] (child-seq-fn input-set))
     (precondition-context-set [sk input-set] (angelic/precondition-context-set action input-set))
