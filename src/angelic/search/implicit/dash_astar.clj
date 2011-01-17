@@ -272,14 +272,11 @@
 
 (defn atomic-name [fs] [:Atomic fs])
 
-(defn apply-description [fs [type inp-set]]
-  (when-let [[out-set reward] ((case type :opt fs/apply-opt :pess fs/apply-pess) fs inp-set)]
-    [[type out-set] reward]))
-
-(defn make-summary [[inp-t] reward bound status src]
-  (case inp-t
-    :opt  (summary/make-simple-summary (if reward (min reward bound) bound) status src)
-    :pess (summary/make-interval-summary (or reward Double/NEGATIVE_INFINITY) bound status src)))
+(defn make-summary [[inp-t] rew stat src]
+  (let [b (summaries/get-bound src)]
+    (case inp-t
+      :opt  (summary/make-simple-summary (if rew (min rew b) b) stat src)
+      :pess (summary/make-interval-summary (or rew summary/neg-inf) b stat src))))
 
 ;; Pess should have bound, then eval
 ;; -- cannot use add-bound!
@@ -292,30 +289,28 @@
 ;; Note: this is double-stage to lazily generate children.  Could be simpler single-stage.
 (defn- make-atomic-subproblem [fs inp-set]
   (let [nm    (atomic-name fs)
+        sm-fn (atom #(make-summary inp-set nil :live %))
         state (atom :ready) ;; set to out-set after first eval, then :go after second.
-        sm-fn (atom #(make-summary inp-set nil (summaries/get-bound %) :live %))
-        set-sm! (fn [s f] (do (reset! sm-fn f) (schedule-decrease! s)))] 
+        next! (fn [s st f] (reset! state st) (reset! sm-fn f) (schedule-decrease! s))] 
     (make-subproblem
      nm inp-set nil
      (fn evaluate! [s]
        (util/print-debug 1 "eval" nm (= :ready @state))
        (assert (not (= :go @state)))
        (if (= :set @state)
-         (let [out-set @state] ;; Go live with chilren
-           (reset! state :go)
-           (if-let [subsuming-sps (seq (filter #(not (terminal? %)) (subsuming-sps s)))]
-             (connect-and-watch! s (apply min-key (comp summaries/get-bound sp-ts) subsuming-sps) nil
-               (fn [sub-out] (add-sp-child! s (refine-input sub-out inp-set) true))) 
-             (doseq [ref-name (refinement-names fs inp-set)] #_ (println fs ref-name)
-               (add-sp-child! s (get-subproblem ref-name inp-set) false))) 
-           (set-sm! s summaries/or-summary))         
-         (if-let [[out-set reward] (apply-description fs inp-set)]
-           (let [status (fs/status fs (second inp-set))] ;; TODO: pess?
-             (set-output-set! s out-set)
-             (set-sm! s #(make-summary inp-set reward (summaries/get-bound %) status %))
-             (reset! state (if (= status :live) :set :go)))
-           (do (reset! state :go) ;; Die
-               (summaries/add-bound! s Double/NEGATIVE_INFINITY)))))
+         (do (next! s :go summaries/or-summary)
+             (if-let [subsuming-sps (seq (filter #(not (terminal? %)) (subsuming-sps s)))]
+               (connect-and-watch! s (apply min-key (comp summaries/get-bound sp-ts) subsuming-sps) nil
+                 (fn [sub-out] (add-sp-child! s (refine-input sub-out inp-set) true))) 
+               (doseq [ref-name (refinement-names fs inp-set)] #_ (println fs ref-name)
+                 (add-sp-child! s (get-subproblem ref-name inp-set) false))))         
+         (let [[out-set reward :as p]
+               (case (first inp-set)
+                 :opt (fs/apply-opt fs (second inp-set))
+                 :pess (or (fs/apply-pess fs (second inp-set)) [nil summary/neg-inf]))
+               status (if p (fs/status fs (second inp-set)) :blocked)]
+           (next! s (if (= status :live) :set :go) #(make-summary inp-set (or reward summary/neg-inf) status %))
+           (when p (set-output-set! s [(first inp-set) out-set])))))     
      (fn [s ri] #_ (assert (not *collect-equal-outputs*)) ;; TODO: put back?
        (if (= ri inp-set) s (get-subproblem nm  ri)))
      (fn summarize [s] (@sm-fn s)))))
@@ -356,7 +351,7 @@
                             (if (empty? (get-children @right-sp))
                               (do (go-right! s) nil)
                               (let [r (min (summary/max-reward (summaries/summary ss)) (summaries/get-bound s))]
-                                (make-summary (input-set left-sp) nil r :live s))))
+                                (make-summary (input-set left-sp) r :live s)))) ;; tODO: ??
                        (summaries/or-summary s))))]    
        (summaries/connect! ret ss)
        (connect-and-watch! ss left-sp
@@ -402,7 +397,7 @@
 (declare get-ocs)
 
 (defn atomic-name-fs [n] (assert (= :Atomic (first n))) (second n))
-(defn bind-ss [[type ss] f] [type (f ss)])
+(defn bind-ss [f [type ss]] [type (f ss)])
 (defn log-input [fs inp-set] (if *state-abstraction* (bind-ss #(fs/get-logger fs %) inp-set) inp-set))
 (defn get-input-key [fs inp-set] (if *state-abstraction* (bind-ss #(fs/extract-context fs %) inp-set) inp-set))
 
@@ -448,7 +443,7 @@
 (defn- make-eager-state-abstracted-subproblem [fs inner-sp inp-set]
   (make-wrapped-subproblem
    (sa-name (sp-name inner-sp)) inp-set #{:OC} inner-sp
-   (fn [o] (bind-ss #(state/transfer-effects inp-set %) o))
+   (fn [o] (bind-ss #(state/transfer-effects (second inp-set) %) o))
    (fn [sp child-sp] (add-sp-child! sp (make-eager-state-abstracted-subproblem fs child-sp inp-set) :irrelevant)) 
    (fn [sp ni] (if (=-state-sets ni inp-set) sp (make-eager-state-abstracted-subproblem fs (refine-input inner-sp ni) ni)))))
 

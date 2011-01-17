@@ -56,8 +56,8 @@
 (defn blocked? [s] (= (status s) :blocked))
 (defn solved?  [s] (= (status s) :solved))
 
-(defn viable? [summary]
-  (> (max-reward summary) Double/NEGATIVE_INFINITY))
+(def neg-inf Double/NEGATIVE_INFINITY)
+(defn viable? [summary] (> (max-reward summary) neg-inf))
 
 (defn refinable? [summary summary-bound]
   (and (live? summary) (>= summary summary-bound)))
@@ -116,7 +116,7 @@
    (assert (= (status summary) :live))
    (make-stale-simple-summary (max-reward summary) (util/safe-singleton (sources summary)))))
 
-(def +worst-simple-summary+ (make-blocked-simple-summary Double/NEGATIVE_INFINITY :worst))
+(def +worst-simple-summary+ (make-blocked-simple-summary neg-inf :worst))
 (def +best-simple-summary+  (make-live-simple-summary Double/POSITIVE_INFINITY :best)) ;; don't be too optimistic
 (def +zero-simple-summary+  (SimpleSummary. 0 :solved nil nil))
 
@@ -129,7 +129,7 @@
 ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
 
 (declare make-interval-summary*)
-(defn is-vec [is] [(:min-rew is Double/NEGATIVE_INFINITY) #_ (max-reward is) (status-val (status is))])
+(defn is-vec [is] [(:min-rew is neg-inf) #_ (max-reward is) (status-val (status is))])
 
 (defrecord IntervalSummary [min-rew max-rew stat src chldren]
   Summary
@@ -147,7 +147,7 @@
   (+                [s other src] (throw (RuntimeException.)))
   (+                [s other new-src bound]
    (make-interval-summary*
-    (clojure.core/+ min-rew (:min-rew other Double/NEGATIVE_INFINITY))
+    (clojure.core/+ min-rew (:min-rew other neg-inf))
     (clojure.core/min (clojure.core/+ max-rew (max-reward other)) bound)
     (min-key status-val stat (status other))
     new-src [s other])))
@@ -249,8 +249,6 @@
       (util/print-debug 1 "next round: " summary (Thread/sleep 10))
       (cond (solved? summary) (do (def *last-solution* summary)
                                   (extract-solution-pair summary action-extractor))
-            (= (max-reward summary) Double/NEGATIVE_INFINITY) nil
-            :else (do (expand!-fn summary)
-                      (recur))))))
+            (viable? summary) (do (expand!-fn summary) (recur))))))
 
 
