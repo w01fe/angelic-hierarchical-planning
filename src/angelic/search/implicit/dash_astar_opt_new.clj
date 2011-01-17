@@ -7,12 +7,15 @@
             [angelic.search.function-sets :as fs])
   (:import [java.util HashMap ArrayList IdentityHashMap]))
 
+;; This is a version of dash_astar_opt just before adding pessimistic descriptions.
+
 ;; A revampting of dash_astar_opt, to move subsumption relationships and caching
 ;; out into a separate class.  This is necessary to keep pessimistic and optimistic
 ;; things in sync, and should help simplify and generalize subsumption stuff.
 
 ;; Here we replace all subsumption with consistency-maintaining and TDBs in summaries.
 ;; This simplifies problems with cycles that arrise when doing subsumption right.
+
 
 ;; Note: with good descriptions, subsumption/TDB has two purposes?
 ;;  1.  Give stubs a bound before evaluated.
