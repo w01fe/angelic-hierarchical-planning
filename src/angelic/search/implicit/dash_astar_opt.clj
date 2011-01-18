@@ -26,23 +26,6 @@
 ;;;;;;;;;;;;;;;;;;;;;;;;;;;;       Utilities      ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
 ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
 
-;;;;;;;;;;;;;;;;;;;;;;;;;;      Tree Summarizers      ;;;;;;;;;;;;;;;;;;;;;;;;;;
-
-(defprotocol TreeSummarizer
-  "A 'semantic' summarizer for a subproblem.  Its summarizer represents the best-
-   known Summary for a subproblem and all its descendants"
-  (ts-sp [ts] "The canonical subproblem summarized by this tree summarizer."))
-
-(defn- make-tree-summarizer [sp]
-  (let [ret (traits/reify-traits [sg/or-summarizable sg/simple-cached-node]
-              TreeSummarizer (ts-sp [ts] sp))]
-    (sg/connect! ret sp)
-    (sg/connect-subsumed! ret sp)
-    ret))
-
-(defmethod print-method angelic.search.implicit.dash_astar_opt.TreeSummarizer [s o]
-  (print-method (format "#<TS %s>" (print-str (ts-sp s))) o))
-
 ;;;;;;;;;;;;;;;;;;;;;;;;;;         PubSubHub          ;;;;;;;;;;;;;;;;;;;;;;;;;;
 
 (defrecord PubSubHub [^ArrayList subscribers ^ArrayList publications])
@@ -87,7 +70,22 @@
   (do-changes! *subsumes* (fn [[ts subsumed-ts]] (sg/connect-subsumed! ts subsumed-ts)))
   (do-changes! *decreases* sg/summary-changed!))
 
+;;;;;;;;;;;;;;;;;;;;;;;;;;      Tree Summarizers      ;;;;;;;;;;;;;;;;;;;;;;;;;;
 
+(defprotocol TreeSummarizer
+  "A 'semantic' summarizer for a subproblem.  Its summarizer represents the best-
+   known Summary for a subproblem and all its descendants"
+  (ts-sp [ts] "The canonical subproblem summarized by this tree summarizer."))
+
+(defn- make-tree-summarizer [sp]
+  (let [ret (traits/reify-traits [sg/or-summarizable sg/simple-cached-node]
+              TreeSummarizer (ts-sp [ts] sp))]
+    (sg/connect! ret sp)
+    (schedule-subsumption! ret sp)
+    ret))
+
+(defmethod print-method angelic.search.implicit.dash_astar_opt.TreeSummarizer [s o]
+  (print-method (format "#<TS %s>" (print-str (ts-sp s))) o))
 
 ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
 ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;  Subproblems  ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
@@ -307,7 +305,7 @@
      (let [nm (pair-name (sp-name left-sp) right-name)
            right-sp (delay (right-sp-fn (get-output-set! left-sp)))
            right?-atom (atom false) ;; Expand on right            
-           ss (sg/make-sum-summarizer nil)
+           ss (sg/make-sum-summarizer)
            go-right! (fn [s] 
                        (reset! right?-atom true)                          
                        (sg/disconnect! ss (sp-ts @right-sp))

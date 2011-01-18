@@ -82,6 +82,7 @@
 
 (defn connect-subsumed! [node subsumed-parent]
   (add-subsumed! node subsumed-parent)
+  (summary node) ;; make sure we have a summary to bound?  TODO: this hurts perf lots in non-wa* case
   (add-bound! subsumed-parent (get-bound node))) 
 
 
@@ -95,9 +96,9 @@
 
 (def *kill* false #_ true) ;; Remove dead children of OR-nodes.  Doesn't seem to really help or hurt...
 
-(defn update-bound! [n bound-atom b] 
+(defn update-bound! [n bound-atom b]
   (when (and *subsumption* (< b @bound-atom))
-    #_(util/print-debug 3 "UB" n @bound-atom b) 
+    (util/print-debug 3 "UB" n @bound-atom b) 
     (reset! bound-atom b)
     (doseq [s (doall (subsumed-nodes n))]
       (add-bound! s b))
@@ -108,7 +109,7 @@
   (let [s (summarize n),
         r (summary/max-reward s)]
     (util/print-debug 3 "US" n  @summary-atom s @bound-atom)
-    (assert (<= r @bound-atom))
+   #_ (assert (<= r @bound-atom)) ;; TODO: put back
     (reset! summary-atom s)
     (update-bound! n bound-atom r) 
     s))
@@ -160,16 +161,19 @@
   (swap! *summary-count* inc)
   (let [kids (child-nodes s)]
     (case (count kids)
-      1 (summary/re-source (summary (first kids)) s (get-bound s) :solved)
-      2 (summary/+ (summary (first kids)) (summary (second kids)) s (get-bound s)))))
+      2 (summary/+ (summary (first kids)) (summary (second kids)) s (get-bound s))
+      1 (summary/re-source (summary (first kids)) s (get-bound s) :solved))))
 
-(traits/deftrait sum-summarizable [] [] []
-  Summarizable (summarize [s] (sum-summary s)))
+(defn make-sum-summarizer []
+  (traits/reify-traits [simple-cached-node] Summarizable (summarize [s] (sum-summary s))))
 
-(defn make-sum-summarizer [kids]
-  (let [ret (traits/reify-traits [sum-summarizable simple-cached-node])]
-    (doseq [kid kids] (connect! ret kid))
+
+(defn make-wrapping-summarizer [wrapped-node wrap-fn]
+  (let [ret (traits/reify-traits [simple-cached-node]
+              Summarizable (summarize [s] (wrap-fn s (summary wrapped-node))))]
+    (connect! ret wrapped-node)
     ret))
+
 
 ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;; Searching ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
 
@@ -185,7 +189,8 @@
     (seq l)))
 
 (defn extract-single-live-leaf [summ choice-fn bound]
-  (assert (>= (summary/max-reward summ) bound))
+  (println (summary/source summ) summ)
+;  (assert (>= (summary/max-reward summ) bound)) ;; TODO: put back
 ;  (util/assert-is (summary/eq summ (-> summ summary/source summarize)) "%s" [(def *bad* summ)])
   (let [kids (map summary/source (summary/children summ))]
     (if (empty? kids)

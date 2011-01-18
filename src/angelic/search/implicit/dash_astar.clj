@@ -23,6 +23,7 @@
 ;; TODO: more generic propagation?  (We know: names, subs. relationships on sets.  Efficient lookups?)
 ;; TODO: children wait on one (or more) subsumption parents.
 
+
 ;;;;; Pessimistic
 ;; TODO: add pessimistic variants (shared primitives)
 ;; TODO: bounding pressimistic descritpions (assume consistency for now)
@@ -34,7 +35,7 @@
 ;; TODO: don't always split-left?
 ;; TODO: don't release children until they have lower reward or are primitive? 
 ;; TODO: make sure dead stuff can be GC'd
-;; TODO: try holding back children until solved? 
+;; TODO: alternative child release strategies, e.g. wait 'til solved
 
 ;;;;; Summaries and solving 
 ;; TODO: lazy/pseudo-solve (regular seems impossible; bounds mean apparent decrease may be increase.
@@ -42,6 +43,7 @@
 ;; TODO: smarter summary updates (i.e., pass child)
 ;; TODO: smarter choose-leaf?
 ;; TODO: conspiracy number, weighted, etc.
+;; TODO: forcing summary of TS in summary_graphs makes a lot of extra comps (lefts), doesn't help.
 
 ;;;;; SP caching
 ;; TODO: tail (i.e., pair) caching? -- Only help for >2 len refs...
@@ -55,6 +57,19 @@
 ;; Can be implemented by not letting children go until they have subs...
 ;;  (and not incorporating into summary, except as bound) .... ?
 
+;;!! --> TODO: try holding back children until solved? 
+
+;; TODO: put back checks in summary_graphs.
+;; TODO: fix SWSummary, max-reward, etc.
+
+;; TODO: problem with propagation??
+;;  (some subsumption links are semantic, not syntactic -- propagating these is wrong?)
+;;  i.e., empty-set subproblem is subsumed by everything --
+;;  What we have is OK, we just need to be careful if we implement refine-input propagation.
+
+;; TODO: pair needs infinite LB before right eval.
+
+;; TODO: empty-set subproblems for pessimistic.
 
 ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
 ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;       Options      ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
@@ -68,27 +83,12 @@
 (declare *decompose-cache*       ) ;; Cache subproblems? Requires *collect-equal-outputs*
 (declare *state-abstraction*     ) ;; Use state abstraction?  Requires *decompose-cache*
 (declare *propagate-subsumption* ) ;; Automatically propagate subsumption links to corresponding children
+(declare *make-pess-summary*     ) ;; fn of [min-reward max-reward status source children]
 
 ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
 ;;;;;;;;;;;;;;;;;;;;;;;;;;;;       Utilities      ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
 ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
 
-;;;;;;;;;;;;;;;;;;;;;;;;;;      Tree Summarizers      ;;;;;;;;;;;;;;;;;;;;;;;;;;
-
-(defprotocol TreeSummarizer
-  "A 'semantic' summarizer for a subproblem.  Its summarizer represents the best-
-   known Summary for a subproblem and all its descendants"
-  (ts-sp [ts] "The canonical subproblem summarized by this tree summarizer."))
-
-(defn- make-tree-summarizer [sp]
-  (let [ret (traits/reify-traits [sg/or-summarizable sg/simple-cached-node]
-              TreeSummarizer (ts-sp [ts] sp))]
-    (sg/connect! ret sp)
-    (sg/connect-subsumed! ret sp)
-    ret))
-
-(defmethod print-method angelic.search.implicit.dash_astar.TreeSummarizer [s o]
-  (print-method (format "#<TS %s>" (print-str (ts-sp s))) o))
 
 ;;;;;;;;;;;;;;;;;;;;;;;;;;         PubSubHub          ;;;;;;;;;;;;;;;;;;;;;;;;;;
 
@@ -134,6 +134,22 @@
   (do-changes! *subsumes* (fn [[ts subsumed-ts]] (sg/connect-subsumed! ts subsumed-ts)))
   (do-changes! *decreases* sg/summary-changed!))
 
+;;;;;;;;;;;;;;;;;;;;;;;;;;      Tree Summarizers      ;;;;;;;;;;;;;;;;;;;;;;;;;;
+
+(defprotocol TreeSummarizer
+  "A 'semantic' summarizer for a subproblem.  Its summarizer represents the best-
+   known Summary for a subproblem and all its descendants"
+  (ts-sp [ts] "The canonical subproblem summarized by this tree summarizer."))
+
+(defn- make-tree-summarizer [sp]
+  (let [ret (traits/reify-traits [sg/or-summarizable sg/simple-cached-node]
+              TreeSummarizer (ts-sp [ts] sp))]
+    (sg/connect! ret sp)
+    (schedule-subsumption! #_ sg/connect-subsumed! ret sp) ;; TODO: schedule, not connect???
+    ret))
+
+(defmethod print-method angelic.search.implicit.dash_astar.TreeSummarizer [s o]
+  (print-method (format "#<TS %s>" (print-str (ts-sp s))) o))
 
 ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
 ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;  Subproblems  ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
@@ -182,6 +198,15 @@
 (defn- canonicalize [sp] (ts-sp (sp-ts sp)))
 
 (defn- canonical? [sp] (identical? sp (canonicalize sp)))
+
+;; TODO: cleanup
+(defn- connect-and-watch-subsuming! [sp subsuming-sp child-f]
+  (sg/connect! sp
+    (if (and (= (first (input-set sp)) :pess) (= (first (input-set subsuming-sp)) :opt))
+      (sg/make-wrapping-summarizer subsuming-sp
+        #(*make-pess-summary* summary/neg-inf (summary/max-reward %2) (summary/status %2) %1 [%2]))
+      subsuming-sp))
+  (add-child-watcher! subsuming-sp child-f))
 
 (defn- connect-and-watch! [p c out-f child-f]
   (sg/connect! p c)
@@ -287,16 +312,16 @@
 
 (defn atomic-name [fs] [:Atomic fs])
 
-(defn make-summary [[inp-t] rew stat src]
-  (let [b (sg/get-bound src)]
+(defn make-summary [[inp-t] rew stat src bound]
+  (let [b (min bound (sg/get-bound src))]
     (case inp-t
       :opt  (summary/make-simple-summary (if rew (min rew b) b) stat src)
-      :pess (summary/make-interval-summary (or rew summary/neg-inf) b stat src))))
+      :pess (*make-pess-summary* (or rew summary/neg-inf) b stat src nil))))
 
-;; Difference is that even if no pess set, we should be live.
-;;  (summary should be other way...)
-;; Pair has to be able to deal with no pess set...
-;; For now, it should just not instantiate right
+
+;; Pair, SA, etc. has to be able to deal with no pess set...
+;; For now, it should just not instantiate right?
+;; Or, we can use special "bottom" set, instantiate dummy SP, etc.
 
 ;; Also, right now we can transition pess->opt by having opt as child when generating child.
 ;; We have to wrap this summary somehow ...
@@ -314,11 +339,34 @@
 
 ;; How do we keep connection, e.g., when both opt and pess have refine-input ?
 
+;; TODO: consistency of some sort for pess -- at least going up.
+;;  (otherwise we lose it every time we eval)
+;; TODO: think about ordering of pess, etc.
+;;  (blocked with bound, etc. ) -- what are we trying to do ??
+;; good question :/.  Spse we shoot for wtd. thing.
+
+;; From explicit-dash-a*:
+; This is the most straightforward application of wA* to the version of dash-A* in
+; hierarchical-incremental-search.  We replace max-reward with max(opt * (1 + alpha * a_w), pess),
+; where a_w is an optional action weight between 0 and 1.  We do not attempt to compute
+; the true f-values.  This means no hard commitments, no adaptive weights. 
+
+;; Current problems:
+;;   max-reward of sws is not a real max-reward, bound screws us up 
+;;   bounding of sws does not adjust f-val
+;;   no min-bounding of sws.
+;; Solution: somehow repurpose the bound for pess?
+;;  i.e., bound with a summary instead of a number?
+;;  or something ...
+;;  can't really bound anything with SWS.
+;;  Would still like to keep best opt bound, just don't pull from summary.
+;;  Similarly, would like 
+
 (declare refinement-names)
 
 (defn- make-atomic-subproblem [fs inp-set]
   (let [nm         (atomic-name fs)
-        summary-fn (atom #(make-summary inp-set nil :live %))
+        summary-fn (atom #(make-summary inp-set nil :live % 0))
         set-sf!    (fn [s f] (reset! summary-fn f) (schedule-decrease! s))] 
     (make-subproblem
      nm inp-set nil
@@ -330,11 +378,11 @@
                  :opt (fs/apply-opt fs (second inp-set))
                  :pess (or (fs/apply-pess fs (second inp-set)) [nil summary/neg-inf]))
                status (if p (fs/status fs (second inp-set)) :blocked)]
-           (set-sf! s #(make-summary inp-set (or reward summary/neg-inf) status %))
+           (set-sf! s #(make-summary inp-set reward status % 0))
            (when p (set-output-set! s [(first inp-set) out-set])))
          (do (set-sf! s sg/or-summary) ; Evaluated to live -- generate children now.
              (if-let [subsuming-sps (seq (filter #(not (terminal? %)) (subsuming-sps s)))]
-               (connect-and-watch! s (apply min-key (comp sg/get-bound sp-ts) subsuming-sps) nil
+               (connect-and-watch-subsuming! s (apply min-key (comp sg/get-bound sp-ts) subsuming-sps) ;; TODO: bound may not exist!
                  (fn [sub-out] (add-sp-child! s (refine-input sub-out inp-set) true))) 
                (doseq [ref-name (refinement-names fs inp-set)] #_ (println fs ref-name)
                  (add-sp-child! s (get-subproblem ref-name inp-set) false))))))     
@@ -380,7 +428,10 @@
      (let [nm (pair-name (sp-name left-sp) right-name)
            right-sp (delay (right-sp-fn (get-output-set! left-sp)))
            right?-atom (atom false) ;; Expand on right            
-           ss (sg/make-sum-summarizer nil)
+           ss (sg/make-sum-summarizer)
+           rz  (when (= :pess (first (input-set left-sp))) ; Right zero, for pess
+                 (traits/reify-traits [sg/summary-cache] sg/Summarizable
+                  (summarize [s] (*make-pess-summary* summary/neg-inf 0 :solved s nil))))
            go-right! (fn [s] 
                        (reset! right?-atom true)                          
                        (sg/disconnect! ss (sp-ts @right-sp))
@@ -399,11 +450,13 @@
                             (if (empty? (get-children @right-sp))
                               (do (go-right! s) nil)
                               (let [r (min (summary/max-reward (sg/summary ss)) (sg/get-bound s))]
-                                (make-summary (input-set left-sp) r :live s)))) ;; tODO: ??
+                                (make-summary (input-set left-sp) nil :live s r)))) ;; tODO: ??
                        (sg/or-summary s))))]    
        (sg/connect! ret ss)
+       (when rz (sg/add-child! ss rz))
        (connect-and-watch! ss left-sp
          (fn left-output [_]
+           (when rz (sg/remove-child! ss rz))
            (connect-and-watch-ts! ss @right-sp (fn [o] (set-output-set! ret o)))
            (schedule-decrease! ss))
          (fn left-child [left-child]
@@ -543,12 +596,14 @@
    (sg/best-leaf-operator choice-fn local? evaluate-and-update!)
    #(let [n (fs/fs-name (second (sp-name %)))] (when-not (= (first n) :noop) n))))
 
+;; ???
 (defn solve-pess [opt-root choice-fn local?]
   (let [pess-root (sp-ts (refine-input (ts-sp opt-root) [:pess (second (input-set (ts-sp opt-root)))]))
         counter   (atom 0)]
     (def *pess-root* pess-root)
     (summary/solve
-     #(sg/summary (if (odd? (swap! counter inc)) opt-root pess-root))
+     #(do (assert (summary/interval-summary? (sg/summary pess-root)))
+          (sg/summary (if (odd? (swap! counter inc)) opt-root pess-root)))
      (sg/best-leaf-operator choice-fn local? evaluate-and-update!)
      #(let [n (fs/fs-name (second (sp-name %)))] (when-not (= (first n) :noop) n)))))
 
@@ -564,9 +619,9 @@
     :dir       Factor sequences into pairs using :left or :right recursion
     :prop      Automatically propagate subsumption from parents to matching children?
     :pess?     Use pessimistic bounds, or just optimistic ones? "
-  [henv & {gather :gather d :d  s :s   choice-fn :choice-fn local? :local?  dir :dir   prop :prop pess? :pess? :as m
-      :or {gather true   d true s true choice-fn last       local? true     dir :right prop true  pess? false}}]
-  (assert (every? #{:gather :d :s :choice-fn :local? :dir :prop} (keys m)))
+  [henv & {gather :gather d :d  s :s   choice-fn :choice-fn local? :local?  dir :dir   prop :prop solve-fn :solve-fn :as m
+      :or {gather true   d true s true choice-fn last       local? true     dir :right prop true  solve-fn solve-opt}}]
+  (assert (every? #{:gather :d :s :choice-fn :local? :dir :prop :solve-fn} (keys m)))
   (when s (assert d))
   (when d (assert gather))
   (binding [*collect-equal-outputs* gather
@@ -575,12 +630,26 @@
             *left-recursive*        (case dir :left true :right false)
             *propagate-subsumption* prop]
     (def *root* (apply get-root-ts (fs/make-init-pair henv)))
-    ((if pess? solve-pess solve-opt) *root* choice-fn local?)))
+    (solve-fn *root* choice-fn local?)))
+
+
+(defn solve-wa* [opt-root choice-fn local?]
+  (let [pess-root (sp-ts (refine-input (ts-sp opt-root) [:pess (second (input-set (ts-sp opt-root)))]))]
+    (def *pess-root* pess-root)
+    (summary/solve
+     #(sg/summary pess-root)
+     (sg/best-leaf-operator choice-fn local? evaluate-and-update!)
+     #(let [n (fs/fs-name (second (sp-name %)))] (when-not (= (first n) :noop) n)))))
+
+(defn implicit-dash-wa* [henv w & opts]
+  (binding [summary/*sws-weight* w
+            *make-pess-summary*  summary/make-sw-summary]
+    (apply implicit-dash-a* henv (concat opts [:solve-fn solve-wa*]))))
 
 
 
 
-;; (do (use '[angelic env hierarchy] 'angelic.domains.nav-switch  'angelic.search.implicit.dash-astar 'angelic.domains.discrete-manipulation) (require '[angelic.search.implicit.dash-astar :as da] '[angelic.search.implicit.dash-astar-opt-old :as dao] '[angelic.search.summaries_old :as summaries-old] '[angelic.search.explicit.hierarchical :as his] '[angelic.search.implicit.dash-astar-opt-older :as dam]) (defn s [x]  (sg/summarize x)) (defn sc [x] (summary/children x))  (defn src [x] (summary/source x)) (defn nc [x] (sg/child-nodes x)))
+;; (do (use '[angelic env hierarchy] 'angelic.domains.nav-switch  #_ 'angelic.search.implicit.dash-astar 'angelic.domains.discrete-manipulation) (require '[angelic.search.implicit.dash-astar :as da] '[angelic.search.implicit.dash-astar-opt-old :as dao] '[angelic.search.summaries_old :as summaries-old] '[angelic.search.explicit.hierarchical :as his] '[angelic.search.implicit.dash-astar-opt-older :as dam]) (defn s [x]  (sg/summarize x)) (defn cs [x]  (sg/summary x)) (defn sc [x] (summary/children x))  (defn src [x] (summary/source x)) (defn nc [x] (sg/child-nodes x)))
 
 ;;(dotimes [_ 1] (reset! sg/*summary-count* 0) (debug 0 (time (let [h (make-nav-switch-hierarchy (make-random-nav-switch-env 2 1 0) true)]  (println (run-counted #(second (implicit-dash-a* h))) @sg/*summary-count*)))))
 

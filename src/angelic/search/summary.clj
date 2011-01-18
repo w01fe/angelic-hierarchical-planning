@@ -182,9 +182,58 @@
   (make-interval-summary* min-reward max-reward status source nil))
 
 
+(defn interval-summary? [s] (instance? IntervalSummary s))
 (defn iv-summary-str [s] (str "IVSum:" [(:min-rew s) (max-reward s)] (status s)))
 (defmethod print-method IntervalSummary [s o] (print-method (iv-summary-str s) o))
 
+
+
+
+;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
+;;;;;;;;;;;;;;;;;;;;;;;;;;;; SimpleWeightedSummary ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
+;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
+
+;; Simple weighted summary, with reward = max(opt * weight, pess)
+;; TODO: add alpha, to scale weights?
+;; TODO: how do we infer max-gap under bound ?
+
+(declare *sws-weight*) ; Weight, >= 1.
+
+(declare make-sw-summary*)
+(defn sws-vec [is] [(:f-val is neg-inf) (status-val (status is)) (:min-rew is neg-inf)])
+
+(defrecord SimpleWeightedSummary [min-rew f-val max-rew max-gap stat src chldren]
+  Summary
+  (max-reward       [s] 0 #_ max-rew) ;; TODO: put back...
+  (status           [s] stat)
+  (source           [s] src)
+  (children         [s] chldren)
+  (re-source        [s new-src bound stat-bound]
+    (make-sw-summary* min-rew (clojure.core/min f-val bound) (clojure.core/min max-rew bound) ;; TODO
+                      max-gap (min-key status-val stat stat-bound) new-src [s]))  
+  (eq               [s other] (= (sws-vec s) (sws-vec other)))
+  (>=               [s other bound] (not (neg? (compare (sws-vec s) (sws-vec other))))) ;; TODO: bound ???  
+  (+                [s other new-src bound]
+   (make-sw-summary*
+    (clojure.core/+ min-rew (:min-rew other neg-inf))
+    (clojure.core/min (clojure.core/+ f-val   (:f-val other neg-inf)) bound) ;; TODO
+    (clojure.core/min (clojure.core/+ max-rew (max-reward other)) bound)
+    (clojure.core/max max-gap (:max-gap other Double/POSITIVE_INFINITY)) 
+    (min-key status-val stat (status other))
+    new-src [s other])))
+
+(defn- make-sw-summary* [min-reward f-val max-reward max-gap status source children]
+  (util/assert-is (<= min-reward f-val max-reward) "%s" [source children])
+  (SimpleWeightedSummary. min-reward f-val max-reward max-gap status source children))
+
+(defn make-sw-summary [min-reward max-reward status source children]
+  (util/assert-is (contains? statuses-set status))
+  (let [adj-min (clojure.core/max min-reward (* max-reward *sws-weight*))]
+    (make-sw-summary* min-reward adj-min max-reward (- max-reward adj-min) status source children)))
+
+(defn sw-summary? [s] (instance? SimpleWeightedSummary s))
+(defmethod print-method SimpleWeightedSummary [s o]
+  (print-method (str "SWSum:" [(:min-rew s) (:f-val s) (:max-rew s) (:max-gap s)] (status s)) o))
 
 
 
