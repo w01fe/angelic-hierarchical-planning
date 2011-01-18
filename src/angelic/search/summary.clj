@@ -24,17 +24,16 @@
 
 ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;; Protocol ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
 
-;; TODO: re-source and re-child can go away.
 (defprotocol Summary
   (max-reward       [s] "Admissible reward bound")
   (status           [s] "Status: :blocked, :solved, or :live")
   (source           [s] "Object being directly summarized")
   (children         [s] "Child summaries that went into this, if applicable")
 
-  (re-source [s src bound stat-bound] "Create a new summary with same status, bounded, src, children [s]")
-  (eq  [s other] "equaltiy, just based on reward and status.")
-  (>=  [s other bound] "Greater, under specified bound (needed for proper comparison of statuses.")
-  (+   [s other new-src bound]))
+  (re-source [s src bound stat-bound] "Create a new summary with same status.")
+  (eq  [s other]                      "equaltiy, just based on reward and status.")
+  (>=  [s other bound]                "Greater, under specified bound?")
+  (+   [s other new-src bound])       "Add summaries and apply bound.")
 
 
 ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;; Derived fns ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
@@ -55,10 +54,9 @@
 (defn solved?  [s] (= (status s) :solved))
 
 (def neg-inf Double/NEGATIVE_INFINITY)
+(declare +worst-simple-summary+)
 
 (defn viable? [summary] (> (max-reward summary) neg-inf))
-
-(declare +worst-simple-summary+)
 
 ;; TODO: can we safely handle empty case here?
 (defn apply-max-b [stats bound]

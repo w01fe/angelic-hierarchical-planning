@@ -7,13 +7,10 @@
             [angelic.search.function-sets :as fs])
   (:import [java.util HashMap ArrayList IdentityHashMap]))
 
-;; A revampting of dash_astar_opt, to move subsumption relationships and caching
-;; out into a separate class.  This is necessary to keep pessimistic and optimistic
-;; things in sync, and should help simplify and generalize subsumption stuff.
+;; An extensions of dash_astar_opt to include pessimistic trees.
 
 ;; Here we replace all subsumption with consistency-maintaining and TDBs in summaries.
 ;; This simplifies problems with cycles that arrise when doing subsumption right.
-
 ;; Note: with good descriptions, subsumption/TDB has two purposes?
 ;;  1.  Give subproblems a bound before they have output.
 ;;  2.  Account for necessary inconsistency with implicit descriptions.
@@ -144,30 +141,26 @@
 
 ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;  Protocol  ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
 
-;; Here, inputs and outputs are [:opt/:pess actual-set] pairs.
 ;; Subproblem must also implement Summarizable; should take bound into account.
 (defprotocol Subproblem
-  (sp-name             [s])
-  (input-set           [s])
+  (sp-name             [s] "A name to identify this subproblem type (indep. of input)")
+  (input-set           [s] "A pair [:opt/:pess state-set]")
   (sp-ts               [s] "Summarizer that includes outputs/children.")
   (evaluate!           [s] "Evaluate or throw exception if not evaluable.")
 
-  (get-output-set      [s]  "Return output or nil")
+  (get-output-set      [s]   "Return output pair or nil")
   (add-output-watcher! [s w] "Add watcher to be notified of self when has output.")
-  (set-output-set!     [s o] "Internal. Set output set. ")
+  (set-output-set!     [s o] "Set output set.")
 
-  (get-children        [s]  "List current outputs, for debugging only.")
-  (add-child-watcher!  [s w] "Add a watcher to be notified of all child sps.")
-  (add-sp-child!       [s o up?] "O is a subproblem child, possibly without output yet.
-                                  Updates cost if up? and child must be held before publishing.")
+  (get-children        [s]       "List current children, for debugging only.")
+  (add-child-watcher!  [s w]     "Add a watcher to be notified of published child subproblems.")
+  (add-sp-child!       [s o up?] "Add a new subproblem child, published when ready.")
 
-  (publish-sp-child!   [s o] "Internal. O is a subproblem with output.  s must have output too.")
-  (add-all-child-watcher! [s w] "Internal.  Get children, including unpublished ones.")
+  (add-all-child-watcher! [s w] "Internal.  Watch children, including unpublished ones.")
+  (subsuming-sps       [s]      "Known subproblems with same name, >= inp-set") 
+  (add-subsuming-sp!   [s subsuming-sp] "Add subsuming sp") 
 
-  (subsuming-sps       [s] "subproblems with same name, >= inp-set") 
-  (add-subsuming-sp!   [s subsuming-sp]) 
-
-  (refine-input        [s refined-input-set] "Return a child sp. Must have output."))
+  (refine-input        [s refined-input-set] "Return a sp with same name, given subset of input-set. s must have output."))
 
 (defmethod print-method angelic.search.implicit.dash_astar.Subproblem [sp o]
   (print-method (format "#<SP$%8h %s %s>" (System/identityHashCode sp) (sp-name sp)
@@ -175,20 +168,20 @@
 
 ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;  Auxillary fns  ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
   
-(defn get-output-set! [sp] (let [o (get-output-set sp)] (assert o) o))
+(defn- get-output-set! [sp] (let [o (get-output-set sp)] (assert o) o))
 
-(defn terminal? [sp]
+(defn- terminal? [sp]
   (and (empty? (get-children sp))
        (not (summary/live? (summaries/summary sp)))))
 
-(defn solved-terminal? [sp]
+(defn- solved-terminal? [sp]
   (and (empty? (get-children sp))
        (summary/solved? (summaries/summary sp))))
 
 ;; Canonical SPs are Atomic and Pair; wrappers use TS of inner SP.
 (defn- canonicalize [sp] (ts-sp (sp-ts sp)))
 
-(defn- canonical? [sp] (identical? sp (ts-sp (sp-ts sp))))
+(defn- canonical? [sp] (identical? sp (canonicalize sp)))
 
 (defn- connect-and-watch! [p c out-f child-f]
   (summaries/connect! p c)
@@ -202,7 +195,12 @@
 
 ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;  Constructors  ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
 
-(defn- make-subproblem [nm inp-set wrapped-ts eval!-fn ri-fn summary-fn]
+(defn- make-subproblem
+  "Make a subproblem with the given name and input-set.  If this is a wrapping
+   subproblem (e.g., output collector or state abstractor), pass tree summarizer
+   of wrapped SP; otherwise, pass nil and a tree summarizer will be created.
+   eval!-fn, ri-fn, and summary-fn specify how to evaluate, refine input, and summarize."
+  [nm inp-set wrapped-ts eval!-fn ri-fn summary-fn]
  (let [                 ts-atom          (atom wrapped-ts)
        ^PubSubHub       output-ps        (make-pubsubhub)
        ^PubSubHub       child-ps         (make-pubsubhub)
@@ -222,26 +220,27 @@
   
   (get-children        [s] (publications child-ps))
   (add-child-watcher!  [s w] (subscribe! child-ps w))
-  (add-sp-child!       [sp child-sp up?] ;; TODO: subsumption should prevent child from gettong output before parent ??
+  (add-sp-child!       [sp child-sp up?] ;; TODO: subsumption should prevent child from getting output before parent ??
    (util/print-debug 2 "AC" sp child-sp)
    (when (canonical? sp)
      (schedule-subsumption! (sp-ts sp) (sp-ts child-sp))
-     (publish! all-child-ps child-sp))   
-   (if (and (get-output-set sp) (get-output-set child-sp))
-    (publish-sp-child! sp child-sp)
-    (do (summaries/connect! sp (sp-ts child-sp)) 
-        (add-output-watcher! sp 
-          (fn [_] (add-output-watcher! child-sp
-                   (fn [_] (publish-sp-child! sp child-sp) 
-                           (summaries/disconnect! sp (sp-ts child-sp))
-                           (schedule-decrease! sp)))))
-        (when up? (schedule-increase! sp)))))
-  (publish-sp-child!      [s c] 
-    (util/assert-is (and (not (identical? s c)) (get-output-set s) (get-output-set c)))
-    (when (canonical? s)
-      (summaries/connect! (sp-ts s) (sp-ts c))
-      (schedule-increase! (sp-ts s)))    
-    (publish! child-ps c))
+     (publish! all-child-ps child-sp))
+   (let [pub! (fn publish-sp-child! []
+                (util/assert-is (not (identical? sp child-sp)))
+                (util/assert-is (and (get-output-set sp) (get-output-set child-sp)))
+                (when (canonical? sp)
+                  (summaries/connect! (sp-ts sp) (sp-ts child-sp))
+                  (schedule-increase! (sp-ts sp)))    
+                (publish! child-ps child-sp))]
+     (if (and (get-output-set sp) (get-output-set child-sp))
+       (pub!)
+       (do (summaries/connect! sp (sp-ts child-sp)) 
+           (add-output-watcher! sp 
+             (fn [_] (add-output-watcher! child-sp
+                       (fn [_] (pub!) 
+                               (summaries/disconnect! sp (sp-ts child-sp))
+                               (schedule-decrease! sp)))))
+           (when up? (schedule-increase! sp))))))
 
   (add-all-child-watcher! [s w] (subscribe! all-child-ps w))    
   (subsuming-sps [s] (keys subsuming-sp-set))
@@ -261,10 +260,7 @@
                 (fn [subsuming-child]
                   (let [can-subsuming-child (canonicalize subsuming-child)]
                     (when (= (sp-name can-child) (sp-name can-subsuming-child))
-                      (when (add-subsuming-sp! can-child can-subsuming-child)
-                        #_ (println [s subsuming-sp] "==>" [child subsuming-child])
-                        )))))))))
-      true))
+                      (add-subsuming-sp! can-child can-subsuming-child)))))))))))
   
   (refine-input    [s ni]
     (let [ret (ri-fn s ni)]
@@ -272,15 +268,22 @@
       (when (canonical? s) (add-subsuming-sp! ret s))
       ret)))))
 
+;; Multimethod to get a subproblem by name.
 (defmulti get-subproblem (fn get-subproblem-dispatch [nm inp] (first nm)))
+
 
 ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
 ;;;;;;;;;;;;;;;;;;;;;;;;;;     Core Subproblems     ;;;;;;;;;;;;;;;;;;;;;;;;;;;;
 ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
 
 ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;      Atomic       ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
+;; Atomic subproblems represent the plans for a single action from an input set.
 
-(declare refinement-names)
+;; Initially, we are live with no children and 0 reward (or best subsuming bound).
+;; On first evaluation, we compute and publish the output set, and adjust the reward.
+;; If live, we can evaluate a second time, when we generate the child subproblems.
+;; If we have a nonterminal subsuming subproblem, we generate by refining input of its children
+;; Otherwise, we generate children from scratch using get-subproblem and refinement-names.
 
 (defn atomic-name [fs] [:Atomic fs])
 
@@ -311,38 +314,61 @@
 
 ;; How do we keep connection, e.g., when both opt and pess have refine-input ?
 
+(declare refinement-names)
+
 (defn- make-atomic-subproblem [fs inp-set]
-  (let [nm    (atomic-name fs)
-        sm-fn (atom #(make-summary inp-set nil :live %))
-        state (atom :ready) ;; set to out-set after first eval, then :go after second.
-        next! (fn [s st f] (reset! state st) (reset! sm-fn f) (schedule-decrease! s))] 
+  (let [nm         (atomic-name fs)
+        summary-fn (atom #(make-summary inp-set nil :live %))
+        set-sf!    (fn [s f] (reset! summary-fn f) (schedule-decrease! s))] 
     (make-subproblem
      nm inp-set nil
      (fn evaluate! [s]
-       (util/print-debug 1 "eval" nm (= :ready @state))
-       (assert (not (= :go @state)))
-       (if (= :set @state) ;; Generate children on second eval, if needed.
-         (do (next! s :go summaries/or-summary)
-             (if-let [subsuming-sps (seq (filter #(not (terminal? %)) (subsuming-sps s)))]
-               (connect-and-watch! s (apply min-key (comp summaries/get-bound sp-ts) subsuming-sps) nil
-                 (fn [sub-out] (add-sp-child! s (refine-input sub-out inp-set) true))) 
-               (doseq [ref-name (refinement-names fs inp-set)] #_ (println fs ref-name)
-                 (add-sp-child! s (get-subproblem ref-name inp-set) false))))         
+       (util/print-debug 1 "eval" nm (if (get-output-set s) :out :no-out))
+       (if-not (get-output-set s) ; Not evaluated yet -- evalute description and publish output
          (let [[out-set reward :as p]
                (case (first inp-set)
                  :opt (fs/apply-opt fs (second inp-set))
                  :pess (or (fs/apply-pess fs (second inp-set)) [nil summary/neg-inf]))
                status (if p (fs/status fs (second inp-set)) :blocked)]
-           (next! s (if (= status :live) :set :go) #(make-summary inp-set (or reward summary/neg-inf) status %))
-           (when p (set-output-set! s [(first inp-set) out-set])))))     
+           (set-sf! s #(make-summary inp-set (or reward summary/neg-inf) status %))
+           (when p (set-output-set! s [(first inp-set) out-set])))
+         (do (set-sf! s summaries/or-summary) ; Evaluated to live -- generate children now.
+             (if-let [subsuming-sps (seq (filter #(not (terminal? %)) (subsuming-sps s)))]
+               (connect-and-watch! s (apply min-key (comp summaries/get-bound sp-ts) subsuming-sps) nil
+                 (fn [sub-out] (add-sp-child! s (refine-input sub-out inp-set) true))) 
+               (doseq [ref-name (refinement-names fs inp-set)] #_ (println fs ref-name)
+                 (add-sp-child! s (get-subproblem ref-name inp-set) false))))))     
      (fn [s ri]  (assert (or (not *collect-equal-outputs*) (and (= :pess (first ri)) (= :opt (first inp-set)))))  
        (if (= ri inp-set) s (get-subproblem nm  ri)))
-     (fn summarize [s] (@sm-fn s)))))
+     (fn summarize [s] (@summary-fn s)))))
 
 (defmethod get-subproblem :Atomic [[_ fs :as n] inp-set] 
   (make-atomic-subproblem fs inp-set))          
 
 ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;      Pair      ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
+;; Pair subproblems represent sequntial composition of two subproblems.
+
+;; Thus, we use the output of the left-sp as input for right-sp,
+;; and output of right-sp as output of the pair.
+
+;; The slightly tricky part is generating children.  Both left-sp and right-sp
+;; may have childen, but to search systematically we should branch on only one at a time.
+;; This means that our summary should consist of the sum of summaries of
+;;   - The subproblem whose children we branch on, and
+;;   - The tree summarizer of the other subproblem.
+
+;; For now, always attempt to branch on the left subproblem first, unless the
+;; left subproblem is terminal (no children), in which case we branch right.
+;; Unfortunately, we don't know when we start if the left will be terminal
+;; (under *collect-equal-outputs*), so we assume it's not, then switch if,
+;; at any point, it becomes terminal.
+;; Unfortunately, the only place we can tell if it becomes terminal is while
+;; computing the summary of this node.  But, at that point we don't want to
+;; trigger any tree modifications, since when summary updates and tree modifications
+;; get interleaved arbitrarily, it gets really hard to maintain correctness.
+;; So, if right-sp already has children, we make the SP a leaf and wait for
+;; it to be evaluated to switch; otherwise, we safely switch immediately.
+
 
 (defn pair-name [l r] [:Pair l r])
 
@@ -393,7 +419,10 @@
 ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;     Wrappers     ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
 ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
 
-(defn make-wrapped-subproblem [nm inp-set prefix-set inner-sp output-wrap child-watch ri-fn]
+(defn make-wrapped-subproblem
+  "Make a wrapped subproblem, which modifies the behavior of a wrapped 'canonical'
+   subproblem while retaining the same semantics, tree summarizer, etc."
+  [nm inp-set prefix-set inner-sp output-wrap child-watch ri-fn]
   (util/assert-is (contains? prefix-set (first (sp-name inner-sp))))
   (let [ret (make-subproblem nm inp-set (sp-ts inner-sp)
                              (fn [_] (throw (RuntimeException.)))
@@ -404,6 +433,10 @@
     ret))
 
 ;;;;;;;;;;;;;;;;;;;;;;;;;;;     Output Collection     ;;;;;;;;;;;;;;;;;;;;;;;;;;
+;; Output Collector captures children with the same output set, and only
+;; releases new children for refined output sets.  
+
+;; OutputCollector also handles decomposition and inside of state abstraction, when applicable.
 
 (defn oc-name [inner-name] [:OC inner-name])
 
@@ -458,6 +491,7 @@
 
 
 ;;;;;;;;;;;;;;;;;;;;;;;;;;;     State Abstraction     ;;;;;;;;;;;;;;;;;;;;;;;;;;
+;; State abstractor puts the output of a subproblem (and all children) in a new context.
 
 (defn sa-name [inner-name] [:SA inner-name])
 
@@ -478,11 +512,6 @@
 ;;;;;;;;;;;;;;;;;;;;;;;;;;     Refinement Names     ;;;;;;;;;;;;;;;;;;;;;;;;;;;;
 ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
 
-(defn- wrapped-atomic-name [fs]
-  (let [in  (atomic-name fs)
-        mid (if *collect-equal-outputs* (oc-name in) in)]
-    (if *state-abstraction* (sa-name mid) mid)))
-
 (defn- left-factor [is]
   (loop [s (next is) ret (first is)]
     (if s (recur (next s) (pair-name ret (first s))) ret)))
@@ -490,11 +519,16 @@
 (defn- right-factor [[f & r]]
   (if (seq r) (pair-name f (right-factor r)) f))
 
-(defn- refinement-names [fs [t inp-set]]
+(defn- refinement-names
+  "Generate the names of subproblems representing refinements of fs from inp-set"
+  [fs [t inp-set]]
   (assert (= t :opt))
   (for [fs-seq (fs/child-seqs fs inp-set)]
     ((if *left-recursive* left-factor right-factor)
-     (map wrapped-atomic-name fs-seq))))
+     (for [fs fs-seq]
+       (let [in  (atomic-name fs)
+             mid (if *collect-equal-outputs* (oc-name in) in)]
+         (if *state-abstraction* (sa-name mid) mid))))))
 
 ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
 ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;; Planning ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
@@ -521,18 +555,24 @@
 (defn- get-root-ts [inp-set fs] (sp-ts (make-atomic-subproblem fs [:opt inp-set] )))
 
 (defn implicit-dash-a*
-  [henv & {gather :gather d :d   s :s    choice-fn :choice-fn local? :local?  dir :dir   prop :prop pess? :pess? :as m
-      :or {gather true   d true s :eager choice-fn last       local? true     dir :right prop true  pess? false}}]
+  "Solve this hierarchical env using implicit DASH-A*, or variants thereupon.  Options are:
+    :gather    Don't publish child subproblems with identical outputs?
+    :d         Decomposition: cache and re-use subproblems by [name inp-set] pair?  Requires :gather.
+    :s         State Abstraction: take state abstraction into account when caching?  Requires :d.
+    :choice-fn Choose a child node to evaluate from alternatives (in sequence)
+    :local?    Apply choice-fn recursively at each pair, or to an entire leaf sequence (slower)?
+    :dir       Factor sequences into pairs using :left or :right recursion
+    :prop      Automatically propagate subsumption from parents to matching children?
+    :pess?     Use pessimistic bounds, or just optimistic ones? "
+  [henv & {gather :gather d :d  s :s   choice-fn :choice-fn local? :local?  dir :dir   prop :prop pess? :pess? :as m
+      :or {gather true   d true s true choice-fn last       local? true     dir :right prop true  pess? false}}]
   (assert (every? #{:gather :d :s :choice-fn :local? :dir :prop} (keys m)))
-  (assert (contains? #{:left :right} dir))
-  (assert (contains? #{nil false :eager :deliberate} s))
   (when s (assert d))
   (when d (assert gather))
-;  (assert (contains? #{:uncached :lazy :eager  :eager-nosub :eager-nokids} c))
   (binding [*collect-equal-outputs* gather
             *decompose-cache*       (when d (HashMap.))
             *state-abstraction*     s
-            *left-recursive*        (= dir :left)
+            *left-recursive*        (case dir :left true :right false)
             *propagate-subsumption* prop]
     (def *root* (apply get-root-ts (fs/make-init-pair henv)))
     ((if pess? solve-pess solve-opt) *root* choice-fn local?)))

@@ -37,9 +37,8 @@
   (add-bound! [n b])
   (summary [n]                      "Possibly cached version of summarize")
   (summary-changed! [n]             "Update summary and notify parents as needed")
-  (summary-increased! [n]           "Update summary and notify parents as needed")
-  (summary-changed-local! [n]       "Just update local summary, no parent notification (pot'l unsafe)"))
-
+  (summary-increased! [n]           "Increase summary and notify parents as needed")
+  (summary-changed-local! [n]       "Just update local summary, no parent notification. Unsafe."))
 
 
 (def *summary-count* (atom 0))
@@ -137,9 +136,7 @@
           (cond (summary/eq old new) (reset! cache new) ;; Accomodate changed children for live pair...
                 (summary/>= new old 0) (do (reset! cache new)
                                          (doseq [p (doall (parent-nodes n))]
-                                           (summary-increased! p)))
-;                :else (throw (RuntimeException. (format "Decrease! %s" [(def *bad* n) n old new]) ))
-                )))))  
+                                           (summary-increased! p))))))))  
   (summary-changed-local! [n] (reset! cache (summarize n) #_ nil))) ;; TODO: bound? 
 
 (traits/deftrait simple-cached-node [] [] [simple-node summary-cache])
@@ -209,15 +206,6 @@
               (choice-fn (extract-live-leaf-source-seq %)))))
 
 
-
-(comment
- (def *root* nil)
- (defn solve [root-summarizable choice-fn local-choice? op!-fn action-extractor]
-   (def *root* root-summarizable)
-   (summary/solve
-    #(summary root-summarizable)
-    (best-leaf-operator choice-fn local-choice? op!-fn)
-    action-extractor)))
 
 
 
