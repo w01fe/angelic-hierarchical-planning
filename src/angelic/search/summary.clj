@@ -33,7 +33,7 @@
   (re-source [s src bound stat-bound] "Create a new summary with same status.")
   (eq  [s other]                      "equaltiy, just based on reward and status.")
   (>=  [s other bound]                "Greater, under specified bound?")
-  (+   [s other new-src bound])       "Add summaries and apply bound.")
+  (+   [s other new-src bound]        "Add summaries and apply bound."))
 
 
 ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;; Derived fns ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;

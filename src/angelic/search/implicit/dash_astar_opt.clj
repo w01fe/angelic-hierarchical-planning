@@ -40,24 +40,24 @@
     (sg/connect-subsumed! ret sp)
     ret))
 
-(defmethod print-method angelic.search.implicit.dash_astar.TreeSummarizer [s o]
+(defmethod print-method angelic.search.implicit.dash_astar_opt.TreeSummarizer [s o]
   (print-method (format "#<TS %s>" (print-str (ts-sp s))) o))
 
 ;;;;;;;;;;;;;;;;;;;;;;;;;;         PubSubHub          ;;;;;;;;;;;;;;;;;;;;;;;;;;
 
 (defrecord PubSubHub [^ArrayList subscribers ^ArrayList publications])
 
-(defn make-pubsubhub
+(defn- make-pubsubhub
   "A hub for publications streams; every subscriber fn is called on every publication."
   [] (PubSubHub. (ArrayList.) (ArrayList.)))
 
-(defn publications [psh] (doall (seq (:publications psh))))
+(defn- publications [psh] (doall (seq (:publications psh))))
 
-(defn publish!     [psh pub]
+(defn- publish!     [psh pub]
   (.add ^ArrayList (:publications psh) pub)
   (doseq [sub (doall (seq (:subscribers psh)))] (sub pub)))
 
-(defn subscribe!   [psh sub]
+(defn- subscribe!   [psh sub]
   (.add ^ArrayList (:subscribers psh) sub)
   (doseq [pub (doall (seq (:publications psh)))] (sub pub)))
 
@@ -73,15 +73,15 @@
 (def *decreases* (ArrayList.))
 (def *subsumes* (ArrayList.))
 
-(defn schedule-increase! [sp] (.add ^ArrayList *increases* sp))
-(defn schedule-decrease! [sp] (.add ^ArrayList *decreases* sp))
-(defn schedule-subsumption! [ts subsumed-ts] (.add ^ArrayList *subsumes* [ts subsumed-ts]))
+(defn- schedule-increase! [sp] (.add ^ArrayList *increases* sp))
+(defn- schedule-decrease! [sp] (.add ^ArrayList *decreases* sp))
+(defn- schedule-subsumption! [ts subsumed-ts] (.add ^ArrayList *subsumes* [ts subsumed-ts]))
 
-(defn do-changes! [^ArrayList a f] (doseq [sp a] (f sp)) (.clear a))
+(defn- do-changes! [^ArrayList a f] (doseq [sp a] (f sp)) (.clear a))
 
 (declare evaluate!)
 
-(defn evaluate-and-update! [s]
+(defn- evaluate-and-update! [s]
   (evaluate! s)
   (do-changes! *increases* sg/summary-increased!) 
   (do-changes! *subsumes* (fn [[ts subsumed-ts]] (sg/connect-subsumed! ts subsumed-ts)))
@@ -116,7 +116,7 @@
 
   (refine-input        [s refined-input-set] "Return a sp with same name, given subset of input-set. s must have output."))
 
-(defmethod print-method angelic.search.implicit.dash_astar.Subproblem [sp o]
+(defmethod print-method angelic.search.implicit.dash_astar_opt.Subproblem [sp o]
   (print-method (format "#<SP$%8h %s %s>" (System/identityHashCode sp) (sp-name sp)
                         (if (get-output-set sp) :OUT :STUB)) o))
 
@@ -482,14 +482,11 @@
 
 
 
-;; (do (use '[angelic env hierarchy] 'angelic.domains.nav-switch  'angelic.search.implicit.dash-astar 'angelic.domains.discrete-manipulation) (require '[angelic.search.implicit.dash-astar :as da] '[angelic.search.implicit.dash-astar-opt-old :as dao] '[angelic.search.summaries_old :as summaries-old] '[angelic.search.explicit.hierarchical :as his] '[angelic.search.implicit.dash-astar-opt-older :as dam]) (defn s [x]  (sg/summarize x)) (defn sc [x] (summary/children x))  (defn src [x] (summary/source x)) (defn nc [x] (sg/child-nodes x)))
+;; (do (use 'edu.berkeley.ai.util '[angelic env hierarchy] 'angelic.domains.nav-switch  'angelic.domains.discrete-manipulation 'angelic.search.implicit.dash-astar-opt) (require '[angelic.search.summary-graphs :as sg] '[angelic.search.summary :as summary]) (defn s [x]  (sg/summarize x)) (defn sc [x] (summary/children x))  (defn src [x] (summary/source x)) (defn nc [x] (sg/child-nodes x)))
 
-;;(dotimes [_ 1] (reset! sg/*summary-count* 0) (debug 0 (time (let [h (make-nav-switch-hierarchy (make-random-nav-switch-env 2 1 0) true)]  (println (run-counted #(second (implicit-dash-a* h))) @sg/*summary-count*)))))
+;; (dotimes [_ 1] (reset! sg/*summary-count* 0) (debug 0 (let [h (make-nav-switch-hierarchy (make-random-nav-switch-env 20 4 0) true)]  (time (println (run-counted #(identity (implicit-dash-a*-opt h :gather true :d true :s :eager :dir :right))) @sg/*summary-count*)))))
 
-;; (dotimes [_ 1] (reset! sg/*summary-count* 0) (debug 0 (let [h (make-discrete-manipulation-hierarchy  (make-discrete-manipulation-env [5 3] [1 1] [ [ [2 2] [3 2] ] ] [ [:a [2 2] [ [3 2] [3 2] ] ] ] 1))]  (time (println (run-counted #(identity (implicit-dash-a* h))) @sg/*summary-count*)) )))
-
-;; Compare all four algs we have so far...
-;; (dotimes [_ 1] (reset! sg/*summary-count* 0) (reset! summaries-old/*summary-count* 0) (debug 0 (let [opts [:gather true :d true :s :eager :dir :right] h (make-discrete-manipulation-hierarchy  (make-random-hard-discrete-manipulation-env 3 3))]   (time (println (run-counted #(identity (apply da/implicit-dash-a* h opts))) @sg/*summary-count*))   (time (println (run-counted #(identity (apply dao/implicit-dash-a*-opt h opts))) @summaries-old/*summary-count*))   (time (println (run-counted #(identity (dam/implicit-random-dash-a*-opt h))) ))   (time (println (run-counted #(identity (his/explicit-simple-dash-a* h))) )) )))
+;; (dotimes [_ 1] (reset! sg/*summary-count* 0) (debug 0 (let [h (make-discrete-manipulation-hierarchy  (make-random-hard-discrete-manipulation-env 3 3))]   (time (println (run-counted #(identity (implicit-dash-a*-opt h :gather true :d true :s :eager :dir :right))) @sg/*summary-count*)))))
 
 
 
