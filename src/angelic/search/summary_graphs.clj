@@ -1,15 +1,14 @@
-(ns angelic.search.summaries
+(ns angelic.search.summary-graphs
   (:require [edu.berkeley.ai.util :as util]
             [edu.berkeley.ai.util.traits :as traits]
             [angelic.search.summary :as summary])
   (:import [java.util ArrayList]))
 
-;; This file defines a dataflow-style API for computing and caching
-;; summaries of potentially mutable objects.
+;; This file defines an API for computing, caching, and propagating
+;; summaries in a graph of summarizable objects, independent of the
+;; generation of this search
 
-;; The basic idea here is to separate these statistics and their
-;; propagation and caching from the generation of the search space
-
+;; Essentially, this gives the tools to easily implement AO*-type algorithms.
 
 (set! *warn-on-reflection* true)
 
@@ -114,7 +113,6 @@
     (update-bound! n bound-atom r) 
     s))
 
-;; TODO: assert consistency on nil cache, and with lazy...
 (traits/deftrait summary-cache [] [cache (atom nil) bound (atom 0)] []
   SummaryCache
   (get-bound        [n]   @bound)
