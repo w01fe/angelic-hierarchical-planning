@@ -1,4 +1,4 @@
-(ns angelic.search.implicit.dash-astar-monolithic
+(ns angelic.search.implicit.dash-astar-opt-older
   (:require clojure.string
             [edu.berkeley.ai.util :as util]
             [angelic.env :as env]
@@ -645,7 +645,7 @@
 ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
 
 
-(defn implicit-random-dash-a*-monolithic [henv]
+(defn implicit-random-dash-a*-opt [henv]
   (let [e    (hierarchy/env henv)
         init (env-util/initial-logging-state e)
         tla  (hierarchy-util/make-top-level-action e [(hierarchy/initial-plan henv)])]

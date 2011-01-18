@@ -15,9 +15,8 @@
 ;; This simplifies problems with cycles that arrise when doing subsumption right.
 
 ;; Note: with good descriptions, subsumption/TDB has two purposes?
-;;  1.  Give stubs a bound before evaluated.
+;;  1.  Give subproblems a bound before they have output.
 ;;  2.  Account for necessary inconsistency with implicit descriptions.
-
 
 ;; TODO: tests ! 
 
@@ -53,21 +52,25 @@
 ;; TODO: cache children of output-collector? ~15 examples >1 in dm 4-3...
 ;; TODO: investigate plan seq  normalization. (flattening)
 
-
 ;; Basic idea behind "wait on subsumption":
 ;;   Don't do anything with child of node with subs. parent
 ;;   until child has at least one subs. parent (or subs. parents are done.)
 ;; Can be implemented by not letting children go until they have subs...
 ;;  (and not incorporating into summary, except as bound) .... ?
 
+
+;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
+;;;;;;;;;;;;;;;;;;;;;;;;;;;;;       Options      ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
+;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
+
 (set! *warn-on-reflection* true)
 
-(def *left-recursive*        true) ;; Use left, not right recursion for seqs (((a . b) . c) . d) 
-(def *collect-equal-outputs* true) ;; Collect identical output sets
-(def *decompose-cache*       true) ;; nil for none, or bind to hashmap
-(def *state-abstraction*     :eager ) ;; Or lazy or nil.
-(def *propagate-subsumption* true)
-
+;; These are all bound by the implicit-dash-a* main fn at the end of this file.
+(declare *left-recursive*        ) ;; Use left, not right recursion for seqs (((a . b) . c) . d) 
+(declare *collect-equal-outputs* ) ;; Collect descendants with identical output sets
+(declare *decompose-cache*       ) ;; Cache subproblems? Requires *collect-equal-outputs*
+(declare *state-abstraction*     ) ;; Use state abstraction?  Requires *decompose-cache*
+(declare *propagate-subsumption* ) ;; Automatically propagate subsumption links to corresponding children
 
 ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
 ;;;;;;;;;;;;;;;;;;;;;;;;;;;;       Utilities      ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
@@ -75,7 +78,10 @@
 
 ;;;;;;;;;;;;;;;;;;;;;;;;;;      Tree Summarizers      ;;;;;;;;;;;;;;;;;;;;;;;;;;
 
-(defprotocol TreeSummarizer (ts-sp [ts]))
+(defprotocol TreeSummarizer
+  "A 'semantic' summarizer for a subproblem.  Its summarizer represents the best-
+   known Summary for a subproblem and all its descendants"
+  (ts-sp [ts] "The canonical subproblem summarized by this tree summarizer."))
 
 (defn- make-tree-summarizer [sp]
   (let [ret (traits/reify-traits [summaries/or-summarizable summaries/simple-cached-node]
@@ -90,7 +96,10 @@
 ;;;;;;;;;;;;;;;;;;;;;;;;;;         PubSubHub          ;;;;;;;;;;;;;;;;;;;;;;;;;;
 
 (defrecord PubSubHub [^ArrayList subscribers ^ArrayList publications])
-(defn make-pubsubhub [] (PubSubHub. (ArrayList.) (ArrayList.)))
+
+(defn make-pubsubhub
+  "A hub for publications streams; every subscriber fn is called on every publication."
+  [] (PubSubHub. (ArrayList.) (ArrayList.)))
 
 (defn publications [psh] (doall (seq (:publications psh))))
 
@@ -103,6 +112,12 @@
   (doseq [pub (doall (seq (:publications psh)))] (sub pub)))
 
 ;;;;;;;;;;;;;;;;;;;;;;;;;      Change Scheduling      ;;;;;;;;;;;;;;;;;;;;;;;;;;
+
+;; Trying to keep cached summaries up-to-date while simultaneously modifying the
+;; subproblem graph is quite difficult and potentially error-prone.
+;; This code allows the set of root subproblems with changed summaries to be recorded
+;; during evaluation and tree update, and then played back once the tree is fixed,
+;; decoupling the processes of tree change and summary updates.
 
 (def *increases* (ArrayList.))
 (def *decreases* (ArrayList.))
@@ -118,7 +133,7 @@
 
 (defn evaluate-and-update! [s]
   (evaluate! s)
-  (do-changes! *increases* summaries/summary-increased!) ;; Must go first for correctness.
+  (do-changes! *increases* summaries/summary-increased!) 
   (do-changes! *subsumes* (fn [[ts subsumed-ts]] (summaries/connect-subsumed! ts subsumed-ts)))
   (do-changes! *decreases* summaries/summary-changed!))
 
@@ -130,7 +145,7 @@
 ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;  Protocol  ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
 
 ;; Here, inputs and outputs are [:opt/:pess actual-set] pairs.
-
+;; Subproblem must also implement Summarizable; should take bound into account.
 (defprotocol Subproblem
   (sp-name             [s])
   (input-set           [s])
@@ -170,6 +185,7 @@
   (and (empty? (get-children sp))
        (summary/solved? (summaries/summary sp))))
 
+;; Canonical SPs are Atomic and Pair; wrappers use TS of inner SP.
 (defn- canonicalize [sp] (ts-sp (sp-ts sp)))
 
 (defn- canonical? [sp] (identical? sp (ts-sp (sp-ts sp))))
@@ -186,9 +202,6 @@
 
 ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;  Constructors  ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
 
-;; Canonical SPs are Atomic and Pair; wrappers use TS of inner SP.
-
-;; Summary-fn should take bound into account.
 (defn- make-subproblem [nm inp-set wrapped-ts eval!-fn ri-fn summary-fn]
  (let [                 ts-atom          (atom wrapped-ts)
        ^PubSubHub       output-ps        (make-pubsubhub)
@@ -240,8 +253,7 @@
                   (.containsKey subsuming-sp-set subsuming-sp))
       (.put subsuming-sp-set subsuming-sp true)
       (schedule-subsumption! (sp-ts subsuming-sp) (sp-ts s))
-      (when *propagate-subsumption*
-        ;; TODO: efficiency, etc.
+      (when *propagate-subsumption*  ;; TODO: efficiency, etc.
         (add-all-child-watcher! s
           (fn [child]
             (let [can-child (canonicalize child)]
@@ -278,15 +290,27 @@
       :opt  (summary/make-simple-summary (if rew (min rew b) b) stat src)
       :pess (summary/make-interval-summary (or rew summary/neg-inf) b stat src))))
 
-;; Pess should have bound, then eval
-;; -- cannot use add-bound!
 ;; Difference is that even if no pess set, we should be live.
 ;;  (summary should be other way...)
 ;; Pair has to be able to deal with no pess set...
 ;; For now, it should just not instantiate right
-;; cleaner way to do this ???
 
-;; Note: this is double-stage to lazily generate children.  Could be simpler single-stage.
+;; Also, right now we can transition pess->opt by having opt as child when generating child.
+;; We have to wrap this summary somehow ...
+
+;; Wrapping/deferring should work as:
+;;  If your parent has a nonterminal subsuming SP,
+;;  and you have no subsuming SP,
+;;  then your summary should be *min* of self & parent-subsuming (SP, not TS).
+;;    (more precisely, parent-subsuming, bounded by self)
+;;  This means we can cross-over, but summary type is preserved.
+
+;; Is below still needed, or is this a special case ?
+
+;; How can child end up without subsuming anyway?
+
+;; How do we keep connection, e.g., when both opt and pess have refine-input ?
+
 (defn- make-atomic-subproblem [fs inp-set]
   (let [nm    (atomic-name fs)
         sm-fn (atom #(make-summary inp-set nil :live %))
@@ -297,7 +321,7 @@
      (fn evaluate! [s]
        (util/print-debug 1 "eval" nm (= :ready @state))
        (assert (not (= :go @state)))
-       (if (= :set @state)
+       (if (= :set @state) ;; Generate children on second eval, if needed.
          (do (next! s :go summaries/or-summary)
              (if-let [subsuming-sps (seq (filter #(not (terminal? %)) (subsuming-sps s)))]
                (connect-and-watch! s (apply min-key (comp summaries/get-bound sp-ts) subsuming-sps) nil
@@ -311,7 +335,7 @@
                status (if p (fs/status fs (second inp-set)) :blocked)]
            (next! s (if (= status :live) :set :go) #(make-summary inp-set (or reward summary/neg-inf) status %))
            (when p (set-output-set! s [(first inp-set) out-set])))))     
-     (fn [s ri] #_ (assert (not *collect-equal-outputs*)) ;; TODO: put back?
+     (fn [s ri]  (assert (or (not *collect-equal-outputs*) (and (= :pess (first ri)) (= :opt (first inp-set)))))  
        (if (= ri inp-set) s (get-subproblem nm  ri)))
      (fn summarize [s] (@sm-fn s)))))
 
@@ -322,13 +346,11 @@
 
 (defn pair-name [l r] [:Pair l r])
 
-;; TODO: short circuit when left terminal?
-;;   Except, when we get left output we still don't know, under current scheme ...
+;; TODO: short circuit when left terminal? (can we know soon enough?)
 ;; TODO: no right output when right blocked? 
 (defn- make-pair-subproblem
   ([left-sp right-sp] (make-pair-subproblem left-sp (sp-name right-sp) (constantly right-sp)))
   ([left-sp right-name right-sp-fn]
-;     (println "mps" left-sp right-name) (Thread/sleep 10)
      (let [nm (pair-name (sp-name left-sp) right-name)
            right-sp (delay (right-sp-fn (get-output-set! left-sp)))
            right?-atom (atom false) ;; Expand on right            
@@ -341,7 +363,7 @@
                          (fn right-child [right-child] (add-sp-child! s (make-pair-subproblem left-sp right-child) true)))
                        (summaries/summary-changed-local! ss))
            ret (make-subproblem nm (input-set left-sp) nil 
-                 (fn eval! [s] (schedule-decrease! s) (go-right! s)) ;; TODO: ??
+                 (fn eval! [s] (schedule-decrease! s) (go-right! s)) 
                  (fn [s ni] (if (= ni (input-set left-sp)) s
                                 (make-pair-subproblem (refine-input left-sp ni)
                                                       right-name #(refine-input @right-sp %))))
@@ -395,19 +417,20 @@
 ;;(defn wrapper? [sp] (#{:OC :SA} (first (sp-name sp))))
 ;; (comment  (if (wrapper? child-sp) child-sp (make-output-collecting-subproblem fs child-sp)))
 
-(declare get-ocs)
 
 (defn atomic-name-fs [n] (assert (= :Atomic (first n))) (second n))
 (defn bind-ss [f [type ss]] [type (f ss)])
 (defn log-input [fs inp-set] (if *state-abstraction* (bind-ss #(fs/get-logger fs %) inp-set) inp-set))
 (defn get-input-key [fs inp-set] (if *state-abstraction* (bind-ss #(fs/extract-context fs %) inp-set) inp-set))
 
+(declare get-ocs)
+
 ;; Input-key caching not necessary, but speeds things up a lot on, e.g., d-m.
 (defn- make-output-collecting-subproblem [fs inp-key inner-sp]
   (make-wrapped-subproblem
    (oc-name (sp-name inner-sp)) (input-set inner-sp) #{:Atomic :Pair #_ ::TODO??? :SA :OC} inner-sp
    identity
-   (fn child-watch [sp child-sp] ;     (println sp child-sp (def *bad* [sp child-sp]))
+   (fn child-watch [sp child-sp] 
      (if (=-state-sets (get-output-set! inner-sp) (get-output-set! child-sp))
        (do (schedule-increase! sp) (connect-and-watch! sp child-sp nil #(child-watch sp %))) 
        (add-sp-child! sp (make-output-collecting-subproblem fs inp-key child-sp) :irrelevant))) 
@@ -438,45 +461,17 @@
 
 (defn sa-name [inner-name] [:SA inner-name])
 
-(declare make-state-abstracted-subproblem)
-
 ;; Note: subsumed subproblems can have different irrelevant vars
-(defn- make-eager-state-abstracted-subproblem [fs inner-sp inp-set]
+(defn- make-state-abstracted-subproblem [fs inner-sp inp-set]
   (make-wrapped-subproblem
    (sa-name (sp-name inner-sp)) inp-set #{:OC} inner-sp
    (fn [o] (bind-ss #(state/transfer-effects (second inp-set) %) o))
-   (fn [sp child-sp] (add-sp-child! sp (make-eager-state-abstracted-subproblem fs child-sp inp-set) :irrelevant)) 
-   (fn [sp ni] (if (=-state-sets ni inp-set) sp (make-eager-state-abstracted-subproblem fs (refine-input inner-sp ni) ni)))))
-
-
-(declare make-deliberate-state-abstracted-subproblem)
-(comment TODO
- (defn- make-deliberate-state-abstracted-subproblem [nm inner-sp inp-set]
-   (if-let [out (get-output-set inner-sp)]
-     (let [done? (atom false)  
-           ret;; TODO!
-           (traits/reify-traits
-            [(simple-stub [:SA (stub-name inner-stub) in-set] in-set)]
-            summaries/Summarizable
-            (summarize [s]
-             (if @done? summary/+worst-simple-summary+
-                 (make-summary inp-set nil (summary/max-reward (summaries/summary (sp-ts out))) s)))   
-            Evaluable
-            (evaluate! [s] (reset! done? true)
-             (set-stub-output! s (make-state-abstracted-subproblem s out))))]
-       (summaries/connect! ret out)
-       ret)
-     (make-eager-state-abstracted-subprolbem nm inner-sp inp-set))))
-
-(defn make-state-abstracted-subproblem [inner-sp inp-set]
-  ((case *state-abstraction*
-     :eager make-eager-state-abstracted-subproblem
-     :deliberate make-deliberate-state-abstracted-subproblem)
-   inner-sp inp-set))
+   (fn [sp child-sp] (add-sp-child! sp (make-state-abstracted-subproblem fs child-sp inp-set) :irrelevant)) 
+   (fn [sp ni] (if (=-state-sets ni inp-set) sp (make-state-abstracted-subproblem fs (refine-input inner-sp ni) ni)))))
 
 (defmethod get-subproblem :SA [[_ inner-n :as n] inp-set]
   (let [fs (atomic-name-fs (second inner-n))] 
-    (make-eager-state-abstracted-subproblem fs (get-subproblem inner-n inp-set) inp-set)))
+    (make-state-abstracted-subproblem fs (get-subproblem inner-n inp-set) inp-set)))
 
 
 ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
@@ -515,20 +510,19 @@
    #(let [n (fs/fs-name (second (sp-name %)))] (when-not (= (first n) :noop) n))))
 
 (defn solve-pess [opt-root choice-fn local?]
-  (let [pess-root (refine-input (ts-sp opt-root) [:pess (second (input-set (ts-sp opt-root)))])]
+  (let [pess-root (sp-ts (refine-input (ts-sp opt-root) [:pess (second (input-set (ts-sp opt-root)))]))
+        counter   (atom 0)]
     (def *pess-root* pess-root)
-    (util/prog1
-     (summary/solve
-      #(summaries/summary opt-root)
-      (summaries/best-leaf-operator choice-fn local? evaluate-and-update!)
-      #(let [n (fs/fs-name (second (sp-name %)))] (when-not (= (first n) :noop) n)))
-     (dotimes [_ 2] (evaluate-and-update! pess-root)))))
+    (summary/solve
+     #(summaries/summary (if (odd? (swap! counter inc)) opt-root pess-root))
+     (summaries/best-leaf-operator choice-fn local? evaluate-and-update!)
+     #(let [n (fs/fs-name (second (sp-name %)))] (when-not (= (first n) :noop) n)))))
 
 (defn- get-root-ts [inp-set fs] (sp-ts (make-atomic-subproblem fs [:opt inp-set] )))
 
 (defn implicit-dash-a*
   [henv & {gather :gather d :d   s :s    choice-fn :choice-fn local? :local?  dir :dir   prop :prop pess? :pess? :as m
-      :or {gather true   d true s :eager choice-fn last       local? true     dir :right prop true  pess? true}}]
+      :or {gather true   d true s :eager choice-fn last       local? true     dir :right prop true  pess? false}}]
   (assert (every? #{:gather :d :s :choice-fn :local? :dir :prop} (keys m)))
   (assert (contains? #{:left :right} dir))
   (assert (contains? #{nil false :eager :deliberate} s))
@@ -546,44 +540,42 @@
 
 
 
-
-
-
-
-
-
-
-
-;; (do (use '[angelic env hierarchy] 'angelic.domains.nav-switch  'angelic.search.implicit.dash-astar 'angelic.domains.discrete-manipulation) (require '[angelic.search.implicit.dash-astar :as da] '[angelic.search.implicit.dash-astar-opt :as dao] '[angelic.search.summaries_old :as summaries-old] '[angelic.search.explicit.hierarchical :as his] '[angelic.search.implicit.dash-astar-monolithic :as dam]))
-
-;; (require )
-;;(do (defn s [x]  (summaries/summarize x)) (defn sc [x] (summary/children x))  (defn src [x] (summary/source x)) (defn nc [x] (summaries/child-nodes x)))
+;; (do (use '[angelic env hierarchy] 'angelic.domains.nav-switch  'angelic.search.implicit.dash-astar 'angelic.domains.discrete-manipulation) (require '[angelic.search.implicit.dash-astar :as da] '[angelic.search.implicit.dash-astar-opt-old :as dao] '[angelic.search.summaries_old :as summaries-old] '[angelic.search.explicit.hierarchical :as his] '[angelic.search.implicit.dash-astar-opt-older :as dam]) (defn s [x]  (summaries/summarize x)) (defn sc [x] (summary/children x))  (defn src [x] (summary/source x)) (defn nc [x] (summaries/child-nodes x)))
 
 ;;(dotimes [_ 1] (reset! summaries/*summary-count* 0) (debug 0 (time (let [h (make-nav-switch-hierarchy (make-random-nav-switch-env 2 1 0) true)]  (println (run-counted #(second (implicit-dash-a* h))) @summaries/*summary-count*)))))
 
-
 ;; (dotimes [_ 1] (reset! summaries/*summary-count* 0) (debug 0 (let [h (make-discrete-manipulation-hierarchy  (make-discrete-manipulation-env [5 3] [1 1] [ [ [2 2] [3 2] ] ] [ [:a [2 2] [ [3 2] [3 2] ] ] ] 1))]  (time (println (run-counted #(identity (implicit-dash-a* h))) @summaries/*summary-count*)) )))
 
-
-;;(dotimes [_ 1] (reset! summaries/*summary-count* 0) (reset! *out-count* 0) (debug 0 (let [h (make-discrete-manipulation-hierarchy (make-random-hard-discrete-manipulation-env 2 3))]  (time (println (run-counted #(identity (implicit-dash-a* h))) @summaries/*summary-count* @*out-count*)) (time (println (run-counted #(identity (his/explicit-simple-dash-a* h ))) @summaries/*summary-count* @*out-count*)) )))
-
-; (dotimes [_ 1] (reset! summaries/*summary-count* 0) (reset! *out-count* 0) (debug 0 (let [h (make-discrete-manipulation-hierarchy (make-random-discrete-manipulation-env 4 3))]  (time (println (run-counted #(identity (implicit-dash-a* h))) @summaries/*summary-count* @*out-count*)) )))
-
-
-; (dotimes [_ 1] (reset! summaries/*summary-count* 0) (reset! da/*out-count* 0) (reset! dao/*out-count* 0) (debug 0 (let [h (make-nav-switch-hierarchy (make-random-nav-switch-env 2 1 0) true)]  (time (println (run-counted #(identity (da/implicit-dash-a* h :gather false :d false :s nil))) @summaries/*summary-count* @da/*out-count*)) (time (println (run-counted #(identity (dao/implicit-dash-a*-opt h :gather false :d false :s nil))) @summaries/*summary-count*  @dao/*out-count*)) )))
-
-
-
-
-;; (dotimes [_ 1] (reset! summaries/*summary-count* 0) (reset! summaries-old/*summary-count* 0) (reset! da/*out-count* 0) (reset! dao/*out-count* 0) (debug 0 (let [opts [:gather false :d false :s nil :dir :right] h (make-discrete-manipulation-hierarchy  (make-random-hard-discrete-manipulation-env 2 4))]  (time (println (run-counted #(identity (apply da/implicit-dash-a* h opts))) @summaries/*summary-count* @da/*out-count*))  (time (println (run-counted #(identity (apply dao/implicit-dash-a*-opt h opts))) @summaries-old/*summary-count*  @dao/*out-count*)) )))
-;; fails
-
-
-;(dotimes [_ 1] (reset! summaries/*summary-count* 0) (reset! summaries-old/*summary-count* 0) (reset! da/*out-count* 0) (reset! dao/*out-count* 0) (debug 0 (let [opts [:gather false :d false :s nil :dir :right] h (make-discrete-manipulation-hierarchy  (make-random-hard-discrete-manipulation-env 1 4))]  (time (println (run-counted #(identity (apply da/implicit-dash-a* h opts))) @summaries/*summary-count* @da/*out-count*))  (time (println (run-counted #(identity (apply dao/implicit-dash-a*-opt h opts))) @summaries-old/*summary-count*  @dao/*out-count*)) )))
-
 ;; Compare all four algs we have so far...
-;; (dotimes [_ 1] (reset! summaries/*summary-count* 0) (reset! summaries-old/*summary-count* 0) (reset! da/*out-count* 0) (reset! dao/*out-count* 0) (debug 0 (let [opts [:gather true :d true :s :eager :dir :right] h (make-discrete-manipulation-hierarchy  (make-random-hard-discrete-manipulation-env 3 3))]   (time (println (run-counted #(identity (apply da/implicit-dash-a* h opts))) @summaries/*summary-count* @da/*out-count*))   (time (println (run-counted #(identity (apply dao/implicit-dash-a*-opt h opts))) @summaries-old/*summary-count*  @dao/*out-count*))   (time (println (run-counted #(identity (dam/implicit-random-dash-a*-monolithic h))) @summaries-old/*summary-count*  @dao/*out-count*))   (time (println (run-counted #(identity (his/explicit-simple-dash-a* h))) @summaries-old/*summary-count*  @dao/*out-count*)) )))
+;; (dotimes [_ 1] (reset! summaries/*summary-count* 0) (reset! summaries-old/*summary-count* 0) (debug 0 (let [opts [:gather true :d true :s :eager :dir :right] h (make-discrete-manipulation-hierarchy  (make-random-hard-discrete-manipulation-env 3 3))]   (time (println (run-counted #(identity (apply da/implicit-dash-a* h opts))) @summaries/*summary-count*))   (time (println (run-counted #(identity (apply dao/implicit-dash-a*-opt h opts))) @summaries-old/*summary-count*))   (time (println (run-counted #(identity (dam/implicit-random-dash-a*-opt h))) ))   (time (println (run-counted #(identity (his/explicit-simple-dash-a* h))) )) )))
 
 
 
 
+
+
+;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;; Graveyard ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
+
+(comment ;; Stuff for making contextifying an output require an eval step (old -- needs fixup)
+ (defn- make-deliberate-state-abstracted-subproblem [nm inner-sp inp-set]
+   (if-let [out (get-output-set inner-sp)]
+     (let [done? (atom false)  
+           ret;; TODO!
+           (traits/reify-traits
+            [(simple-stub [:SA (stub-name inner-stub) in-set] in-set)]
+            summaries/Summarizable
+            (summarize [s]
+             (if @done? summary/+worst-simple-summary+
+                 (make-summary inp-set nil (summary/max-reward (summaries/summary (sp-ts out))) s)))   
+            Evaluable
+            (evaluate! [s] (reset! done? true)
+             (set-stub-output! s (make-state-abstracted-subproblem s out))))]
+       (summaries/connect! ret out)
+       ret)
+     (make-eager-state-abstracted-subprolbem nm inner-sp inp-set)))
+
+ (defn make-state-abstracted-subproblem [inner-sp inp-set]
+   ((case *state-abstraction*
+      :eager make-eager-state-abstracted-subproblem
+      :deliberate make-deliberate-state-abstracted-subproblem)
+    inner-sp inp-set)))

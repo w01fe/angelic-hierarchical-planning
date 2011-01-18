@@ -18,18 +18,18 @@
 ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
 
 (defprotocol FunctionSet
-  (fs-name    [sk]           "Arbitrary name to identify fs")
-  (apply-opt  [sk input-set] "[output-set upper-reward-bound] or nil if empty/-inf")
-  (apply-pess [sk input-set] "[output-set upper-reward-bound] or nil if empty/-inf")  
-  (status     [sk input-set] ":live, :blocked, or :solved")
-  (child-seqs [sk input-set] "seq of seqs of FunctionSets. Only valid if above is :live.
-                              (= :live (status sk s)) ==>
-                                 (subset? (child-seqs sk s-subset) (child-seqs sk s)) (for names)")
-  (precondition-context-set [sk input-set])
-  (extract-context [sk input-set] "Relevant parts of input-set, for state abstraction")
-  (get-logger  [sk input-set] "Relevant parts of input-set, for state abstraction"))
+  (fs-name    [fs]           "Arbitrary name to identify fs")
+  (apply-opt  [fs input-set] "[output-set upper-reward-bound] or nil if empty/-inf")
+  (apply-pess [fs input-set] "[output-set upper-reward-bound] or nil if empty/-inf")  
+  (status     [fs input-set] ":live, :blocked, or :solved")
+  (child-seqs [fs input-set] "seq of seqs of FunctionSets. Only valid if above is :live.
+                              (= :live (status fs s)) ==>
+                                 (subset? (child-seqs fs s-subset) (child-seqs fs s)) (for names)")
+  (precondition-context-set [fs input-set] "Relevant set of variables")
+  (extract-context [fs input-set] "Relevant parts of input-set, for state abstraction")
+  (get-logger  [fs input-set]     "Get logger for input-set, in context of fs (also for SA)."))
 
-(defn output-or-nil [[opt rew :as p]]
+(defn- output-or-nil [[opt rew :as p]]
   (when (and p (not (state-set/empty? opt)) (> rew Double/NEGATIVE_INFINITY))
     p))
 
@@ -41,21 +41,19 @@
     (equals   [fs ofs] (and (instance? angelic.search.function_sets.FunctionSet ofs)
                             (= n (fs-name ofs))))    
     FunctionSet
-    (fs-name    [sk]           n)
-    (apply-opt  [sk input-set] (output-or-nil (angelic/optimistic-set-and-reward action input-set)))
-    (apply-pess [sk input-set] (output-or-nil (angelic/pessimistic-set-and-reward action input-set)))        
-    (status     [sk input-set] (status-fn input-set))
-    (child-seqs [sk input-set] (child-seq-fn input-set))
-    (precondition-context-set [sk input-set] (angelic/precondition-context-set action input-set))
-    (extract-context [sk input-set]
+    (fs-name    [fs]           n)
+    (apply-opt  [fs input-set] (output-or-nil (angelic/optimistic-set-and-reward action input-set)))
+    (apply-pess [fs input-set] (output-or-nil (angelic/pessimistic-set-and-reward action input-set)))        
+    (status     [fs input-set] (status-fn input-set))
+    (child-seqs [fs input-set] (child-seq-fn input-set))
+    (precondition-context-set [fs input-set] (angelic/precondition-context-set action input-set))
+    (extract-context [fs input-set]
       (state/extract-context input-set (angelic/precondition-context-set action input-set)))
-    (get-logger  [sk input-set]
+    (get-logger  [fs input-set]
       (state/get-logger input-set (angelic/precondition-context-set action input-set))))))
 
 (defmethod print-method angelic.search.function_sets.FunctionSet [s o]
            (print-method (fs-name s) o))
-
-;; Child-seqs must obey the containment property for subsets of input-set.
 
 ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;; Implementations ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
 

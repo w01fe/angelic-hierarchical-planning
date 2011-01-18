@@ -135,7 +135,7 @@
       (when  true #_ (summary/live? old) 
         (let [new (summarize n)]
           (cond (summary/eq old new) (reset! cache new) ;; Accomodate changed children for live pair...
-                (summary/>= new old) (do (reset! cache new)
+                (summary/>= new old 0) (do (reset! cache new)
                                          (doseq [p (doall (parent-nodes n))]
                                            (summary-increased! p)))
 ;                :else (throw (RuntimeException. (format "Decrease! %s" [(def *bad* n) n old new]) ))
