@@ -447,7 +447,8 @@
                             (solved-terminal? left-sp)
                             (if (empty? (get-children @right-sp))
                               (do (go-right! s) nil)
-                              (let [r (min (summary/max-reward (sg/summary ss)) (sg/get-bound s))]
+                              (let [ss-r (summary/max-reward (sg/summary ss))
+                                    r    (if ss-r (min ss-r (sg/get-bound s)) (sg/get-bound s))]
                                 (make-summary (input-set left-sp) nil :live s r)))) ;; tODO: ??
                        (sg/or-summary s))))]    
        (sg/connect! ret ss)

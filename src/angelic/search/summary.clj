@@ -25,7 +25,8 @@
 ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;; Protocol ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
 
 (defprotocol Summary
-  (max-reward       [s] "Admissible reward bound")
+  (max-reward       [s] "Admissible reward bound, or nil")
+  (reward           [s] "Type-dependent reward")
   (status           [s] "Status: :blocked, :solved, or :live")
   (source           [s] "Object being directly summarized")
   (children         [s] "Child summaries that went into this, if applicable")
@@ -56,7 +57,7 @@
 (def neg-inf Double/NEGATIVE_INFINITY)
 (declare +worst-simple-summary+)
 
-(defn viable? [summary] (> (max-reward summary) neg-inf))
+(defn viable? [summary] (> (reward summary) neg-inf))
 
 ;; TODO: can we safely handle empty case here?
 (defn apply-max-b [stats bound]
@@ -65,7 +66,7 @@
      (if stats
        (recur (if (>= (first stats) best bound) (first stats) best) (next stats))
        best))
-       +worst-simple-summary+))
+   +worst-simple-summary+))
 
 (defn or-combine-b [summaries new-src bound]
   (let [best (apply-max-b summaries bound)]
@@ -88,7 +89,7 @@
 (defn extract-solution-pair [summary action-extractor]
   (assert (solved? summary))
   [(keep (comp action-extractor source) (extract-leaf-seq summary))
-   (max-reward summary)])
+   (reward summary)])
 
 (declare *last-solution*)
 
@@ -111,6 +112,7 @@
 (defrecord SimpleSummary [max-rew stat src chldren]
   Summary
   (max-reward       [s] max-rew)
+  (reward           [s] max-rew)
   (status           [s] stat)
   (source          [s] src)
   (children        [s] chldren)
@@ -145,48 +147,6 @@
 (defmethod print-method SimpleSummary [s o] (print-method (simple-summary-str s) o))
 
 
-;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
-;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;; IntervalSummary ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
-;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
-
-;; Fancier summary, which maintains both lower and upper reward bounds.
-
-(declare make-interval-summary*)
-(defn is-id-vec [is] [(:min-rew is neg-inf) (status-val (status is))])
-(defn is-sort-vec [is] [(:min-rew is neg-inf) (max-reward is) (status-val (status is))])
-
-(defrecord IntervalSummary [min-rew max-rew stat src chldren]
-  Summary
-  (max-reward       [s] max-rew)
-  (status           [s] stat)
-  (source           [s] src)
-  (children         [s] chldren)
-  (re-source        [s new-src bound stat-bound]
-    (make-interval-summary* min-rew (clojure.core/min max-rew bound)
-                      (min-key status-val stat stat-bound) new-src [s]))  
-  (eq               [s other] (= (is-id-vec s) (is-id-vec other)))
-  (>=               [s other bound] (not (neg? (compare (is-sort-vec s) (is-sort-vec other))))) ;; TODO: bound ???  
-  (+                [s other new-src bound]
-   (make-interval-summary*
-    (clojure.core/+ min-rew (:min-rew other neg-inf))
-    (clojure.core/min (clojure.core/+ max-rew (max-reward other)) bound)
-    (min-key status-val stat (status other))
-    new-src [s other])))
-
-(defn- make-interval-summary* [min-reward max-reward status source children]
-  (util/assert-is (<= min-reward max-reward))
-  (IntervalSummary. min-reward max-reward status source children))
-
-(defn make-interval-summary [min-reward max-reward status source]
-  (util/assert-is (contains? statuses-set status))
-  (make-interval-summary* min-reward max-reward status source nil))
-
-
-(defn interval-summary? [s] (instance? IntervalSummary s))
-(defn iv-summary-str [s] (str "IVSum:" [(:min-rew s) (max-reward s)] (status s)))
-(defmethod print-method IntervalSummary [s o] (print-method (iv-summary-str s) o))
-
-
 
 
 ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
@@ -199,12 +159,13 @@
 
 (declare *sws-weight*) ; Weight, >= 1.
 
-(declare make-sw-summary*)
+(declare make-sw-summary* sw-summary?)
 (defn sws-vec [is] [(:f-val is neg-inf) (status-val (status is)) (:min-rew is neg-inf)])
 
 (defrecord SimpleWeightedSummary [min-rew f-val max-rew max-gap stat src chldren]
   Summary
-  (max-reward       [s] 0 #_ max-rew) ;; TODO: put back...
+  (max-reward       [s] nil)
+  (reward           [s] f-val) 
   (status           [s] stat)
   (source           [s] src)
   (children         [s] chldren)
@@ -214,10 +175,11 @@
   (eq               [s other] (= (sws-vec s) (sws-vec other)))
   (>=               [s other bound] (not (neg? (compare (sws-vec s) (sws-vec other))))) ;; TODO: bound ???  
   (+                [s other new-src bound]
+   (util/assert-is (sw-summary? other))
    (make-sw-summary*
     (clojure.core/+ min-rew (:min-rew other neg-inf))
     (clojure.core/min (clojure.core/+ f-val   (:f-val other neg-inf)) bound) ;; TODO
-    (clojure.core/min (clojure.core/+ max-rew (max-reward other)) bound)
+    (clojure.core/min (clojure.core/+ max-rew (:max-rew other)) bound)
     (clojure.core/max max-gap (:max-gap other Double/POSITIVE_INFINITY)) 
     (min-key status-val stat (status other))
     new-src [s other])))
@@ -242,6 +204,53 @@
 
 
 
+
+
+
+
+
+
+(comment
+;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
+;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;; IntervalSummary ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
+;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
+
+ ;; Fancier summary, which maintains both lower and upper reward bounds.
+
+ (declare make-interval-summary*)
+ (defn is-id-vec [is] [(:min-rew is neg-inf) (status-val (status is))])
+ (defn is-sort-vec [is] [(:min-rew is neg-inf) (max-reward is) (status-val (status is))])
+
+ (defrecord IntervalSummary [min-rew max-rew stat src chldren]
+   Summary
+   (max-reward       [s] max-rew)
+   (status           [s] stat)
+   (source           [s] src)
+   (children         [s] chldren)
+   (re-source        [s new-src bound stat-bound]
+                     (make-interval-summary* min-rew (clojure.core/min max-rew bound)
+                                             (min-key status-val stat stat-bound) new-src [s]))  
+   (eq               [s other] (= (is-id-vec s) (is-id-vec other)))
+   (>=               [s other bound] (not (neg? (compare (is-sort-vec s) (is-sort-vec other))))) ;; TODO: bound ???  
+   (+                [s other new-src bound]
+                     (make-interval-summary*
+                      (clojure.core/+ min-rew (:min-rew other neg-inf))
+                      (clojure.core/min (clojure.core/+ max-rew (max-reward other)) bound)
+                      (min-key status-val stat (status other))
+                      new-src [s other])))
+
+ (defn- make-interval-summary* [min-reward max-reward status source children]
+   (util/assert-is (<= min-reward max-reward))
+   (IntervalSummary. min-reward max-reward status source children))
+
+ (defn make-interval-summary [min-reward max-reward status source]
+   (util/assert-is (contains? statuses-set status))
+   (make-interval-summary* min-reward max-reward status source nil))
+
+
+ (defn interval-summary? [s] (instance? IntervalSummary s))
+ (defn iv-summary-str [s] (str "IVSum:" [(:min-rew s) (max-reward s)] (status s)))
+ (defmethod print-method IntervalSummary [s o] (print-method (iv-summary-str s) o)))
 
 
 

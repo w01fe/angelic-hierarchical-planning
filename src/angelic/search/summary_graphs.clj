@@ -97,7 +97,7 @@
 (def *kill* false #_ true) ;; Remove dead children of OR-nodes.  Doesn't seem to really help or hurt...
 
 (defn update-bound! [n bound-atom b]
-  (when (and *subsumption* (< b @bound-atom))
+  (when (and b *subsumption* (< b @bound-atom))
     (util/print-debug 3 "UB" n @bound-atom b) 
     (reset! bound-atom b)
     (doseq [s (doall (subsumed-nodes n))]
@@ -109,7 +109,7 @@
   (let [s (summarize n),
         r (summary/max-reward s)]
     (util/print-debug 3 "US" n  @summary-atom s @bound-atom)
-   #_ (assert (<= r @bound-atom)) ;; TODO: put back
+    (when r (assert (<= r @bound-atom)))
     (reset! summary-atom s)
     (update-bound! n bound-atom r) 
     s))
