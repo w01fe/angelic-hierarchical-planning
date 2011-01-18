@@ -67,8 +67,6 @@
 ;;  i.e., empty-set subproblem is subsumed by everything --
 ;;  What we have is OK, we just need to be careful if we implement refine-input propagation.
 
-;; TODO: pair needs infinite LB before right eval.
-
 ;; TODO: empty-set subproblems for pessimistic.
 
 ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
@@ -429,7 +427,7 @@
            right-sp (delay (right-sp-fn (get-output-set! left-sp)))
            right?-atom (atom false) ;; Expand on right            
            ss (sg/make-sum-summarizer)
-           rz  (when (= :pess (first (input-set left-sp))) ; Right zero, for pess
+           rz  (when (= :pess (first (input-set left-sp))) ; Right zero (pess needs neg-inf lower bound)
                  (traits/reify-traits [sg/summary-cache] sg/Summarizable
                   (summarize [s] (*make-pess-summary* summary/neg-inf 0 :solved s nil))))
            go-right! (fn [s] 
