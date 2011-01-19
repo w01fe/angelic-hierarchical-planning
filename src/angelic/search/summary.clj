@@ -155,7 +155,6 @@
 
 ;; Simple weighted summary, with reward = max(opt * weight, pess)
 ;; TODO: add alpha, to scale weights?
-;; TODO: how do we infer max-gap under bound ?
 ;; Although not strictly necessary, keep track of best pess reward and use to bound.
 
 (declare *sws-weight*) ; Weight, >= 1.

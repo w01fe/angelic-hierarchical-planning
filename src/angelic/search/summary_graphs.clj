@@ -192,7 +192,7 @@
 
 (defn extract-single-live-leaf [summ choice-fn bound]
 ;  (println (summary/source summ) summ)
-;  (assert (>= (summary/max-reward summ) bound)) ;; TODO: put back
+  (when-let [r (summary/max-reward summ)] (when bound (assert (>= r bound)))) 
 ;  (util/assert-is (summary/eq summ (-> summ summary/source summarize)) "%s" [(def *bad* summ)])
   (let [kids (map summary/source (summary/children summ))]
     (if (empty? kids)

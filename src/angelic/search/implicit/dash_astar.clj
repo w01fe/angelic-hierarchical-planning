@@ -59,15 +59,13 @@
 
 ;;!! --> TODO: try holding back children until solved? 
 
-;; TODO: put back checks in summary_graphs.
-;; TODO: fix SWSummary, max-reward, etc.
-
 ;; TODO: problem with propagation??
 ;;  (some subsumption links are semantic, not syntactic -- propagating these is wrong?)
 ;;  i.e., empty-set subproblem is subsumed by everything --
 ;;  What we have is OK, we just need to be careful if we implement refine-input propagation.
 
 ;; TODO: empty-set subproblems for pessimistic.
+;; TODO: share primitive subproblems...
 
 ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
 ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;       Options      ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
@@ -490,7 +488,7 @@
   (util/assert-is (contains? prefix-set (first (sp-name inner-sp))))
   (let [ret (make-subproblem nm inp-set (sp-ts inner-sp)
                              (fn [_] (throw (RuntimeException.)))
-                             ri-fn sg/or-summary)]
+                             ri-fn (make-or-summarizer (first inp-set) 0))]
     (connect-and-watch! ret inner-sp
       (fn [o] (set-output-set! ret (output-wrap o)))
       (fn [inner-child] (child-watch ret inner-child)))
@@ -666,11 +664,16 @@
 
 ;; (dotimes [_ 1] (reset! sg/*summary-count* 0) (debug 0 (let [h (make-discrete-manipulation-hierarchy  (make-discrete-manipulation-env [5 3] [1 1] [ [ [2 2] [3 2] ] ] [ [:a [2 2] [ [3 2] [3 2] ] ] ] 1))]  (time (println (run-counted #(identity (implicit-dash-a* h))) @sg/*summary-count*)) )))
 
+;; (make-random-nav-switch-env 20 5 1) seems to be a difficult one for opt ... show off wtd.
+;; (dotimes [_ 1] (reset! sg/*summary-count* 0) (reset! summaries-old/*summary-count* 0) (debug 0 (let [opts [:gather false :d false :s false :dir :right] h (make-nav-switch-hierarchy (make-random-nav-switch-env 20 5 1) true)]   (time (println (run-counted #(identity (apply da/implicit-dash-wa* h 1.2 opts))) @sg/*summary-count*))  (time (println (run-counted #(identity (apply da/implicit-dash-a* h opts))) @sg/*summary-count*))   )))
+
 ;; Compare all four algs we have so far...
 ;; (dotimes [_ 1] (reset! sg/*summary-count* 0) (reset! summaries-old/*summary-count* 0) (debug 0 (let [opts [:gather true :d true :s :eager :dir :right] h (make-discrete-manipulation-hierarchy  (make-random-hard-discrete-manipulation-env 3 3))]   (time (println (run-counted #(identity (apply da/implicit-dash-a* h opts))) @sg/*summary-count*))   (time (println (run-counted #(identity (apply dao/implicit-dash-a*-opt h opts))) @summaries-old/*summary-count*))   (time (println (run-counted #(identity (dam/implicit-random-dash-a*-opt h))) ))   (time (println (run-counted #(identity (his/explicit-simple-dash-a* h))) )) )))
 
 
+;; TODO: bug in
 
+;; (dotimes [_ 1] (reset! sg/*summary-count* 0) (reset! summaries-old/*summary-count* 0) (debug 0 (let [opts [:gather true :d false :s false :dir :right] h (make-nav-switch-hierarchy (make-random-nav-switch-env 20 5 1) true)]   (time (println (run-counted #(identity (apply da/implicit-dash-wa* h 1.2 opts))) @sg/*summary-count*))  (time (println (run-counted #(identity (apply da/implicit-dash-a* h opts))) @sg/*summary-count*))   )))
 
 
 
