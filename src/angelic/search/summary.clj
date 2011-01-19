@@ -166,6 +166,9 @@
 (defn bounded-sw-f-val
   ([sws lb ub] (bounded-sw-f-val (:p-val sws) (:f-val sws) (:o-val sws) lb ub) #_ (util/prln  (bounded-sw-f-val (:p-val sws) (:f-val sws) (:o-val sws) lb ub) sws lb ub))
   ([p-val f-val o-val lb ub]
+     (util/assert-is (<= p-val f-val o-val))
+     (util/assert-is (<= lb ub))
+     (util/assert-is (<= p-val ub))
      (clojure.core/max (clojure.core/min o-val lb) p-val
       (* *sws-weight* (clojure.core/min o-val ub))
       (if (< ub o-val)
@@ -188,14 +191,14 @@
          f-sum (clojure.core/+ f-val (:f-val other))
          o-sum (clojure.core/+ o-val (:o-val other))]
      (make-sw-summary*
-      p-sum (bounded-sw-f-val p-sum f-sum o-sum p-sum bound) o-sum
+      p-sum (bounded-sw-f-val p-sum f-sum o-sum p-sum bound) (clojure.core/min bound o-sum)
       (clojure.core/max max-gap (:max-gap other)) 
       (min-key status-val stat (status other))
       new-src [s other]))))
 
 (defn- make-sw-summary* [p-val f-val o-val max-gap status source children]
   (util/assert-is (<= p-val f-val o-val) "%s" [source children])
-  (SimpleWeightedSummary. p-val f-val o-val max-gap status source children))
+  (SimpleWeightedSummary. p-val f-val o-val (clojure.core/min max-gap (- o-val p-val)) status source children))
 
 (defn make-sw-summary [p-val o-val status source children]
   (util/assert-is (contains? statuses-set status))
@@ -214,14 +217,15 @@
       (assert (seq summaries))
       (let [lb (reset! p-atom (reduce clojure.core/max (cons @p-atom (map :p-val summaries))))
             bounded-sws-vec (fn [sws] [(bounded-sw-f-val sws lb ub) (status-val (status sws)) (:p-val sws)])]
+        (util/assert-is (<= lb ub) "%s" [init-lb @p-atom summaries new-src (def *bad* summaries)])
         (loop [best (first summaries) summaries (next summaries)]
           (if summaries
             (recur (if (not (neg? (compare (bounded-sws-vec best) (bounded-sws-vec (first summaries))))) best (first summaries))
                    (next summaries))
             (let [f-val (bounded-sw-f-val best lb ub)
                   o-val (clojure.core/min ub (:o-val best))
-                  gap   (clojure.core/min (:max-gap best) (- o-val lb))]
-              (make-sw-summary* (clojure.core/min lb o-val) f-val o-val gap (status best) new-src [best]))))))))
+                  p-val (clojure.core/min lb o-val)]
+              (make-sw-summary* p-val f-val o-val (:max-gap best) (status best) new-src [best]))))))))
 
 
 

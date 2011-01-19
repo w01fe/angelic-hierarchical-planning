@@ -488,7 +488,7 @@
   (util/assert-is (contains? prefix-set (first (sp-name inner-sp))))
   (let [ret (make-subproblem nm inp-set (sp-ts inner-sp)
                              (fn [_] (throw (RuntimeException.)))
-                             ri-fn (make-or-summarizer (first inp-set) 0))]
+                             ri-fn (make-or-summarizer (first inp-set) nil))]
     (connect-and-watch! ret inner-sp
       (fn [o] (set-output-set! ret (output-wrap o)))
       (fn [inner-child] (child-watch ret inner-child)))
@@ -675,7 +675,7 @@
 
 ;; (dotimes [_ 1] (reset! sg/*summary-count* 0) (reset! summaries-old/*summary-count* 0) (debug 0 (let [opts [:gather true :d false :s false :dir :right] h (make-nav-switch-hierarchy (make-random-nav-switch-env 20 5 1) true)]   (time (println (run-counted #(identity (apply da/implicit-dash-wa* h 1.2 opts))) @sg/*summary-count*))  (time (println (run-counted #(identity (apply da/implicit-dash-a* h opts))) @sg/*summary-count*))   )))
 
-
+;; TODO: where are upper bounds going / comine from ?
 
 ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;; Graveyard ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
 
