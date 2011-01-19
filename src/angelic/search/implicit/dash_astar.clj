@@ -134,14 +134,23 @@
 
 ;;;;;;;;;;;;;;;;;;;;;;;;;;      Tree Summarizers      ;;;;;;;;;;;;;;;;;;;;;;;;;;
 
+(declare input-set)
+(defn make-or-summarizer [typ init-bound]
+  (case typ
+    :opt sg/or-summary
+    :pess (sg/make-sws-or-summary init-bound)))
+
+
 (defprotocol TreeSummarizer
   "A 'semantic' summarizer for a subproblem.  Its summarizer represents the best-
    known Summary for a subproblem and all its descendants"
   (ts-sp [ts] "The canonical subproblem summarized by this tree summarizer."))
 
 (defn- make-tree-summarizer [sp]
-  (let [ret (traits/reify-traits [sg/or-summarizable sg/simple-cached-node]
-              TreeSummarizer (ts-sp [ts] sp))]
+  (let [os  (make-or-summarizer (first (input-set sp)) nil)
+        ret (traits/reify-traits [sg/simple-cached-node]
+              sg/Summarizable (summarize [ts] (os ts))
+              TreeSummarizer  (ts-sp [ts] sp))]
     (sg/connect! ret sp)
     (schedule-subsumption! #_ sg/connect-subsumed! ret sp) ;; TODO: schedule, not connect???
     ret))
@@ -177,8 +186,8 @@
   (refine-input        [s refined-input-set] "Return a sp with same name, given subset of input-set. s must have output."))
 
 (defmethod print-method angelic.search.implicit.dash_astar.Subproblem [sp o]
-  (print-method (format "#<SP$%8h %s %s>" (System/identityHashCode sp) (sp-name sp)
-                        (if (get-output-set sp) :OUT :STUB)) o))
+  (print-method (format "#<SP$%8h %s %s %s>" (System/identityHashCode sp) (sp-name sp)
+                        (first (input-set sp)) (if (get-output-set sp) :OUT :STUB)) o))
 
 ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;  Auxillary fns  ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
   
@@ -370,7 +379,8 @@
      nm inp-set nil
      (fn evaluate! [s]
        (util/print-debug 1 "eval" nm (if (get-output-set s) :out :no-out))
-       (if-not (get-output-set s) ; Not evaluated yet -- evalute description and publish output
+       (if-not (get-output-set s)
+         ;; Not evaluated yet -- evalute description and publish output
          (let [[out-set reward :as p]
                (case (first inp-set)
                  :opt (fs/apply-opt fs (second inp-set))
@@ -378,7 +388,8 @@
                status (if p (fs/status fs (second inp-set)) :blocked)]
            (set-sf! s #(make-summary inp-set reward status % 0))
            (when p (set-output-set! s [(first inp-set) out-set])))
-         (do (set-sf! s sg/or-summary) ; Evaluated to live -- generate children now.
+         ;; Evaluated to live -- generate children now.
+         (do (set-sf! s (make-or-summarizer (first inp-set) (:p-val (sg/summary s))))             
              (if-let [subsuming-sps (seq (filter #(not (terminal? %)) (subsuming-sps s)))]
                (connect-and-watch-subsuming! s (apply min-key (comp sg/get-bound sp-ts) subsuming-sps) ;; TODO: bound may not exist!
                  (fn [sub-out] (add-sp-child! s (refine-input sub-out inp-set) true))) 
@@ -437,6 +448,7 @@
                        (connect-and-watch! ss @right-sp nil
                          (fn right-child [right-child] (add-sp-child! s (make-pair-subproblem left-sp right-child) true)))
                        (sg/summary-changed-local! ss))
+           os  (make-or-summarizer (first (input-set left-sp)) nil)
            ret (make-subproblem nm (input-set left-sp) nil 
                  (fn eval! [s] (schedule-decrease! s) (go-right! s)) 
                  (fn [s ni] (if (= ni (input-set left-sp)) s
@@ -449,8 +461,8 @@
                               (do (go-right! s) nil)
                               (let [ss-r (summary/max-reward (sg/summary ss))
                                     r    (if ss-r (min ss-r (sg/get-bound s)) (sg/get-bound s))]
-                                (make-summary (input-set left-sp) nil :live s r)))) ;; tODO: ??
-                       (sg/or-summary s))))]    
+                                (make-summary (input-set left-sp) (:p-val (sg/summary ss))  :live s r)))) ;; TODO: despecialize??
+                       (os s))))]    
        (sg/connect! ret ss)
        (when rz (sg/add-child! ss rz))
        (connect-and-watch! ss left-sp
@@ -574,7 +586,7 @@
 (defn- refinement-names
   "Generate the names of subproblems representing refinements of fs from inp-set"
   [fs [t inp-set]]
-  (assert (= t :opt))
+  (assert (= t :opt)) ;; TODO: will need work for, e.g., when opt is blocked, pess not.
   (for [fs-seq (fs/child-seqs fs inp-set)]
     ((if *left-recursive* left-factor right-factor)
      (for [fs fs-seq]

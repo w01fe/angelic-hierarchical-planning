@@ -142,8 +142,7 @@
 
 ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;; Summarizable ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
 
-(traits/deftrait worst-summarizable [] [] []
-  Summarizable (summarize [s] summary/+worst-simple-summary+))
+
 
 (defn or-summary [n]
   (swap! *summary-count* inc)
@@ -152,9 +151,6 @@
       (doseq [k bad-kids] (remove-child! n k))
       (summary/or-combine-b (map summary good-kids) n (get-bound n)))    
     (summary/or-combine-b (map summary (child-nodes n)) n (get-bound n))))
-
-(traits/deftrait or-summarizable [] [] []
-  Summarizable (summarize [s] (or-summary s)))
 
 
 (defn sum-summary [s]
@@ -173,6 +169,12 @@
               Summarizable (summarize [s] (wrap-fn s (summary wrapped-node))))]
     (connect! ret wrapped-node)
     ret))
+
+;; TODO: add kill, etc? 
+(defn make-sws-or-summary [init-lb]
+  (swap! *summary-count* inc)
+  (let [combiner (summary/make-sws-or-combiner init-lb)]
+    #(combiner (map summary (child-nodes %)) % (get-bound %))))
 
 
 ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;; Searching ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
@@ -221,4 +223,10 @@
 
 
 
+;;;;;;;;;;;;;;;;;;;;;;;;;;;;;; Graveyard ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
 
+(traits/deftrait or-summarizable [] [] []
+  Summarizable (summarize [s] (or-summary s)))
+
+;(traits/deftrait worst-summarizable [] [] []
+;Summarizable (summarize [s] summary/+worst-simple-summary+))
