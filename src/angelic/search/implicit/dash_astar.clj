@@ -15,6 +15,9 @@
 ;;  1.  Give subproblems a bound before they have output.
 ;;  2.  Account for necessary inconsistency with implicit descriptions.
 
+;; Note: assume optimistic description is exact when solved-terminal, share with pess
+;; (only when output-collecting on...)
+
 ;; TODO: tests ! 
 
 ;;;;; Subsumption
@@ -23,19 +26,21 @@
 ;; TODO: more generic propagation?  (We know: names, subs. relationships on sets.  Efficient lookups?)
 ;; TODO: children wait on one (or more) subsumption parents.
 
-
 ;;;;; Pessimistic
-;; TODO: add pessimistic variants (shared primitives)
-;; TODO: bounding pressimistic descritpions (assume consistency for now)
 ;; TODO: hook up pess/opt with same input set?
-;; TODO: pruning. 
+;; TODO: pruning. ?
+;; --> TODO: empty-set subproblems for pessimistic.
+;; --> TODO: Cannot propagate upper bounds from pessimistic subproblems
+;;           in the presence of sharing, since they may reflect other opt SPs.
 
 ;;;;; Tree construction
+;; -> TODO: dijkstra variants for cyclic actions ??
 ;; TODO: smarter output-collector (semantic) -- problems here though.
 ;; TODO: don't always split-left?
 ;; TODO: don't release children until they have lower reward or are primitive? 
+;;--> TODO: alternative child release strategies, e.g. wait 'til solved
 ;; TODO: make sure dead stuff can be GC'd
-;; TODO: alternative child release strategies, e.g. wait 'til solved
+;; TODO: note no difference between syntax and semantics for single state ...
 
 ;;;;; Summaries and solving 
 ;; TODO: lazy/pseudo-solve (regular seems impossible; bounds mean apparent decrease may be increase.
@@ -44,6 +49,7 @@
 ;; TODO: smarter choose-leaf?
 ;; TODO: conspiracy number, weighted, etc.
 ;; TODO: forcing summary of TS in summary_graphs makes a lot of extra comps (lefts), doesn't help.
+;; TODO: propagate across subsumption links? (must be careful here, not to cross state/plan syntax/semantics line)
 
 ;;;;; SP caching
 ;; TODO: tail (i.e., pair) caching? -- Only help for >2 len refs...
@@ -57,15 +63,6 @@
 ;; Can be implemented by not letting children go until they have subs...
 ;;  (and not incorporating into summary, except as bound) .... ?
 
-;;!! --> TODO: try holding back children until solved? 
-
-;; TODO: problem with propagation??
-;;  (some subsumption links are semantic, not syntactic -- propagating these is wrong?)
-;;  i.e., empty-set subproblem is subsumed by everything --
-;;  What we have is OK, we just need to be careful if we implement refine-input propagation.
-
-;; TODO: empty-set subproblems for pessimistic.
-;; TODO: share primitive subproblems...
 
 ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
 ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;       Options      ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
@@ -80,11 +77,11 @@
 (declare *state-abstraction*     ) ;; Use state abstraction?  Requires *decompose-cache*
 (declare *propagate-subsumption* ) ;; Automatically propagate subsumption links to corresponding children
 (declare *make-pess-summary*     ) ;; fn of [min-reward max-reward status source children]
+(def *share-terminal* true       )
 
 ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
 ;;;;;;;;;;;;;;;;;;;;;;;;;;;;       Utilities      ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
 ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
-
 
 ;;;;;;;;;;;;;;;;;;;;;;;;;;         PubSubHub          ;;;;;;;;;;;;;;;;;;;;;;;;;;
 
@@ -529,16 +526,24 @@
      (if (=-state-sets (get-output-set! inner-sp) (get-output-set! child-sp))
        (do (schedule-increase! sp) (connect-and-watch! sp child-sp nil #(child-watch sp %))) 
        (add-sp-child! sp (make-output-collecting-subproblem fs inp-key child-sp) :irrelevant))) 
-   (fn refine-input [s ni]
+   (fn oc-refine-input [s ni]
      (let [ninp-key (get-input-key fs ni)]
-       (if (= inp-key ninp-key)
-         s
-         (if (= :Atomic (first (sp-name inner-sp)))
-           (let [ret (get-ocs (sp-name inner-sp) fs ninp-key ni)]
-             (util/assert-is (not (identical? (canonicalize ret) inner-sp)) "%s" [(def *bad* [s inner-sp (input-set s) ni])])
-             (add-subsuming-sp! (canonicalize ret) inner-sp)
-             ret)
-           (make-output-collecting-subproblem fs ninp-key (refine-input inner-sp (log-input fs ni)))))))))
+       (cond (= inp-key ninp-key) s
+             (and *share-terminal* (solved-terminal? inner-sp))
+               (let [r (summary/max-reward (sg/summary inner-sp))
+                     ret (make-subproblem (oc-name (sp-name inner-sp)) ni nil
+                           (fn [_] (throw (RuntimeException.)))
+                           (fn [_ _] (throw (RuntimeException.)))
+                           (fn [s] (make-summary ni r :solved s r)))]
+                 (assert (and (= :opt (first inp-key)) (= :pess (first ni))))
+                 (set-output-set! ret [:pess (second (get-output-set! inner-sp))])
+                 ret)               
+             (= :Atomic (first (sp-name inner-sp)))
+               (let [ret (get-ocs (sp-name inner-sp) fs ninp-key ni)]
+                 (util/assert-is (not (identical? (canonicalize ret) inner-sp)) "%s" [(def *bad* [s inner-sp (input-set s) ni])])
+                 (add-subsuming-sp! (canonicalize ret) inner-sp)
+                 ret)  
+             :else (make-output-collecting-subproblem fs ninp-key (refine-input inner-sp (log-input fs ni))))))))
 
 (defn get-ocs [inner-n fs inp-key inp-set]
   (let [make-sp #(make-output-collecting-subproblem fs inp-key (get-subproblem inner-n (log-input fs inp-set)))]
@@ -606,7 +611,7 @@
    #(let [n (fs/fs-name (second (sp-name %)))] (when-not (= (first n) :noop) n))))
 
 ;; ???
-(defn solve-pess [opt-root choice-fn local?]
+#_ (defn solve-pess [opt-root choice-fn local?]
   (let [pess-root (sp-ts (refine-input (ts-sp opt-root) [:pess (second (input-set (ts-sp opt-root)))]))
         counter   (atom 0)]
     (def *pess-root* pess-root)
@@ -648,7 +653,9 @@
     (summary/solve
      #(sg/summary pess-root)
      (sg/best-leaf-operator choice-fn local? evaluate-and-update!)
-     #(let [n (fs/fs-name (second (sp-name %)))] (when-not (= (first n) :noop) n)))))
+     #(let [[t in-name] (sp-name %)
+            n (case t :OC (fs/fs-name (second in-name)) :Atomic (fs/fs-name in-name))]
+        (when-not (= (first n) :noop) n)))))
 
 (defn implicit-dash-wa* [henv w & opts]
   (binding [summary/*sws-weight* w
@@ -671,11 +678,9 @@
 ;; (dotimes [_ 1] (reset! sg/*summary-count* 0) (reset! summaries-old/*summary-count* 0) (debug 0 (let [opts [:gather true :d true :s :eager :dir :right] h (make-discrete-manipulation-hierarchy  (make-random-hard-discrete-manipulation-env 3 3))]   (time (println (run-counted #(identity (apply da/implicit-dash-a* h opts))) @sg/*summary-count*))   (time (println (run-counted #(identity (apply dao/implicit-dash-a*-opt h opts))) @summaries-old/*summary-count*))   (time (println (run-counted #(identity (dam/implicit-random-dash-a*-opt h))) ))   (time (println (run-counted #(identity (his/explicit-simple-dash-a* h))) )) )))
 
 
-;; TODO: bug in
 
-;; (dotimes [_ 1] (reset! sg/*summary-count* 0) (reset! summaries-old/*summary-count* 0) (debug 0 (let [opts [:gather true :d false :s false :dir :right] h (make-nav-switch-hierarchy (make-random-nav-switch-env 20 5 1) true)]   (time (println (run-counted #(identity (apply da/implicit-dash-wa* h 1.2 opts))) @sg/*summary-count*))  (time (println (run-counted #(identity (apply da/implicit-dash-a* h opts))) @sg/*summary-count*))   )))
 
-;; TODO: where are upper bounds going / comine from ?
+
 
 ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;; Graveyard ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
 
