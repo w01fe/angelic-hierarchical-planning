@@ -64,6 +64,7 @@
 ;;;;; Weighted
 ;; TODO: make sure incorrect weights from bounding are OK.
 ;; TODO: smarter choices (max of alpha * max-rew?)
+;; TODO: figure out why weighted is worse, even with weight=1.
 
 ;; Basic idea behind "wait on subsumption":
 ;;   Don't do anything with child of node with subs. parent
@@ -147,7 +148,7 @@
 
 (defn evaluate-and-update! [s]
   (evaluate! s)
-  (do-changes! *increases* sg/summary-increased!) 
+  (do-changes! *increases* sg/summary-increased!)
   (do-changes! *subsumes* (fn [[ts subsumed-ts]] (sg/connect-subsumed! ts subsumed-ts)))
   (do-changes! *decreases* sg/summary-changed!))
 
@@ -480,7 +481,7 @@
                          (fn right-child [right-child] (add-sp-child! ret (make-pair-subproblem left-sp right-child) true))))
            ss (traits/reify-traits [sg/simple-cached-node] ;; needed for wA*, at least ? 
                 Evaluable
-                (evaluate! [s] (schedule-decrease! s) (go-right! s))
+                (evaluate! [s] (util/print-debug 1 "Eval sum" nm (sg/sum-summary s)) (schedule-decrease! s) (go-right! s) #_ (do (def *root2* *root*) (def *root* nil)))
                 (sp-name [s] (conj nm :SS)) ;; Needed for wtd.
                 sg/Summarizable
                 (summarize [s]
@@ -735,8 +736,10 @@
 
 ;; Weighted A* on D-m
 
-;; (dotimes [_ 1] (reset! sg/*summary-count* 0) (reset! summaries-old/*summary-count* 0) (debug 0 (let [opts [:gather true :d false :s false :dir :right] h (make-discrete-manipulation-hierarchy  (make-random-hard-discrete-manipulation-env 3 3))] #_ (time (println (run-counted #(identity (apply da/implicit-dash-a* h opts))) @sg/*summary-count*)) (time (println (run-counted #(identity (apply da/implicit-dash-wa* h 2 {} opts))) @sg/*summary-count*)))))
+;; (dotimes [_ 1] (reset! sg/*summary-count* 0) (reset! summaries-old/*summary-count* 0) (debug 0 (let [opts [:gather true :d true :s true :dir :right] h (make-discrete-manipulation-hierarchy (make-random-hard-discrete-manipulation-env 3 3))]   (time (println (run-counted #(identity (apply da/implicit-dash-a* h opts))) @sg/*summary-count*)) (time (println (run-counted #(identity (apply da/implicit-dash-wa* h 1.1 {'act 1 :discretem-tla 1 :move-to-goal 1 :go-grasp 0.8 :go-drop 0.8 :go-drop-at 0.4 :drop-at 0.3 :move-base 0.2 :nav 0.2 :reach 0.1 :putdown 0 :pickup 0 :gripper 0 :grasp 0 :park 0 :unpark 0 :base 0 'finish 0 :noop 0} opts))) @sg/*summary-count*)))))
 
+;; With max-gap choice:
+;; (dotimes [_ 1] (reset! sg/*summary-count* 0) (reset! summaries-old/*summary-count* 0) (debug 0 (let [opts [:gather true :d false :s false :dir :right] h (make-nav-switch-hierarchy (make-random-nav-switch-env 2 1 1) true)] (time (println (run-counted #(identity (apply da/implicit-dash-a* h opts))) @sg/*summary-count*)) (time (println (run-counted #(identity (apply da/implicit-dash-wa* h 2 {:noop 0 'up 0 'down 0 'left 0 'right 0 'v 0 'h 0 'split-nav 0 'navv 0 'navh 0 'finish 0 'top 1 'act 1} opts))) @sg/*summary-count*)))))
 
 ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;; Graveyard ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
 
