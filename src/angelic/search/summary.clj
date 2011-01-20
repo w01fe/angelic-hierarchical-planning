@@ -30,7 +30,7 @@
   (status           [s] "Status: :blocked, :solved, or :live")
   (source           [s] "Object being directly summarized")
   (children         [s] "Child summaries that went into this, if applicable")
-  (leafen            [s] "Make status live, cut off children.")
+  (leafen           [s bound new-stat new-src] "Make status live, cut off children.")
   (re-source [s src bound stat-bound] "Create a new summary with same status.")
   (eq  [s other]                      "equaltiy, just based on reward and status.")
   (>=  [s other bound]                "Greater, under specified bound?")
@@ -116,7 +116,7 @@
   (status           [s] stat)
   (source          [s] src)
   (children        [s] chldren)
-  (leafen           [s] (SimpleSummary. max-rew :live src nil))
+  (leafen           [s bound new-stat new-src] (SimpleSummary. (clojure.core/min bound max-rew) new-stat new-src nil))
   (re-source       [s new-src bound stat-bound]
     (when (solved? s) (assert (clojure.core/>= bound max-rew)))
     (SimpleSummary. (clojure.core/min max-rew bound) (min-key status-val stat stat-bound) new-src [s]))
@@ -176,7 +176,7 @@
   (status           [s] stat)
   (source          [s] src)
   (children        [s] chldren)
-  (leafen           [s] (SimpleWeightedSummary. wtd-rew max-rew max-gap :live src nil))  
+  (leafen           [s bound new-stat new-src] (SimpleWeightedSummary. (if (< bound max-rew) (clojure.core/min bound (* wtd-rew (/ bound max-rew))) wtd-rew) (clojure.core/min bound max-rew) max-gap new-stat new-src nil))  
   (re-source       [s new-src bound stat-bound] (make-simple-weighted-summary* wtd-rew max-rew max-gap stat new-src [s])) ;;Needed for single-sum; todo: bound?
   (eq               [s other] (= (sws-vec s) (sws-vec other)))
   (>=               [s1 s2 bound] (not (neg? (compare (sws-vec s1) (sws-vec s2))))) ;; TODO: bound?

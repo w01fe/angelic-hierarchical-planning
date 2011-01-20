@@ -65,6 +65,13 @@
 ;; TODO: make sure incorrect weights from bounding are OK.
 ;; TODO: smarter choices (max of alpha * max-rew?)
 ;; TODO: figure out why weighted is worse, even with weight=1.
+;; -->  Problem 1: totally unevaluated things don't pay proper weight?  (try immediate eval?!)
+;; --> Problem 2: weights aren't propagated by subsumption.  Refine-input leads to huge jump.
+;; --> Problem 3: solved has weight != f. (always take solved if within weight???)
+;; TODO: increase should be talking about *bound* or *status* increase ?? (not general >= )
+;; --> First things:
+;;    --> atomic without output should use complete summary of subsuming (incl. wtd)
+;;    --> pair without right should use sum of left and complete summary of subsuming right
 
 ;; Basic idea behind "wait on subsumption":
 ;;   Don't do anything with child of node with subs. parent
@@ -94,6 +101,7 @@
 (declare *decompose-cache*       ) ;; Cache subproblems? Requires *collect-equal-outputs*
 (declare *state-abstraction*     ) ;; Use state abstraction?  Requires *decompose-cache*
 (declare *propagate-subsumption* ) ;; Automatically propagate subsumption links to corresponding children
+(def *eager-evaluation*  false   ) ;; Evaluate descriptions of new atomic subproblems immediately.
 
 (declare *make-opt-summary*      ) ;; fn of [min-reward status source]
 (declare *make-opt-or*           ) ;; fn of [sp-name]
@@ -400,12 +408,16 @@
 
 (defn- make-atomic-subproblem [fs inp-set]
   (let [nm         (atomic-name fs)
-        summary-fn (atom #(make-summary (first inp-set) nil :live % 0))
-        set-sf!    (fn [s f] (reset! summary-fn f) (schedule-decrease! s))] 
+        summary-fn (atom #_ #(make-summary (first inp-set) nil :live % 0) 
+                         (fn [s] (if-let [sub (first (subsuming-sps s))] ;; TODO: ???
+                                   (summary/leafen (sg/summary (sp-ts sub))  (sg/get-bound s) :live s)
+                                   (make-summary (first inp-set) nil :live s  (sg/get-bound s)))))        
+        set-sf!    (fn [s f] (reset! summary-fn f) (schedule-decrease! s))]
+   (doto 
     (make-subproblem
      nm inp-set nil
      (fn evaluate! [s]
-       (util/print-debug 1 "eval" nm (if (get-output-set s) :out :no-out))
+       (util/print-debug 1 "eval" nm (if (get-output-set s) :out :no-out) (sg/summary s))
        (if-not (get-output-set s)
          ;; Not evaluated yet -- evalute description and publish output
          (let [[out-set reward :as p]
@@ -413,7 +425,10 @@
                  :opt (fs/apply-opt fs (second inp-set))
                  :pess (or (fs/apply-pess fs (second inp-set)) [nil summary/neg-inf]))
                status (if p (fs/status fs (second inp-set)) :blocked)]
-           (set-sf! s #(make-summary (first inp-set) (or reward summary/neg-inf) status % 0))
+           (set-sf! s (let [sub (and (= status :live) (first (subsuming-sps s)))] ;; TODO
+                        (if (and sub (< (summary/max-reward (sg/summary sub)) 0))
+                         #(summary/leafen (sg/summary (sp-ts sub)) (min reward (sg/get-bound s)) :live %)                        
+                         #(make-summary (first inp-set) (or reward summary/neg-inf) status % (sg/get-bound s)))))
            (when p (set-output-set! s [(first inp-set) out-set])))
          ;; Evaluated to live -- generate children now.
          (do (set-sf! s (make-or-summarizer (first inp-set) nm (:p-val (sg/summary s))))             
@@ -424,7 +439,9 @@
                  (add-sp-child! s (get-subproblem ref-name inp-set) false))))))     
      (fn [s ri]  (assert (or (not *collect-equal-outputs*) (and (= :pess (first ri)) (= :opt (first inp-set)))))  
        (if (= ri inp-set) s (get-subproblem nm  ri)))
-     (fn summarize [s] (@summary-fn s)))))
+     (fn summarize [s] (@summary-fn s)))
+    (->> evaluate! (or (not *eager-evaluation*))))))
+
 
 (defmethod get-subproblem :Atomic [[_ fs :as n] inp-set] 
   (make-atomic-subproblem fs inp-set))          
@@ -459,8 +476,8 @@
 ;; TODO: short circuit when left terminal? (can we know soon enough?)
 ;; TODO: no right output when right blocked? 
 (defn- make-pair-subproblem
-  ([left-sp right-sp] (make-pair-subproblem left-sp (sp-name right-sp) (constantly right-sp)))
-  ([left-sp right-name right-sp-fn]
+  ([left-sp right-sp] (make-pair-subproblem left-sp (sp-name right-sp) (constantly right-sp) nil))
+  ([left-sp right-name right-sp-fn right-sub-sp]
      (let [nm (pair-name (sp-name left-sp) right-name)
            right-sp (delay (right-sp-fn (get-output-set! left-sp)))
            right?-atom (atom false) ;; Expand on right            
@@ -471,7 +488,7 @@
            ret (make-subproblem nm (input-set left-sp) nil (fn [_] (throw (RuntimeException.))) 
                  (fn [s ni] (if (= ni (input-set left-sp)) s
                                 (make-pair-subproblem (refine-input left-sp ni)
-                                                      right-name #(refine-input @right-sp %))))
+                                                      right-name #(refine-input @right-sp %) @right-sp)))
                  os)
            go-right! (fn [ss] 
                        (reset! right?-atom true)                          
@@ -479,18 +496,26 @@
                        (add-child-watcher! left-sp (fn [c] (def *bad* [ret c]) (throw (RuntimeException. "Solved and children."))))
                        (connect-and-watch! ss @right-sp nil
                          (fn right-child [right-child] (add-sp-child! ret (make-pair-subproblem left-sp right-child) true))))
+           sum-summary (fn [s] ;; TODO: ???
+                         (swap! sg/*summary-count* inc)
+                         (let [kids (sg/child-nodes s)]
+                           (assert (<= 1 (count kids) 2))                           
+                           (cond (= (count kids) 2) (summary/+ (sg/summary (first kids)) (sg/summary (second kids)) s (sg/get-bound s))
+                                 right-sub-sp       (summary/+ (sg/summary left-sp)
+                                                               (sg/summary (sg/make-wrapping-summarizer (sp-ts right-sub-sp) (fn [dummy sub-sum] (summary/leafen sub-sum 0 :blocked dummy)))) s (sg/get-bound s))
+                                 :else              (summary/re-source (sg/summary left-sp) s (sg/get-bound s) :solved))))           
            ss (traits/reify-traits [sg/simple-cached-node] ;; needed for wA*, at least ? 
                 Evaluable
-                (evaluate! [s] (util/print-debug 1 "Eval sum" nm (sg/sum-summary s)) (schedule-decrease! s) (go-right! s) #_ (do (def *root2* *root*) (def *root* nil)))
+                (evaluate! [s] (util/print-debug 1 "Eval sum" nm (sg/sum-summary s)) (schedule-decrease! s) (go-right! s)  #_ (do (def *root2* *root*) (def *root* nil) (def *s* ret)))
                 (sp-name [s] (conj nm :SS)) ;; Needed for wtd.
                 sg/Summarizable
                 (summarize [s]
-                 (let [summ (sg/sum-summary s)]
+                 (let [summ (sum-summary s)]
                    (if (and (not @right?-atom)
                            (solved-terminal? left-sp))
                      (if (empty? (get-children @right-sp))
-                       (do (go-right! s) (sg/sum-summary s))
-                       (summary/leafen summ))
+                       (do (go-right! s) (sum-summary s))
+                       (summary/leafen summ 0 :live s))
                     summ))))]    
        (sg/connect! ret ss)
 ;       (schedule-subsumption! ret ss) ;; TODO: remove ?  Here for bounding of pairs with SWS...
@@ -501,12 +526,14 @@
            (connect-and-watch-ts! ss @right-sp (fn [o] (set-output-set! ret o)))
            (schedule-decrease! ss))
          (fn left-child [left-child]
-           (add-sp-child! ret (make-pair-subproblem left-child right-name #(refine-input @right-sp %)) true))) 
+           (add-sp-child! ret (make-pair-subproblem left-child right-name #(refine-input @right-sp %) @right-sp) true))) 
        ret)))
 
 
+
+
 (defmethod get-subproblem :Pair [[_ left-name right-name :as n] inp]
-  (make-pair-subproblem (get-subproblem left-name inp) right-name #(get-subproblem right-name %)))
+  (make-pair-subproblem (get-subproblem left-name inp) right-name #(get-subproblem right-name %) nil))
 
 
 ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
@@ -741,6 +768,8 @@
 ;; With max-gap choice:
 ;; (dotimes [_ 1] (reset! sg/*summary-count* 0) (reset! summaries-old/*summary-count* 0) (debug 0 (let [opts [:gather true :d false :s false :dir :right] h (make-nav-switch-hierarchy (make-random-nav-switch-env 2 1 1) true)] (time (println (run-counted #(identity (apply da/implicit-dash-a* h opts))) @sg/*summary-count*)) (time (println (run-counted #(identity (apply da/implicit-dash-wa* h 2 {:noop 0 'up 0 'down 0 'left 0 'right 0 'v 0 'h 0 'split-nav 0 'navv 0 'navh 0 'finish 0 'top 1 'act 1} opts))) @sg/*summary-count*)))))
 
+;; better settings
+;; (dotimes [_ 1] (reset! sg/*summary-count* 0) (reset! summaries-old/*summary-count* 0) (debug 0 (let [opts [:gather true :d true :s true :dir :right] h (make-discrete-manipulation-hierarchy (make-random-discrete-manipulation-env 6 3))]  (time (println (run-counted #(identity (apply da/implicit-dash-a* h opts))) @sg/*summary-count*))  (time (println (run-counted #(identity (apply da/implicit-dash-wa* h 3.0 {'act 1 :discretem-tla 1.0 :move-to-goal 1 :go-grasp 0.7 :go-drop 0.7 :go-drop-at 0.6 :drop-at 0.4 :move-base 0.3 :nav 0.2 :reach 0.1 :putdown 0 :pickup 0 :gripper 0 :grasp 0 :park 0 :unpark 0 :base 0 'finish 0 :noop 0} (concat [:choice-fn (fn [s] (apply max-key (comp :max-gap sg/summary) s))] opts)))) @sg/*summary-count*)))))
 ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;; Graveyard ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
 
 (comment ;; Stuff for making contextifying an output require an eval step (old -- needs fixup)

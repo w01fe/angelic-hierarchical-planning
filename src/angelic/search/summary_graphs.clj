@@ -119,7 +119,7 @@
   (get-bound        [n]   @bound)
   (add-bound!       [n b] (when (update-bound! n bound b) (summary-changed! n)))
   (summary [n] (or @cache  (update-summary! n cache bound)))
-  (summary-changed! [n] 
+  (summary-changed! [n] (util/print-debug 4 "SC" n )
     (when-let [old @cache]
 ;      (when-not (summary/viable? old) 
 ;      (util/assert-is (not (summary/viable? (summarize n))) "%s" [(def *bad* n) n old (summarize n)])) 
@@ -128,7 +128,7 @@
 #_          (util/assert-is (summary/live? old) "%s" [(def *bad* n) n]) ;; can put this in if we remove above check.
           (doseq [p (doall (parent-nodes n))]
             (summary-changed! p))))))  
-  (summary-increased! [n] 
+  (summary-increased! [n] (util/print-debug 4 "SI" n)
     (when-let [old @cache]
       (when  true #_ (summary/live? old) 
         (let [new (summarize n)]
@@ -153,12 +153,6 @@
     (combine-fn (map summary (child-nodes n)) n (get-bound n))))
   
 
-(defn sum-summary [s]
-  (swap! *summary-count* inc)
-  (let [kids (child-nodes s)]
-    (case (count kids)
-      2 (summary/+ (summary (first kids)) (summary (second kids)) s (get-bound s))
-      1 (summary/re-source (summary (first kids)) s (get-bound s) :solved))))
 
 
 
@@ -222,6 +216,7 @@
 
 ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;; Graveyard ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
 
+
 (defn or-summary [n]
   (swap! *summary-count* inc)
   (if *kill*
@@ -235,6 +230,13 @@
 
 ;(traits/deftrait worst-summarizable [] [] []
 ;  Summarizable (summarize [s] summary/+worst-simple-summary+))
+
+(defn sum-summary [s]
+  (swap! *summary-count* inc)
+  (let [kids (child-nodes s)]
+    (case (count kids)
+      2 (summary/+ (summary (first kids)) (summary (second kids)) s (get-bound s))
+      1 (summary/re-source (summary (first kids)) s (get-bound s) :solved))))
 
 (defn make-sum-summarizer []
   (traits/reify-traits [simple-cached-node] Summarizable (summarize [s] (sum-summary s))))
