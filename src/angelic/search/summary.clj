@@ -156,6 +156,7 @@
 ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
 
 ;; Weighted A* summary, without pessimistic descriptions.
+;; TODO: bound can come from above .. .. . . .. . . . (wrong weight assigned...)
 
 (declare make-simple-weighted-summary*)
 
@@ -173,7 +174,7 @@
   (status           [s] stat)
   (source          [s] src)
   (children        [s] chldren)
-  (re-source       [s new-src bound stat-bound] (throw (RuntimeException.)))
+  (re-source       [s new-src bound stat-bound] (make-simple-weighted-summary* wtd-rew max-rew stat new-src [s])) ;;Needed for single-sum; todo: bound?
   (eq               [s other] (= (sws-vec s) (sws-vec other)))
   (>=               [s1 s2 bound] (not (neg? (compare (sws-vec s1) (sws-vec s2))))) ;; TODO: bound?
   (+                [s other new-src bound] ;; ignore bound for now
@@ -185,24 +186,25 @@
 
 (defn make-simple-weighted-summary* [wtd-rew max-rew stat src chldren]
   (assert (<= wtd-rew max-rew))
-  (util/assert-is (contains? statuses-set status))
+  (util/assert-is (contains? statuses-set stat))
   (SimpleWeightedSummary. wtd-rew max-rew stat src chldren))
 
 (defn make-simple-weighted-summary [max-reward weight status source]
-  (make-simple-weighted-summary* weight (* max-reward weight) max-reward status source nil))
+  (make-simple-weighted-summary*  (* max-reward weight) max-reward status source nil))
 
 (defmethod print-method SimpleWeightedSummary [s o]
- (print-method (str "SWS:" (:wtd-rew s) (max-reward s) (status s)) o))
+ (print-method (str "SWS:" (:wtd-rew s) " " (max-reward s) " " (status s)) o))
 
 (defn make-sws-or-combiner [weight]
   (fn or-combine-sws [summaries new-src ub]
-    (assert (seq summaries))
-    (let [or-bound (reduce clojure.core/max (map :max-rew summaries))]
-      (loop [best (first summaries) summaries (next summaries)]
-        (if summaries
-          (recur (if (not (neg? (compare (bounded-sws-vec best weight ub) (bounded-sws-vec (first summaries) weight ub)))) best (first summaries))
-                 (next summaries))
-          (make-simple-weighted-summary* (bounded-f best ub) (clojure.core/min or-bound ub) (status best) new-src [best]))))))
+    (if (empty? summaries)
+      (make-simple-weighted-summary neg-inf 1 :blocked new-src)
+     (let [or-bound (reduce clojure.core/max (map :max-rew summaries))]
+       (loop [best (first summaries) summaries (next summaries)]
+         (if summaries
+           (recur (if (not (neg? (compare (bounded-sws-vec best weight ub) (bounded-sws-vec (first summaries) weight ub)))) best (first summaries))
+                  (next summaries))
+           (make-simple-weighted-summary* (bounded-f best weight ub) (clojure.core/min or-bound ub) (status best) new-src [best])))))))
 
 
 (comment ;; Even more broken?

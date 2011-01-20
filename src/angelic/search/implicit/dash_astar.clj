@@ -485,7 +485,7 @@
                                 (make-summary (first (input-set left-sp)) (:p-val (sg/summary ss))  :live s r)))) ;; TODO: despecialize??
                        (os s))))]    
        (sg/connect! ret ss)
-       (schedule-subsumption! ret ss) ;; TODO: remove ?  Here for bounding of pairs with SWS...
+;       (schedule-subsumption! ret ss) ;; TODO: remove ?  Here for bounding of pairs with SWS...
        (when rz (sg/add-child! ss rz))
        (connect-and-watch! ss left-sp
          (fn left-output [_]
@@ -633,25 +633,25 @@
 
 (defn- get-root-ts [inp-set fs] (sp-ts (make-atomic-subproblem fs [:opt inp-set] )))
 
-(defn solve-opt [henv choice-fn local?]
+(defn solve-opt* [henv choice-fn local?]
+  (def *root* (apply get-root-ts (fs/make-init-pair henv)))
+  (summary/solve
+   #(sg/summary *root*)
+   #_ #(let [s (sg/summary *root*)]
+     (assert (not (= [-4 -4] ((juxt :wtd-rew :max-rew) s))))
+     s)
+   (sg/best-leaf-operator choice-fn local? evaluate-and-update!)
+   #(let [n (fs/fs-name (second (sp-name %)))] (when-not (= (first n) :noop) n))))
+
+(defn bind-simple-summary [inner-fn]
   (binding [*make-opt-summary* summary/make-simple-summary
             *make-opt-or*      (constantly #(sg/or-summarize % summary/or-combine-b))]
-    (def *root* (apply get-root-ts (fs/make-init-pair henv)))
-    (summary/solve
-     #(sg/summary *root*)
-     (sg/best-leaf-operator choice-fn local? evaluate-and-update!)
-     #(let [n (fs/fs-name (second (sp-name %)))] (when-not (= (first n) :noop) n)))))
+    (inner-fn)))
 
-;; ???
-#_ (defn solve-pess [opt-root choice-fn local?]
-  (let [pess-root (sp-ts (refine-input (ts-sp opt-root) [:pess (second (input-set (ts-sp opt-root)))]))
-        counter   (atom 0)]
-    (def *pess-root* pess-root)
-    (summary/solve
-     #(do (assert (summary/interval-summary? (sg/summary pess-root)))
-          (sg/summary (if (odd? (swap! counter inc)) opt-root pess-root)))
-     (sg/best-leaf-operator choice-fn local? evaluate-and-update!)
-     #(let [n (fs/fs-name (second (sp-name %)))] (when-not (= (first n) :noop) n)))))
+(defn solve-opt [henv choice-fn local?]
+  (bind-simple-summary #(solve-opt* henv choice-fn local?)))
+
+
 
 
 (defn implicit-dash-a*
@@ -677,20 +677,31 @@
     (solve-fn henv choice-fn local?)))
 
 
-(defn solve-wa* [opt-root choice-fn local?]
-  (let [pess-root (sp-ts (refine-input (ts-sp opt-root) [:pess (second (input-set (ts-sp opt-root)))]))]
-    (def *pess-root* pess-root)
-    (summary/solve
-     #(sg/summary pess-root)
-     (sg/best-leaf-operator choice-fn local? evaluate-and-update!)
-     #(let [[t in-name] (sp-name %)
-            n (case t :OC (fs/fs-name (second in-name)) :Atomic (fs/fs-name in-name))]
-        (when-not (= (first n) :noop) n)))))
+;; Alpha ranges from 0 to primitive to 1 for most high-level.
+(declare *weight* *alpha-fn*)
 
-(defn implicit-dash-wa* [henv w & opts]
-  (binding [summary/*sws-weight* w
-            *make-pess-summary*  summary/make-sw-summary]
-    (apply implicit-dash-a* henv (concat opts [:solve-fn solve-wa*]))))
+(defn weight [n]
+  (case (first n)
+    (:OC :SA) (weight (second n))
+    :Pair     (max (weight (nth n 1)) (weight (nth n 2)))
+    :Atomic   (let [alpha (*alpha-fn* (first (fs/fs-name (second n))))]
+                (util/assert-is (identity alpha) "unknown alpha: %s" n)
+                (+ 1 (* alpha (- *weight* 1))))))
+
+
+(defn bind-simple-weighted-summary [inner-fn]
+  (binding [*make-opt-summary* (fn [r stat src] (summary/make-simple-weighted-summary r (weight (sp-name src))  stat src))
+            *make-opt-or*      (fn [sp-name] (let [oc (summary/make-sws-or-combiner (weight sp-name))]
+                                               #(sg/or-summarize % oc)))]
+    (inner-fn)))
+
+(defn solve-wtd [henv choice-fn local?]
+  (bind-simple-weighted-summary #(solve-opt* henv choice-fn local?)))
+
+(defn implicit-dash-wa* [henv w alpha-fn & opts]
+  (binding [*weight* w
+            *alpha-fn* alpha-fn]
+    (apply implicit-dash-a* henv (concat opts [:solve-fn solve-wtd]))))
 
 
 
@@ -737,3 +748,34 @@
       :eager make-eager-state-abstracted-subproblem
       :deliberate make-deliberate-state-abstracted-subproblem)
     inner-sp inp-set)))
+
+
+(comment
+  
+(defn solve-pess [opt-root choice-fn local?]
+  (let [pess-root (sp-ts (refine-input (ts-sp opt-root) [:pess (second (input-set (ts-sp opt-root)))]))
+        counter   (atom 0)]
+    (def *pess-root* pess-root)
+    (summary/solve
+     #(do (assert (summary/interval-summary? (sg/summary pess-root)))
+          (sg/summary (if (odd? (swap! counter inc)) opt-root pess-root)))
+     (sg/best-leaf-operator choice-fn local? evaluate-and-update!)
+     #(let [n (fs/fs-name (second (sp-name %)))] (when-not (= (first n) :noop) n)))))
+
+
+(defn solve-wa* [opt-root choice-fn local?]
+  (let [pess-root (sp-ts (refine-input (ts-sp opt-root) [:pess (second (input-set (ts-sp opt-root)))]))]
+    (def *pess-root* pess-root)
+    (summary/solve
+     #(sg/summary pess-root)
+     (sg/best-leaf-operator choice-fn local? evaluate-and-update!)
+     #(let [[t in-name] (sp-name %)
+            n (case t :OC (fs/fs-name (second in-name)) :Atomic (fs/fs-name in-name))]
+        (when-not (= (first n) :noop) n)))))
+
+(defn implicit-dash-wa* [henv w & opts]
+  (binding [summary/*sws-weight* w
+            *make-pess-summary*  summary/make-sw-summary]
+    (apply implicit-dash-a* henv (concat opts [:solve-fn solve-wa*]))))
+
+)

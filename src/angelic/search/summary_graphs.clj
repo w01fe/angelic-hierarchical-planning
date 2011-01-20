@@ -109,7 +109,7 @@
   (let [s (summarize n),
         r (summary/max-reward s)]
     (util/print-debug 3 "US" n  @summary-atom s @bound-atom)
-    (when r (assert (<= r @bound-atom)))
+    (when r (util/assert-is (<= r @bound-atom) "%s" [n r @bound-atom (def *bad* n)]))
     (reset! summary-atom s)
     (update-bound! n bound-atom r) 
     s))
@@ -191,7 +191,7 @@
 
 (defn extract-single-live-leaf [summ choice-fn bound]
 ;  (println (summary/source summ) summ)
-  (when-let [r (summary/max-reward summ)] (when bound (assert (>= r bound)))) 
+;  (when-let [r (summary/max-reward summ)] (when bound (assert (>= r bound)))) ;; Not compatable with wa*
 ;  (util/assert-is (summary/eq summ (-> summ summary/source summarize)) "%s" [(def *bad* summ)])
   (let [kids (map summary/source (summary/children summ))]
     (if (empty? kids)
