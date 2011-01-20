@@ -32,6 +32,8 @@
 ;; --> TODO: empty-set subproblems for pessimistic.
 ;; --> TODO: Cannot propagate upper bounds from pessimistic subproblems
 ;;           in the presence of sharing, since they may reflect other opt SPs.
+;; TODO: set max-gap to something reasonable for -inf pess bounds.
+;; TODO: commitment, i.e., pruning from pess tree ? 
 
 ;;;;; Tree construction
 ;; -> TODO: dijkstra variants for cyclic actions ??
@@ -41,6 +43,8 @@
 ;;--> TODO: alternative child release strategies, e.g. wait 'til solved
 ;; TODO: make sure dead stuff can be GC'd
 ;; TODO: note no difference between syntax and semantics for single state ...
+;; TODO: use sharing for solved-terminal? problems everywhere (e.g. ,when SA off)
+;;    (even when SA on -- primitics can funnel)
 
 ;;;;; Summaries and solving 
 ;; TODO: lazy/pseudo-solve (regular seems impossible; bounds mean apparent decrease may be increase.
@@ -129,11 +133,11 @@
 
 ;;;;;;;;;;;;;;;;;;;;;;;;;;      Tree Summarizers      ;;;;;;;;;;;;;;;;;;;;;;;;;;
 
-(declare input-set)
+(declare input-set tree-summarizer? get-children)
 (defn make-or-summarizer [typ init-bound]
   (case typ
     :opt sg/or-summary
-    :pess (sg/make-sws-or-summary init-bound)))
+    :pess (sg/make-sws-or-summary init-bound  #(or (tree-summarizer? %) (empty? (get-children %))))))
 
 
 (defprotocol TreeSummarizer
@@ -149,6 +153,8 @@
     (sg/connect! ret sp)
     (schedule-subsumption! #_ sg/connect-subsumed! ret sp) ;; TODO: schedule, not connect???
     ret))
+
+(defn tree-summarizer? [s] (instance? angelic.search.implicit.dash_astar.TreeSummarizer s))
 
 (defmethod print-method angelic.search.implicit.dash_astar.TreeSummarizer [s o]
   (print-method (format "#<TS %s>" (print-str (ts-sp s))) o))
@@ -459,6 +465,7 @@
                                 (make-summary (input-set left-sp) (:p-val (sg/summary ss))  :live s r)))) ;; TODO: despecialize??
                        (os s))))]    
        (sg/connect! ret ss)
+       (schedule-subsumption! ret ss) ;; TODO: remove ?  Here for bounding of pairs with SWS...
        (when rz (sg/add-child! ss rz))
        (connect-and-watch! ss left-sp
          (fn left-output [_]
@@ -529,13 +536,13 @@
    (fn oc-refine-input [s ni]
      (let [ninp-key (get-input-key fs ni)]
        (cond (= inp-key ninp-key) s
-             (and *share-terminal* (solved-terminal? inner-sp))
+             (and *share-terminal* (solved-terminal? inner-sp) (= :opt (first inp-key)) (= :pess (first ni)))
                (let [r (summary/max-reward (sg/summary inner-sp))
                      ret (make-subproblem (oc-name (sp-name inner-sp)) ni nil
                            (fn [_] (throw (RuntimeException.)))
                            (fn [_ _] (throw (RuntimeException.)))
                            (fn [s] (make-summary ni r :solved s r)))]
-                 (assert (and (= :opt (first inp-key)) (= :pess (first ni))))
+;                 (util/assert-is (and (= :opt (first inp-key)) (= :pess (first ni))) "%s" (def *bad* [inner-sp inp-key ninp-key]))
                  (set-output-set! ret [:pess (second (get-output-set! inner-sp))])
                  ret)               
              (= :Atomic (first (sp-name inner-sp)))

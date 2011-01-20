@@ -156,6 +156,103 @@
 ;; Simple weighted summary, with reward = max(opt * weight, pess)
 ;; TODO: add alpha, to scale weights?
 ;; Although not strictly necessary, keep track of best pess reward and use to bound.
+;; Note: we cannot propagate upper bounds in the presence of shared pessimistic
+;; problems, since they might be lower bounds for totally different input sources.
+;; I.e., suppose we have empty pessimistic set.  Subsumed by every optimistic, incl.
+;;  empty set.
+
+;; TODO: something smarter with max-gap for -inf pess.
+;; TODO: safe way to take bounds into account
+;; TODO: way to prevent blocked even when (worse) live option is available ?
+;; TODO: lower-bounding is not correct for subproblems; they get worse as they release children...
+;;    this leads to infinite loops ieven in easy problems, e.g., nav switch.
+;; TODO: do not release children until at least one achieves the previous bound?
+
+;; TODO: this handling of o-val probably isn't right either ...
+
+(declare *sws-weight*) ; Weight, >= 1.
+
+(declare make-sw-summary* sw-summary?)
+(defn sws-vec [is] [(:f-val is neg-inf) (status-val (status is)) (:p-val is neg-inf) (:o-val is)])
+
+;; Note: o-val is a local upper bound, not nec. a valid global UB.
+;; Idea: when we lift up into a pair, that's when we patch up...
+;; (can be needed elsewhere, anytime we pop out of decomposition)?
+(defrecord SimpleWeightedSummary [p-val f-val o-val max-gap stat src chldren]
+  Summary
+  (max-reward       [s] nil)
+  (reward           [s] f-val) 
+  (status           [s] stat)
+  (source           [s] src)
+  (children         [s] chldren)
+  (re-source        [s new-src bound stat-bound] (throw (RuntimeException.)))  
+  (eq               [s other] (= (sws-vec s) (sws-vec other)))
+  (>=               [s other bound] (not (neg? (compare (sws-vec s) (sws-vec other))))) ;; TODO: bound ???  
+  (+                [s other new-src bound]
+   (util/assert-is (sw-summary? other))
+   (let [p-sum (clojure.core/+ p-val (:p-val other))
+         f-sum (clojure.core/+ f-val (:f-val other))]
+     (make-sw-summary*
+      p-sum (clojure.core/min (clojure.core/max f-sum (* *sws-weight* bound)) bound) bound  ;; TODO?
+      (clojure.core/max max-gap (:max-gap other)) 
+      (min-key status-val stat (status other))
+      new-src [s other]))))
+
+(defn- make-sw-summary* [p-val f-val o-val max-gap status source children]
+  (util/assert-is (<= p-val f-val o-val) "%s" [source children])
+  (SimpleWeightedSummary. p-val f-val o-val (clojure.core/min max-gap (- o-val p-val)) status source children))
+
+(defn make-sw-summary [p-val o-val status source children]
+  (util/assert-is (contains? statuses-set status))
+  (let [f-val (clojure.core/max p-val (* o-val *sws-weight*))]
+    (make-sw-summary* p-val f-val o-val (- o-val p-val) status source children)))
+
+(defn sw-summary? [s] (instance? SimpleWeightedSummary s))
+(defmethod print-method SimpleWeightedSummary [s o]
+  (print-method (str "SWSum:" [(:p-val s) (:f-val s) (:o-val s) (:max-gap s)] (status s)) o))
+
+;(def +worst-sw-summary+ (make-sw-summary* neg-inf neg-inf neg-inf 0 :blocked :worst-sw nil))
+
+;; Can-cache-fn? tells us whether it's safe to use cached lower bounds...
+;; TODO: now this is almost just usual OR ...
+(defn make-sws-or-combiner [init-lb can-cache?-fn]
+  (let [p-atom (atom (or init-lb neg-inf))]
+    (fn or-combine-sws [summaries new-src ub]
+      (assert (seq summaries))
+      (let [lb (reduce clojure.core/max (map :p-val summaries))
+            lb (if (can-cache?-fn new-src) (swap! p-atom clojure.core/max lb) lb)
+            bounded-f #(clojure.core/min (:o-val %) (clojure.core/max lb (:f-val %)))
+            sws-lb-vec #(vector (bounded-f %) (status-val (status %)) (:p-val %))
+            ]
+        (loop [best (first summaries) summaries (next summaries)]
+          (if summaries
+            (recur (if (not (neg? (compare (sws-lb-vec best) (sws-lb-vec (first summaries))))) best (first summaries))
+                   (next summaries))
+            (make-sw-summary* (clojure.core/min (:o-val best) lb)
+                              (bounded-f best)
+                              (:o-val best)
+                              (:max-gap best) (status best) new-src [best])))))))
+
+
+
+
+
+(comment
+  ;; Possibly-broken version (with decomposition) -- propagates potentially invalid upper bounds.
+
+  
+;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
+;;;;;;;;;;;;;;;;;;;;;;;;;;;; SimpleWeightedSummary ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
+;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
+
+;; Simple weighted summary, with reward = max(opt * weight, pess)
+;; TODO: add alpha, to scale weights?
+;; Although not strictly necessary, keep track of best pess reward and use to bound.
+;; Note: we cannot propagate upper bounds in the presence of shared pessimistic
+;; problems, since they might be lower bounds for totally different input sources.
+;; I.e., suppose we have empty pessimistic set.  Subsumed by every optimistic, incl.
+;;  empty set.
+
 
 (declare *sws-weight*) ; Weight, >= 1.
 
@@ -229,9 +326,7 @@
 
 
 
-
-
-
+)
 
 
 

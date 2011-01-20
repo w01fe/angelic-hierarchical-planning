@@ -171,9 +171,9 @@
     ret))
 
 ;; TODO: add kill, etc? 
-(defn make-sws-or-summary [init-lb]
+(defn make-sws-or-summary [init-lb can-cache?-fn]
   (swap! *summary-count* inc)
-  (let [combiner (summary/make-sws-or-combiner init-lb)]
+  (let [combiner (summary/make-sws-or-combiner init-lb can-cache?-fn)]
     #(combiner (map summary (child-nodes %)) % (get-bound %))))
 
 
@@ -193,7 +193,7 @@
 (defn extract-single-live-leaf [summ choice-fn bound]
 ;  (println (summary/source summ) summ)
   (when-let [r (summary/max-reward summ)] (when bound (assert (>= r bound)))) 
-;  (util/assert-is (summary/eq summ (-> summ summary/source summarize)) "%s" [(def *bad* summ)])
+  (util/assert-is (summary/eq summ (-> summ summary/source summarize)) "%s" [(def *bad* summ)])
   (let [kids (map summary/source (summary/children summ))]
     (if (empty? kids)
       (summary/source summ)
