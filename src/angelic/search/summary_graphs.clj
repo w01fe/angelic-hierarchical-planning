@@ -144,14 +144,14 @@
 
 
 
-(defn or-summary [n]
+(defn or-summarize [n combine-fn]
   (swap! *summary-count* inc)
   (if *kill*
     (let [[good-kids bad-kids] (util/separate #(summary/viable? (summary %)) (doall (child-nodes n)))]
       (doseq [k bad-kids] (remove-child! n k))
-      (summary/or-combine-b (map summary good-kids) n (get-bound n)))    
-    (summary/or-combine-b (map summary (child-nodes n)) n (get-bound n))))
-
+      (combine-fn (map summary good-kids) n (get-bound n)))    
+    (combine-fn (map summary (child-nodes n)) n (get-bound n))))
+  
 
 (defn sum-summary [s]
   (swap! *summary-count* inc)
@@ -170,8 +170,7 @@
     (connect! ret wrapped-node)
     ret))
 
-;; TODO: add kill, etc? 
-(defn make-sws-or-summary [init-lb can-cache?-fn]
+#_ (defn make-sws-or-summary [init-lb can-cache?-fn]
   (swap! *summary-count* inc)
   (let [combiner (summary/make-sws-or-combiner init-lb can-cache?-fn)]
     #(combiner (map summary (child-nodes %)) % (get-bound %))))
@@ -193,7 +192,7 @@
 (defn extract-single-live-leaf [summ choice-fn bound]
 ;  (println (summary/source summ) summ)
   (when-let [r (summary/max-reward summ)] (when bound (assert (>= r bound)))) 
-  (util/assert-is (summary/eq summ (-> summ summary/source summarize)) "%s" [(def *bad* summ)])
+;  (util/assert-is (summary/eq summ (-> summ summary/source summarize)) "%s" [(def *bad* summ)])
   (let [kids (map summary/source (summary/children summ))]
     (if (empty? kids)
       (summary/source summ)
@@ -224,6 +223,14 @@
 
 
 ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;; Graveyard ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
+
+(defn or-summary [n]
+  (swap! *summary-count* inc)
+  (if *kill*
+    (let [[good-kids bad-kids] (util/separate #(summary/viable? (summary %)) (doall (child-nodes n)))]
+      (doseq [k bad-kids] (remove-child! n k))
+      (summary/or-combine-b (map summary good-kids) n (get-bound n)))    
+    (summary/or-combine-b (map summary (child-nodes n)) n (get-bound n))))
 
 (traits/deftrait or-summarizable [] [] []
   Summarizable (summarize [s] (or-summary s)))

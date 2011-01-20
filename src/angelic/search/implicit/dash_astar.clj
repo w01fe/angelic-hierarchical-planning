@@ -67,6 +67,15 @@
 ;; Can be implemented by not letting children go until they have subs...
 ;;  (and not incorporating into summary, except as bound) .... ?
 
+;; Current pess thing is broken -- should go other way!
+;;  (gathering happens on opt side!).
+;; Then, two questions:
+;;   - How does propagation work?
+;;     - Lower bounds should be propagated *up* subsumption links?
+;;   - How does pess side get evaluated?
+;;     - After eval opt, eval pess if needed?
+
+;; TODO: watch out for increases that were previously decreases...
 
 ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
 ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;       Options      ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
@@ -80,7 +89,12 @@
 (declare *decompose-cache*       ) ;; Cache subproblems? Requires *collect-equal-outputs*
 (declare *state-abstraction*     ) ;; Use state abstraction?  Requires *decompose-cache*
 (declare *propagate-subsumption* ) ;; Automatically propagate subsumption links to corresponding children
+
+(declare *make-opt-summary*      ) ;; fn of [min-reward status source]
+(declare *make-opt-or*           ) ;; fn of [sp-name]
 (declare *make-pess-summary*     ) ;; fn of [min-reward max-reward status source children]
+(declare *make-pess-or*          ) ;; fn of [min-reward max-reward status source children]
+
 (def *share-terminal* true       )
 
 ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
@@ -131,14 +145,26 @@
   (do-changes! *subsumes* (fn [[ts subsumed-ts]] (sg/connect-subsumed! ts subsumed-ts)))
   (do-changes! *decreases* sg/summary-changed!))
 
+;;;;;;;;;;;;;;;;;;;;;;      Summaries and Summarizers      ;;;;;;;;;;;;;;;;;;;;;
+
+(defn make-summary [type rew stat src bound]
+  (let [b (min bound (sg/get-bound src))]
+    (case type
+      :opt  (*make-opt-summary*  (if rew (min rew b) b) stat src)
+      :pess (*make-pess-summary* (or rew summary/neg-inf) b stat src nil))))
+
+(defn make-or-summarizer [type sp-name init-bound]
+  (case type
+    :opt  (*make-opt-or* sp-name)
+    :pess (*make-pess-or* sp-name init-bound)))
+
+#_(sg/make-sws-or-summary init-bound  #(or (tree-summarizer? %) (empty? (get-children %))))
+
+
+
 ;;;;;;;;;;;;;;;;;;;;;;;;;;      Tree Summarizers      ;;;;;;;;;;;;;;;;;;;;;;;;;;
 
-(declare input-set tree-summarizer? get-children)
-(defn make-or-summarizer [typ init-bound]
-  (case typ
-    :opt sg/or-summary
-    :pess (sg/make-sws-or-summary init-bound  #(or (tree-summarizer? %) (empty? (get-children %))))))
-
+(declare input-set sp-name)
 
 (defprotocol TreeSummarizer
   "A 'semantic' summarizer for a subproblem.  Its summarizer represents the best-
@@ -146,7 +172,7 @@
   (ts-sp [ts] "The canonical subproblem summarized by this tree summarizer."))
 
 (defn- make-tree-summarizer [sp]
-  (let [os  (make-or-summarizer (first (input-set sp)) nil)
+  (let [os  (make-or-summarizer (first (input-set sp)) (sp-name sp) nil)
         ret (traits/reify-traits [sg/simple-cached-node]
               sg/Summarizable (summarize [ts] (os ts))
               TreeSummarizer  (ts-sp [ts] sp))]
@@ -320,12 +346,6 @@
 
 (defn atomic-name [fs] [:Atomic fs])
 
-(defn make-summary [[inp-t] rew stat src bound]
-  (let [b (min bound (sg/get-bound src))]
-    (case inp-t
-      :opt  (summary/make-simple-summary (if rew (min rew b) b) stat src)
-      :pess (*make-pess-summary* (or rew summary/neg-inf) b stat src nil))))
-
 
 ;; Pair, SA, etc. has to be able to deal with no pess set...
 ;; For now, it should just not instantiate right?
@@ -374,7 +394,7 @@
 
 (defn- make-atomic-subproblem [fs inp-set]
   (let [nm         (atomic-name fs)
-        summary-fn (atom #(make-summary inp-set nil :live % 0))
+        summary-fn (atom #(make-summary (first inp-set) nil :live % 0))
         set-sf!    (fn [s f] (reset! summary-fn f) (schedule-decrease! s))] 
     (make-subproblem
      nm inp-set nil
@@ -387,10 +407,10 @@
                  :opt (fs/apply-opt fs (second inp-set))
                  :pess (or (fs/apply-pess fs (second inp-set)) [nil summary/neg-inf]))
                status (if p (fs/status fs (second inp-set)) :blocked)]
-           (set-sf! s #(make-summary inp-set reward status % 0))
+           (set-sf! s #(make-summary (first inp-set) reward status % 0))
            (when p (set-output-set! s [(first inp-set) out-set])))
          ;; Evaluated to live -- generate children now.
-         (do (set-sf! s (make-or-summarizer (first inp-set) (:p-val (sg/summary s))))             
+         (do (set-sf! s (make-or-summarizer (first inp-set) nm (:p-val (sg/summary s))))             
              (if-let [subsuming-sps (seq (filter #(not (terminal? %)) (subsuming-sps s)))]
                (connect-and-watch-subsuming! s (apply min-key (comp sg/get-bound sp-ts) subsuming-sps) ;; TODO: bound may not exist!
                  (fn [sub-out] (add-sp-child! s (refine-input sub-out inp-set) true))) 
@@ -449,7 +469,7 @@
                        (connect-and-watch! ss @right-sp nil
                          (fn right-child [right-child] (add-sp-child! s (make-pair-subproblem left-sp right-child) true)))
                        (sg/summary-changed-local! ss))
-           os  (make-or-summarizer (first (input-set left-sp)) nil)
+           os  (make-or-summarizer (first (input-set left-sp)) nm nil)
            ret (make-subproblem nm (input-set left-sp) nil 
                  (fn eval! [s] (schedule-decrease! s) (go-right! s)) 
                  (fn [s ni] (if (= ni (input-set left-sp)) s
@@ -462,7 +482,7 @@
                               (do (go-right! s) nil)
                               (let [ss-r (summary/max-reward (sg/summary ss))
                                     r    (if ss-r (min ss-r (sg/get-bound s)) (sg/get-bound s))]
-                                (make-summary (input-set left-sp) (:p-val (sg/summary ss))  :live s r)))) ;; TODO: despecialize??
+                                (make-summary (first (input-set left-sp)) (:p-val (sg/summary ss))  :live s r)))) ;; TODO: despecialize??
                        (os s))))]    
        (sg/connect! ret ss)
        (schedule-subsumption! ret ss) ;; TODO: remove ?  Here for bounding of pairs with SWS...
@@ -492,7 +512,7 @@
   (util/assert-is (contains? prefix-set (first (sp-name inner-sp))))
   (let [ret (make-subproblem nm inp-set (sp-ts inner-sp)
                              (fn [_] (throw (RuntimeException.)))
-                             ri-fn (make-or-summarizer (first inp-set) nil))]
+                             ri-fn (make-or-summarizer (first inp-set) nm nil))]
     (connect-and-watch! ret inner-sp
       (fn [o] (set-output-set! ret (output-wrap o)))
       (fn [inner-child] (child-watch ret inner-child)))
@@ -541,7 +561,7 @@
                      ret (make-subproblem (oc-name (sp-name inner-sp)) ni nil
                            (fn [_] (throw (RuntimeException.)))
                            (fn [_ _] (throw (RuntimeException.)))
-                           (fn [s] (make-summary ni r :solved s r)))]
+                           (fn [s] (make-summary (first ni) r :solved s r)))]
 ;                 (util/assert-is (and (= :opt (first inp-key)) (= :pess (first ni))) "%s" (def *bad* [inner-sp inp-key ninp-key]))
                  (set-output-set! ret [:pess (second (get-output-set! inner-sp))])
                  ret)               
@@ -611,11 +631,16 @@
 (declare *root*)
 (declare *pess-root*)
 
-(defn solve-opt [root choice-fn local?]
-  (summary/solve
-   #(sg/summary root)
-   (sg/best-leaf-operator choice-fn local? evaluate-and-update!)
-   #(let [n (fs/fs-name (second (sp-name %)))] (when-not (= (first n) :noop) n))))
+(defn- get-root-ts [inp-set fs] (sp-ts (make-atomic-subproblem fs [:opt inp-set] )))
+
+(defn solve-opt [henv choice-fn local?]
+  (binding [*make-opt-summary* summary/make-simple-summary
+            *make-opt-or*      (constantly #(sg/or-summarize % summary/or-combine-b))]
+    (def *root* (apply get-root-ts (fs/make-init-pair henv)))
+    (summary/solve
+     #(sg/summary *root*)
+     (sg/best-leaf-operator choice-fn local? evaluate-and-update!)
+     #(let [n (fs/fs-name (second (sp-name %)))] (when-not (= (first n) :noop) n)))))
 
 ;; ???
 #_ (defn solve-pess [opt-root choice-fn local?]
@@ -628,7 +653,6 @@
      (sg/best-leaf-operator choice-fn local? evaluate-and-update!)
      #(let [n (fs/fs-name (second (sp-name %)))] (when-not (= (first n) :noop) n)))))
 
-(defn- get-root-ts [inp-set fs] (sp-ts (make-atomic-subproblem fs [:opt inp-set] )))
 
 (defn implicit-dash-a*
   "Solve this hierarchical env using implicit DASH-A*, or variants thereupon.  Options are:
@@ -650,8 +674,7 @@
             *state-abstraction*     s
             *left-recursive*        (case dir :left true :right false)
             *propagate-subsumption* prop]
-    (def *root* (apply get-root-ts (fs/make-init-pair henv)))
-    (solve-fn *root* choice-fn local?)))
+    (solve-fn henv choice-fn local?)))
 
 
 (defn solve-wa* [opt-root choice-fn local?]
