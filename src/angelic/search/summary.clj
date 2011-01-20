@@ -30,7 +30,7 @@
   (status           [s] "Status: :blocked, :solved, or :live")
   (source           [s] "Object being directly summarized")
   (children         [s] "Child summaries that went into this, if applicable")
-
+  (leafen            [s] "Make status live, cut off children.")
   (re-source [s src bound stat-bound] "Create a new summary with same status.")
   (eq  [s other]                      "equaltiy, just based on reward and status.")
   (>=  [s other bound]                "Greater, under specified bound?")
@@ -116,6 +116,7 @@
   (status           [s] stat)
   (source          [s] src)
   (children        [s] chldren)
+  (leafen           [s] (SimpleSummary. max-rew :live src nil))
   (re-source       [s new-src bound stat-bound]
     (when (solved? s) (assert (clojure.core/>= bound max-rew)))
     (SimpleSummary. (clojure.core/min max-rew bound) (min-key status-val stat stat-bound) new-src [s]))
@@ -164,7 +165,7 @@
 (defn bounded-f [sws wt ub]
   (cond (clojure.core/>= ub (:max-rew sws)) (:wtd-rew sws)
         (zero? (:max-rew sws)) (* wt ub)
-        :else                  (* (:wtd-rew sws) (/ ub (:max-rew sws)))))
+        :else                  (clojure.core/min ub (* (:wtd-rew sws) (/ ub (:max-rew sws)))))) ;; for rounding...
 (defn bounded-sws-vec [sws wt ub] [(bounded-f sws wt ub) (:max-rew sws) (status-val (:stat sws))])
 
 (defrecord SimpleWeightedSummary [wtd-rew max-rew stat src chldren]
@@ -174,6 +175,7 @@
   (status           [s] stat)
   (source          [s] src)
   (children        [s] chldren)
+  (leafen           [s] (SimpleWeightedSummary. wtd-rew max-rew :live src nil))  
   (re-source       [s new-src bound stat-bound] (make-simple-weighted-summary* wtd-rew max-rew stat new-src [s])) ;;Needed for single-sum; todo: bound?
   (eq               [s other] (= (sws-vec s) (sws-vec other)))
   (>=               [s1 s2 bound] (not (neg? (compare (sws-vec s1) (sws-vec s2))))) ;; TODO: bound?
@@ -185,7 +187,7 @@
      new-src [s other])))
 
 (defn make-simple-weighted-summary* [wtd-rew max-rew stat src chldren]
-  (assert (<= wtd-rew max-rew))
+  (util/assert-is (<= wtd-rew max-rew) "%s" [ stat src chldren])
   (util/assert-is (contains? statuses-set stat))
   (SimpleWeightedSummary. wtd-rew max-rew stat src chldren))
 

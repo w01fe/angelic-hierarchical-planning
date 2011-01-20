@@ -160,8 +160,6 @@
       2 (summary/+ (summary (first kids)) (summary (second kids)) s (get-bound s))
       1 (summary/re-source (summary (first kids)) s (get-bound s) :solved))))
 
-(defn make-sum-summarizer []
-  (traits/reify-traits [simple-cached-node] Summarizable (summarize [s] (sum-summary s))))
 
 
 (defn make-wrapping-summarizer [wrapped-node wrap-fn]
@@ -236,4 +234,7 @@
   Summarizable (summarize [s] (or-summary s)))
 
 ;(traits/deftrait worst-summarizable [] [] []
-;Summarizable (summarize [s] summary/+worst-simple-summary+))
+;  Summarizable (summarize [s] summary/+worst-simple-summary+))
+
+(defn make-sum-summarizer []
+  (traits/reify-traits [simple-cached-node] Summarizable (summarize [s] (sum-summary s))))

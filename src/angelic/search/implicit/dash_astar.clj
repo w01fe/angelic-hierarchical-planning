@@ -61,6 +61,10 @@
 ;; TODO: cache children of output-collector? ~15 examples >1 in dm 4-3...
 ;; TODO: investigate plan seq  normalization. (flattening)
 
+;;;;; Weighted
+;; TODO: make sure incorrect weights from bounding are OK.
+;; TODO: smarter choices (max of alpha * max-rew?)
+
 ;; Basic idea behind "wait on subsumption":
 ;;   Don't do anything with child of node with subs. parent
 ;;   until child has at least one subs. parent (or subs. parents are done.)
@@ -137,7 +141,9 @@
 
 (defn do-changes! [^ArrayList a f] (doseq [sp a] (f sp)) (.clear a))
 
-(declare evaluate!)
+(defprotocol Evaluable
+  (evaluate! [s])
+  (sp-name             [s] "A name to identify this subproblem type (indep. of input)"))
 
 (defn evaluate-and-update! [s]
   (evaluate! s)
@@ -164,7 +170,7 @@
 
 ;;;;;;;;;;;;;;;;;;;;;;;;;;      Tree Summarizers      ;;;;;;;;;;;;;;;;;;;;;;;;;;
 
-(declare input-set sp-name)
+(declare input-set)
 
 (defprotocol TreeSummarizer
   "A 'semantic' summarizer for a subproblem.  Its summarizer represents the best-
@@ -193,10 +199,8 @@
 
 ;; Subproblem must also implement Summarizable; should take bound into account.
 (defprotocol Subproblem
-  (sp-name             [s] "A name to identify this subproblem type (indep. of input)")
   (input-set           [s] "A pair [:opt/:pess state-set]")
   (sp-ts               [s] "Summarizer that includes outputs/children.")
-  (evaluate!           [s] "Evaluate or throw exception if not evaluable.")
 
   (get-output-set      [s]   "Return output pair or nil")
   (add-output-watcher! [s w] "Add watcher to be notified of self when has output.")
@@ -267,11 +271,12 @@
        ^IdentityHashMap subsuming-sp-set (IdentityHashMap.)]
   (traits/reify-traits [sg/simple-cached-node]
    sg/Summarizable (summarize [s] (summary-fn s))
-   Subproblem
+   Evaluable
+  (evaluate!           [s] (eval!-fn s))
   (sp-name             [s] nm)
+   Subproblem
   (input-set           [s] inp-set)
   (sp-ts               [s] (or @ts-atom (reset! ts-atom (make-tree-summarizer s))))
-  (evaluate!           [s] (eval!-fn s))
   
   (get-output-set      [s] (first (publications output-ps)))
   (add-output-watcher! [s w] (subscribe! output-ps w))
@@ -407,7 +412,7 @@
                  :opt (fs/apply-opt fs (second inp-set))
                  :pess (or (fs/apply-pess fs (second inp-set)) [nil summary/neg-inf]))
                status (if p (fs/status fs (second inp-set)) :blocked)]
-           (set-sf! s #(make-summary (first inp-set) reward status % 0))
+           (set-sf! s #(make-summary (first inp-set) (or reward summary/neg-inf) status % 0))
            (when p (set-output-set! s [(first inp-set) out-set])))
          ;; Evaluated to live -- generate children now.
          (do (set-sf! s (make-or-summarizer (first inp-set) nm (:p-val (sg/summary s))))             
@@ -458,32 +463,34 @@
      (let [nm (pair-name (sp-name left-sp) right-name)
            right-sp (delay (right-sp-fn (get-output-set! left-sp)))
            right?-atom (atom false) ;; Expand on right            
-           ss (sg/make-sum-summarizer)
            rz  (when (= :pess (first (input-set left-sp))) ; Right zero (pess needs neg-inf lower bound)
                  (traits/reify-traits [sg/summary-cache] sg/Summarizable
                   (summarize [s] (*make-pess-summary* summary/neg-inf 0 :solved s nil))))
-           go-right! (fn [s] 
-                       (reset! right?-atom true)                          
-                       (sg/disconnect! ss (sp-ts @right-sp))
-                       (add-child-watcher! left-sp (fn [c] (def *bad* [s c]) (throw (RuntimeException. "Solved and children."))))
-                       (connect-and-watch! ss @right-sp nil
-                         (fn right-child [right-child] (add-sp-child! s (make-pair-subproblem left-sp right-child) true)))
-                       (sg/summary-changed-local! ss))
            os  (make-or-summarizer (first (input-set left-sp)) nm nil)
-           ret (make-subproblem nm (input-set left-sp) nil 
-                 (fn eval! [s] (schedule-decrease! s) (go-right! s)) 
+           ret (make-subproblem nm (input-set left-sp) nil (fn [_] (throw (RuntimeException.))) 
                  (fn [s ni] (if (= ni (input-set left-sp)) s
                                 (make-pair-subproblem (refine-input left-sp ni)
                                                       right-name #(refine-input @right-sp %))))
-                 (fn [s] 
-                   (or (and (not @right?-atom)
-                            (solved-terminal? left-sp)
-                            (if (empty? (get-children @right-sp))
-                              (do (go-right! s) nil)
-                              (let [ss-r (summary/max-reward (sg/summary ss))
-                                    r    (if ss-r (min ss-r (sg/get-bound s)) (sg/get-bound s))]
-                                (make-summary (first (input-set left-sp)) (:p-val (sg/summary ss))  :live s r)))) ;; TODO: despecialize??
-                       (os s))))]    
+                 os)
+           go-right! (fn [ss] 
+                       (reset! right?-atom true)                          
+                       (sg/disconnect! ss (sp-ts @right-sp))
+                       (add-child-watcher! left-sp (fn [c] (def *bad* [ret c]) (throw (RuntimeException. "Solved and children."))))
+                       (connect-and-watch! ss @right-sp nil
+                         (fn right-child [right-child] (add-sp-child! ret (make-pair-subproblem left-sp right-child) true))))
+           ss (traits/reify-traits [sg/simple-cached-node] ;; needed for wA*, at least ? 
+                Evaluable
+                (evaluate! [s] (schedule-decrease! s) (go-right! s))
+                (sp-name [s] (conj nm :SS)) ;; Needed for wtd.
+                sg/Summarizable
+                (summarize [s]
+                 (let [summ (sg/sum-summary s)]
+                   (if (and (not @right?-atom)
+                           (solved-terminal? left-sp))
+                     (if (empty? (get-children @right-sp))
+                       (do (go-right! s) (sg/sum-summary s))
+                       (summary/leafen summ))
+                    summ))))]    
        (sg/connect! ret ss)
 ;       (schedule-subsumption! ret ss) ;; TODO: remove ?  Here for bounding of pairs with SWS...
        (when rz (sg/add-child! ss rz))
@@ -701,7 +708,9 @@
 (defn implicit-dash-wa* [henv w alpha-fn & opts]
   (binding [*weight* w
             *alpha-fn* alpha-fn]
-    (apply implicit-dash-a* henv (concat opts [:solve-fn solve-wtd]))))
+    [(apply implicit-dash-a* henv (concat opts [:solve-fn solve-wtd]))
+     :bound (summary/max-reward summary/*last-solution*)]))
+
 
 
 
@@ -719,8 +728,14 @@
 ;; (dotimes [_ 1] (reset! sg/*summary-count* 0) (reset! summaries-old/*summary-count* 0) (debug 0 (let [opts [:gather true :d true :s :eager :dir :right] h (make-discrete-manipulation-hierarchy  (make-random-hard-discrete-manipulation-env 3 3))]   (time (println (run-counted #(identity (apply da/implicit-dash-a* h opts))) @sg/*summary-count*))   (time (println (run-counted #(identity (apply dao/implicit-dash-a*-opt h opts))) @summaries-old/*summary-count*))   (time (println (run-counted #(identity (dam/implicit-random-dash-a*-opt h))) ))   (time (println (run-counted #(identity (his/explicit-simple-dash-a* h))) )) )))
 
 
+;; Weighted A* on nav-switch
+
+;; (dotimes [_ 1] (reset! sg/*summary-count* 0) (reset! summaries-old/*summary-count* 0) (debug 0 (let [opts [:gather true :d false :s false :dir :right] h (make-nav-switch-hierarchy (make-random-nav-switch-env 2 1 1) true)] (time (println (run-counted #(identity (apply da/implicit-dash-a* h opts))) @sg/*summary-count*)) (time (println (run-counted #(identity (apply da/implicit-dash-wa* h 2 {:noop 0 'up 0 'down 0 'left 0 'right 0 'v 0 'h 0 'split-nav 0 'navv 0 'navh 0 'finish 0 'top 1 'act 1} opts))) @sg/*summary-count*)))))
 
 
+;; Weighted A* on D-m
+
+;; (dotimes [_ 1] (reset! sg/*summary-count* 0) (reset! summaries-old/*summary-count* 0) (debug 0 (let [opts [:gather true :d false :s false :dir :right] h (make-discrete-manipulation-hierarchy  (make-random-hard-discrete-manipulation-env 3 3))] #_ (time (println (run-counted #(identity (apply da/implicit-dash-a* h opts))) @sg/*summary-count*)) (time (println (run-counted #(identity (apply da/implicit-dash-wa* h 2 {} opts))) @sg/*summary-count*)))))
 
 
 ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;; Graveyard ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
