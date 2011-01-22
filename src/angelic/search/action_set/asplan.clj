@@ -136,6 +136,8 @@
         precond-vars (keys (dissoc precond-map effect-var))
         [free-pv unfree-pv] (util/separate #(state/get-var s (free-var %)) precond-vars)]
     (assert (every? #(contains? #{nil :frozen} (state/get-var s (action-var %))) precond-vars))
+#_    (util/assert-is (every? #(contains? #{nil :frozen} (state/get-var s (action-var %))) precond-vars)
+                    "%s" [name precond-map effect-map s])    
     (env-util/make-factored-primitive
      [::Fire name]
      (into precond-map 
@@ -310,12 +312,16 @@
   (let [c-val (state/get-var s v)
         dtg   (get-in dtgs [v c-val])
         child (current-child s cvm v)
-        d-val (-> (state/get-var s (action-var child)) :precond-map (util/safe-get v))]
+        d-val (-> (state/get-var s (action-var child)) :precond-map (get v))]
     ;;    (when greedy? #_ (util/assert-is (not (= c-val d-val)) "%s" (def *s* s)))
-    (if (= c-val d-val)
-      [(make-freeze-var-action v)]
-      (for [n-val (acyclic-succ-fn v c-val d-val), a (dtg n-val)]
-        (make-add-action-action a)))))
+    (if d-val 
+      (if (= c-val d-val)
+        [(make-freeze-var-action v)]
+        (for [n-val (acyclic-succ-fn v c-val d-val), a (dtg n-val)]
+          (make-add-action-action a)))
+      ;; This should only arise in cyclic domains -- TODO: remove?
+      (add-actions s v dtgs))))
+
 
 
 
@@ -370,8 +376,9 @@
            dtgs          (sas-analysis/domain-transition-graphs sas-problem)
            simple-dtgs   (util/map-vals (fn [dtg] (for [[pval emap] dtg, [eval _] emap] [pval eval])) dtgs)
            acyclic-succ-fn (partial possibly-acyclic-successors (HashMap.) simple-dtgs)]
-       (assert (graphs/dag? causal-graph))    
-
+;       (assert (graphs/dag? causal-graph))    
+       (assert (sas-analysis/unary? sas-problem))
+       
        (ASPlanEnv.
         sas-problem
         (expand-initial-state (env/initial-state sas-problem) child-var-map (goal-action dtgs))
@@ -407,6 +414,10 @@
                 :else (assert "Unknown source type!")))))
         (env/goal-map sas-problem)
         causal-graph dtgs av-map child-var-map tsi acyclic-succ-fn))))
+
+(comment
+  (try [(make-fire-action-type s  edge-rule (first sources))] ;; TODO: rempve!
+                              (catch AssertionError e nil)))
 
 (defn make-naive-asplan-env
   "Replace the actions-fn in asplan-env with one that generates all legal actions,
@@ -456,7 +467,7 @@
 
 
 
-;; (use 'angelic.env 'angelic.hierarchy 'angelic.search.textbook 'angelic.domains.taxi-infinite 'angelic.search.action-set.asplan  'angelic.domains.sas-problems 'edu.berkeley.ai.util 'angelic.sas.hm-heuristic)
+;; (use 'angelic.env 'angelic.hierarchy 'angelic.search.textbook 'angelic.domains.taxi-infinite 'angelic.search.action-set.asplan  'angelic.domains.sas-problems 'angelic.sas 'angelic.sas.analysis 'edu.berkeley.ai.util 'angelic.sas.hm-heuristic)
 
 ;; (let [e (make-random-infinite-taxi-sas2 4 4 4 2)] (println (time (run-counted #(uniform-cost-search e)))) (println (time (run-counted #(asplan-solution-pair-name (uniform-cost-search (make-asplan-env e)))))))
 
@@ -467,7 +478,7 @@
 
  ; (doseq [[alg sp]  [[make-asplan-env asplan-solution-pair-name] [angelic.search.action-set.asplan-broken/make-asplan-env angelic.search.action-set.asplan-broken/asplan-solution-pair-name]] ] (println (time (run-counted #(sp (uniform-cost-search (alg (make-random-infinite-taxi-sas2 3 3 3 3))))))))
 
-
+; (-> (nth (vals (sas-sample-files 1)) 5) make-sas-problem-from-pddl unarize make-asplan-env interactive-search)
 
 
 
