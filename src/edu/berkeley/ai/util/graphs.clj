@@ -71,7 +71,8 @@
 (defstruct undirected-graph :class :nodes :edges)
 
 (defn edge-cost [g n1 n2]
-  (get (:edges g) #{n1 n2} Double/POSITIVE_INFINITY))
+  (if (= n1 n2) 0
+      (get (:edges g) #{n1 n2} Double/POSITIVE_INFINITY)))
 
 (defn- make-undirected-graph- [nodes edges]
   (struct undirected-graph ::UndirectedGraph nodes edges))
