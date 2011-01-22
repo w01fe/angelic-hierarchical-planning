@@ -3,7 +3,7 @@
             [edu.berkeley.ai.util [queues :as queues] [graphviz :as gv] [graphs :as graphs]]
             [angelic [sas :as sas] [env :as env]]
             [angelic.env.util :as env-util])
-  (:import [java.util HashMap HashSet]))
+  (:import [java.util HashMap HashSet ArrayList]))
 
 
 ;;;;;;;;;;;;;;;;;;;;;;;;;; Causal graphs, DTGS, etc.          ;;;;;;;;;;;;;;;;;;;;;;;;
@@ -43,8 +43,7 @@
 (defn standard-causal-graph 
   "Return an edge list for a standard causal graph of the problem."
   [sas-problem]
-  (let [vars    (:vars sas-problem)
-        actions (:actions sas-problem)]
+  (let [actions (:actions sas-problem)]
     (distinct
      (for [action actions
            precondition (concat (:precond-map action) (:effect-map action))
@@ -128,6 +127,48 @@
        (util/assert-is (apply = #{var} (map (comp util/keyset :effect-map) actions)))
        (apply = (map (comp util/keyset :precond-map) actions))))
    (domain-transition-graphs sas-problem)))
+
+;;;;;;;;;;;;;;;;;;;;;;;;;;             Homogeneity            ;;;;;;;;;;;;;;;;;;;;;;;;
+
+(defn degree [sas-problem]
+  (reduce max (map #(count (:effect-map %)) (:actions sas-problem))))
+
+(defn unary? [sas-problem] (<= (degree sas-problem) 1))
+
+;; TODO: do we have to lock preconds ? 
+(defn unarize [sas-problem]
+  (let [{:keys [ vars init actions]} sas-problem
+        cg-edges    (standard-causal-graph sas-problem)
+        dep-graph   (graphs/make-undirected-graph
+                     (util/keyset vars)
+                     (into {} (for [e cg-edges :when (not (apply = e))] [(set e) 1])))
+        goal-distances (into {} (for [[e c] (:edges (graphs/shortest-path-graph dep-graph))
+                                      :when (contains? e sas/goal-var-name)]
+                                  [(first (disj e sas/goal-var-name)) c]))
+        final-var-vals (HashMap. (util/map-vals (comp vec :vals) vars))
+        final-actions  (ArrayList.)]
+    (doseq [a actions]
+      (let [{:keys [name precond-map effect-map reward]} a]
+        (case (count effect-map)
+          1 (.add final-actions a)
+          2 (let [primary-evar (apply max-key goal-distances (keys effect-map))
+                  primary-eval (util/safe-get effect-map primary-evar)
+                  other-evar   (util/safe-singleton (keys (dissoc effect-map primary-evar)))
+                  other-eval   (util/safe-get effect-map other-evar)
+                  new-val      [:doing name]]
+              (.put final-var-vals primary-evar (conj (.get final-var-vals primary-evar) new-val))
+              (.add final-actions (env-util/make-factored-primitive
+                                   [:start name] precond-map {primary-evar new-val} reward))
+              (.add final-actions (env-util/make-factored-primitive
+                                   [:aux name] {primary-evar new-val other-evar (util/safe-get precond-map other-evar)} {other-evar other-eval} 0))
+              (.add final-actions (env-util/make-factored-primitive
+                                   [:finish name] {primary-evar new-val other-evar other-eval} {primary-evar primary-eval} 0))))))
+    (sas/make-sas-problem
+     (into {} (for [[k v] final-var-vals] [k (sas/make-sas-var k v)]))
+     init
+     (seq final-actions))))
+
+
 
 ;(defn homogenize [sas-problem]  
 ;  )
