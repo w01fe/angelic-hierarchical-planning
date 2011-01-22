@@ -18,24 +18,41 @@
 
 (defn effect-var [a] (util/safe-singleton (keys (:effect-map a))))
 
+(defn dynamic-predecessors [state ap-map v]
+  (for [a (get ap-map [v (state/get-var state v)])
+        [pvar pval] (:precond-map a)
+        :when (not (= (state/get-var state pvar) pval))]
+    pvar))
+
+(defn dynamic-var-set [state av-map ap-map v]
+  (let [open   (ArrayList.)
+        ret    (HashSet.)
+        closed (HashSet.)]
+    (.add open v)
+    (while (not (.isEmpty open))
+      (let [v (.remove open (dec (count open)))]
+        (when-not (.contains closed v)
+          (.add closed v)
+          (doseq [x (dynamic-predecessors state ap-map v)]
+            (.addAll ret (av-map x))
+            (.addAll open (av-map x))))))
+    (set (seq ret))))
+
 ;; TODO: none of these work!
 (defn dynamic-inf-stratified-applicable-actions [last-a state tsi av-map ap-map actions]
   (if last-a
     (let [a-var   (effect-var last-a)
           a-level (util/safe-get tsi a-var)
-          e-p-set (set (for [b (get ap-map (util/safe-singleton (seq (:effect-map last-a))))
-                             [pvar pval] (:precond-map b)
-                             :when (not (= (state/get-var state pvar) pval))]
-                         pvar))
-          p-set   (apply clojure.set/union (map av-map e-p-set))]
-      (util/prln (filter
-        (fn [b]
-          (let [b-var (effect-var b)
-                b-level (util/safe-get tsi b-var)]
-            (or (and (<= b-level a-level) (contains? p-set b-var))
-                (contains? (util/keyset (:precond-map b)) (keys (:precond-map last-a)))
-                (contains? (:precond-map b) a-var))))       
-        (actions state)) last-a))
+          p-set   (dynamic-var-set state av-map ap-map a-var)]
+   #_   (println last-a p-set state)
+      (filter
+       (fn [b]
+         (let [b-var (effect-var b)
+               b-level (util/safe-get tsi b-var)]
+           (or (and (<= b-level a-level) (contains? p-set b-var))
+;               (contains? (util/keyset (:precond-map b)) (keys (:precond-map last-a)))
+               (contains? (:precond-map b) a-var))))       
+       (actions state)))
     (actions state)))
 
 (comment (some #(= ((:precond-map last-a) %) ((:precond-map b) %))
@@ -70,7 +87,7 @@
     (actions state)))
 
 (defn stratified-search [sas-problem type]
-  (assert (#{:simple} type))
+  (assert (#{:simple :dynamic} type))
   (let [q       (queues/make-tree-search-pq)
         closed  (HashSet.)
         actions (env/actions-fn sas-problem)
@@ -125,6 +142,21 @@
 ;; 6-2: 3286212
 ;; 5-0: 4053436
 
+;; Logistics results (# states) to match table. -- dynamic
+;; 5-2: 16086
+;; 6-1: 194870
+;; 4-2: 277791
+;; 5-1: 454016
+;; 4-1: 750217
+;; 4-0: 986574
+;; 6-3: 1908549
+;; 6-0: 1864844
+;; 6-2: 1947242
+;; 5-0: 2272572
+
+
+
+
 ;; Wrong ? 
 ;; Logistics results (# states) to match table. -- structural
 ;; 5-2: 8585
@@ -137,15 +169,3 @@
 ;; 6-0: 3435578
 ;; 6-2: 3286212
 ;; 5-0: 3085333
-
-;; Logistics results (# states) to match table. -- dynamic
-;; 5-2: 2895
-;; 6-1: 34968
-;; 4-2: 74947
-;; 5-1: 
-;; 4-1: 
-;; 4-0: 
-;; 6-3: 
-;; 6-0: 
-;; 6-2: 
-;; 5-0: 
