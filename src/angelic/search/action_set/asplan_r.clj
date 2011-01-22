@@ -280,6 +280,12 @@
                               :when (state/get-var s (parent-var p c))]
                           c)))))
 
+;; TODO: generalize?!
+(defn action-matches? [p v a]
+  (let [n (:name a)]
+    (or (not (#{:pick-up :drop} (first n)))
+        (= (second p) (second n)))))
+
 
 (defn activation-actions  "Return a list of all activation actions for var v"
   [s child-map rvm v]
@@ -287,11 +293,12 @@
     (for [c (child-map v)
           :when 
           (or (not (seq resource-vars))
-           (let [cav (state/get-var s (action-var c))]
-             (or (not cav) (= :frozen cav)
-                 (let [[arvar arval-map] (:resource-map cav)]
-                   (or (not (contains? resource-vars arvar))
-                       (contains? arval-map (state/get-var s arvar)))))))]
+              (let [cav (state/get-var s (action-var c))]
+                (or (not cav) (= :frozen cav)
+                    (let [[arvar arval-map] (:resource-map cav)]
+                      (and (action-matches? v c cav)
+                           (or (not (contains? resource-vars arvar))
+                               (contains? arval-map (state/get-var s arvar))))))))]
       (make-set-parent-var-action v c))))
 
 (defn add-actions [s v dtgs]
@@ -307,17 +314,19 @@
     ;;    (when greedy? #_ (util/assert-is (not (= c-val d-val)) "%s" (def *s* s)))
     (filter
      (fn [a]
-       (let [[r-var r-val-map] (:resource-map (first (vals (:effect-map a))))]
-         (or (not r-var)
-             (not (= (current-child s cvm (util/safe-get r-own-m r-var)) v))
-             (contains? r-val-map (state/get-var s r-var)))))     
-     (if d-val 
-       (if (= c-val d-val)
-         [(make-freeze-var-action v)]
-         (for [n-val (acyclic-succ-fn v c-val d-val), a (dtg n-val)]
-           (make-add-action-action a)))
-       ;; This should only arise in cyclic domains -- TODO: remove?
-       (add-actions s v dtgs)))))
+       (let [a (first (vals (:effect-map a)))]
+         (and #_ (or (not (#{:pick-up :drop} (first (:name a))))
+                  (every? (fn [v2] (or (not (= (current-child s cvm v2) v))
+                                       (= (second v2) (second (:name a)))))
+                          (keys cvm)))
+              (let [[r-var r-val-map] (:resource-map a)]
+                (or (not r-var)
+                    (not (= (current-child s cvm (util/safe-get r-own-m r-var)) v))
+                    (contains? r-val-map (state/get-var s r-var)))))))     
+     (if (= c-val d-val)
+       [(make-freeze-var-action v)]
+       (for [n-val (acyclic-succ-fn v c-val d-val), a (dtg n-val)]
+         (make-add-action-action a))))))
 
 
 
@@ -335,14 +344,18 @@
 
 ;;;;;;;;;;;;;;;;;;;;;;;;;;;; Resource transformation ;;;;;;;;;;;;;;;;;;;;;;;;;;;
 
-(defn remove-bad-drops [actions]
-  (let [g (util/safe-singleton (filter #(= (:name %) sas/goal-action-name) actions))]
-    (remove
-     (fn [a]
-       (and (= (first (:name a)) :drop)
-            (not (= (util/safe-singleton (vals (:effect-map a)))
-                    (util/safe-get (:precond-map g) (util/safe-singleton (keys (:effect-map a))))))))
-     actions)))
+(defn constrain-drops [sas-problem resource-var? drop-name]
+  (let [actions (:actions sas-problem)
+        g (util/safe-singleton (filter #(= (:name %) sas/goal-action-name) actions))]
+    (sas/make-sas-problem
+     (:vars sas-problem)
+     (:init sas-problem)
+     (remove
+      (fn [a]
+        (and (= (first (:name a)) drop-name)
+             (let [[evar eval] (util/safe-singleton (filter #(not (resource-var? (key %))) (:effect-map a)))]
+               (not (= eval (util/safe-get (:precond-map g) evar))))))
+      actions))))
 
 
 (defn resource-simplify [actions resource-var?]
@@ -373,15 +386,14 @@
                       (assoc a :precond-map rpm :effect-map rem
                              :resource-map [resource-var {pre-r eff-r}]))))))
     [(doall
-      (remove-bad-drops 
-       (for [[[pm em] as] (seq final-actions-by-pe)]
-         (or (util/singleton as)
-             (let [resource-maps (map :resource-map as)]
-               (util/assert-is (every? identity resource-maps) "%s" as)
-               (assert (apply = (map :reward as)))
-               (util/assert-is (apply = (map first resource-maps)))
-               (assoc (first as) :resource-map
-                      [(ffirst resource-maps) (reduce util/merge-disjoint (map second resource-maps))]))))))
+      (for [[[pm em] as] (seq final-actions-by-pe)]
+        (or (util/singleton as)
+            (let [resource-maps (map :resource-map as)]
+              (util/assert-is (every? identity resource-maps) "%s" as)
+              (assert (apply = (map :reward as)))
+              (util/assert-is (apply = (map first resource-maps)))
+              (assoc (first as) :resource-map
+                     [(ffirst resource-maps) (reduce util/merge-disjoint (map second resource-maps))])))))
      (into {} resource-owners)
      (seq resource-edges)]))
 

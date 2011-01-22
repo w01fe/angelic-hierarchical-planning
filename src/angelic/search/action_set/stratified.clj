@@ -9,7 +9,7 @@
             [angelic.sas.analysis :as sas-analysis]
             [angelic.search.action-set.asplan :as asplan]
             )
-  (:import [java.util HashSet]))
+  (:import [java.util HashSet HashMap  ArrayList]))
 
 ;; This implements (inefficiently) the stratified planning strategy of 
 ;; Chen et al. (2009), for comparing # states generated with BI.
@@ -18,15 +18,40 @@
 
 (defn effect-var [a] (util/safe-singleton (keys (:effect-map a))))
 
-;; Does not work.  The "jumping around" afforded by the TSI is needed.
-(defn improved-inf-stratified-applicable-actions [last-a state pre-var-map actions]
+;; TODO: none of these work!
+(defn dynamic-inf-stratified-applicable-actions [last-a state tsi av-map ap-map actions]
   (if last-a
     (let [a-var   (effect-var last-a)
-          p-set   (util/safe-get pre-var-map a-var)]
+          a-level (util/safe-get tsi a-var)
+          e-p-set (set (for [b (get ap-map (util/safe-singleton (seq (:effect-map last-a))))
+                             [pvar pval] (:precond-map b)
+                             :when (not (= (state/get-var state pvar) pval))]
+                         pvar))
+          p-set   (apply clojure.set/union (map av-map e-p-set))]
+      (util/prln (filter
+        (fn [b]
+          (let [b-var (effect-var b)
+                b-level (util/safe-get tsi b-var)]
+            (or (and (<= b-level a-level) (contains? p-set b-var))
+                (contains? (util/keyset (:precond-map b)) (keys (:precond-map last-a)))
+                (contains? (:precond-map b) a-var))))       
+        (actions state)) last-a))
+    (actions state)))
+
+(comment (some #(= ((:precond-map last-a) %) ((:precond-map b) %))
+            (clojure.set/intersection (util/keyset (:precond-map last-a)) (util/keyset (:precond-map b)))))
+
+;; TODO: Is this actually right -- i think not?
+(defn improved-inf-stratified-applicable-actions [last-a state tsi cav-map actions]
+  (if last-a
+    (let [a-var   (effect-var last-a)
+          a-level (util/safe-get tsi a-var)
+          p-set   (util/safe-get cav-map a-var)]
       (filter
        (fn [b]
-         (let [b-var (effect-var b)]
-           (or (contains? p-set b-var)
+         (let [b-var (effect-var b)
+               b-level (util/safe-get tsi b-var)]
+           (or (and (<= b-level a-level)  (contains? p-set b-var))
                (contains? (:precond-map b) a-var))))       
        (actions state)))
     (actions state)))
@@ -44,19 +69,28 @@
        (actions state)))
     (actions state)))
 
-(defn stratified-search [sas-problem]
-  (let [improved? false
-        q       (queues/make-tree-search-pq)
+(defn stratified-search [sas-problem type]
+  (assert (#{:simple} type))
+  (let [q       (queues/make-tree-search-pq)
         closed  (HashSet.)
         actions (env/actions-fn sas-problem)
-        causal-graph  (sas-analysis/standard-causal-graph sas-problem) 
-        pre-var-map   (util/map-vals #(set (map first %)) (group-by second causal-graph))
+        causal-graph  (sas-analysis/standard-causal-graph sas-problem)
+        cg-map        (graphs/edge-list->outgoing-map causal-graph)
+        av-map        (into {} (for [v (keys (:vars sas-problem))]
+                                 [v (graphs/ancestor-set causal-graph [v])]))
+        cav-map       (into {} (for [v (keys (:vars sas-problem))]
+                                 [v (apply clojure.set/union (map av-map (cg-map v)))]))
+        ap-map        (HashMap.)
+;        pre-var-map   (util/map-vals #(set (map first %)) (group-by second causal-graph))
         tsi           (graphs/topological-sort-indices (remove #(apply = %) causal-graph))
         goal    (env/goal-fn sas-problem)
         init    (env/initial-state sas-problem)
-        strat-actions (if improved?
-                        (fn [last-a state] (improved-inf-stratified-applicable-actions last-a state pre-var-map actions))
-                        (fn [last-a state] (inf-stratified-applicable-actions last-a state tsi actions)))]
+        strat-actions (case type
+                        :simple     (fn [last-a state] (inf-stratified-applicable-actions last-a state tsi actions))
+                        :structural (fn [last-a state] (improved-inf-stratified-applicable-actions last-a state tsi cav-map actions))                       :dynamic    (fn [last-a state] (dynamic-inf-stratified-applicable-actions last-a state tsi av-map ap-map actions)))]
+    (when (= type :dynamic) #_ (println av-map)
+      (doseq [a (:actions sas-problem), pp (:precond-map a)]
+        (.put ap-map pp (cons a (.get ap-map pp)))))    
     (queues/pq-add! q [nil init] 0)
 ;    (println causal-graph tsi pre-var-map)
     (loop []
@@ -90,3 +124,28 @@
 ;; 6-0: 3435578
 ;; 6-2: 3286212
 ;; 5-0: 4053436
+
+;; Wrong ? 
+;; Logistics results (# states) to match table. -- structural
+;; 5-2: 8585
+;; 6-1: 226446
+;; 4-2: 122924
+;; 5-1: 390726
+;; 4-1: 414577
+;; 4-0: 646398
+;; 6-3: 2747824
+;; 6-0: 3435578
+;; 6-2: 3286212
+;; 5-0: 3085333
+
+;; Logistics results (# states) to match table. -- dynamic
+;; 5-2: 2895
+;; 6-1: 34968
+;; 4-2: 74947
+;; 5-1: 
+;; 4-1: 
+;; 4-0: 
+;; 6-3: 
+;; 6-0: 
+;; 6-2: 
+;; 5-0: 
