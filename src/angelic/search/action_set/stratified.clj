@@ -18,7 +18,20 @@
 
 (defn effect-var [a] (util/safe-singleton (keys (:effect-map a))))
 
-(defn stratified-applicable-actions [last-a state tsi actions]
+;; Does not work.  The "jumping around" afforded by the TSI is needed.
+(defn improved-inf-stratified-applicable-actions [last-a state pre-var-map actions]
+  (if last-a
+    (let [a-var   (effect-var last-a)
+          p-set   (util/safe-get pre-var-map a-var)]
+      (filter
+       (fn [b]
+         (let [b-var (effect-var b)]
+           (or (contains? p-set b-var)
+               (contains? (:precond-map b) a-var))))       
+       (actions state)))
+    (actions state)))
+
+(defn inf-stratified-applicable-actions [last-a state tsi actions]
   (if last-a
     (let [a-var   (effect-var last-a)
           a-level (util/safe-get tsi a-var)]
@@ -32,15 +45,20 @@
     (actions state)))
 
 (defn stratified-search [sas-problem]
-  (let [q       (queues/make-tree-search-pq)
+  (let [improved? false
+        q       (queues/make-tree-search-pq)
         closed  (HashSet.)
         actions (env/actions-fn sas-problem)
-        causal-graph  (remove #(apply = %) (sas-analysis/standard-causal-graph sas-problem))
-        tsi           (graphs/topological-sort-indices causal-graph)
+        causal-graph  (sas-analysis/standard-causal-graph sas-problem) 
+        pre-var-map   (util/map-vals #(set (map first %)) (group-by second causal-graph))
+        tsi           (graphs/topological-sort-indices (remove #(apply = %) causal-graph))
         goal    (env/goal-fn sas-problem)
-        init    (env/initial-state sas-problem)]
+        init    (env/initial-state sas-problem)
+        strat-actions (if improved?
+                        (fn [last-a state] (improved-inf-stratified-applicable-actions last-a state pre-var-map actions))
+                        (fn [last-a state] (inf-stratified-applicable-actions last-a state tsi actions)))]
     (queues/pq-add! q [nil init] 0)
-    (println tsi)
+;    (println causal-graph tsi pre-var-map)
     (loop []
       (when-not (queues/pq-empty? q)
         (let [[[last-a state] c] (queues/pq-remove-min-with-cost! q)]
@@ -49,7 +67,7 @@
             [(reverse (:act-seq (meta state))) (:reward (meta state))]
             (do (when-not (.contains closed state)
                   (.add closed state)
-                  (doseq [a (stratified-applicable-actions last-a state tsi actions)]
+                  (doseq [a (strat-actions last-a state)]
                     (when (env/applicable? a state)
                       (let [[ss sc] (env/successor a state)]
                         (queues/pq-add! q [a ss] (- c sc))))))
@@ -61,7 +79,7 @@
 
 ;; (let [e (force (nth ipc2-logistics 3)) ]  (println (time (run-counted #(stratified-search e)))))
 
-;; Logistics results (# states) to match table.
+;; Logistics results (# states) to match table. -- ordi
 ;; 5-2: 19771
 ;; 6-1: 226446
 ;; 4-2: 365709
