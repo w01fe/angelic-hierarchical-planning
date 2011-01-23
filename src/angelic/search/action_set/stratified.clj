@@ -208,7 +208,7 @@
                         :structural (fn [last-a state] (improved-inf-stratified-applicable-actions last-a state tsi cav-map actions))                       :dynamic    (fn [last-a state] (dynamic-inf-stratified-applicable-actions last-a state tsi av-map ap-map actions))
                         :fluid    (fn [last-a state] (dynamic-fluid-inf-stratified-applicable-actions last-a state tsi av-map ap-map goal-map cg-map icg-map actions))
                         )]
-    (println tsi)
+;    (println tsi)
     (when (#{:dynamic :fluid} type) #_ (println av-map)
       (doseq [a (:actions sas-problem), pp (:precond-map a)]
         (.put ap-map pp (cons a (.get ap-map pp)))))    
