@@ -1,5 +1,5 @@
 (ns edu.berkeley.ai.util.graphs
-  (:import [java.util Stack HashSet Map HashMap LinkedList])
+  (:import [java.util Stack HashSet Map HashMap LinkedList ArrayList])
   (:use clojure.test edu.berkeley.ai.util edu.berkeley.ai.util.queues edu.berkeley.ai.util.disjoint-sets
         edu.berkeley.ai.util.lp))
 
@@ -232,6 +232,33 @@
     (for [[cn vars] (second (scc-graph edges))
           var vars]
       [var cn])))
+
+(defn postwalk [roots outgoing-map]
+  (let [ret (ArrayList.)
+        closed (HashSet.)
+        walk (fn walk [r]
+               (when-not (.contains closed r)
+                 (.add closed r)
+                 (doseq [c (outgoing-map r)] (walk c))
+                 (.add ret r)))]
+    (doseq [root roots] (walk root))
+    (seq ret)))
+
+
+(defn df-topological-sort-indices 
+  "Return a map from nodes to integers, where 0 is a source.  Nodes in same SCC will have same val.
+   Breaks ties with an arbitrary depth-first traversal."
+  [edges]
+  (let [[scc-edges scc-nodes] (scc-graph edges)
+        scc-edges (remove #(apply = %) scc-edges)
+        scc-sinks (clojure.set/difference (set (map second scc-edges)) (set (map first scc-edges)))
+        inv-scc-map (edge-list->incoming-map scc-edges)
+        df-order  (postwalk scc-sinks inv-scc-map)]
+;    (println scc-sinks df-order)
+    (into {}
+     (for [[i comp] (indexed df-order)
+           var (safe-get scc-nodes comp)]
+       [var i]))))
 
 
 ; Old version, before realized that scc-graph outputs topological order.

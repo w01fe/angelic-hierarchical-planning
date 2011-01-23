@@ -368,7 +368,7 @@
            causal-graph  (remove #(apply = %) (sas-analysis/standard-causal-graph sas-problem))
            vars          (graphs/ancestor-set causal-graph [sas/goal-var-name])
            causal-graph  (filter (fn [[v1 v2]] (and (vars v1) (vars v2))) causal-graph)
-           tsi           (graphs/topological-sort-indices causal-graph)
+           tsi           (graphs/df-topological-sort-indices causal-graph) ;; TODO: doesn't seem to matter...
            av-map        (into {} (for [v vars] [v (graphs/ancestor-set causal-graph [v])]))
            child-var-map (assoc (util/map-vals #(map second %) (group-by first causal-graph))
                            sas/goal-var-name [])

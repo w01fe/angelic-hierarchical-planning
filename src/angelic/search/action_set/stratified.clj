@@ -79,30 +79,60 @@
           (.add closed v)
           (doseq [p (fluid-predecessors state ap-map v)]
             (let [oc (get fluid-child-count-map p 0)]
-              (if (= oc (count (cg-map p)))
+              (if (= oc (dec (count (cg-map p))))
                 (.add open p)
                 (.put fluid-child-count-map p (inc oc))))))))
     (set (seq closed))))
 
-(defn connected-component [domain seeds cg-map icg-map]
+(defn dynamic-fluid-var-set [state av-map ap-map f]
   (let [open   (ArrayList.)
+        ret    (HashSet.)
         closed (HashSet.)]
-    (doseq [v seeds]
-      (.addAll open seeds))
+    (.addAll open (av-map f))
+    (.addAll ret  (av-map f))
     (while (not (.isEmpty open))
       (let [v (.remove open (dec (count open)))]
-        (when (and (not (.contains closed v)) (contains? domain v))
+        (when-not (.contains closed v)
           (.add closed v)
-          (.addAll open (cg-map v))
-          (.addAll open (icg-map v)))))
-    (set (seq closed))))
+          (doseq [x (dynamic-predecessors state ap-map v)]
+            (.addAll ret (av-map x))
+            (.addAll open (av-map x))))))
+    (set (seq ret))))
 
-(defn fluid-prune [p-set state tsi ap-map goal cg-map icg-map]
+(comment
+ (defn connected-component [domain seeds cg-map icg-map]
+   (let [open   (ArrayList.)
+         closed (HashSet.)]
+     (doseq [v seeds]
+       (.addAll open seeds))
+     (while (not (.isEmpty open))
+       (let [v (.remove open (dec (count open)))]
+         (when (and (not (.contains closed v)) (contains? domain v))
+           (.add closed v)
+           (.addAll open (cg-map v))
+           (.addAll open (icg-map v)))))
+     (set (seq closed)))))
+
+(defn fluid-source [fluid-set tsi icg-map v]
+  (if-let [fluid-parents (seq (filter fluid-set (icg-map v)))]
+    (recur fluid-set tsi icg-map (apply max-key tsi fluid-parents))
+    v))
+
+(defn fluid-prune [p-set state tsi av-map ap-map goal cg-map icg-map]
   (let [fluid-set   (fluid-vars state ap-map cg-map goal)
         fluid-p-set (clojure.set/intersection p-set fluid-set)]
+;    (println fluid-set)
     (if (seq fluid-p-set)
-      (let [max-fluid (apply max-key tsi fluid-p-set)]
-        (connected-component p-set (filter #(>= (tsi %) (tsi max-fluid)) p-set) cg-map icg-map))     
+      (let [root-fluid (apply max-key tsi fluid-p-set)
+            source-fluid (fluid-source fluid-p-set tsi icg-map root-fluid)
+;            rfs (set (concat (filter #(> (tsi %) (tsi root-fluid)) p-set)
+;            (dynamic-fluid-var-set state av-map ap-map root-fluid)))
+            sfs (set (concat (filter #(> (tsi %) (tsi source-fluid)) p-set)
+                             (dynamic-fluid-var-set state av-map ap-map source-fluid)))]
+;        (println "\n" root-fluid source-fluid rfs sfs)
+;        #_(when-not (= rfs sfs) (println "\n" root-fluid rfs "\n" source-fluid sfs "\n" (filter #(> (tsi %) (tsi source-fluid)) p-set)
+;        (dynamic-fluid-var-set state av-map ap-map source-fluid)))
+        sfs )     
       p-set)))
 
 
@@ -112,7 +142,7 @@
     (let [a-var   (effect-var last-a)
           a-level (util/safe-get tsi a-var)
           p-set   (fluid-prune (dynamic-var-set state av-map ap-map a-var)
-                               state tsi ap-map goal cg-map icg-map)]
+                               state tsi av-map ap-map goal cg-map icg-map)]
 ;      (println "\n" last-a fluid-set fluid-root-set p-set state)
       (filter
        (fn [b]
@@ -160,15 +190,16 @@
         closed  (HashSet.)
         actions (env/actions-fn sas-problem)
         causal-graph  (sas-analysis/standard-causal-graph sas-problem)
-        cg-map        (graphs/edge-list->outgoing-map causal-graph)
-        icg-map       (graphs/edge-list->incoming-map causal-graph)        
+        noeq-causal-graph (remove (fn [[v c]] (= v c)) causal-graph)
+        cg-map        (graphs/edge-list->outgoing-map noeq-causal-graph)
+        icg-map       (graphs/edge-list->incoming-map noeq-causal-graph)        
         av-map        (into {} (for [v (keys (:vars sas-problem))]
                                  [v (graphs/ancestor-set causal-graph [v])]))
         cav-map       (into {} (for [v (keys (:vars sas-problem))]
                                  [v (apply clojure.set/union (map av-map (cg-map v)))]))
         ap-map        (HashMap.)
 ;        pre-var-map   (util/map-vals #(set (map first %)) (group-by second causal-graph))
-        tsi           (graphs/topological-sort-indices (remove #(apply = %) causal-graph))
+        tsi           (graphs/df-topological-sort-indices (remove #(apply = %) noeq-causal-graph))
         goal-map (:precond-map (util/safe-singleton (filter #(= (:name %) sas/goal-action-name) (:actions sas-problem))))
         goal    (env/goal-fn sas-problem)
         init    (env/initial-state sas-problem)
@@ -177,6 +208,7 @@
                         :structural (fn [last-a state] (improved-inf-stratified-applicable-actions last-a state tsi cav-map actions))                       :dynamic    (fn [last-a state] (dynamic-inf-stratified-applicable-actions last-a state tsi av-map ap-map actions))
                         :fluid    (fn [last-a state] (dynamic-fluid-inf-stratified-applicable-actions last-a state tsi av-map ap-map goal-map cg-map icg-map actions))
                         )]
+    (println tsi)
     (when (#{:dynamic :fluid} type) #_ (println av-map)
       (doseq [a (:actions sas-problem), pp (:precond-map a)]
         (.put ap-map pp (cons a (.get ap-map pp)))))    
@@ -214,7 +246,7 @@
 ;; 6-2: 3286212
 ;; 5-0: 4053436
 
-;; Logistics results (# states) to match table. -- dynamic
+;; Logistics results (# states) to match table. -- dynamic AND fluid
 ;; 5-2: 16086
 ;; 6-1: 194870
 ;; 4-2: 277791
