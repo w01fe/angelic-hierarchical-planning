@@ -28,6 +28,9 @@
   env/FactoredEnv 
   (goal-map      [_] {goal-var-name goal-true-val}))
 
+(defn make-stupid-successor-generator [_ actions]
+  (fn [s] (filter #(env/applicable? % s) actions)))
+
 (defn make-simple-successor-generator [var-names actions]
 ;  (println vars actions)
  ;  (println (count vars) (count actions))

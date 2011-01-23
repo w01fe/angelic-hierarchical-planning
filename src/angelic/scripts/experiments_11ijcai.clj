@@ -118,8 +118,8 @@
 (def *alg-order*
      [[[:baseline false] "baseline"]
       [[:baseline true] "baseline+c"]
-      [[:strat true] "strat+c"]
-      [[:strat+ true] "strat++c"]
+      [[:strat  true] "{/Symbol \\245}-strat+c"]
+      [[:strat+ true] "{/Symbol \\245}+strat+c"]
       [[:asplan false] "BI"]
       [[:asplan true] "BI+c"]])
 
@@ -128,6 +128,8 @@
 (defn order [things key-fn desired-order]
   (let [m (group-by key-fn things)]
     (keep #(first (get m %)) desired-order)))
+
+;;594 665
 
 ; Use pdfcrop to remove whitespace
 (defn make-taxi-charts []
