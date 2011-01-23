@@ -60,11 +60,16 @@
                       :when (and (not (= pvar v)) (not (= pval (state/get-var state pvar))))]
                   pvar)))))
 
+;; TODO: dead vars?
+;; Fluid iff *all* children fluid? Yes.
+;; Idea: take min-level fluid var, everything <=-level, everything in CC.  Toss everything else.
 
-(defn fluid-vars [state ap-map goal]
+;; Fluid vars are those whose value must change, and current value is useless.
+;; Ideally, we would take dead vars into account here too.
+(defn fluid-vars [state ap-map cg-map goal]
   (let [open   (ArrayList.)
-        ret    (HashSet.)
-        closed (HashSet.)]
+        closed (HashSet.)
+        fluid-child-count-map (HashMap.)]
     (doseq [[var val] goal]
       (when-not (= val (state/get-var state var))
         (.add open var)))
@@ -72,29 +77,49 @@
       (let [v (.remove open (dec (count open)))]
         (when-not (.contains closed v)
           (.add closed v)
-          (.addAll open (fluid-predecessors state ap-map v)))))
+          (doseq [p (fluid-predecessors state ap-map v)]
+            (let [oc (get fluid-child-count-map p 0)]
+              (if (= oc (count (cg-map p)))
+                (.add open p)
+                (.put fluid-child-count-map p (inc oc))))))))
     (set (seq closed))))
 
-(defn dynamic-fluid-inf-stratified-applicable-actions [last-a state tsi av-map ap-map root-set goal cg-map actions]
+(defn connected-component [domain seeds cg-map icg-map]
+  (let [open   (ArrayList.)
+        closed (HashSet.)]
+    (doseq [v seeds]
+      (.addAll open seeds))
+    (while (not (.isEmpty open))
+      (let [v (.remove open (dec (count open)))]
+        (when (and (not (.contains closed v)) (contains? domain v))
+          (.add closed v)
+          (.addAll open (cg-map v))
+          (.addAll open (icg-map v)))))
+    (set (seq closed))))
+
+(defn fluid-prune [p-set state tsi ap-map goal cg-map icg-map]
+  (let [fluid-set   (fluid-vars state ap-map cg-map goal)
+        fluid-p-set (clojure.set/intersection p-set fluid-set)]
+    (if (seq fluid-p-set)
+      (let [max-fluid (apply max-key tsi fluid-p-set)]
+        (connected-component p-set (filter #(>= (tsi %) (tsi max-fluid)) p-set) cg-map icg-map))     
+      p-set)))
+
+
+(defn dynamic-fluid-inf-stratified-applicable-actions [last-a state tsi av-map ap-map goal cg-map icg-map actions]
   ;; Root set ignored for now -- doing it dynamically.
   (if last-a
     (let [a-var   (effect-var last-a)
           a-level (util/safe-get tsi a-var)
-          p-set   (dynamic-var-set state av-map ap-map a-var)
-          fluid-set (clojure.set/intersection p-set (fluid-vars state ap-map goal))
-          fluid-root-set (set (for [v fluid-set
-                                    :let [av (av-map v)]
-                                    :when (every? (fn [a] (every? #(or (av %) (not (p-set %))) (cg-map a))) (disj av v))]
-                                v)) 
-          p-set   (if (seq fluid-root-set)
-                    (av-map (apply min-key tsi fluid-root-set))
-                    p-set)]
+          p-set   (fluid-prune (dynamic-var-set state av-map ap-map a-var)
+                               state tsi ap-map goal cg-map icg-map)]
+;      (println "\n" last-a fluid-set fluid-root-set p-set state)
       (filter
        (fn [b]
          (let [b-var (effect-var b)
                b-level (util/safe-get tsi b-var)]
-           (or (and (<= b-level a-level) (contains? p-set b-var))
-               (contains? (:precond-map b) a-var))))       
+           (or (contains? (:precond-map b) a-var) 
+               (and (<= b-level a-level) (contains? p-set b-var)))))       
        (actions state)))
     (actions state)))
 
@@ -136,11 +161,9 @@
         actions (env/actions-fn sas-problem)
         causal-graph  (sas-analysis/standard-causal-graph sas-problem)
         cg-map        (graphs/edge-list->outgoing-map causal-graph)
+        icg-map       (graphs/edge-list->incoming-map causal-graph)        
         av-map        (into {} (for [v (keys (:vars sas-problem))]
                                  [v (graphs/ancestor-set causal-graph [v])]))
-        root-set      (set (for [[v av] av-map
-                                 :when (every? (fn [a] (every? av (cg-map a))) (disj av v))]
-                             v))
         cav-map       (into {} (for [v (keys (:vars sas-problem))]
                                  [v (apply clojure.set/union (map av-map (cg-map v)))]))
         ap-map        (HashMap.)
@@ -152,9 +175,8 @@
         strat-actions (case type
                         :simple     (fn [last-a state] (inf-stratified-applicable-actions last-a state tsi actions))
                         :structural (fn [last-a state] (improved-inf-stratified-applicable-actions last-a state tsi cav-map actions))                       :dynamic    (fn [last-a state] (dynamic-inf-stratified-applicable-actions last-a state tsi av-map ap-map actions))
-                        :fluid    (fn [last-a state] (dynamic-fluid-inf-stratified-applicable-actions last-a state tsi av-map ap-map root-set goal-map cg-map actions))
+                        :fluid    (fn [last-a state] (dynamic-fluid-inf-stratified-applicable-actions last-a state tsi av-map ap-map goal-map cg-map icg-map actions))
                         )]
-    (println root-set)
     (when (#{:dynamic :fluid} type) #_ (println av-map)
       (doseq [a (:actions sas-problem), pp (:precond-map a)]
         (.put ap-map pp (cons a (.get ap-map pp)))))    
@@ -204,6 +226,11 @@
 ;; 6-2: 1947242
 ;; 5-0: 2272572
 
+
+
+
+
+;; Wrong!
 ;; Logistics results (# states) to match table. -- fluid
 ;; 5 5-2: 10230
 ;; 7 6-1: 96430

@@ -11,16 +11,16 @@
 
 
 (defn- make-left   [t cx]
-  (env-util/make-factored-primitive ['left cx]  {['atx t] cx} {['atx t] (dec cx)} -1))
+  (env-util/make-factored-primitive ['left t cx]  {['atx t] cx} {['atx t] (dec cx)} -1))
 
 (defn- make-right  [t cx]
-  (env-util/make-factored-primitive ['right cx] {['atx t] cx} {['atx t] (inc cx)} -1))
+  (env-util/make-factored-primitive ['right t cx] {['atx t] cx} {['atx t] (inc cx)} -1))
 
 (defn- make-down  [t cy]
-  (env-util/make-factored-primitive ['down cy]  {['aty t] cy} {['aty t] (dec cy)} -1))
+  (env-util/make-factored-primitive ['down t cy]  {['aty t] cy} {['aty t] (dec cy)} -1))
 
 (defn- make-up    [t cy]
-  (env-util/make-factored-primitive ['up cy] {['aty t] cy} {['aty t] (inc cy)} -1))
+  (env-util/make-factored-primitive ['up t cy] {['aty t] cy} {['aty t] (inc cy)} -1))
 
 (defn- make-pickup  [pass taxi [x y]]
   (env-util/make-factored-primitive 
