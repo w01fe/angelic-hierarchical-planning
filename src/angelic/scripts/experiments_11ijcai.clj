@@ -56,7 +56,7 @@
     (fn [m]
       `((taxi-factories ~(:type m)) 3 3 ~(:size m) ~(:constrain? m) ~(if (= (:type m) :single) 6 1)))
     (fn [m] `(strat/stratified-search ~'init ~(if (= (:alg m) :strat) :simple :fluid)))
-    'angelic.scripts.experiments-11icaps 10 3600 512 false ::ExpResult))
+    'angelic.scripts.experiments-11ijcai 10 3600 512 false ::ExpResult))
 
 ;(use '[edu.berkeley.ai.util experiments cluster] 'angelic.scripts.experiments-11ijcai)
 ;(run-experiment-set-cluster (make-exp-set))
