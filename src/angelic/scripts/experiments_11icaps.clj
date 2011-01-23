@@ -251,7 +251,7 @@
       ))
 
 
-;(use '[edu.berkeley.ai.util experiments cluster] 'angelic.aaai10)
+;(use '[edu.berkeley.ai.util experiments cluster] 'angelic.scripts.experiments-11ijcai)
 ;(run-experiment-set-cluster (make-exp-set))
 
 ; (plot (ds->chart (experiment-set-results->dataset res) [:alg] :objects :ms {:key "top left" } {} first))
