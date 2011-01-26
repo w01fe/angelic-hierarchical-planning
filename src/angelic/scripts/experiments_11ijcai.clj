@@ -87,7 +87,7 @@
 
 (defn make-taxi-strat-exp-set []
    (experiments/make-experiment-set
-    "ib-taxi-strat"
+    "ib-taxi-strat2"
     [:product
      [:size (vec (range 1 11))]
      [:constrain? [true]]
@@ -118,7 +118,7 @@
 (def *alg-order*
      [[[:baseline false] "baseline"]
       [[:baseline true] "baseline+c"]
-      [[:strat  true] "{/Symbol \\245}-strat+c"]
+      [[:strat  true] "{/Symbol \\245}strat+c"]
       [[:strat+ true] "{/Symbol \\245}+strat+c"]
       [[:asplan false] "BI"]
       [[:asplan true] "BI+c"]])
@@ -138,7 +138,7 @@
      (datasets/ds->chart
       (filter (datasets/ds-fn [type output constrain? alg]
                               (and output (= type type-key)
-                                   (if (= type :pairwise) ; true #_
+                                   (if (= type :pairwise)  true #_
                                      constrain?
                                      (or (not constrain?) (#{:baseline :strat :strat+} alg)))))              
               (concat (if  (= type-key :single) *taxi-single-results* *taxi-results*)
@@ -148,10 +148,11 @@
        :ylog true :key (case type-key :independent "top right" :pairwise "bottom right spacing 0.8" :single "bottom right spacing 0.8")
        ;;       :xlabel "# passengers"
        :ylabel (when (= type-key :independent) "# states to optimal")
-       :xrange (if (= type-key :pairwise) "[1:6]" "[1:10]") :yrange "[10:10000000]"
+       :xrange (if (= type-key :pairwise) "[2:6]" "[1:10]") :yrange "[10:10000000]"
        ;;       :title (str name " taxi")
        :extra-commands [(str "set title \"" name "\" offset 0,-0.8")
-                        "set xlabel \"# passengers\" 0,0.5"]
+                        "set xlabel \"# passengers\" 0,0.5"
+                        "set xtics 1"]
        }
       (fn [[alg constrain?]]
         (let [v (cond (and (= alg :asplan) (not constrain?)) 1

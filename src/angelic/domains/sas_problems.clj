@@ -74,12 +74,17 @@
 
 (def ipc2-miconic-dir (util/base-local "problems/miconic/"))
 
+(def ipc2-miconic
+  (for [n ipc2-miconic-names]
+    (delay (sas/make-sas-problem-from-pddl (str ipc2-miconic-src-dir "domain.pddl") (str ipc2-miconic-src-dir "s" n ".pddl")))))
+
+
 (defn translate-ipc2-miconic []
   (doseq [n ipc2-miconic-names]
     (println n)
     (sas/lama-translate-to (str ipc2-miconic-src-dir "domain.pddl") (str ipc2-miconic-src-dir "s" n ".pddl") (str ipc2-miconic-dir n))))
 
-(def ipc2-miconic
+(def ipc2-miconic-pp
   (for [n ipc2-miconic-names]
     (delay (sas/make-sas-problem-from-lama (str ipc2-miconic-dir n ".groups") (str ipc2-miconic-dir n ".sas")))))
 

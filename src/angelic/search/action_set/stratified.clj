@@ -18,37 +18,35 @@
 
 (defn effect-var [a] (util/safe-singleton (keys (:effect-map a))))
 
-(defn dynamic-predecessors [state ap-map v]
+(defn co-enablers [state ap-map v]
   (for [a (get ap-map [v (state/get-var state v)])
         [pvar pval] (:precond-map a)
         :when (not (= (state/get-var state pvar) pval))]
     pvar))
 
-(defn dynamic-var-set [state av-map ap-map v]
+(defn dynamic-var-set [state tsi av-map ap-map cg-map max-tsi v]
   (let [open   (ArrayList.)
-        ret    (HashSet.)
         closed (HashSet.)]
     (.add open v)
     (while (not (.isEmpty open))
       (let [v (.remove open (dec (count open)))]
         (when-not (.contains closed v)
           (.add closed v)
-          (doseq [x (dynamic-predecessors state ap-map v)]
-            (.addAll ret (av-map x))
-            (.addAll open (av-map x))))))
-    (set (seq ret))))
+          (.addAll open (av-map v))          
+          (doseq [c (concat (cg-map v) (co-enablers state ap-map v))
+                  :when (<= (tsi c) max-tsi)]
+            (.add open c)))))
+    (set (seq closed))))
 
-(defn dynamic-inf-stratified-applicable-actions [last-a state tsi av-map ap-map actions]
+(defn dynamic-inf-stratified-applicable-actions [last-a state tsi av-map ap-map cg-map actions]
   (if last-a
     (let [a-var   (effect-var last-a)
           a-level (util/safe-get tsi a-var)
-          p-set   (dynamic-var-set state av-map ap-map a-var)]
+          p-set   (dynamic-var-set state tsi av-map ap-map cg-map a-level a-var)]
       (filter
        (fn [b]
-         (let [b-var (effect-var b)
-               b-level (util/safe-get tsi b-var)]
-           (or (and (<= b-level a-level) (contains? p-set b-var))
-               (contains? (:precond-map b) a-var))))       
+         (or (contains? p-set (effect-var b))
+             (contains? (:precond-map b) a-var)))       
        (actions state)))
     (actions state)))
 
@@ -60,10 +58,8 @@
                       :when (and (not (= pvar v)) (not (= pval (state/get-var state pvar))))]
                   pvar)))))
 
-;; TODO: dead vars?
 ;; Fluid iff *all* children fluid? Yes.
 ;; Idea: take min-level fluid var, everything <=-level, everything in CC.  Toss everything else.
-
 ;; Fluid vars are those whose value must change, and current value is useless.
 ;; Ideally, we would take dead vars into account here too.
 (defn fluid-vars [state ap-map cg-map goal]
@@ -84,72 +80,33 @@
                 (.put fluid-child-count-map p (inc oc))))))))
     (set (seq closed))))
 
-(defn dynamic-fluid-var-set [state av-map ap-map f]
-  (let [open   (ArrayList.)
-        ret    (HashSet.)
-        closed (HashSet.)]
-    (.addAll open (av-map f))
-    (.addAll ret  (av-map f))
-    (while (not (.isEmpty open))
-      (let [v (.remove open (dec (count open)))]
-        (when-not (.contains closed v)
-          (.add closed v)
-          (doseq [x (dynamic-predecessors state ap-map v)]
-            (.addAll ret (av-map x))
-            (.addAll open (av-map x))))))
-    (set (seq ret))))
-
-(comment
- (defn connected-component [domain seeds cg-map icg-map]
-   (let [open   (ArrayList.)
-         closed (HashSet.)]
-     (doseq [v seeds]
-       (.addAll open seeds))
-     (while (not (.isEmpty open))
-       (let [v (.remove open (dec (count open)))]
-         (when (and (not (.contains closed v)) (contains? domain v))
-           (.add closed v)
-           (.addAll open (cg-map v))
-           (.addAll open (icg-map v)))))
-     (set (seq closed)))))
-
 (defn fluid-source [fluid-set tsi icg-map v]
   (if-let [fluid-parents (seq (filter fluid-set (icg-map v)))]
     (recur fluid-set tsi icg-map (apply max-key tsi fluid-parents))
     v))
 
-(defn fluid-prune [p-set state tsi av-map ap-map goal cg-map icg-map]
+(defn fluid-dynamic-var-set [state tsi av-map ap-map goal cg-map icg-map max-tsi v]
   (let [fluid-set   (fluid-vars state ap-map cg-map goal)
-        fluid-p-set (clojure.set/intersection p-set fluid-set)]
-;    (println fluid-set)
+        p-set       (dynamic-var-set state tsi av-map ap-map cg-map max-tsi v)
+        fluid-p-set (clojure.set/intersection fluid-set p-set)]
     (if (seq fluid-p-set)
-      (let [root-fluid (apply max-key tsi fluid-p-set)
+      (let [root-fluid   (apply max-key tsi fluid-p-set)
             source-fluid (fluid-source fluid-p-set tsi icg-map root-fluid)
-;            rfs (set (concat (filter #(> (tsi %) (tsi root-fluid)) p-set)
-;            (dynamic-fluid-var-set state av-map ap-map root-fluid)))
-            sfs (set (concat (filter #(> (tsi %) (tsi source-fluid)) p-set)
-                             (dynamic-fluid-var-set state av-map ap-map source-fluid)))]
-;        (println "\n" root-fluid source-fluid rfs sfs)
-;        #_(when-not (= rfs sfs) (println "\n" root-fluid rfs "\n" source-fluid sfs "\n" (filter #(> (tsi %) (tsi source-fluid)) p-set)
-;        (dynamic-fluid-var-set state av-map ap-map source-fluid)))
-        sfs )     
+            source-tsi   (tsi source-fluid)]
+        (set (concat (filter #(> (tsi %) source-tsi) p-set)
+                     (dynamic-var-set state tsi av-map ap-map cg-map source-tsi source-fluid))))     
       p-set)))
-
 
 (defn dynamic-fluid-inf-stratified-applicable-actions [last-a state tsi av-map ap-map goal cg-map icg-map actions]
   ;; Root set ignored for now -- doing it dynamically.
   (if last-a
     (let [a-var   (effect-var last-a)
           a-level (util/safe-get tsi a-var)
-          p-set   (fluid-prune (dynamic-var-set state av-map ap-map a-var)
-                               state tsi av-map ap-map goal cg-map icg-map)]
-;      (println "\n" last-a fluid-set fluid-root-set p-set state)
+          p-set   (fluid-dynamic-var-set state tsi av-map ap-map goal cg-map icg-map a-level a-var)]
       (filter
        (fn [b]
-         (let [b-var (effect-var b)
-               b-level (util/safe-get tsi b-var)]
-           (or (contains? (:precond-map b) a-var) 
-               (and (<= b-level a-level) (contains? p-set b-var)))))       
+         (or (contains? p-set (effect-var b))
+             (contains? (:precond-map b) a-var)))       
        (actions state)))
     (actions state)))
 
@@ -205,7 +162,7 @@
         init    (env/initial-state sas-problem)
         strat-actions (case type
                         :simple     (fn [last-a state] (inf-stratified-applicable-actions last-a state tsi actions))
-                        :structural (fn [last-a state] (improved-inf-stratified-applicable-actions last-a state tsi cav-map actions))                       :dynamic    (fn [last-a state] (dynamic-inf-stratified-applicable-actions last-a state tsi av-map ap-map actions))
+                        :structural (fn [last-a state] (improved-inf-stratified-applicable-actions last-a state tsi cav-map actions))                       :dynamic    (fn [last-a state] (dynamic-inf-stratified-applicable-actions last-a state tsi av-map ap-map cg-map actions))
                         :fluid    (fn [last-a state] (dynamic-fluid-inf-stratified-applicable-actions last-a state tsi av-map ap-map goal-map cg-map icg-map actions))
                         )]
 ;    (println tsi)
@@ -233,6 +190,8 @@
 ;; (use 'angelic.env 'angelic.domains.taxi-infinite 'angelic.domains.sas-problems 'angelic.search.action-set.stratified)
 
 ;; (let [e (force (nth ipc2-logistics 3)) ]  (println (time (run-counted #(stratified-search e)))))
+
+;;(doseq [ i [5 7 2 4 1 0 9 6 8 3]] (let [e  (force (nth ipc2-logistics i))] (println "\n\n" i) (doseq [t [:simple #_ :dynamic :fluid]] (println "\n"  t (time (run-counted #(stratified-search e t)))))))
 
 ;; Logistics results (# states) to match table. -- ordi
 ;; 5-2: 19771
