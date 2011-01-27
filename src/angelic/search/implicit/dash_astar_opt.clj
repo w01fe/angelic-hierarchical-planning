@@ -1,7 +1,6 @@
 (ns angelic.search.implicit.dash-astar-opt
   (:require [edu.berkeley.ai.util :as util]
             [edu.berkeley.ai.util.traits :as traits]
-            [angelic.env.state :as state]
             [angelic.search.summary :as summary]            
             [angelic.search.summary-graphs :as sg]
             [angelic.search.function-sets :as fs])
@@ -365,9 +364,7 @@
 
 (defn oc-name [inner-name] [:OC inner-name])
 
-(defn- =-state-sets [s1 s2]
-  (util/assert-is (= (state/current-context s1) (state/current-context s2)) "%s" [s1 s2])
-  (= s1 s2))
+
 
 (defn atomic-name-fs [n] (assert (= :Atomic (first n))) (second n))
 (defn log-input [fs inp-set] (if *state-abstraction* (fs/get-logger fs inp-set) inp-set))
@@ -382,7 +379,7 @@
    (oc-name (sp-name inner-sp)) (input-set inner-sp) #{:Atomic :Pair #_ ::TODO??? :SA :OC} inner-sp
    identity
    (fn child-watch [sp child-sp] 
-     (if (=-state-sets (get-output-set! inner-sp) (get-output-set! child-sp))
+     (if (fs/=-state-sets (get-output-set! inner-sp) (get-output-set! child-sp))
        (do (schedule-increase! sp) (connect-and-watch! sp child-sp nil #(child-watch sp %))) 
        (add-sp-child! sp (make-output-collecting-subproblem fs inp-key child-sp) :irrelevant))) 
    (fn refine-input [s ni]
@@ -417,9 +414,9 @@
 (defn- make-state-abstracted-subproblem [fs inner-sp inp-set]
   (make-wrapped-subproblem
    (sa-name (sp-name inner-sp)) inp-set #{:OC} inner-sp
-   (fn [o] (state/transfer-effects inp-set o))
+   (fn [o] (fs/transfer-effects inp-set o))
    (fn [sp child-sp] (add-sp-child! sp (make-state-abstracted-subproblem fs child-sp inp-set) :irrelevant)) 
-   (fn [sp ni] (if (=-state-sets ni inp-set) sp (make-state-abstracted-subproblem fs (refine-input inner-sp ni) ni)))))
+   (fn [sp ni] (if (fs/=-state-sets ni inp-set) sp (make-state-abstracted-subproblem fs (refine-input inner-sp ni) ni)))))
 
 (defmethod get-subproblem :SA [[_ inner-n :as n] inp-set]
   (let [fs (atomic-name-fs (second inner-n))] 

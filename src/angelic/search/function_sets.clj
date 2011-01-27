@@ -90,3 +90,13 @@
 
 (defn make-init-pair [henv]
   [(state-set/initial-logging-ss (hierarchy/env henv)) (make-tla-fs henv)])
+
+
+;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;; Utils ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
+
+(defn =-state-sets [s1 s2]
+  (util/assert-is (= (state/current-context s1) (state/current-context s2)) "%s" [s1 s2])
+  (= s1 s2))
+
+(defn transfer-effects [to-set from-set]
+  (state/transfer-effects to-set from-set))
