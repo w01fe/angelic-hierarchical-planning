@@ -19,12 +19,12 @@
 
 (defprotocol FunctionSet
   (fs-name    [fs]           "Arbitrary name to identify fs")
+  (precondition-context-set [fs input-set] "Relevant set of variables")  
   (apply-opt  [fs input-set] "[output-set upper-reward-bound status]. output nil if empty or -inf. Status is :live/:blocked/:solved.")
   (apply-pess [fs input-set] "[output-set upper-reward-bound status]. output nil if empty or -inf. Status is :live/:blocked/:solved.")  
   (child-seqs [fs input-set] "seq of seqs of FunctionSets. Only valid if above is :live.
                               (= :live (status fs s)) ==>
-                                 (subset? (child-seqs fs s-subset) (child-seqs fs s)) (for names)")
-  (precondition-context-set [fs input-set] "Relevant set of variables"))
+                                 (subset? (child-seqs fs s-subset) (child-seqs fs s)) (for names)"))
 
 (defn extract-context [fs input-set]
   (state/extract-context input-set (precondition-context-set fs input-set)))
@@ -48,10 +48,10 @@
                             (= n (fs-name ofs))))    
     FunctionSet
     (fs-name    [fs]           n)
+    (precondition-context-set [fs input-set] (angelic/precondition-context-set action input-set))
     (apply-opt  [fs input-set] (output-or-nil angelic/optimistic-set-and-reward status-fn action input-set))
     (apply-pess [fs input-set] (output-or-nil angelic/pessimistic-set-and-reward status-fn action input-set))        
-    (child-seqs [fs input-set] (child-seq-fn input-set))
-    (precondition-context-set [fs input-set] (angelic/precondition-context-set action input-set)))))
+    (child-seqs [fs input-set] (child-seq-fn input-set)))))
 
 (defmethod print-method angelic.search.function_sets.FunctionSet [s o]
            (print-method (fs-name s) o))
