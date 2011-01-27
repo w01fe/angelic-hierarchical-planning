@@ -10,14 +10,39 @@
 ;;;;;;;;;;;;;;;;;;;;;;;;;;;;; Implicit Set Protocol ;;;;;;;;;;;;;;;;;;;;;;;;;;;;
 ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
 
-(defprotocol ImplicitStateSet
+;; Protocol used to represent both state sets, and value sets.
+;; State sets are like states, where the values implement PSet.
+;; Should also implement proper equality
+(defprotocol PSet
   (empty?    [s] "Is this set empty")
-;  (singleton-val [s v] "Return single possible value for far, or nil if not singleton")
   (singleton [s] "Return the singleton element making up this set, or nil if cardinality != 1.")
   (some-element [s] "Return an arbitrary element of this set, or throw if empty. ")
   (explicit-set [s] "Return an explicit outcome set. ")
-  (constrain [ss constraint] "Apply a constraint."))
+  (constrain [ss constraint] "Apply a constraint.")
+  (as-constraint [ss] "Return a constraint view.")
+  (subset? [s1 s2] "Is this set a (possibly improper) subset of the other?"))
 
+;; Allow Clojure sets to be used as value sets.
+(extend-type clojure.lang.IPersistentSet
+  PSet
+  (empty? [s] (clojure.core/empty? s))
+  (singleton [s] (util/singleton s))
+  (some-element [s]
+    (assert (not (clojure.core/empty? s)))
+    (first s))
+  (explicit-set [s] s)
+  (constrain [s constraint]
+    (assert (set? constraint))
+    (clojure.set/intersection s constraint))
+  (as-constraint [s] s)
+  (subset? [s1 s2] (util/subset? s1 s2)))
+
+
+(defn assert-pset! [x]
+  nil #_ (assert (satisfies? PSet x)))
+
+(defn proper-subset? [s1 s2]
+  (and (subset? s1 s2) (not (= s1 s2))))
 
 ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
 ;;;;;;;;;;;;;;;;;;;;;;;;;;;; Factored Implicit Sets ;;;;;;;;;;;;;;;;;;;;;;;;;;;;
@@ -32,8 +57,6 @@
 ;; for now, we can just require that these be unconditional.
 ;; If we add unions, etc later, worry about details.
 ;; TODO: constraint is not the same as set-vars ?  ???
-
-;(def no-effect ::no-effect)
 
 (declare make-logging-factored-state-set)
 
@@ -72,44 +95,53 @@
    (meta [this] meta)
    (withMeta [this new-meta] (LoggingFactoredStateSet. init context puts ooc new-meta))
 
-  ImplicitStateSet
-   (empty? [ss] #_(println "AAA" init) (some clojure.core/empty? (vals init)))
-   (singleton [ss] 
-     (when (every? util/singleton? (vals init))
-       (extract-logging-state ss (util/map-vals util/safe-singleton init))))
+  PSet
+   (empty? [ss]  (some empty? (vals init)))
+   (singleton [ss]
+     (let [vals-seq (map singleton (util/unchunk (vals init)))]
+       (when (every? identity vals-seq)
+         (extract-logging-state ss (zipmap (keys init) vals-seq)))))
    (some-element [ss]
-     (assert (not (empty? ss)))
-     (extract-logging-state ss (util/map-vals first init)))
+     (extract-logging-state ss (util/map-vals some-element init)))
    (explicit-set [ss]
-     (let [kvs (seq init)
-           ks  (map key kvs)
-           vss (map val kvs)]
+     (let [ks  (keys init)
+           vss (map explicit-set (vals init))]
        (set (for [vs (apply cartesian-product vss)] (extract-logging-state ss (zipmap ks vs))))))
    (constrain    [ss constraint] 
-;    (util/assert-is (every? context (keys constraint)))     
      (state/set-vars ss
-     (for [[var vals] constraint
-           :let [cur-vals (state/get-var ss var)
-                 isect    (clojure.set/intersection vals cur-vals)]
-           :when (not (= (count isect) (count cur-vals)))]
-       (do #_ (util/assert-is (contains? context var)) ;; TODO: can't actually assert this without stronger conditions on what must be reported in precondition contexts, unfortunately.  I.e., how to do it may not depend on initial value, but operation may still constrain it ?!
-           [var isect]))))
+      (for [[var vals] constraint
+            :let [cur-vals (state/get-var ss var)
+                  isect    (constrain cur-vals vals)]
+            :when (not (= (count isect) (count cur-vals)))]
+        [var isect])))
+  ;   (util/assert-is (contains? context var)) ;; TODO: can't actually assert this without stronger conditions on what must be reported in precondition contexts, unfortunately.  I.e., how to do it may not depend on initial value, but operation may still constrain it ?!
+   ;; Note difficulties: must capture all of context (even unset parts), plus set parts of non-context.
+   ;; If too large, can mess up SA.
+   (as-constraint [ss] 
+      (util/map-vals as-constraint (into (state/extract-context ss (state/current-context ss)) (state/ooc-effects ss))))
+   (subset? [ss1 ss2]
+     (let [m1 (state/as-map ss1)
+           m2 (state/as-map ss2)
+           ks (util/keyset m1)]
+       (assert (= ks (util/keyset m2)))
+       (every? #(subset? (m1 %) (m2 %)) ks)))
+
    
   state/FactoredState
    (get-var [ss var]
      (let [x (state/get-var init var)]
-       (util/assert-is (set? x) "%s" [var])
+       (assert-pset! x)
        x))
    
    (set-var [ss var val]
-       (util/assert-is (set? val) "%s" [var])
+       (assert-pset! val)
        (LoggingFactoredStateSet. (state/set-var init var val) ; init
                               context
                               (assoc puts var val)
                               (if (.contains context var) ooc (assoc ooc var val))
                               {}))
    (set-vars [ss vv-pairs]
-       (doseq [[var val] vv-pairs] (util/assert-is (set? val) "%s" [var]))
+       (doseq [[var val] vv-pairs] (assert-pset! val))
        (LoggingFactoredStateSet. (state/set-vars init vv-pairs)
                               context
                               (into puts vv-pairs)
@@ -157,33 +189,13 @@
          (meta (first lfss))))))
 
 (defn vars-known? [ss vars]
-  (every? #(util/singleton? (state/get-var ss %)) vars))
+  (every? #(singleton (state/get-var ss %)) vars))
 
-(defn get-known-var [ss var] (util/safe-singleton (state/get-var ss var)))
+(defn get-known-var [ss var] (util/make-safe (singleton (state/get-var ss var))))
 
 (defn ss-str [ss] "LFSS" (print-str (dissoc (state/as-map ss) :const)))
 (defmethod print-method LoggingFactoredStateSet [ss o] (print-method (ss-str ss) o))
 
-(defn proper-subset? [ss1 ss2]
-  (let [m1 (state/as-map ss1)
-        m2 (state/as-map ss2)
-        ks (util/keyset m1)]
-    (assert (= ks (util/keyset m2)))
-    (and (every? #(util/subset? (m1 %) (m2 %)) ks)
-         (some   #(util/proper-subset? (m1 % ) (m2 %)) ks))
-    #_ (or 
-        
-        (println (filter #(not (clojure.set/subset? (nth % 1) (nth % 2))) (map #(vector % (m1 %) (m2 %)) ks))
-                 (filter   #(util/proper-subset? (m1 % ) (m2 %)) ks)
-                 ))))
-
-;; TODO: can we do tis better?
-;; Note difficulties: must capture all of context (even unset parts), plus set parts of non-context.
-;; Must not be too large to mess up SA.
-(defn as-constraint [ss]#_ (println (state/extract-effects ss) (state/current-context ss))
-  (into (state/extract-context ss (state/current-context ss)) (state/ooc-effects ss))
-#_  (state/as-map ss)
- #_  (state/extract-effects ss))
 
 
 
