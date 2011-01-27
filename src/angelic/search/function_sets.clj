@@ -25,9 +25,14 @@
   (child-seqs [fs input-set] "seq of seqs of FunctionSets. Only valid if above is :live.
                               (= :live (status fs s)) ==>
                                  (subset? (child-seqs fs s-subset) (child-seqs fs s)) (for names)")
-  (precondition-context-set [fs input-set] "Relevant set of variables")
-  (extract-context [fs input-set] "Relevant parts of input-set, for state abstraction")
-  (get-logger  [fs input-set]     "Get logger for input-set, in context of fs (also for SA)."))
+  (precondition-context-set [fs input-set] "Relevant set of variables"))
+
+(defn extract-context [fs input-set]
+  (state/extract-context input-set (precondition-context-set fs input-set)))
+
+(defn get-logger [fs input-set]
+  (state/get-logger input-set (precondition-context-set fs input-set)))
+
 
 (defn- output-or-nil [[opt rew :as p]]
   (when (and p (not (state-set/empty? opt)) (> rew Double/NEGATIVE_INFINITY))
@@ -46,11 +51,7 @@
     (apply-pess [fs input-set] (output-or-nil (angelic/pessimistic-set-and-reward action input-set)))        
     (status     [fs input-set] (status-fn input-set))
     (child-seqs [fs input-set] (child-seq-fn input-set))
-    (precondition-context-set [fs input-set] (angelic/precondition-context-set action input-set))
-    (extract-context [fs input-set]
-      (state/extract-context input-set (angelic/precondition-context-set action input-set)))
-    (get-logger  [fs input-set]
-      (state/get-logger input-set (angelic/precondition-context-set action input-set))))))
+    (precondition-context-set [fs input-set] (angelic/precondition-context-set action input-set)))))
 
 (defmethod print-method angelic.search.function_sets.FunctionSet [s o]
            (print-method (fs-name s) o))
