@@ -18,6 +18,12 @@
 
 (defn effect-var [a] (util/safe-singleton (keys (:effect-map a))))
 
+
+(defn users [state ap-map v]
+  (for [a (get ap-map [v (state/get-var state v)])]
+    (effect-var a)))
+
+
 (defn co-enablers [state ap-map v]
   (for [a (get ap-map [v (state/get-var state v)])
         [pvar pval] (:precond-map a)
@@ -33,7 +39,7 @@
         (when-not (.contains closed v)
           (.add closed v)
           (.addAll open (av-map v))          
-          (doseq [c (concat (cg-map v) (co-enablers state ap-map v))
+          (doseq [c (concat  (cg-map v) #_ (users state ap-map v) (co-enablers state ap-map v))
                   :when (<= (tsi c) max-tsi)]
             (.add open c)))))
     (set (seq closed))))
@@ -187,9 +193,12 @@
 
 
 
-;; (use 'angelic.env 'angelic.domains.taxi-infinite 'angelic.domains.sas-problems 'angelic.search.action-set.stratified)
+;; (use 'angelic.env 'angelic.domains.taxi-constrained 'angelic.domains.sas-problems 'angelic.search.action-set.stratified)
 
 ;; (let [e (force (nth ipc2-logistics 3)) ]  (println (time (run-counted #(stratified-search e)))))
+
+;; (let [e  (make-random-pairwise-taxi-env 3 3 2 true 1)] (doseq [t [:simple :dynamic :fluid]] (println "\n"  t (time (run-counted #(stratified-search e t))))))
+
 
 ;;(doseq [ i [5 7 2 4 1 0 9 6 8 3]] (let [e  (force (nth ipc2-logistics i))] (println "\n\n" i) (doseq [t [:simple #_ :dynamic :fluid]] (println "\n"  t (time (run-counted #(stratified-search e t)))))))
 

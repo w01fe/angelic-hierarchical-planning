@@ -120,8 +120,8 @@
       [[:baseline true] "baseline+c"]
       [[:strat  true] "{/Symbol \\245}strat+c"]
       [[:strat+ true] "{/Symbol \\245}+strat+c"]
-      [[:asplan false] "BI"]
-      [[:asplan true] "BI+c"]])
+      [[:asplan false] "BIP"]
+      [[:asplan true] "BIP+c"]])
 
 (def *alg-names* (into {} *alg-order*))
 
@@ -174,4 +174,4 @@
 
 
 ;(use '[edu.berkeley.ai.util experiments cluster] 'angelic.scripts.experiments-11ijcai)
-;(run-experiment-set-cluster (make-exp-set))
+;(run-experiment-set-cluster (make-taxi-strat-exp-set))
