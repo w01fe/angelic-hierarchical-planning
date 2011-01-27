@@ -19,9 +19,8 @@
 
 (defprotocol FunctionSet
   (fs-name    [fs]           "Arbitrary name to identify fs")
-  (apply-opt  [fs input-set] "[output-set upper-reward-bound] or nil if empty/-inf")
-  (apply-pess [fs input-set] "[output-set upper-reward-bound] or nil if empty/-inf")  
-  (status     [fs input-set] ":live, :blocked, or :solved")
+  (apply-opt  [fs input-set] "[output-set upper-reward-bound status]. output nil if empty or -inf. Status is :live/:blocked/:solved.")
+  (apply-pess [fs input-set] "[output-set upper-reward-bound status]. output nil if empty or -inf. Status is :live/:blocked/:solved.")  
   (child-seqs [fs input-set] "seq of seqs of FunctionSets. Only valid if above is :live.
                               (= :live (status fs s)) ==>
                                  (subset? (child-seqs fs s-subset) (child-seqs fs s)) (for names)")
@@ -34,9 +33,11 @@
   (state/get-logger input-set (precondition-context-set fs input-set)))
 
 
-(defn- output-or-nil [[opt rew :as p]]
-  (when (and p (not (state-set/empty? opt)) (> rew Double/NEGATIVE_INFINITY))
-    p))
+(defn- output-or-nil [desc-fn stat-fn action input-set]
+  (or (when-let [[out-set rew] (desc-fn action input-set)]
+        (when (and (not (state-set/empty? out-set)) (> rew Double/NEGATIVE_INFINITY))
+          [out-set rew (stat-fn input-set)]))
+      [nil Double/NEGATIVE_INFINITY :blocked]))
 
 (defn- make-fs [action status-fn child-seq-fn]
   (let [n (env/action-name action)]
@@ -47,9 +48,8 @@
                             (= n (fs-name ofs))))    
     FunctionSet
     (fs-name    [fs]           n)
-    (apply-opt  [fs input-set] (output-or-nil (angelic/optimistic-set-and-reward action input-set)))
-    (apply-pess [fs input-set] (output-or-nil (angelic/pessimistic-set-and-reward action input-set)))        
-    (status     [fs input-set] (status-fn input-set))
+    (apply-opt  [fs input-set] (output-or-nil angelic/optimistic-set-and-reward status-fn action input-set))
+    (apply-pess [fs input-set] (output-or-nil angelic/pessimistic-set-and-reward status-fn action input-set))        
     (child-seqs [fs input-set] (child-seq-fn input-set))
     (precondition-context-set [fs input-set] (angelic/precondition-context-set action input-set)))))
 

@@ -419,16 +419,12 @@
        (util/print-debug 1 "eval" nm (if (get-output-set s) :out :no-out) (sg/summary s))
        (if-not (get-output-set s)
          ;; Not evaluated yet -- evalute description and publish output
-         (let [[out-set reward :as p]
-               (case (first inp-set)
-                 :opt (fs/apply-opt fs (second inp-set))
-                 :pess (or (fs/apply-pess fs (second inp-set)) [nil summary/neg-inf]))
-               status (if p (fs/status fs (second inp-set)) :blocked)]
+         (let [[out-set reward status] ((case (first inp-set) :opt fs/apply-opt :pess fs/apply-pess) fs (second inp-set))]
            (set-sf! s (let [sub (and (= status :live) (first (subsuming-sps s)))] ;; TODO
                         (if (and sub (< (summary/max-reward (sg/summary sub)) 0))
                          #(summary/leafen (sg/summary (sp-ts sub)) (min reward (sg/get-bound s)) :live %)                        
-                         #(make-summary (first inp-set) (or reward summary/neg-inf) status % (sg/get-bound s)))))
-           (when p (set-output-set! s [(first inp-set) out-set])))
+                         #(make-summary (first inp-set) reward status % (sg/get-bound s)))))
+           (when out-set (set-output-set! s [(first inp-set) out-set])))
          ;; Evaluated to live -- generate children now.
          (do (set-sf! s (make-or-summarizer (first inp-set) nm (:p-val (sg/summary s))))             
              (if-let [subsuming-sps (seq (filter #(not (terminal? %)) (subsuming-sps s)))]

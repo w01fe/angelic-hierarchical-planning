@@ -253,10 +253,9 @@
      (fn evaluate! [s]
        (util/print-debug 1 "eval" nm (if (get-output-set s) :out :no-out))
        (if-not (get-output-set s) ; Not evaluated yet -- evalute description and publish output
-         (let [[out-set reward :as p] (fs/apply-opt fs inp-set)
-               status (if p (fs/status fs inp-set) :blocked)]
-           (set-sf! s #(make-summary (or reward summary/neg-inf) status %))
-           (when p (set-output-set! s out-set)))
+         (let [[out-set reward status] (fs/apply-opt fs inp-set)]
+           (set-sf! s #(make-summary reward status %))
+           (when out-set (set-output-set! s out-set)))
          (do (set-sf! s sg/or-summary) ; Evaluated to live -- generate children now.
              (if-let [subsuming-sps (seq (filter #(not (terminal? %)) (subsuming-sps s)))]
                (connect-and-watch! s (apply min-key (comp sg/get-bound sp-ts) subsuming-sps) nil
