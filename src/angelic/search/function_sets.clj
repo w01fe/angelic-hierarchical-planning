@@ -32,12 +32,12 @@
 (defn get-logger [fs input-set]
   (state/get-logger input-set (precondition-context-set fs input-set)))
 
-
+(def dead-outcome [nil Double/NEGATIVE_INFINITY :blocked])
 (defn- output-or-nil [desc-fn stat-fn action input-set]
   (or (when-let [[out-set rew] (desc-fn action input-set)]
         (when (and (not (state-set/empty? out-set)) (> rew Double/NEGATIVE_INFINITY))
           [out-set rew (stat-fn input-set)]))
-      [nil Double/NEGATIVE_INFINITY :blocked]))
+      dead-outcome))
 
 (defn- make-fs [action status-fn child-seq-fn]
   (let [n (env/action-name action)]
