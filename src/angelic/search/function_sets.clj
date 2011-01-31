@@ -92,7 +92,8 @@
   (if (vector? henv)
     (let [[init init-fs] henv]
       [(state-set/make-logging-factored-state-set
-        [(state/get-logger init (state/current-context init))])])    
+        [(state/get-logger init (state/current-context init))])
+       init-fs])    
     [(state-set/initial-logging-ss (hierarchy/env henv)) (make-tla-fs henv)]))
 
 
