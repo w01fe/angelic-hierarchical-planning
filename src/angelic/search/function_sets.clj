@@ -89,7 +89,11 @@
     0)))
 
 (defn make-init-pair [henv]
-  [(state-set/initial-logging-ss (hierarchy/env henv)) (make-tla-fs henv)])
+  (if (vector? henv)
+    (let [[init init-fs] henv]
+      [(state-set/make-logging-factored-state-set
+        [(state/get-logger init (state/current-context init))])])    
+    [(state-set/initial-logging-ss (hierarchy/env henv)) (make-tla-fs henv)]))
 
 
 ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;; Utils ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
