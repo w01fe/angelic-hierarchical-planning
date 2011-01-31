@@ -472,7 +472,7 @@
     (summary/solve
      #(sg/summary *root*)
      (sg/best-leaf-operator choice-fn local? evaluate-and-update!)
-     #(let [n (fs/fs-name (second (sp-name %)))] (when-not (= (first n) :noop) n)))))
+     #(let [fs (second (sp-name %)) n (fs/fs-name fs)] (when-not (= (first n) :noop) fs)))))
 
 
 
