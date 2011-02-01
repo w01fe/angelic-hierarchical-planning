@@ -314,7 +314,7 @@
                          (fn right-child [right-child] (add-sp-child! s (make-pair-subproblem left-sp right-child) true)))
                        (sg/summary-changed-local! ss))
            ret (make-subproblem nm (input-set left-sp) nil 
-                 (fn eval! [s] (schedule-decrease! s) (go-right! s)) 
+                 (fn eval! [s] (util/print-debug 1 "eval-pair" nm) (schedule-decrease! s) (go-right! s)) 
                  (fn [s ni] (if (= ni (input-set left-sp)) s
                                 (make-pair-subproblem (refine-input left-sp ni)
                                                       right-name #(refine-input @right-sp %))))
