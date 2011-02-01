@@ -244,6 +244,9 @@
 
 (declare refinement-names)
 
+;; TODO: subsuming sp can become blocked before its children come to fruition...
+;; TODO: fix in dash_astar too.
+;; Easiest solution: pair not blocked until it has output.
 (defn- make-atomic-subproblem [fs inp-set]
   (let [nm         (atomic-name fs)
         summary-fn (atom #(make-summary nil :live %))
@@ -297,6 +300,8 @@
 
 (defn pair-name [l r] [:Pair l r])
 
+;; TODO: Here also: problem is that we can refine input of right before it's
+;;       evaluated. Need the block-on-subsuming conisdered earlier.
 ;; TODO: short circuit when left terminal? (can we know soon enough?)
 ;; TODO: no right output when right blocked? 
 (defn- make-pair-subproblem
@@ -412,12 +417,13 @@
 (defn sa-name [inner-name] [:SA inner-name])
 
 ;; Note: subsumed subproblems can have different irrelevant vars
+;; Also note: new input can have subset of variables of old. (=-state-sets does ntthis now).
 (defn- make-state-abstracted-subproblem [fs inner-sp inp-set]
   (make-wrapped-subproblem
    (sa-name (sp-name inner-sp)) inp-set #{:OC} inner-sp
    (fn [o] (fs/transfer-effects inp-set o))
    (fn [sp child-sp] (add-sp-child! sp (make-state-abstracted-subproblem fs child-sp inp-set) :irrelevant)) 
-   (fn [sp ni] (if (fs/=-state-sets ni inp-set) sp (make-state-abstracted-subproblem fs (refine-input inner-sp ni) ni)))))
+   (fn [sp ni] #_ (def *bad* sp) (if (fs/=-state-sets ni inp-set) sp (make-state-abstracted-subproblem fs (refine-input inner-sp ni) ni)))))
 
 (defmethod get-subproblem :SA [[_ inner-n :as n] inp-set]
   (let [fs (atomic-name-fs (second inner-n))] 

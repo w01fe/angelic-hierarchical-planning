@@ -3,7 +3,7 @@
             [edu.berkeley.ai.util.traits :as traits]
             [angelic.search.summary :as summary]            
             [angelic.search.summary-graphs :as sg]
-            [angelic.search.function-sets :as fs])s
+            [angelic.search.function-sets :as fs])
   (:import [java.util HashMap ArrayList IdentityHashMap]))
 
 ;; An extensions of dash_astar_opt to include pessimistic trees.
@@ -405,6 +405,7 @@
 
 (declare refinement-names)
 
+;; TODO TODO: subsuming SP can become blocked before it has children...
 (defn- make-atomic-subproblem [fs inp-set]
   (let [nm         (atomic-name fs)
         summary-fn (atom #_ #(make-summary (first inp-set) nil :live % 0) 
@@ -468,6 +469,7 @@
 
 (defn pair-name [l r] [:Pair l r])
 
+;; TODO TODO: failures refining input of non-existent right.
 ;; TODO: short circuit when left terminal? (can we know soon enough?)
 ;; TODO: no right output when right blocked? 
 (defn- make-pair-subproblem
@@ -576,7 +578,7 @@
    (oc-name (sp-name inner-sp)) (input-set inner-sp) #{:Atomic :Pair #_ ::TODO??? :SA :OC} inner-sp
    identity
    (fn child-watch [sp child-sp] 
-     (if (fs/=-state-sets (get-output-set! inner-sp) (get-output-set! child-sp))
+     (if (fs/=-state-sets (second (get-output-set! inner-sp)) (second (get-output-set! child-sp)))
        (do (schedule-increase! sp) (connect-and-watch! sp child-sp nil #(child-watch sp %))) 
        (add-sp-child! sp (make-output-collecting-subproblem fs inp-key child-sp) :irrelevant))) 
    (fn oc-refine-input [s ni]
@@ -621,7 +623,8 @@
    (sa-name (sp-name inner-sp)) inp-set #{:OC} inner-sp
    (fn [o] (bind-ss #(fs/transfer-effects (second inp-set) %) o))
    (fn [sp child-sp] (add-sp-child! sp (make-state-abstracted-subproblem fs child-sp inp-set) :irrelevant)) 
-   (fn [sp ni] (if (fs/=-state-sets ni inp-set) sp (make-state-abstracted-subproblem fs (refine-input inner-sp ni) ni)))))
+   (fn [sp ni] (if (fs/=-state-sets (second ni) (second inp-set))
+		 sp (make-state-abstracted-subproblem fs (refine-input inner-sp ni) ni)))))
 
 (defmethod get-subproblem :SA [[_ inner-n :as n] inp-set]
   (let [fs (atomic-name-fs (second inner-n))] 

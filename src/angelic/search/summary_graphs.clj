@@ -236,7 +236,7 @@
   (let [kids (child-nodes s)]
     (case (count kids)
       2 (summary/+ (summary (first kids)) (summary (second kids)) s (get-bound s))
-      1 (summary/re-source (summary (first kids)) s (get-bound s) :solved))))
+      1 (summary/re-source (summary (first kids)) s (get-bound s) :live)))) ;; TODO: correct?
 
 (defn make-sum-summarizer []
   (traits/reify-traits [simple-cached-node] Summarizable (summarize [s] (sum-summary s))))
