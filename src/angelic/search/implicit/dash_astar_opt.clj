@@ -254,6 +254,8 @@
        (util/print-debug 1 "eval" nm (if (get-output-set s) :out :no-out))
        (if-not (get-output-set s) ; Not evaluated yet -- evalute description and publish output
          (let [[out-set reward status] (fs/apply-opt fs inp-set)]
+	   (when-not out-set (util/assert-is (= reward Double/NEGATIVE_INFINITY)
+					     "Bad outcome: %s" [(fs/fs-name fs) reward status]))
            (set-sf! s #(make-summary reward status %))
            (when out-set (set-output-set! s out-set)))
          (do (set-sf! s sg/or-summary) ; Evaluated to live -- generate children now.
