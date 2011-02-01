@@ -260,7 +260,7 @@
              (if-let [subsuming-sps (seq (filter #(not (terminal? %)) (subsuming-sps s)))]
                (connect-and-watch! s (apply min-key (comp sg/get-bound sp-ts) subsuming-sps) nil
                  (fn [sub-out] (add-sp-child! s (refine-input sub-out inp-set) true))) 
-               (doseq [ref-name (refinement-names fs inp-set)] #_ (println fs ref-name)
+               (doseq [ref-name (refinement-names fs inp-set)] ;		 (println fs ref-name)
                  (add-sp-child! s (get-subproblem ref-name inp-set) false))))))     
      (fn [s ri]  (assert (not *collect-equal-outputs*))  
        (if (= ri inp-set) s (get-subproblem nm  ri)))
@@ -392,7 +392,7 @@
              ret)
            (make-output-collecting-subproblem fs ninp-key (refine-input inner-sp (log-input fs ni)))))))))
 
-(defn get-ocs [inner-n fs inp-key inp-set]
+(defn get-ocs [inner-n fs inp-key inp-set] 
   (let [make-sp #(make-output-collecting-subproblem fs inp-key (get-subproblem inner-n (log-input fs inp-set)))]
     (if-let [^HashMap dc *decompose-cache*]
       (util/cache-with dc [inner-n inp-key] (make-sp))

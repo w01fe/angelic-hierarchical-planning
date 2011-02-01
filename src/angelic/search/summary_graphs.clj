@@ -60,7 +60,7 @@
                                  ^java.util.ArrayList parents  (java.util.ArrayList.)
                                  ^java.util.ArrayList subsumed (java.util.ArrayList.)] []
   Node
-  (add-child!     [n c] (assert (not (identical? n c))) (.add children c))
+  (add-child!     [n c] (util/assert-is (not (identical? n c)) "%s" [n]) (.add children c))
   (remove-child!  [n c] (remove! children c))  
   (child-nodes    [n]   (seq children))
   
