@@ -70,6 +70,7 @@
 
 (defn or-combine-b [summaries new-src bound]
   (let [best (apply-max-b summaries bound)]
+    (when (solved? best) (assert (>= bound (max-reward best))))
     (re-source best new-src bound :solved)))
 
 
@@ -128,10 +129,10 @@
                (clojure.core/>= (status-val (status s1))
                                 (status-val (status s2)))))))
   (+                [s other new-src bound]
-    (SimpleSummary.
-     (clojure.core/min (clojure.core/+ max-rew (max-reward other)) bound)
-     (min-key status-val stat (status other))
-     new-src [s other])))
+    (let [new-stat (min-key status-val stat (status other))
+	  r        (clojure.core/+ max-rew (max-reward other))]
+      (when (= new-stat :solved) (assert (>= bound r)))      
+      (SimpleSummary. (clojure.core/min r bound) new-stat new-src [s other]))))
 
 (defn make-live-simple-summary [max-reward source] (SimpleSummary. max-reward :live source nil))
 (defn make-blocked-simple-summary [max-reward source] (SimpleSummary. max-reward :blocked source nil))
