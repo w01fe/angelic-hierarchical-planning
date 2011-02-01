@@ -88,6 +88,15 @@
 
 ;; TODO: watch out for increases that were previously decreases...
 
+;; What can happen without subsumption bounding:
+;; left of pair is evaluated, right is still a stub.
+;; left spits out a child.  we try to refine-input of right.
+;;  two bad consequences: (1) may never provide output for SP
+;;                        (2) can try to refine-input of right without output
+;;                           (b) this can lead to refine-input of non-existent right within rught stub child.
+;; Potential solutions: subsumption bounding, or just fix pair -- no branching until done. 
+
+
 ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
 ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;       Options      ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
 ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
@@ -294,6 +303,7 @@
   (add-child-watcher!  [s w] (subscribe! child-ps w))
   (add-sp-child!       [sp child-sp up?] ;; TODO: subsumption should prevent child from getting output before parent ??
    (util/print-debug 2 "AC" sp child-sp)
+   (assert (get-output-set sp))
    (when (canonical? sp)
      (schedule-subsumption! (sp-ts sp) (sp-ts child-sp))
      (publish! all-child-ps child-sp))
@@ -304,14 +314,13 @@
                   (sg/connect! (sp-ts sp) (sp-ts child-sp))
                   (schedule-increase! (sp-ts sp)))    
                 (publish! child-ps child-sp))]
-     (if (and (get-output-set sp) (get-output-set child-sp))
+     (if (get-output-set child-sp)
        (pub!)
        (do (sg/connect! sp (sp-ts child-sp)) 
-           (add-output-watcher! sp 
-             (fn [_] (add-output-watcher! child-sp
-                       (fn [_] (pub!) 
-                               (sg/disconnect! sp (sp-ts child-sp))
-                               (schedule-decrease! sp)))))
+           (add-output-watcher! child-sp
+             (fn [_] (pub!) 
+               (sg/disconnect! sp (sp-ts child-sp))
+               (schedule-decrease! sp)))
            (when up? (schedule-increase! sp))))))
 
   (add-all-child-watcher! [s w] (subscribe! all-child-ps w))    
@@ -469,7 +478,8 @@
 
 (defn pair-name [l r] [:Pair l r])
 
-;; TODO TODO: failures refining input of non-existent right.
+;; TODO TODO: avoid children-before-output set, like in dash_astar_opt or using
+;; subsumption blocking.
 ;; TODO: short circuit when left terminal? (can we know soon enough?)
 ;; TODO: no right output when right blocked? 
 (defn- make-pair-subproblem

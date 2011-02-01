@@ -173,6 +173,7 @@
   (add-child-watcher!  [s w] (subscribe! child-ps w))
   (add-sp-child!       [sp child-sp up?] ;; TODO: subsumption should prevent child from getting output before parent ??
    (util/print-debug 2 "AC" sp child-sp)
+   (assert (get-output-set sp))
    (when (canonical? sp)
      (schedule-subsumption! (sp-ts sp) (sp-ts child-sp))
      (publish! all-child-ps child-sp))
@@ -183,14 +184,13 @@
                   (sg/connect! (sp-ts sp) (sp-ts child-sp))
                   (schedule-increase! (sp-ts sp)))    
                 (publish! child-ps child-sp))]
-     (if (and (get-output-set sp) (get-output-set child-sp))
+     (if (get-output-set child-sp)
        (pub!)
        (do (sg/connect! sp (sp-ts child-sp)) 
-           (add-output-watcher! sp 
-             (fn [_] (add-output-watcher! child-sp
-                       (fn [_] (pub!) 
-                               (sg/disconnect! sp (sp-ts child-sp))
-                               (schedule-decrease! sp)))))
+           (add-output-watcher! child-sp
+              (fn [_] (pub!) 
+                      (sg/disconnect! sp (sp-ts child-sp))
+                      (schedule-decrease! sp)))
            (when up? (schedule-increase! sp))))))
 
   (add-all-child-watcher! [s w] (subscribe! all-child-ps w))    
@@ -300,10 +300,11 @@
 
 (defn pair-name [l r] [:Pair l r])
 
-;; TODO: Here also: problem is that we can refine input of right before it's
-;;       evaluated. Need the block-on-subsuming conisdered earlier.
 ;; TODO: short circuit when left terminal? (can we know soon enough?)
-;; TODO: no right output when right blocked? 
+;; TODO: no right output when right blocked?
+;; TODO: new approach of not branching at all until fully evaluated
+;;       is worse in terms of evals than old -- perhaps subsumption blocking would be better?
+
 (defn- make-pair-subproblem
   ([left-sp right-sp] (make-pair-subproblem left-sp (sp-name right-sp) (constantly right-sp)))
   ([left-sp right-name right-sp-fn]
@@ -324,7 +325,8 @@
                                 (make-pair-subproblem (refine-input left-sp ni)
                                                       right-name #(refine-input @right-sp %))))
                  (fn [s] 
-                   (or (and (not @right?-atom)
+                   (or (and (get-output-set s)
+                            (not @right?-atom)
                             (solved-terminal? left-sp)
                             (if (empty? (get-children @right-sp))
                               (do (go-right! s) nil)
@@ -332,12 +334,17 @@
                                 (make-summary r :live s)))) ;; tODO: ??
                        (sg/or-summary s))))]    
        (sg/connect! ret ss)
-       (connect-and-watch! ss left-sp
+       (connect-and-watch-ts! ss left-sp
          (fn left-output [_]
-           (connect-and-watch-ts! ss @right-sp (fn [o] (set-output-set! ret o)))
-           (schedule-decrease! ss))
-         (fn left-child [left-child]
-           (add-sp-child! ret (make-pair-subproblem left-child right-name #(refine-input @right-sp %)) true))) 
+           (connect-and-watch-ts! ss @right-sp
+           (fn right-output [o]
+             (set-output-set! ret o)
+             (sg/disconnect! ss (sp-ts left-sp))
+             (connect-and-watch! ss left-sp nil
+               (fn left-child [left-child]
+                 (add-sp-child! ret (make-pair-subproblem left-child right-name #(refine-input @right-sp %)) true)))
+             (schedule-decrease! ss)))           
+           (schedule-decrease! ss))) 
        ret)))
 
 
