@@ -19,6 +19,7 @@
 
 (defprotocol FunctionSet
   (fs-name    [fs]           "Arbitrary name to identify fs")
+  (primitive? [fs] "needed for SAHTN, etc.")
   (precondition-context-set [fs input-set] "Relevant set of variables")  
   (apply-opt  [fs input-set] "[output-set upper-reward-bound status]. output nil if empty or -inf. Status is :live/:blocked/:solved.")
   (apply-pess [fs input-set] "[output-set upper-reward-bound status]. output nil if empty or -inf. Status is :live/:blocked/:solved.")  
@@ -39,7 +40,7 @@
           [out-set rew (stat-fn input-set)]))
       dead-outcome))
 
-(defn- make-fs [action status-fn child-seq-fn]
+(defn- make-fs [action prim? status-fn child-seq-fn]
   (let [n (env/action-name action)]
    (reify
     Object
@@ -48,6 +49,7 @@
                             (= n (fs-name ofs))))    
     FunctionSet
     (fs-name    [fs]           n)
+    (primitive? [fs] prim?)
     (precondition-context-set [fs input-set] (angelic/precondition-context-set action input-set))
     (apply-opt  [fs input-set] (output-or-nil angelic/optimistic-set-and-reward status-fn action input-set))
     (apply-pess [fs input-set] (output-or-nil angelic/pessimistic-set-and-reward status-fn action input-set))        
@@ -59,7 +61,7 @@
 ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;; Implementations ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
 
 (defn make-primitive-fs [action]
-  (make-fs action (constantly :solved) (fn [i] (throw (UnsupportedOperationException.)))))
+  (make-fs action true (constantly :solved) (fn [i] (throw (UnsupportedOperationException.)))))
 
 (defn- simple-immediate-refinements-set [a input-set]
   (for [[constraint ref] (angelic/immediate-refinements-set a input-set)]
@@ -71,7 +73,7 @@
       ref)))
 
 (defn make-hla-fs [action]
-  (make-fs action
+  (make-fs action false
     #(if (angelic/can-refine-from-set? action %) :live :blocked)
     #(for [ref (simple-immediate-refinements-set action %)]
        (for [a ref]

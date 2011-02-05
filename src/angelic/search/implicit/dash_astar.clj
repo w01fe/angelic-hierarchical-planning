@@ -527,15 +527,29 @@
        (sg/connect! ret ss)
 ;       (schedule-subsumption! ret ss) ;; TODO: remove ?  Here for bounding of pairs with SWS...
        (when rz (sg/add-child! ss rz))
-       (connect-and-watch! ss left-sp
+       (connect-and-watch-ts! ss left-sp
+         (fn left-output [_]
+           (when rz (sg/remove-child! ss rz))
+           (connect-and-watch-ts! ss @right-sp
+             (fn right-output [o]
+               (set-output-set! ret o)
+               (sg/disconnect! ss (sp-ts left-sp))
+               (connect-and-watch! ss left-sp nil
+                 (fn left-child [left-child]
+                   (add-sp-child! ret (make-pair-subproblem left-child right-name #(refine-input @right-sp %) @right-sp) true)))
+               (schedule-decrease! ss)))           
+           (schedule-decrease! ss)))
+       ret)))
+
+(comment ;; Old version -- better perf, but can fail -- see above.
+  (connect-and-watch! ss left-sp
          (fn left-output [_]
            (when rz (sg/remove-child! ss rz))
            (connect-and-watch-ts! ss @right-sp (fn [o] (set-output-set! ret o)))
            (schedule-decrease! ss))
          (fn left-child [left-child]
-           (add-sp-child! ret (make-pair-subproblem left-child right-name #(refine-input @right-sp %) @right-sp) true))) 
-       ret)))
-
+           (add-sp-child! ret (make-pair-subproblem left-child right-name #(refine-input @right-sp %) @right-sp) true)))
+  )
 
 
 
@@ -774,6 +788,11 @@
 
 ;; better settings
 ;; (dotimes [_ 1] (reset! sg/*summary-count* 0) (reset! summaries-old/*summary-count* 0) (debug 0 (let [opts [:gather true :d true :s true :dir :right] h (make-discrete-manipulation-hierarchy (make-random-discrete-manipulation-env 6 3))]  (time (println (run-counted #(identity (apply da/implicit-dash-a* h opts))) @sg/*summary-count*))  (time (println (run-counted #(identity (apply da/implicit-dash-wa* h 3.0 {'act 1 :discretem-tla 1.0 :move-to-goal 1 :go-grasp 0.7 :go-drop 0.7 :go-drop-at 0.6 :drop-at 0.4 :move-base 0.3 :nav 0.2 :reach 0.1 :putdown 0 :pickup 0 :gripper 0 :grasp 0 :park 0 :unpark 0 :base 0 'finish 0 :noop 0} (concat [:choice-fn (fn [s] (apply max-key (comp :max-gap sg/summary) s))] opts)))) @sg/*summary-count*)))))
+
+;; TODO: failing at
+
+;; (dotimes [_ 1] (reset! sg/*summary-count* 0) (debug 0 (let [h (make-discrete-manipulation-hierarchy  (make-random-hard-discrete-manipulation-env 4 3))]   (time (println (run-counted #(identity (da/implicit-dash-a* h :gather true :d true :s :eager :dir :right))) @sg/*summary-count*)))))
+
 ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;; Graveyard ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
 
 (comment ;; Stuff for making contextifying an output require an eval step (old -- needs fixup)

@@ -1,12 +1,5 @@
 (ns angelic.search.implicit.ah-astar
   (:require [edu.berkeley.ai.util :as util]
-            [angelic.env :as env]
-            [angelic.env.util :as env-util]            
-            [angelic.env.state :as state]             
-            [angelic.hierarchy :as hierarchy]
-            [angelic.hierarchy.util :as hierarchy-util]            
-            [angelic.hierarchy.state-set :as state-set]
-            [angelic.hierarchy.angelic :as angelic]
             [angelic.search.function-sets :as fs]
             [angelic.search.explicit.core :as is])
   (:import  [java.util HashMap]))
@@ -92,7 +85,13 @@
 
 
 (comment ;; For debugging, I guess?
-  
+
+  ;            [angelic.env :as env]
+;            [angelic.hierarchy :as hierarchy]
+;            [angelic.hierarchy.util :as hierarchy-util]            
+;            [angelic.hierarchy.state-set :as state-set]
+;            [angelic.hierarchy.angelic :as angelic]
+
 (defrecord ImplicitAHA*FEnv [henv]
   env/Env
   (initial-state [_]
