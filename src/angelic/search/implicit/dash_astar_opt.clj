@@ -312,7 +312,7 @@
            right-sp (delay (right-sp-fn (get-output-set! left-sp)))
            right?-atom (atom false) ;; Expand on right            
            ss (sg/make-sum-summarizer)
-           go-right! (fn [s] 
+           go-right! (fn [s] ;		       (println "GR" s)
                        (reset! right?-atom true)                          
                        (sg/disconnect! ss (sp-ts @right-sp))
                        (add-child-watcher! left-sp (fn [c] (def *bad* [s c]) (throw (RuntimeException. "Solved and children."))))
@@ -333,7 +333,7 @@
                               (let [r (min (summary/max-reward (sg/summary ss)) (sg/get-bound s))]
                                 (make-summary r :live s)))) ;; tODO: ??
                        (sg/or-summary s))))]    
-       (sg/connect! ret ss)
+       (sg/connect! ret ss) 
        (connect-and-watch-ts! ss left-sp
          (fn left-output [_]
            (connect-and-watch-ts! ss @right-sp

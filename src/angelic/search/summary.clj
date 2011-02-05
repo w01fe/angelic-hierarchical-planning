@@ -68,9 +68,11 @@
        best))
    +worst-simple-summary+))
 
+(defn eps-bound [x] (clojure.core/+ 0.000000001 x))
+
 (defn or-combine-b [summaries new-src bound]
   (let [best (apply-max-b summaries bound)]
-    (when (solved? best) (util/assert-is (clojure.core/>= bound (max-reward best)) "%s" [new-src]))
+    (when (solved? best) (util/assert-is (clojure.core/>= (eps-bound bound) (max-reward best)) "%s" [new-src]))
     (re-source best new-src bound :solved)))
 
 
@@ -119,7 +121,7 @@
   (children        [s] chldren)
   (leafen           [s bound new-stat new-src] (SimpleSummary. (clojure.core/min bound max-rew) new-stat new-src nil))
   (re-source       [s new-src bound stat-bound]
-    (when (solved? s) (assert (clojure.core/>= bound max-rew)))
+    (when (solved? s) (assert (clojure.core/>= (eps-bound bound) max-rew)))
     (SimpleSummary. (clojure.core/min max-rew bound) (min-key status-val stat stat-bound) new-src [s]))
   (eq               [s other] (and (= max-rew (max-reward other)) (= stat (status other))))
   (>=               [s1 s2 bound]
