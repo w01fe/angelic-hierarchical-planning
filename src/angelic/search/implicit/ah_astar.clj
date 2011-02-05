@@ -7,89 +7,92 @@
             [angelic.hierarchy.util :as hierarchy-util]            
             [angelic.hierarchy.state-set :as state-set]
             [angelic.hierarchy.angelic :as angelic]
+            [angelic.search.function-sets :as fs]
             [angelic.search.explicit.core :as is])
   (:import  [java.util HashMap]))
 
 
-;; Simple implicit version of AHA* with implicit descritpions.
-;; TODO: improved caching, et.c  This is jsut quick and dirty.
-;; TODO: add pruning.
+;; Simple implicit version of AHA* with implicit descriptions,
+;; and limited pruning.
 
-;(def ^HashMap *heuristic-cache* nil)
+;; Keep graph queue of (input set, tail plan),
+;; where tail starts at first HLA.
 
-; tuples are [init-set init-rew init-solved?]
-
-(defrecord ActionNode [input-tuple constraint action])
-
-(defn make-action-node [input-tuple constraint action]
-  (ActionNode. input-tuple constraint action))
-
-(defn action-node-name [an] [(:constraint an) (env/action-name (:action an))])
-
-(defn action-node-output [an]
-  (let [{:keys [input-tuple constraint action]} an
-        [ss rew solved?] input-tuple
-        [opt-ss step-rew] (angelic/optimistic-set-and-reward action (state-set/constrain ss constraint))]
-    (when (and opt-ss (not (state-set/empty? opt-ss)) (not (= is/neg-inf step-rew)))
-      [opt-ss (+ rew step-rew) (and solved? (env/primitive? action))])))
-
-(defn make-action-node-seq
-  "Make a seq, or nil for failure."
-  [input-tuple constraint-action-pairs]
-  (if (empty? constraint-action-pairs)
-    ()    
-    (let [[[c f] & r] constraint-action-pairs
-          nxt (make-action-node input-tuple c f)]
-      (when-let [tup (action-node-output nxt)]
-        (when-let [rst (make-action-node-seq tup r)]
-          (cons nxt rst))))))
+;; Optional pruning of strictly dominated optimistic tails.
 
 
-(defn action-node-refinable? [an]
-  (let [{:keys [input-tuple constraint action]} an
-        ss (first input-tuple)]
-;    (println (env/action-name action))
-    (and (not (env/primitive? action))
-         (angelic/can-refine-from-set? action ss))))
-
-(defn action-node-refinements [an suffix-nodes]
-  (assert (action-node-refinable? an))
-  (let [{:keys [input-tuple constraint action]} an
-        [ss rew solved?] input-tuple]
-    (filter identity
-      (for [[new-constraint ref] (angelic/immediate-refinements-set action ss)
-            :let [first-constraint     (merge-with clojure.set/intersection constraint new-constraint)]]
-        (make-action-node-seq
-         input-tuple
-         (concat
-          (if (empty? ref)
-            [[first-constraint env-util/+factored-noop+]]
-            (cons [first-constraint (first ref)] (map #(vector {} %) (rest ref))))
-          (map (juxt :constraint :action) suffix-nodes)))))))
+ ; bind to HashMap from name to solved-reward-to-state.
+(def ^HashMap *pruning-cache* nil)
 
 
-(defrecord Plan [node-seq output-tuple])
-
-(defn make-plan [node-seq]
-  (assert (seq node-seq))
-  (Plan. node-seq (action-node-output (last node-seq))))
+(defrecord Plan [input-set input-reward opt-sol fs-seq output-set output-reward])
 
 (defn plan-name [plan]
-  (map action-node-name (:node-seq plan)))
+  [(:input-set plan) (map fs/fs-name (:fs-seq plan))])
 
-(defn plan-refinements [plan]
-  (let [nodes (:node-seq plan)
-        [prefix-plus suffix] (split-with #(nth (:input-tuple %) 2) nodes)
-        prefix (butlast prefix-plus)
-        ref    (last prefix-plus)]
-;    (println (map action-node-name nodes))
-;    (println (map :input-tuple nodes))
-;    (println (count prefix-plus) (count suffix))
-    (for [ref-seq (action-node-refinements ref suffix)] 
-      (make-plan (concat prefix ref-seq))))
-  )
+(defn make-plan [pre-sol input-set input-reward remaining-fs]
+  (loop [init-set input-set init-reward input-reward
+         input-set input-set input-reward input-reward
+         remaining-fs remaining-fs final-fs [] sol pre-sol]
+    (if (empty? remaining-fs)
+      (Plan. init-set init-reward sol final-fs input-set input-reward)
+      (let [[fs & more-fs] remaining-fs
+            [out-set step-rew stat :as outcome] (fs/apply-opt fs input-set)
+            out-rew (+ input-reward step-rew)]
+        (when out-set
+         (when (= stat :blocked) (util/assert-is (not (empty? final-fs)) "%s" [fs (def *bad* [fs input-set])]))
+         (if (and (empty? final-fs) (= stat :solved))
+           (do #_ (util/assert-is (empty? final-fs) "%s" [fs])
+               (when-let [^HashMap pc *pruning-cache*]
+                 (let [k [out-set (map fs/fs-name more-fs)]]
+                   (.put *pruning-cache* k (max out-rew (get *pruning-cache* k Double/NEGATIVE_INFINITY)))))
+               (recur out-set out-rew out-set out-rew more-fs [] (conj sol fs)))
+           (when (or (not *pruning-cache*)
+                     (let [^HashMap pc *pruning-cache*
+                           k [out-set (map fs/fs-name more-fs)]
+                           r (.get pc k)]
+                       (or (not r) (> out-rew r))))
+             (recur init-set init-reward out-set out-rew more-fs (conj final-fs fs) sol))))))))
+
+(defn plan-refinements [p]
+  (keep
+   #(make-plan (:opt-sol p) (:input-set p) (:input-reward p) (concat % (next (:fs-seq p))))
+   (fs/child-seqs (first (:fs-seq p)) (:input-set p))))
 
 
+(defn plan->implicit-aha-star-node [plan]
+;  (println (:input-reward plan) (:output-reward plan) (second (plan-name plan)))
+  (is/make-simple-node (plan-name plan) (:output-reward plan) (empty? (:fs-seq plan)) plan))
+
+(defn make-aha-star-simple-search [root-plan]
+  (is/make-flat-incremental-dijkstra 
+   (plan->implicit-aha-star-node root-plan)
+   #(->> % :data plan-refinements (map plan->implicit-aha-star-node))))
+
+(defn ah-a* [henv pruning?]
+  (binding [*pruning-cache*  (when pruning? (HashMap.))]
+    (let [[init-ss root-fs] (fs/make-init-pair henv)]    
+      (when-let [g (-> (make-plan [] init-ss 0 [root-fs])
+                       make-aha-star-simple-search
+                       is/first-goal-node
+                       :data)]
+        [(remove #(= (first %) :noop) (map fs/fs-name (:opt-sol g)))
+         (:output-reward g)]))))
+
+;; (debug 0 (let [h (make-discrete-manipulation-hierarchy  (make-random-hard-discrete-manipulation-env 1 3))]   (time (println (run-counted #(identity (ah-a* h false)))))))
+;; (debug 0 (let [h (make-discrete-manipulation-hierarchy  (make-random-hard-discrete-manipulation-env 1 3))]   (time (println (run-counted #(identity (ah-a* h false)))))))
+
+;; (dotimes [_ 1] (reset! sg/*summary-count* 0) (debug 0 (let [h  (make-discrete-manipulation-hierarchy  (make-random-hard-discrete-manipulation-env 1 3))]   (time (println (run-counted #(identity (implicit-dash-a*-opt h :gather true :d true :s :eager :dir :right))) @sg/*summary-count*))  (time (println (run-counted #(identity (ah-a* h true))))))))
+
+;; (dotimes [_ 1] (reset! sg/*summary-count* 0) (debug 0 (let [h (make-nav-switch-hierarchy (make-random-nav-switch-env 20 4 0) true)]   (time (println (run-counted #(identity (implicit-dash-a*-opt h :gather true :d true :s :eager :dir :right))) @sg/*summary-count*))  (time (println (run-counted #(identity (ah-a* h true))))))))
+
+;; TODO: ImplicitAHA*Env
+
+
+
+
+(comment ;; For debugging, I guess?
+  
 (defrecord ImplicitAHA*FEnv [henv]
   env/Env
   (initial-state [_]
@@ -115,32 +118,4 @@
              [ref (- new-rew old-rew)]))))))
   (goal-fn [_] (fn [s] (nth (util/safe-get s :output-tuple) 2))))
 
-(defn make-implicit-first-ah-a*-env [henv] (ImplicitAHA*FEnv. henv))
-
-(defn plan->implicit-aha-star-node [plan]
-  (let [{:keys [node-seq output-tuple]} plan
-        [_ rew solved?] output-tuple]
-    (is/make-simple-node (plan-name plan) rew solved? plan)))
-
-(defn make-aha-star-simple-search [root-plan]
-  (is/make-flat-incremental-dijkstra 
-   (plan->implicit-aha-star-node root-plan)
-   #(->> % :data plan-refinements (map plan->implicit-aha-star-node))))
-
-(defn implicit-first-ah-a* [henv]
-  (let [e    (hierarchy/env henv)
-        init (env-util/initial-logging-state e)
-        tla  (hierarchy-util/make-top-level-action e [(hierarchy/initial-plan henv)])]
-;    (binding [*heuristic-cache*    (HashMap.)])
-    (when-let [g (-> (make-action-node [(state-set/make-logging-factored-state-set [init]) 0 true] {} tla)
-                     vector
-                     make-plan
-                     make-aha-star-simple-search
-                     is/first-goal-node
-                     :data)]
-      [(remove #{[:noop]} (map #(env/action-name (:action %)) (:node-seq g)))
-       (second (:output-tuple g))])))
-
-
-
-;; TODO: ImplicitAHA*Env
+(defn make-implicit-first-ah-a*-env [henv] (ImplicitAHA*FEnv. henv)))
