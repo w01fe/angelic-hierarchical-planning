@@ -180,6 +180,7 @@
         legal-go       (set (spiral-to g-rad))]
     (env-util/make-simple-factored-env
      (into {:const (into {[:size] size [:freespace] freespace [:objects] objects
+                          [:obstacle-cells] obstacle-cells
                           [:legal-go] legal-go  [:reachable-go] (set (spiral-to (inc (* 2 g-rad))))
                           [:max-go] g-rad
                           [:base-offsets] (pseudo-shuffle random (spiral-to (inc g-rad)) )
@@ -290,8 +291,103 @@
 (defn print-state [s] (print (state-str s)))
 
 
+;;;;;;;;;;;;;;;;;;;;;;;;;;; Generating PDDL ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
 
-;;;;;;;;;;;;;;;;;;;;;;;;;;;;; Hierarchy ;;;;;;;;;;;;;;;;;;;;;
+(def sep "\n ")
+(def sep2 "\n  ")
+(defn- xc [x] (util/symbol-cat 'x x))
+(defn- yc [x] (util/symbol-cat 'y x))
+(defn- xrel [x] (util/symbol-cat 'xrel x))
+(defn- yrel [x] (util/symbol-cat 'yrel x))
+
+(def +pddl-domain+ (util/base-local "src/angelic/domains/discrete_manipulation.pddl"))
+
+(defn write-pddl-instance [env filename]
+  (let [init    (env/initial-state env)
+        const   (state/get-var init :const)
+        [width height] (util/safe-get const [:size])
+        objects (util/safe-get const [:objects])
+        gripper-radius (util/safe-get const [:max-go])]
+    (->> (list 'define sep
+               (list 'problem (gensym 'discrete-manipulation)) sep
+               (list :domain 'DM) sep sep
+
+               (concat [:objects sep2]
+                       (for [[name _ g-set] objects :when (seq g-set)]
+                         (str name " - object " sep2))
+                       (for [x (range width)] (str (xc x) " - xc " sep2))             
+                       (for [y (range height)] (str (yc y) " - yc " sep2))             
+                       (for [x (range (- gripper-radius) (inc gripper-radius))]
+                         (str (xrel x) " - xrel " sep2))
+                       (for [y (range (- gripper-radius) (inc gripper-radius))]
+                         (str (yrel y) " - yrel " sep2)))
+               sep sep
+               
+               (concat [:init sep2]
+                       ;; Constants
+                       (for [x (range (dec width))]
+                         (str (list  'leftof (xc x) (xc (inc x))) sep2))
+                       (for [y (range (dec height))]
+                         (str (list 'above (yc y) (yc (inc y))) sep2))            
+                       (for [x (range (- gripper-radius) gripper-radius)]
+                         (str (list 'leftof-rel (xrel x) (xrel (inc x))) sep2))
+                       (for [y (range (- gripper-radius) gripper-radius)]
+                         (str (list 'above-rel (yrel y) (yrel (inc y))) sep2))            
+                       (for [x (range width)
+                             xr (range (- gripper-radius) (inc gripper-radius))
+                             :let [sum (+ x xr)]
+                             :when (<= 0 sum (dec width))]
+                         (str (list 'sum-x (xc x) (xrel xr) (xc sum)) sep2))
+                       (for [y (range height)
+                             yr (range (- gripper-radius) (inc gripper-radius))
+                             :let [sum (+ y yr)]
+                             :when (<= 0 sum (dec height))]
+                         (str (list 'sum-y (yc y) (yrel yr) (yc sum)) sep2))            
+                       [(list 'zerox-rel (xrel 0)) sep2
+                        (list 'zeroy-rel (yrel 0)) sep2]
+                       (for [[name _ goals] objects
+                             [gx gy]        goals]
+                         (str (list 'object-goal name (xc gx) (yc gy)) sep2))
+                       (for [[x y] (util/safe-get const [:obstacle-cells])]
+                         (str (list 'base-obstacle (xc x) (yc y)) sep2))                            
+                       [sep2]
+                      
+                       ;; Robot base
+                       (when (state/get-var init [:parked?]) ['(parked) sep2])
+                       (let [[x y] (state/get-var init [:base])]
+                         [(str (list 'base-pos (xc x) (yc y))) sep2])
+                       [sep2]
+                      
+                       ;; Objects
+                       (for [[name [x y]] objects] (str (list 'object-pos name (xc x) (yc y)) sep2))
+                       [sep2]
+                      
+                       ;; Gripper
+                       (if-let [h (state/get-var init [:holding])]
+                         [(str (list 'holding h)) sep2]
+                         [(str '(gripper-empty)) sep2])
+                       (let [[x y] (state/get-var init [:gripper-offset])]
+                         [(str (list 'gripper-rel (xrel x) (yrel y)) sep2)])
+                       (for [[_ [x y]] objects]
+                         (str (list 'gripper-obstacle (xc x) (yc y)) sep2)))
+               sep sep
+
+               (concat [:goal sep2]
+                       [(cons 'and
+                              (for [[name _ goals] objects :when (seq goals)]
+                                (str (list 'object-done name) sep2)))]))
+         
+         ((if filename #(spit filename %) println)))))
+
+(defn dm-pddl-instance [env]
+  (write-pddl-instance env "/tmp/tmp.pddl")
+  (angelic.sas/make-sas-problem-from-pddl +pddl-domain+ "/tmp/tmp.pddl"))
+
+;; (write-pddl-instance (make-discrete-manipulation-env [4 3] [1 1] [ [ [1 2] [3 2] ] ] [ [:a [1 2] [ [2 2] [3 2] ] ] [:b [3 2] [ [1 2] [2 2] ] ] ] 1) nil)
+
+
+
+;;;;;;;;;;;;;;;;;;;;;;;;;;;;; Hierarchy ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
 
 (defn reach-context 
   ([s] (reach-context (state/get-var s :const) (state/get-var s [:base])))
