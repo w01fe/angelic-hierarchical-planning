@@ -4,7 +4,8 @@
 ; 0, 0 at top left
 
 (define (domain DM)
-  (:requirements :strips :typing :equality :action-costs)
+  (:requirements :strips :typing :equality :action-costs
+                 )
   (:types object xc yc xrel yrel)
   (:predicates
    ;; Constant preds
@@ -33,17 +34,22 @@
    (gripper-rel      ?x - xrel ?y - yrel)
    (gripper-obstacle ?x - xc  ?y - yc) 
    )
+  (:functions (total-cost) - number)
 
   ;; Base movement actions
   (:action unpark
    :parameters (?x - xrel ?y - yrel)
    :precondition (and (parked) (gripper-rel ?x ?y) (zerox-rel ?x) (zeroy-rel ?y))
-   :effect       (and (not (parked)) (increase (total-cost) 2)))
+   :effect       (and (not (parked))
+                      (increase (total-cost) 2)
+                      ))
   
   (:action park
    :parameters   ()
    :precondition (and (not (parked)))
-   :effect       (and (parked) (increase (total-cost) 5)))
+   :effect       (and (parked)
+                     (increase (total-cost) 5)
+                      ))
   
   
   (:action base-left
@@ -52,8 +58,9 @@
                       (leftof ?dx ?cx)
                       (base-pos ?cx ?y)
                       (not (base-obstacle ?dx ?y)))
-   :effect       (and (not (base-pos ?r ?cx ?y)) (base-pos ?r ?dx ?y)
-                      (increase (total-cost) 2)))
+   :effect       (and (not (base-pos ?cx ?y)) (base-pos ?dx ?y)
+                     (increase (total-cost) 2)
+                      ))
   
   (:action base-right
    :parameters (?cx - xc ?dx - xc ?y - yc)
@@ -62,7 +69,8 @@
                       (base-pos ?cx ?y)
                       (not (base-obstacle ?dx ?y)))
    :effect       (and (not (base-pos ?cx ?y)) (base-pos ?dx ?y)
-                      (increase (total-cost) 2)))
+                     (increase (total-cost) 2)
+                      ))
   
   (:action base-up
    :parameters (?x - xc ?cy - yc ?dy - yc)
@@ -71,7 +79,8 @@
                       (base-pos ?x ?cy)
                       (not (base-obstacle ?x ?dy)))
    :effect       (and (not (base-pos ?x ?cy)) (base-pos ?x ?dy)
-                      (increase (total-cost) 2)))
+                     (increase (total-cost) 2)
+                      ))
   
   (:action base-down
    :parameters (?x - xc ?cy - yc ?dy - yc)
@@ -80,10 +89,11 @@
                       (base-pos ?x ?cy)
                       (not (base-obstacle ?x ?dy)))
    :effect       (and (not (base-pos ?x ?cy)) (base-pos ?x ?dy)
-                      (increase (total-cost) 2)))
+                     (increase (total-cost) 2)
+                      ))
   
 
-  ;; Gripper movement actions
+  ;Gripper movement actions
   (:action gripper-left
    :parameters (?basex - xc ?basey - yc
                 ?cgxrel - xrel ?dgxrel - xrel ?cgxabs - xc ?dgxabs - xc
@@ -97,7 +107,8 @@
                       (sum-y ?basey ?gyrel  ?gyabs)
                       (not (gripper-obstacle ?dgxabs ?gyabs)))
    :effect       (and (not (gripper-rel ?cgxrel ?gyrel)) (gripper-rel ?dgxrel ?gyrel)
-                      (increase (total-cost) 1)))
+                     (increase (total-cost) 1)
+                      ))
   
 
   (:action gripper-right
@@ -113,7 +124,8 @@
                       (sum-y ?basey ?gyrel  ?gyabs)
                       (not (gripper-obstacle ?dgxabs ?gyabs)))
    :effect       (and (not (gripper-rel ?cgxrel ?gyrel)) (gripper-rel ?dgxrel ?gyrel)
-                      (increase (total-cost) 1)))
+                     (increase (total-cost) 1)
+                      ))
   
   (:action gripper-up
    :parameters (?basex - xc ?basey - yc
@@ -128,7 +140,8 @@
                       (sum-y ?basey ?dgyrel ?dgyabs)
                       (not (gripper-obstacle ?gxabs ?dgyabs)))
    :effect       (and (not (gripper-rel ?gxrel ?cgyrel)) (gripper-rel ?gxrel ?dgyrel)
-                      (increase (total-cost) 1)))
+                     (increase (total-cost) 1)
+                      ))
   
 
   (:action gripper-down
@@ -144,10 +157,11 @@
                       (sum-y ?basey ?dgyrel ?dgyabs)
                       (not (gripper-obstacle ?gxabs ?dgyabs)))
    :effect       (and (not (gripper-rel ?gxrel ?cgyrel)) (gripper-rel ?gxrel ?dgyrel)
-                      (increase (total-cost) 1)))
+                     (increase (total-cost) 1)
+                      ))
   
   
-  ;; Object manipulation actions
+  ;Object manipulation actions
   (:action get-left
    :parameters (?basex - xc ?basey - yc
                 ?gxrel - xrel ?gxabs - xc ?gyrel - yrel ?gyabs - yc
@@ -164,7 +178,8 @@
                       (not (gripper-obstacle ?ox ?gyabs))
                       (not (gripper-empty))
                       (holding ?o)
-                      (increase (total-cost) 1)))
+                     (increase (total-cost) 1)
+                      ))
   
   (:action get-right
    :parameters (?basex - xc ?basey - yc
@@ -182,10 +197,11 @@
                       (not (gripper-obstacle ?ox ?gyabs))
                       (not (gripper-empty))
                       (holding ?o)
-                      (increase (total-cost) 1)))
+                     (increase (total-cost) 1)
+                      ))
   
   (:action get-up
-   :parameters (?r - robot ?basex - xc ?basey - yc
+   :parameters (?basex - xc ?basey - yc
                 ?gxrel - xrel ?gxabs - xc ?gyrel - yrel ?gyabs - yc
                 ?o - object ?oy - yc)   
    :precondition (and (parked)
@@ -200,7 +216,8 @@
                       (not (gripper-obstacle ?gxabs ?oy))
                       (not (gripper-empty))
                       (holding ?o)
-                      (increase (total-cost) 1)))
+                     (increase (total-cost) 1)
+                      ))
   
   
   (:action get-down
@@ -219,7 +236,8 @@
                       (not (gripper-obstacle ?gxabs ?oy))
                       (not (gripper-empty))
                       (holding ?o)
-                      (increase (total-cost) 1)))
+                     (increase (total-cost) 1)
+                      ))
     
   (:action put-left
    :parameters (?basex - xc ?basey - yc
@@ -239,7 +257,8 @@
                       (object-done ?o)
                       (gripper-obstacle ?ox ?gyabs)
                       (gripper-empty)
-                      (increase (total-cost) 1)))
+                     (increase (total-cost) 1)
+                      ))
   
 
   (:action put-right
@@ -260,7 +279,8 @@
                       (object-done ?o)
                       (gripper-obstacle ?ox ?gyabs)
                       (gripper-empty)
-                      (increase (total-cost) 1)))
+                      (increase (total-cost) 1)
+                      ))
   
   (:action put-up
    :parameters (?basex - xc ?basey - yc
@@ -280,7 +300,8 @@
                       (object-done ?o)
                       (gripper-obstacle ?gxabs ?oy)
                       (gripper-empty)
-                      (increase (total-cost) 1)))
+                      (increase (total-cost) 1)
+                      ))
   
 
   (:action put-down
@@ -301,6 +322,7 @@
                       (object-done ?o)                      
                       (gripper-obstacle ?gxabs ?oy)
                       (gripper-empty)
-                      (increase (total-cost) 1))))
+                     (increase (total-cost) 1)
+                      )))
 
 

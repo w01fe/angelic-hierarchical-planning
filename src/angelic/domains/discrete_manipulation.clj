@@ -373,19 +373,31 @@
                sep sep
 
                (concat [:goal sep2]
-                       [(cons 'and
-                              (for [[name _ goals] objects :when (seq goals)]
-                                (str (list 'object-done name) sep2)))]))
+                       [(concat ['and (list 'gripper-rel (xrel 0) (yrel 0))]
+                                (for [[name _ goals] objects :when (seq goals)]
+                                  (str (list 'object-done name) sep2)))])
+               sep sep
+               
+               '(:metric minimize (total-cost))
+               )
          
-         ((if filename #(spit filename %) println)))))
+         ((if filename #(spit filename (print-str %)) println)))))
 
 (defn dm-pddl-instance [env]
   (write-pddl-instance env "/tmp/tmp.pddl")
   (angelic.sas/make-sas-problem-from-pddl +pddl-domain+ "/tmp/tmp.pddl"))
 
+(defn solve-dm-lama [env]
+  (write-pddl-instance env "/tmp/tmp.pddl")
+  (angelic.sas/solve-lama +pddl-domain+ "/tmp/tmp.pddl"))
+
 ;; (write-pddl-instance (make-discrete-manipulation-env [4 3] [1 1] [ [ [1 2] [3 2] ] ] [ [:a [1 2] [ [2 2] [3 2] ] ] [:b [3 2] [ [1 2] [2 2] ] ] ] 1) nil)
 
+;; (write-pddl-instance (make-discrete-manipulation-env [4 3] [1 1] [ [ [1 2] [3 2] ] ] [ [:a [1 2] [ [2 2] [3 2] ] ] [:b [3 2] [ [1 2] [2 2] ] ] ] 1) "/tmp/tmp.pddl")
 
+;; (map :name (first (uniform-cost-graph-search (ss-node (constant-predicate-simplify (read-strips-planning-instance (read-strips-planning-domain +pddl-domain+) "/tmp/tmp.pddl"))))))
+
+; (println (solve-dm-lama (make-discrete-manipulation-env [4 3] [1 1] [ [ [1 2] [3 2] ] ] [ [:a [1 2] [ [2 2] [3 2] ] ] [:b [3 2] [ [1 2] [2 2] ] ] ] 1) ))
 
 ;;;;;;;;;;;;;;;;;;;;;;;;;;;;; Hierarchy ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
 
