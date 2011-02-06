@@ -464,6 +464,18 @@
 
 (declare *root*)
 
+(defn wtd-sample [item-wt-pairs]
+  (let [tot-wt (reduce + (map second item-wt-pairs))]
+    (loop [[[item wt] & more-items] (seq item-wt-pairs)]
+      (cond (empty? more-items) item
+            (<= (rand) (/ wt tot-wt)) item
+            :else (recur more-items)))))
+
+;; Doesn't really do what's intended, since solved wt is counted too.
+(defn even-sample [nodes]
+  (wtd-sample (for [n nodes] [n (inc (- (summary/max-reward (sg/summary n))))])))
+
+
 (defn implicit-dash-a*-opt
   "Solve this hierarchical env using implicit DASH-A*, or variants thereupon.  Options are:
     :gather    Don't publish child subproblems with identical outputs?
