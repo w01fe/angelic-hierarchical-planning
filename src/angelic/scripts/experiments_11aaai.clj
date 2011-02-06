@@ -43,8 +43,8 @@
 (defn make-dm-exp-set []
   (experiments/make-experiment-set "11aaai-dm"
     [:product
-     [:objects [1] #_ [1 2 3 4 5 6]]
-     [:rand    [1] #_ [1 2 3]]
+     [:objects [1 2 3 4 5 6]]
+     [:rand    [1 2 3]]
      [:alg     (keys alg-forms)]]
     (fn [m]
       `(dm/make-discrete-manipulation-hierarchy
@@ -61,7 +61,7 @@
 
 
 ;(use '[edu.berkeley.ai.util experiments cluster] 'angelic.scripts.experiments-11aaai)
-;(run-experiment-set-cluster (make-exp-set))
+;(run-experiment-set-cluster (make-dm-exp-set))
 
 ; (plot (ds->chart (experiment-set-results->dataset res) [:alg] :objects :ms {:key "top left" } {} first))
 
