@@ -192,7 +192,7 @@
                                       border-cells)
                                    obstacle-cells)}
                          (for [[o _ goal] objects :when goal] [[:goal o] (set goal)]))
-            [:base] base [:gripper-offset] [0 0] [:holding] nil [:parked?] true}
+            [:base] base [:gripper-offset] [0 0] [:holding] nil [:parked?] false #_ true} ;; Note: changed.
            (apply concat
             (for [cell all-cells]    [[:object-at cell] nil])
             (for [cell border-cells] [[:object-at cell] :border])
@@ -291,6 +291,9 @@
 (defn print-state [s] (print (state-str s)))
 
 
+
+
+;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
 ;;;;;;;;;;;;;;;;;;;;;;;;;;; Generating PDDL ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
 
 (def sep "\n ")
@@ -300,9 +303,9 @@
 (defn- xrel [x] (util/symbol-cat 'xrel x))
 (defn- yrel [x] (util/symbol-cat 'yrel x))
 
-(def +pddl-domain+ (util/base-local "src/angelic/domains/discrete_manipulation.pddl"))
+(def +dm-pddl-domain+ (util/base-local "src/angelic/domains/discrete_manipulation.pddl"))
 
-(defn write-pddl-instance [env filename]
+(defn write-dm-pddl-instance [env filename]
   (let [init    (env/initial-state env)
         const   (state/get-var init :const)
         [width height] (util/safe-get const [:size])
@@ -384,12 +387,12 @@
          ((if filename #(spit filename (print-str %)) println)))))
 
 (defn dm-pddl-instance [env]
-  (write-pddl-instance env "/tmp/tmp.pddl")
-  (angelic.sas/make-sas-problem-from-pddl +pddl-domain+ "/tmp/tmp.pddl"))
+  (write-dm-pddl-instance env "/tmp/tmp.pddl")
+  (angelic.sas/make-sas-problem-from-pddl +dm-pddl-domain+ "/tmp/tmp.pddl"))
 
 (defn solve-dm-lama [env]
-  (write-pddl-instance env "/tmp/tmp.pddl")
-  (angelic.sas/solve-lama +pddl-domain+ "/tmp/tmp.pddl"))
+  (write-dm-pddl-instance env "/tmp/tmp.pddl")
+  (angelic.sas/solve-lama +dm-pddl-domain+ "/tmp/tmp.pddl"))
 
 ;; (write-pddl-instance (make-discrete-manipulation-env [4 3] [1 1] [ [ [1 2] [3 2] ] ] [ [:a [1 2] [ [2 2] [3 2] ] ] [:b [3 2] [ [1 2] [2 2] ] ] ] 1) nil)
 
@@ -398,6 +401,138 @@
 ;; (map :name (first (uniform-cost-graph-search (ss-node (constant-predicate-simplify (read-strips-planning-instance (read-strips-planning-domain +pddl-domain+) "/tmp/tmp.pddl"))))))
 
 ; (println (solve-dm-lama (make-discrete-manipulation-env [4 3] [1 1] [ [ [1 2] [3 2] ] ] [ [:a [1 2] [ [2 2] [3 2] ] ] [:b [3 2] [ [1 2] [2 2] ] ] ] 1) ))
+
+
+
+
+
+;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
+;;;;;;;;;;;; Generating PDDL -- w/ hierarchical constraints ;;;;;;;;;;;;;;
+
+(def +dmh-pddl-domain+ (util/base-local "src/angelic/domains/discrete_manipulation_hierarchical.pddl"))
+
+(declare possible-base-grasp-pos)
+
+(defn all-grasp-base-pos 
+  ([const grasp-pos]
+     (let [free  (get const [:freespace])]
+       (->> (get const [:base-offsets])
+            (map #(add-pos % grasp-pos))
+            (filter free)))))
+
+(defn write-dmh-pddl-instance [env filename]
+  (let [init    (env/initial-state env)
+        const   (state/get-var init :const)
+        [width height] (util/safe-get const [:size])
+        objects (util/safe-get const [:objects])
+        gripper-radius (util/safe-get const [:max-go])]
+    (->> (list 'define sep
+               (list 'problem (gensym 'discrete-manipulation)) sep
+               (list :domain 'DM) sep sep
+
+               (concat [:objects sep2]
+                       (for [[name _ g-set] objects :when (seq g-set)]
+                         (str name " - object " sep2))
+                       (for [x (range width)] (str (xc x) " - xc " sep2))             
+                       (for [y (range height)] (str (yc y) " - yc " sep2))             
+                       (for [x (range (- gripper-radius) (inc gripper-radius))]
+                         (str (xrel x) " - xrel " sep2))
+                       (for [y (range (- gripper-radius) (inc gripper-radius))]
+                         (str (yrel y) " - yrel " sep2)))
+               sep sep
+               
+               (concat [:init sep2]
+                       ;; Constants
+                       (for [x (range (dec width))]
+                         (str (list  'leftof (xc x) (xc (inc x))) sep2))
+                       (for [y (range (dec height))]
+                         (str (list 'above (yc y) (yc (inc y))) sep2))            
+                       (for [x (range (- gripper-radius) gripper-radius)]
+                         (str (list 'leftof-rel (xrel x) (xrel (inc x))) sep2))
+                       (for [y (range (- gripper-radius) gripper-radius)]
+                         (str (list 'above-rel (yrel y) (yrel (inc y))) sep2))            
+                       (for [x (range width)
+                             xr (range (- gripper-radius) (inc gripper-radius))
+                             :let [sum (+ x xr)]
+                             :when (<= 0 sum (dec width))]
+                         (str (list 'sum-x (xc x) (xrel xr) (xc sum)) sep2))
+                       (for [y (range height)
+                             yr (range (- gripper-radius) (inc gripper-radius))
+                             :let [sum (+ y yr)]
+                             :when (<= 0 sum (dec height))]
+                         (str (list 'sum-y (yc y) (yrel yr) (yc sum)) sep2))            
+                       [(list 'zerox-rel (xrel 0)) sep2
+                        (list 'zeroy-rel (yrel 0)) sep2]
+                       (for [[name _ goals] objects
+                             [gx gy]        goals]
+                         (str (list 'object-goal name (xc gx) (yc gy)) sep2))
+                       (for [[x y] (util/safe-get const [:obstacle-cells])]
+                         (str (list 'base-obstacle (xc x) (yc y)) sep2))
+                       (for [[name pos] objects
+                             [x y] (possible-grasp-base-pos const :dummy pos)]
+                         (str (list 'base-pick-position name (xc x) (yc y)) sep2))
+                       (for [[name _ goals] objects
+                             [x y] (set (mapcat #(possible-grasp-base-pos const :dummy %) goals))]
+                         (str (list 'base-place-position name (xc x) (yc y)) sep2))
+                       (for [[name pos] objects
+                             [x y] (all-grasp-base-pos const pos)]
+                         (str (list 'base-switch-pick-position name (xc x) (yc y)) sep2))
+                       (for [[name _ goals] objects
+                             [x y] (set (mapcat #(all-grasp-base-pos const %) goals))]
+                         (str (list 'base-switch-place-position name (xc x) (yc y)) sep2))                       
+                       
+                       
+                       
+                       [sep2]
+                      
+                       ;; Robot base
+                       (when (state/get-var init [:parked?]) ['(parked) sep2])
+                       (let [[x y] (state/get-var init [:base])]
+                         [(str (list 'base-pos (xc x) (yc y))) sep2])
+                       [sep2]
+                      
+                       ;; Objects
+                       (for [[name [x y]] objects] (str (list 'object-pos name (xc x) (yc y)) sep2))
+                       [sep2]
+                      
+                       ;; Gripper
+                       (if-let [h (state/get-var init [:holding])]
+                         [(str (list 'holding h)) sep2]
+                         [(str '(gripper-empty)) sep2])
+                       (let [[x y] (state/get-var init [:gripper-offset])]
+                         [(str (list 'gripper-rel (xrel x) (yrel y)) sep2)])
+                       (for [[_ [x y]] objects]
+                         (str (list 'gripper-obstacle (xc x) (yc y)) sep2)))
+               sep sep
+
+               (concat [:goal sep2]
+                       [(concat ['and (list 'gripper-rel (xrel 0) (yrel 0))]
+                                (for [[name _ goals] objects :when (seq goals)]
+                                  (str (list 'object-done name) sep2)))])
+               sep sep
+               
+               '(:metric minimize (total-cost))
+               )
+         
+         ((if filename #(spit filename (print-str %)) println)))))
+
+(defn dmh-pddl-instance [env]
+  (write-dmh-pddl-instance env "/tmp/tmph.pddl")
+  (angelic.sas/make-sas-problem-from-pddl +dmh-pddl-domain+ "/tmp/tmph.pddl"))
+
+(defn solve-dmh-lama [env]
+  (write-dmh-pddl-instance env "/tmp/tmph.pddl")
+  (angelic.sas/solve-lama +dmh-pddl-domain+ "/tmp/tmph.pddl"))
+
+;; (write-pddl-instance (make-discrete-manipulation-env [4 3] [1 1] [ [ [1 2] [3 2] ] ] [ [:a [1 2] [ [2 2] [3 2] ] ] [:b [3 2] [ [1 2] [2 2] ] ] ] 1) nil)
+
+;; (write-pddl-instance (make-discrete-manipulation-env [4 3] [1 1] [ [ [1 2] [3 2] ] ] [ [:a [1 2] [ [2 2] [3 2] ] ] [:b [3 2] [ [1 2] [2 2] ] ] ] 1) "/tmp/tmp.pddl")
+
+;; (map :name (first (uniform-cost-graph-search (ss-node (constant-predicate-simplify (read-strips-planning-instance  "/tmp/tmp.pddl"))))))
+
+; (println (solve-dm-lama (make-discrete-manipulation-env [4 3] [1 1] [ [ [1 2] [3 2] ] ] [ [:a [1 2] [ [2 2] [3 2] ] ] [:b [3 2] [ [1 2] [2 2] ] ] ] 1) ))
+
+
 
 ;;;;;;;;;;;;;;;;;;;;;;;;;;;;; Hierarchy ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
 

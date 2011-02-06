@@ -104,10 +104,10 @@
       (next conj)
     (list conj))))
 
-(defn parse-pddl-conjunction [conj]
+(defn parse-pddl-conjunction [conj] 
   (let [[pos neg]
 	(separate #(not= (first %) 'not) (pddl-conjunction->seq conj))]
-    [pos (map (fn [term] (assert-is (= 2 (count term))) (second term)) neg)]))
+    [pos (map (fn [term] (assert-is (= 2 (count term)) "%s" [conj (println conj)]) (second term)) neg)]))
 
 (defn parse-pddl-conjunction-forall [conj]
   (let [{:keys [pos neg forall]}
