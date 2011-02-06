@@ -27,16 +27,15 @@
   (struct exp-result ::ExpResult
           experiment (util/git-commit-id) timeout? memout? output printed init-ms ms mb
           (util/sref-get env/*next-counter*)
-          (util/sref-get env/*optimistic-counter*)
-          (util/sref-get env/*pessimistic-counter*)
+          (util/sref-get hierarchy/*optimistic-counter*)
+          (util/sref-get hierarchy/*pessimistic-counter*)
           (util/sref-get hierarchy/*ref-counter*)
           (util/sref-get hierarchy/*plan-counter*)))
-
 
 ;;;;;;;;;;;;;;;;;; Discrete manipulation experiments ;;;;;;;;;;;;;;;;;;;;;
 
 (def alg-forms
-     {:sahtn   (fn [m] `(sahtn/sahtn ~'init #{'top 'navh 'navv}))
+     {:sahtn   (fn [m] `(sahtn/sahtn ~'init #{:nav :reach :discretem-tla}))
       :aha*    (fn [m] `(aha/ah-a* ~'init true))
       :dash-a* (fn [m] `(dao/implicit-dash-a*-opt ~'init :gather true :d true :s :eager :dir :right
                                                   :choice-fn rand-nth))})
@@ -44,14 +43,14 @@
 (defn make-dm-exp-set []
   (experiments/make-experiment-set "11aaai-dm"
     [:product
-     [:objects [1 2 3 4 5 6]]
-     [:rand    [1 2 3]]
+     [:objects [1] #_ [1 2 3 4 5 6]]
+     [:rand    [1] #_ [1 2 3]]
      [:alg     (keys alg-forms)]]
     (fn [m]
       `(dm/make-discrete-manipulation-hierarchy
         (dm/make-random-hard-discrete-manipulation-env ~(:objects m) ~(:rand m))))
     (fn [m] ((util/safe-get alg-forms (:alg m)) m))
-    'angelic.scripts.experiments-11aaai nil #_ 10 60 512 false ::ExpResult))
+    'angelic.scripts.experiments-11aaai 10 3600 512 false ::ExpResult))
 
 (defonce *dm-results* nil)
 (defn read-results []
@@ -61,7 +60,7 @@
 
 
 
-;(use '[edu.berkeley.ai.util experiments cluster] 'angelic.aaai10)
+;(use '[edu.berkeley.ai.util experiments cluster] 'angelic.scripts.experiments-11aaai)
 ;(run-experiment-set-cluster (make-exp-set))
 
 ; (plot (ds->chart (experiment-set-results->dataset res) [:alg] :objects :ms {:key "top left" } {} first))
