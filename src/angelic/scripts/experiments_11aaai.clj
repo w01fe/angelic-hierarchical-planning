@@ -4,6 +4,7 @@
            [angelic [env :as env] [hierarchy :as hierarchy] [sas :as sas]]
            [angelic.search.textbook :as textbook]
            [angelic.domains.discrete-manipulation :as dm]
+           [angelic.domains.nav-switch :as ns]           
            [angelic.search.implicit
             [ah-astar :as aha]
             [sahtn :as sahtn]
@@ -14,7 +15,7 @@
 
 
 (def alg-forms
-     {:sahtn   (fn [m] `(sahtn/sahtn ~'init #{:nav :reach :discretem-tla}))
+     {:sahtn   (fn [m] `(sahtn/sahtn ~'init #{:nav :reach :discretem-tla '~'top '~'navh '~'navv}))
       :aha*    (fn [m] `(aha/ah-a* ~'init true))
       :dash-a* (fn [m] `(dao/implicit-dash-a*-opt ~'init :gather true :d true :s :eager :dir :right
                                                   :choice-fn rand-nth))})
@@ -68,6 +69,33 @@
           (util/sref-get hierarchy/*ref-counter*)
           (util/sref-get hierarchy/*plan-counter*)))
 
+(defmacro defresults [name es-maker]
+  (let [sn (util/symbol-cat '* name '-results*)]
+    `(do (defonce ~sn nil)
+         (defn ~(util/symbol-cat 'read- name '-results) []
+           (def ~sn
+                (experiments/experiment-set-results->dataset
+                 (experiments/read-experiment-set-results (~es-maker))))))))
+
+;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
+;;;;;;;;;;;;;;;;;;;;;;;; Nav Switch experiments ;;;;;;;;;;;;;;;;;;;;;;;;;;
+;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
+
+
+(defn make-ns-exp-set []
+  (experiments/make-experiment-set "11aaai-ns"
+    [:product
+     [:size   [5 10 20 50 100 200 500]]
+     [:alg    (keys alg-forms)]
+     [:rand   [0 1 2]]]
+    (fn [m]
+      `(ns/make-nav-switch-hierarchy
+        (ns/make-random-nav-switch-env ~(:size m) 20 ~(:rand m)) true))
+    (fn [m] ((util/safe-get alg-forms (:alg m)) m))
+    'angelic.scripts.experiments-11aaai 10 3600 512 false ::ExpResult))
+
+(defresults ns make-ns-exp-set)
+
 ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
 ;;;;;;;;;;;;;;;;;; Discrete manipulation experiments ;;;;;;;;;;;;;;;;;;;;;
 ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
@@ -77,13 +105,13 @@
   (experiments/make-experiment-set "11aaai-dm"
     [:product
      [:objects [1 2 3 4 5 6]]
-     [:rand    [1 2 3]]
-     [:alg     (keys alg-forms)]]
+     [:alg     (keys alg-forms)]
+     [:rand    [0 1 2 3 4]]]
     (fn [m]
       `(dm/make-discrete-manipulation-hierarchy
         (dm/make-random-hard-discrete-manipulation-env ~(:objects m) ~(:rand m))))
     (fn [m] ((util/safe-get alg-forms (:alg m)) m))
-    'angelic.scripts.experiments-11aaai 10 3600 512 false ::ExpResult))
+    'angelic.scripts.experiments-11aaai 10 3600 1024 false ::ExpResult))
 
 (defn make-dm-lama-exp-set []
   (experiments/make-experiment-set "11aaai-dm-lama"
@@ -96,13 +124,6 @@
     (fn [m] `(dm/solve-dmh-lama ~'init))
     'angelic.scripts.experiments-11aaai nil 3600 512 false ::ExpResult))
 
-(defmacro defresults [name es-maker]
-  (let [sn (util/symbol-cat '* name '-results*)]
-    `(do (defonce ~sn nil)
-         (defn ~(util/symbol-cat 'read- name '-results) []
-           (def ~sn
-                (experiments/experiment-set-results->dataset
-                 (experiments/read-experiment-set-results (~es-maker))))))))
 
 (defresults dm make-dm-exp-set)
 (defresults dm-lama make-dm-lama-exp-set)
@@ -114,6 +135,12 @@
 ;;;;;;;;;;;;;;;;;;;;;;;;;;;;  Discrete charts ;;;;;;;;;;;;;;;;;;;;;;;;;;;;
 
 
+(defn median-of [n items]
+  (assert (odd? n))
+  (let [ind (quot n 2)]
+    (when (> (count items) ind)    
+      (nth (sort items) ind))))
+
 
 (defn make-dm-charts 
   ([] (make-dm-charts "/Users/jawolfe/Projects/reports/11-aaai/graphs/"))
@@ -122,7 +149,7 @@
                                ["time"  "runtime (s)" :secs]]]
        (-> (datasets/ds-summarize
             (datasets/ds-derive #(/ (:ms %) 1000) (filter :ms *dm-results*) :secs)
-            [:objects :alg] [[field util/mean field]])
+            [:objects :alg] [[field (fn [& args] (median-of 3 args)) #_util/mean field]])
            (datasets/ds->chart
             [:alg] :objects field
             {:term "solid dashed size 2.0,1.5"
