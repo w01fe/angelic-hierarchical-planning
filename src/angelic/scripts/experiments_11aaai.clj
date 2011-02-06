@@ -47,6 +47,17 @@
          :last-total-seconds (lm-read total "Total time:")}))))
 
 
+(defn median-of [n items]
+  (assert (odd? n))
+  (let [ind (quot n 2)]
+    (when (> (count items) ind)    
+      (nth (sort items) ind))))
+
+(defn solution-lengths [ds k nper]
+  (util/map-vals (fn [es] (median-of nper (map #(count (first (:output %))) es)))
+                 (group-by k
+                  (filter #(and (= (:alg %) :dash-a*) (:ms %)) ds))))
+
 ;;;;;;;;;;;;;;;;;;;;;;;;;;;;; Setup ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
 
 (def *exp-result* ::ExpResult)
@@ -77,24 +88,86 @@
                 (experiments/experiment-set-results->dataset
                  (experiments/read-experiment-set-results (~es-maker))))))))
 
+
+
 ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
 ;;;;;;;;;;;;;;;;;;;;;;;; Nav Switch experiments ;;;;;;;;;;;;;;;;;;;;;;;;;;
 ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
 
+(def +ns-sizes+ [5 10 20 50 100 200 500])
 
 (defn make-ns-exp-set []
   (experiments/make-experiment-set "11aaai-ns"
     [:product
-     [:size   [5 10 20 50 100 200 500]]
+     [:size   +ns-sizes+]
      [:alg    (keys alg-forms)]
      [:rand   [0 1 2]]]
     (fn [m]
       `(ns/make-nav-switch-hierarchy
         (ns/make-random-nav-switch-env ~(:size m) 20 ~(:rand m)) true))
     (fn [m] ((util/safe-get alg-forms (:alg m)) m))
-    'angelic.scripts.experiments-11aaai 10 3600 512 false ::ExpResult))
+    'angelic.scripts.experiments-11aaai nil #_ 10 3600 512 false ::ExpResult))
 
 (defresults ns make-ns-exp-set)
+
+;; DASH-A* blows the stack on the cluster for no good reason, so I'm running
+;; those experiments locally.
+
+#_ (let [es (make-ns-exp-set)]
+     (doseq [[i e] (indexed es)]
+      (when (= (:alg (:parameters e)) :dash-a*)
+        (run-experiment-set! es i (inc i)))))
+
+
+
+;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;  NS charts ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
+
+
+
+(defn make-ns-charts 
+  ([] (make-ns-charts "/Users/jawolfe/Projects/reports/11-aaai/graphs/"))
+  ([dir]
+     (doseq [[n ylabel field] [["evals" "\\# of evaluations" :opt-count]
+                               ["time"  "runtime (s)" :secs]]]
+       (-> (datasets/ds-summarize
+            (datasets/ds-derive #(/ (:ms %) 1000) (filter :ms *ns-results*) :secs)
+            [:size :alg] [[field (fn [& args] (median-of 3 args)) #_util/mean field]])
+           (datasets/ds->chart
+            [:alg] :size field
+            {:term "solid dashed size 2.0,1.5"
+             :ylog  "t"  :xlog "t" :xrange "[5:500]" ;             :yrange "[4:600]"
+             :title "nav-switch problems" :key "bottom right" #_"at 2.6, 445"
+             :xlabel "grid size (side length)"
+             :extra-commands [(str "set ylabel \"" ylabel "\" -2,0") #_ "set xtics 1"]}            
+            (let [c (util/counter-from 0)] (fn [& args] (let [v ([1 2 3 6] (c))]  {:lw 3 :pt v :lt v})))
+            identity #_{[:ucs] "UCS" [:htn-ucs]  "H-UCS" [:sahtn] "SAHTN" [:nsahtn] "N-SAHTN"}
+            identity #_(fn [l] (sort-by #(if (=  "UCS" (:title %)) "Q" (:title  %)) l)))
+           (charts/plot (str dir "ns-" n ".pdf"))))))
+
+
+(defn make-ns-table []
+  (let [res  (util/map-vals
+              (fn [exps]
+                (util/map-vals (fn [es] (assert (= (count es) 1)) ((juxt :secs :opt-count) (first es)))
+                               (group-by :size exps)))
+              (group-by :alg                       
+                        (datasets/ds-summarize
+                         (datasets/ds-derive #(/ (:ms %) 1000) (filter :ms *ns-results*) :secs)
+                         [:size :alg] [[:secs #(median-of 5 %&) :secs] [:opt-count #(median-of 5 %&) :opt-count]])))
+        lens (solution-lengths *ns-results* :size 3)
+        algs [:lama  :sahtn :aha* :dash-a*]]
+    (print "num & len ")
+    (doseq [alg algs] (print "&"  alg))
+    (println)
+    (doseq [s +ns-sizes+]
+      (print (pad-right s 8) "&" (pad-right (get lens s) 8) )
+      (doseq [alg algs]
+        (let [[secs evals] (get-in res [alg s])]
+          (if secs
+            (print "&" (pad-right (format-n secs 2) 9) "&" (pad-right (format-n evals 0) 9))
+            (print "&" (pad-right "" 9) "&" (pad-right "" 9)))))      
+      (println "\\\\"))))
+
 
 ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
 ;;;;;;;;;;;;;;;;;; Discrete manipulation experiments ;;;;;;;;;;;;;;;;;;;;;
@@ -135,11 +208,6 @@
 ;;;;;;;;;;;;;;;;;;;;;;;;;;;;  Discrete charts ;;;;;;;;;;;;;;;;;;;;;;;;;;;;
 
 
-(defn median-of [n items]
-  (assert (odd? n))
-  (let [ind (quot n 2)]
-    (when (> (count items) ind)    
-      (nth (sort items) ind))))
 
 
 (defn make-dm-charts 
@@ -149,12 +217,12 @@
                                ["time"  "runtime (s)" :secs]]]
        (-> (datasets/ds-summarize
             (datasets/ds-derive #(/ (:ms %) 1000) (filter :ms *dm-results*) :secs)
-            [:objects :alg] [[field (fn [& args] (median-of 3 args)) #_util/mean field]])
+            [:objects :alg] [[field (fn [& args] (median-of 5 args)) #_util/mean field]])
            (datasets/ds->chart
             [:alg] :objects field
             {:term "solid dashed size 2.0,1.5"
              :ylog  "t" :xrange "[1:5]" ;             :yrange "[4:600]"
-             :title "discrete pick-and-place problems" :key "on" #_"at 2.6, 445"
+             :title "discrete pick-and-place problems" :key "bottom right" #_"at 2.6, 445"
              :xlabel "\\# of objects"
              :extra-commands [(str "set ylabel \"" ylabel "\" -2,0") "set xtics 1"]}            
             (let [c (util/counter-from 0)] (fn [& args] (let [v ([1 2 3 6] (c))]  {:lw 3 :pt v :lt v})))
@@ -173,18 +241,18 @@
   (util/map-vals
    (fn [exps]
      (util/map-vals (fn [es] (assert (= (count es) 1)) ((juxt :secs :opt-count) (first es)))
-                    (group-by inst-name exps)))
+                    (group-by :objects #_ inst-name exps)))
    (group-by :alg
-             (datasets/ds-derive #(/ (:ms %) 1000) (filter :ms ds) :secs)
-            
-             #_(datasets/ds-summarize
-                (datasets/ds-derive #(/ (:ms %) 1000) (filter :ms ds) :secs)
-                [:objects :alg] [[:secs util/mean :secs] [:opt-count util/mean :opt-count]]))))
+            #_ (datasets/ds-derive #(/ (:ms %) 1000) (filter :ms ds) :secs)            
+             (datasets/ds-summarize
+              (datasets/ds-derive #(/ (:ms %) 1000) (filter :ms ds) :secs)
+              [:objects :alg] [[:secs #(median-of 5 %&) :secs] [:opt-count #(median-of 5 %&) :opt-count]]))))
 
-(defn dm-solution-lengths []
+#_(defn dm-solution-lengths []
   (into {}
    (map (juxt inst-name #(count (first (:output %))))
         (filter #(and (= (:alg %) :dash-a*) (:ms %)) *dm-results*))))
+
 
 
 (defn pad-right [x n]  
@@ -199,20 +267,19 @@
 
 (defn make-dm-table []
   (let [res (merge (dm-result-map *dm-results*) (dm-result-map (parsed-lama)))
-        lens (dm-solution-lengths)
-        algs [:lama :aha* :sahtn :dash-a*]]
+        lens (solution-lengths *dm-results* :objects 5)
+        algs [:lama :sahtn :aha* :dash-a*]]
     (print "num & len ")
     (doseq [alg algs] (print "&"  alg))
     (println)
-    (doseq [i (range 1 6) r (range 1 4)]
-      (let [inst (inst-name {:objects i :rand r})]
-       (print (pad-right inst 8) "&" (pad-right (get lens inst) 8) "&")
-       (doseq [alg algs]
-         (let [[secs evals] (get-in res [alg inst])]
-           (if secs
-             (print (pad-right (format-n secs 2) 9) "&" (pad-right (format-n evals 0) 9) "&")
-             (print (pad-right "" 9) "&" (pad-right "" 9) "&"))))      
-       (println)))))
+    (doseq [i (range 1 6)]
+      (print (pad-right i 8) "&" (pad-right (get lens i) 8) )
+      (doseq [alg algs]
+        (let [[secs evals] (get-in res [alg i])]
+          (if secs
+            (print "&" (pad-right (format-n secs 2) 9) "&" (pad-right (format-n evals 0) 9) )
+            (print "&" (pad-right "" 9) "&" (pad-right "" 9)))))      
+      (println "\\\\"))))
 
 
 
