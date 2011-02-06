@@ -411,7 +411,7 @@
 
 (def +dmh-pddl-domain+ (util/base-local "src/angelic/domains/discrete_manipulation_hierarchical.pddl"))
 
-(declare possible-base-grasp-pos)
+(declare possible-grasp-base-pos)
 
 (defn all-grasp-base-pos 
   ([const grasp-pos]
