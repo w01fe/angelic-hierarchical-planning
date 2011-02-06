@@ -33,7 +33,7 @@
             [out-set step-rew stat :as outcome] (fs/apply-opt fs input-set)
             out-rew (+ input-reward step-rew)]
         (when out-set
-         (when (= stat :blocked) (util/assert-is (not (empty? final-fs)) "%s" [fs (def *bad* [fs input-set])]))
+         (when (= stat :blocked) (util/assert-is (not (empty? final-fs)) "%s" [fs #_ (def *bad* [fs input-set])]))
          (if (and (empty? final-fs) (= stat :solved))
            (do #_ (util/assert-is (empty? final-fs) "%s" [fs])
                (when-let [^HashMap pc *pruning-cache*]
