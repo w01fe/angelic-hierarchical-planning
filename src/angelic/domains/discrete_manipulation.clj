@@ -192,7 +192,7 @@
                                       border-cells)
                                    obstacle-cells)}
                          (for [[o _ goal] objects :when goal] [[:goal o] (set goal)]))
-            [:base] base [:gripper-offset] [0 0] [:holding] nil [:parked?] false #_ true} ;; Note: changed.
+            [:base] base [:gripper-offset] [0 0] [:holding] nil [:parked?] true}
            (apply concat
             (for [cell all-cells]    [[:object-at cell] nil])
             (for [cell border-cells] [[:object-at cell] :border])
@@ -431,6 +431,7 @@
                (list :domain 'DM) sep sep
 
                (concat [:objects sep2]
+                       ["dummy - object " sep2]
                        (for [[name _ g-set] objects :when (seq g-set)]
                          (str name " - object " sep2))
                        (for [x (range width)] (str (xc x) " - xc " sep2))             
@@ -486,7 +487,7 @@
                        [sep2]
                       
                        ;; Robot base
-                       (when (state/get-var init [:parked?]) ['(parked) sep2])
+                       (when (state/get-var init [:parked?]) ['(parked) '(placing dummy) sep2])
                        (let [[x y] (state/get-var init [:base])]
                          [(str (list 'base-pos (xc x) (yc y))) sep2])
                        [sep2]
