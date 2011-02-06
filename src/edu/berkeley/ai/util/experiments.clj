@@ -148,7 +148,24 @@
 	 (run-experiment e)))))
 
 
+
 (def *default-run-dir* (util/base-local "runs/"))
+
+(defn run-experiment-set! "Run and write to disk."
+  ([es] (run-experiment-set! es *default-run-dir*))
+  ([es run-dir] (run-experiment-set! es run-dir 0 (count es)))
+  ([es min max] (run-experiment-set! es *default-run-dir* min max))
+  ([es run-dir min max]
+     (let [new-dir (str run-dir (:name (first es)))
+           in-dir  (str new-dir "/in")
+           out-dir (str new-dir "/out")]
+       (util/mkdirs in-dir out-dir)
+       (print (count es))
+       (doseq [[i e] (subvec (vec (util/indexed es)) min max)]
+         (let [out-file (str out-dir "/" i ".txt")]
+           (print ".")
+           (write-experiment e (str in-dir "/" i ".clj") out-file)
+           (spit out-file (run-experiment e)))))))
 
 (defn write-experiment-set 
   ([es] (write-experiment-set es *default-run-dir*))
