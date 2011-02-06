@@ -141,15 +141,24 @@
       (assoc e :ms (* 1000 (:last-total-seconds m)) :opt-count (:generated m)))))
 
 
+(defn inst-name [m] (str (:objects m) "-" (:rand m)))
 (defn dm-result-map [ds]
   (util/map-vals
    (fn [exps]
      (util/map-vals (fn [es] (assert (= (count es) 1)) ((juxt :secs :opt-count) (first es)))
-                    (group-by :objects exps)))
+                    (group-by inst-name exps)))
    (group-by :alg
-             (datasets/ds-summarize
-              (datasets/ds-derive #(/ (:ms %) 1000) (filter :ms ds) :secs)
-              [:objects :alg] [[:secs util/mean :secs] [:opt-count util/mean :opt-count]]))))
+             (datasets/ds-derive #(/ (:ms %) 1000) (filter :ms ds) :secs)
+            
+             #_(datasets/ds-summarize
+                (datasets/ds-derive #(/ (:ms %) 1000) (filter :ms ds) :secs)
+                [:objects :alg] [[:secs util/mean :secs] [:opt-count util/mean :opt-count]]))))
+
+(defn dm-solution-lengths []
+  (into {}
+   (map (juxt inst-name #(count (first (:output %))))
+        (filter #(and (= (:alg %) :dash-a*) (:ms %)) *dm-results*))))
+
 
 (defn pad-right [x n]  
   (let [xs (str x) 
@@ -163,18 +172,20 @@
 
 (defn make-dm-table []
   (let [res (merge (dm-result-map *dm-results*) (dm-result-map (parsed-lama)))
+        lens (dm-solution-lengths)
         algs [:lama :aha* :sahtn :dash-a*]]
-    (print "num")
+    (print "num & len ")
     (doseq [alg algs] (print "&"  alg))
     (println)
-    (doseq [i (range 1 6)]
-      (print (pad-right i 8) "&" )
-      (doseq [alg algs]
-        (let [[secs evals] (get-in res [alg i])]
-          (if secs
-            (print (pad-right (format-n secs 2) 9) "&" (pad-right (format-n evals 0) 9) "&")
-            (print (pad-right "" 9) "&" (pad-right "" 9) "&"))))      
-      (println))))
+    (doseq [i (range 1 6) r (range 1 4)]
+      (let [inst (inst-name {:objects i :rand r})]
+       (print (pad-right inst 8) "&" (pad-right (get lens inst) 8) "&")
+       (doseq [alg algs]
+         (let [[secs evals] (get-in res [alg inst])]
+           (if secs
+             (print (pad-right (format-n secs 2) 9) "&" (pad-right (format-n evals 0) 9) "&")
+             (print (pad-right "" 9) "&" (pad-right "" 9) "&"))))      
+       (println)))))
 
 
 
