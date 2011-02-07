@@ -121,3 +121,7 @@
 ;; (dotimes [_ 1] (reset! sg/*summary-count* 0) (debug 0 (let [h (make-nav-switch-hierarchy (make-random-nav-switch-env 4 2 0) true)]   (time (println (run-counted #(identity (implicit-dash-a*-opt h :gather true :d true :s :eager :dir :right))) @sg/*summary-count*))  (time (println (run-counted #(identity (ah-a* h true)))))  (time (println (run-counted #(identity (sahtn h #{'top 'navh 'navv}))))))))
 
 ;; (dotimes [_ 1] (reset! sg/*summary-count* 0) (debug 0 (let [h (make-discrete-manipulation-hierarchy  (make-random-discrete-manipulation-env 1 3))]   (time (println (run-counted #(identity (implicit-dash-a*-opt h :gather true :d true :s :eager :dir :right))) @sg/*summary-count*))  #_ (time (println (run-counted #(identity (ah-a* h true)))))  (time (println (run-counted #(identity (sahtn h #{:nav :reach :discretem-tla}))))))))
+
+
+
+;; (dotimes [_ 1] (reset! sg/*summary-count* 0) (debug 0 (let [h (make-manipulation-pair nh (get-demo1-world-gazebo 2))]   (time (println (run-counted #(second (implicit-dash-a*-opt h :gather true :d true :s :eager :dir :right))) @sg/*summary-count*))  (time (println (run-counted #(second (ah-a* h true)))))  (time (println (run-counted #(second (sahtn h #{:nav :reach :discretem-tla}))))))))
