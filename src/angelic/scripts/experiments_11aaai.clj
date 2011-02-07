@@ -237,7 +237,7 @@
 
 
 (defn inst-name [m] (str (:objects m) "-" (:rand m)))
-(defn dm-result-map [ds]
+(defn dm-result-map [ds n]
   (util/map-vals
    (fn [exps]
      (util/map-vals (fn [es] (assert (= (count es) 1)) ((juxt :secs :opt-count) (first es)))
@@ -246,7 +246,7 @@
             #_ (datasets/ds-derive #(/ (:ms %) 1000) (filter :ms ds) :secs)            
              (datasets/ds-summarize
               (datasets/ds-derive #(/ (:ms %) 1000) (filter :ms ds) :secs)
-              [:objects :alg] [[:secs #(median-of 5 %&) :secs] [:opt-count #(median-of 5 %&) :opt-count]]))))
+              [:objects :alg] [[:secs #(median-of n %&) :secs] [:opt-count #(median-of n %&) :opt-count]]))))
 
 #_(defn dm-solution-lengths []
   (into {}
@@ -266,7 +266,7 @@
     (/ (int (* base n)) (if (> dec 0) (double base) 1))))
 
 (defn make-dm-table []
-  (let [res (merge (dm-result-map *dm-results*) (dm-result-map (parsed-lama)))
+  (let [res (merge (dm-result-map *dm-results* 5) (dm-result-map (parsed-lama) 5))
         lens (solution-lengths *dm-results* :objects 5)
         algs [:lama :sahtn :aha* :dash-a*]]
     (print "num & len ")
@@ -280,6 +280,43 @@
             (print "&" (pad-right (format-n secs 2) 9) "&" (pad-right (format-n evals 0) 9) )
             (print "&" (pad-right "" 9) "&" (pad-right "" 9)))))      
       (println "\\\\"))))
+
+
+
+;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
+;;;;;;;;;;;;;;;;;; Continuous manipulation experiments ;;;;;;;;;;;;;;;;;;;;;
+;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
+
+
+
+(defn make-cm-exp-set []
+  (experiments/make-experiment-set "11aaai-cm"
+    [:product
+     [:objects [1 2 3 4 5 6]]
+     [:alg     (keys alg-forms)]
+     [:rand    [0 1 2]]]
+    (fn [m] `(identity 'dummy))
+    (fn [m] `(identity 'dummy))
+    'angelic.scripts.experiments-11aaai nil 3600 512 false ::ExpResult))
+
+(defresults cm make-cm-exp-set)
+
+(defn make-cm-table []
+  (let [res (dm-result-map *cm-results* 3)
+        lens (solution-lengths *cm-results* :objects 3)
+        algs [:lama :sahtn :aha* :dash-a*]] (println res)
+    (print "num & len ")
+    (doseq [alg algs] (print "&"  alg))
+    (println)
+    (doseq [i (range 1 6)]
+      (print (pad-right i 8) "&" (pad-right (get lens i) 8) )
+      (doseq [alg algs]
+        (let [[secs evals] (get-in res [alg i])]
+          (if secs
+            (print "&" (pad-right (format-n secs 2) 9) "&" (pad-right (format-n evals 0) 9) )
+            (print "&" (pad-right "" 9) "&" (pad-right "" 9)))))      
+      (println "\\\\"))))
+
 
 
 

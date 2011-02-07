@@ -204,7 +204,7 @@
 	      :let [file-name (str out-dir "/" i ".txt")]
 	      :when (if (.exists (java.io.File. file-name)) true 
 			(println "Warning:" file-name "missing"))]
-	  (util/read-file file-name)))));)
+	  (do #_(println file-name) (util/read-file file-name)))))) ;)
 
 
 (defn experiment-result->map [er]
