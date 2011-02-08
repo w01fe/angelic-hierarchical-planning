@@ -79,6 +79,8 @@
 
 ;; (dotimes [_ 1] (reset! sg/*summary-count* 0) (debug 0 (let [h (make-nav-switch-hierarchy (make-random-nav-switch-env 20 4 0) true)]   (time (println (run-counted #(identity (implicit-dash-a*-opt h :gather true :d true :s :eager :dir :right))) @sg/*summary-count*))  (time (println (run-counted #(identity (ah-a* h true))))))))
 
+;;  (dotimes [_ 1] (reset! sg/*summary-count* 0) (debug 0 (let [h (make-nav-switch-hierarchy (make-random-nav-switch-env 500 20 2) true)]   (time (println (run-counted #(second (implicit-dash-a*-opt h :gather true :d true :s :eager :dir :right :choice-fn rand-nth :dijkstra #{}))) @sg/*summary-count*)) (time (println (run-counted #(second (implicit-dash-a*-opt h :gather true :d true :s :eager :dir :right :choice-fn rand-nth :dijkstra #{'navv 'navh}))) @sg/*summary-count*))  (time (println (run-counted #(second (ah-a* h true))))))))
+
 ;; TODO: ImplicitAHA*Env
 
 
