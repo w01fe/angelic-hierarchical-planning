@@ -322,7 +322,7 @@
                (schedule-decrease! s)
                (let [[mid-set [_ _ _ _ prim-r]] (queues/pq-remove-min-with-cost! q)]
                  (doseq [child-seq (fs/child-seqs fs mid-set)]
-                   (assert (#{1 2} (count child-seq)))
+                   (util/assert-is (#{1 2} (count child-seq)) "%s" [child-seq])
                    (when (= 2 (count child-seq)) (assert (= (second child-seq) fs)))
                    (let [l (get-evaluated-sp (first child-seq) mid-set)
                          next-mid-set (get-output-set! l)

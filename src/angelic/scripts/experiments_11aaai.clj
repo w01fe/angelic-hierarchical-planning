@@ -58,6 +58,17 @@
                  (group-by k
                   (filter #(and (= (:alg %) :dash-a*) (:ms %)) ds))))
 
+(defn pad-right [x n]  
+  (let [xs (str x) 
+        s #^String (str "                               " xs)]
+    (assert (<= (.length xs) n))
+    (.substring s (- (.length s) n))))
+
+(defn format-n [n dec]
+  (let [base (util/expt 10 dec)]
+    (/ (int (* base n)) (if (> dec 0) (double base) 1))))
+
+
 ;;;;;;;;;;;;;;;;;;;;;;;;;;;;; Setup ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
 
 (def *exp-result* ::ExpResult)
@@ -108,7 +119,22 @@
     (fn [m] ((util/safe-get alg-forms (:alg m)) m))
     'angelic.scripts.experiments-11aaai nil #_ 10 3600 512 false ::ExpResult))
 
+(defn make-ns-dd-exp-set []
+  (experiments/make-experiment-set "11aaai-ns-dd"
+    [:product
+     [:size   +ns-sizes+]
+     [:alg    [:dash-a*-dijkstra]]
+     [:rand   [0 1 2]]]
+    (fn [m]
+      `(ns/make-nav-switch-hierarchy
+        (ns/make-random-nav-switch-env ~(:size m) 20 ~(:rand m)) true))
+    (fn [m] `(dao/implicit-dash-a*-opt ~'init :gather true :d true :s :eager :dir :right
+                                       :choice-fn rand-nth :dijkstra #{'~'navv '~'navh}))
+    'angelic.scripts.experiments-11aaai nil #_ 10 3600 512 false ::ExpResult))
+
 (defresults ns make-ns-exp-set)
+(defresults ns-dd make-ns-dd-exp-set)
+
 
 ;; DASH-A* blows the stack on the cluster for no good reason, so I'm running
 ;; those experiments locally.
@@ -152,10 +178,10 @@
                                (group-by :size exps)))
               (group-by :alg                       
                         (datasets/ds-summarize
-                         (datasets/ds-derive #(/ (:ms %) 1000) (filter :ms *ns-results*) :secs)
-                         [:size :alg] [[:secs #(median-of 5 %&) :secs] [:opt-count #(median-of 5 %&) :opt-count]])))
+                         (datasets/ds-derive #(/ (:ms %) 1000) (filter :ms (concat *ns-results* *ns-dd-results*)) :secs)
+                         [:size :alg] [[:secs #(median-of 3 %&) :secs] [:opt-count #(median-of 3 %&) :opt-count]])))
         lens (solution-lengths *ns-results* :size 3)
-        algs [:lama  :sahtn :aha* :dash-a*]]
+        algs [:lama  :sahtn :aha* #_ :dash-a* :dash-a*-dijkstra]]
     (print "num & len ")
     (doseq [alg algs] (print "&"  alg))
     (println)
@@ -167,6 +193,7 @@
             (print "&" (pad-right (format-n secs 2) 9) "&" (pad-right (format-n evals 0) 9))
             (print "&" (pad-right "" 9) "&" (pad-right "" 9)))))      
       (println "\\\\"))))
+
 
 
 ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
@@ -255,15 +282,6 @@
 
 
 
-(defn pad-right [x n]  
-  (let [xs (str x) 
-        s #^String (str "                               " xs)]
-    (assert (<= (.length xs) n))
-    (.substring s (- (.length s) n))))
-
-(defn format-n [n dec]
-  (let [base (util/expt 10 dec)]
-    (/ (int (* base n)) (if (> dec 0) (double base) 1))))
 
 (defn make-dm-table []
   (let [res (merge (dm-result-map *dm-results* 5) (dm-result-map (parsed-lama) 5))
