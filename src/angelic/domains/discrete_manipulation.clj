@@ -617,7 +617,7 @@
      (can-refine-from-set? [a ss] (state-set/vars-known? ss [[:gripper-offset]]))
      (immediate-refinements-set- [a ss]
        (for [p (hierarchy/immediate-refinements- a (state-set/some-element ss))]
-         [{[:object-at (add-pos (state-set/get-known-var ss [:base]) dst-go)] #{nil}} p]))
+         [{} #_{[:object-at (add-pos (state-set/get-known-var ss [:base]) dst-go)] #{nil}} p]))
      (optimistic-set-and-reward- [a ss]
        (assert (state-set/vars-known? ss [[:base]]))
        (let [dst-pos (add-pos (state-set/get-known-var ss [:base]) dst-go)

@@ -171,7 +171,7 @@
         (into {} (map (juxt :name identity) vars)) 
         (util/map-map (partial expand-condition vars) (util/indexed (conj init-v 0)))
         (conj (vec ops) 
-              (env-util/make-factored-primitive goal-action-name (util/map-map (partial expand-condition vars) goal-m) 
+              (env-util/make-factored-primitive goal-action-name (assoc (util/map-map (partial expand-condition vars) goal-m) goal-var-name goal-false-val) 
                                      {goal-var-name goal-true-val} 0))))))
 
 (defn make-sas-problem-from-pddl
