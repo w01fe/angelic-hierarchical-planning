@@ -19,6 +19,9 @@
  * Contributor(s): Nathan L. Fiedler.
  *
  * $Id: FibonacciHeap.java 20 2008-12-05 15:51:14Z nathanfiedler $
+ *
+ * This version was modified by Jason Wolfe, starting from the originally
+ * distributed FibonacciHeap.java, to use Comparable keys in place of doubles.
  */
 package com.bluemarsh.graphmaker.core.util;
 
