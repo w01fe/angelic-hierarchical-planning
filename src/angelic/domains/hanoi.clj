@@ -1,5 +1,5 @@
 (ns angelic.domains.hanoi
-  (:require [edu.berkeley.ai.util :as util]
+  (:require [angelic.util :as util]
             [angelic.sas :as sas]
             [angelic.env :as env]
             [angelic.env.state :as state]            

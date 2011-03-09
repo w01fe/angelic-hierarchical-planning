@@ -1,6 +1,6 @@
 (ns angelic.search.summary-graphs
-  (:require [edu.berkeley.ai.util :as util]
-            [edu.berkeley.ai.util.traits :as traits]
+  (:require [angelic.util :as util]
+            [angelic.util.traits :as traits]
             [angelic.search.summary :as summary])
   (:import [java.util ArrayList]))
 

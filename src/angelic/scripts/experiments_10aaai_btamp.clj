@@ -1,9 +1,9 @@
 (ns angelic.scripts.experiments-10aaai10-btamp
- (:require [edu.berkeley.ai [util :as util]] 
-	   [edu.berkeley.ai.util [charts :as charts] [datasets :as datasets] [experiments :as experiments]]
+ (:require [angelic.util :as util]  
+	   [angelic.util [charts :as charts] [datasets :as datasets] [experiments :as experiments]]
            [angelic [env :as env] [hierarchy :as hierarchy] [hierarchical-incremental-search :as his]]
            [angelic.discrete-manipulation :as dm]
-	   [edu.berkeley.ai.util.experiments :as experiments]))
+	   [angelic.util.experiments :as experiments]))
 
 (def *exp-result* ::ExpResult)
 
@@ -114,7 +114,7 @@
      ))
 
 
-;(use '[edu.berkeley.ai.util experiments cluster] 'angelic.aaai10)
+;(use '[angelic.util experiments cluster] 'angelic.aaai10)
 ;(run-experiment-set-cluster (make-exp-set))
 
 ; (plot (ds->chart (experiment-set-results->dataset res) [:alg] :objects :ms {:key "top left" } {} first))

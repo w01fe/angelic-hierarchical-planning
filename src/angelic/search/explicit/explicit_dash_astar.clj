@@ -1,5 +1,5 @@
 (ns angelic.search.explicit.explicit
-  (:require [edu.berkeley.ai.util :as util]
+  (:require [angelic.util :as util]
             [angelic.env :as env]
             [angelic.env.util :as env-util]
             [angelic.env.state :as state]             
@@ -109,7 +109,7 @@
 (defn explicit-cn-dash-a* [henv] (his/simple-hierarchical-search henv make-explicit-cn-dash-a*-search true first))
 
 (comment
-  (use '[angelic env hierarchy hierarchical-incremental-search explicit-angelic-incremental-search] 'angelic.discrete-manipulation 'edu.berkeley.ai.util)
+  (use '[angelic env hierarchy hierarchical-incremental-search explicit-angelic-incremental-search] 'angelic.discrete-manipulation 'angelic.util)
   
   (let [e (make-random-taxi-env 5 5 5 3) _ (println e) h (simple-taxi-hierarchy e)]  
     (time (println "ucs" (run-counted #(second (uniform-cost-search e)))))
@@ -258,7 +258,7 @@
 
 
 (comment
-  (use '[angelic env hierarchy hierarchical-incremental-search explicit-angelic-incremental-search] 'angelic.discrete-manipulation 'edu.berkeley.ai.util)
+  (use '[angelic env hierarchy hierarchical-incremental-search explicit-angelic-incremental-search] 'angelic.discrete-manipulation 'angelic.util)
   
 
 
@@ -540,7 +540,7 @@
 
 
 (comment
-  (use '[angelic env hierarchy hierarchical-incremental-search explicit-angelic-incremental-search] 'angelic.discrete-manipulation 'edu.berkeley.ai.util)
+  (use '[angelic env hierarchy hierarchical-incremental-search explicit-angelic-incremental-search] 'angelic.discrete-manipulation 'angelic.util)
   
 
 

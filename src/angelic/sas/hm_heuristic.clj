@@ -1,6 +1,6 @@
 (ns angelic.sas.hm-heuristic
-  (:require [edu.berkeley.ai.util :as util]
-            [edu.berkeley.ai.util.graphs :as graphs]
+  (:require [angelic.util :as util]
+            [angelic.util.graphs :as graphs]
             [angelic.sas :as sas])
   (:import [java.util HashMap IdentityHashMap LinkedList]))
 

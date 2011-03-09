@@ -1,6 +1,6 @@
 (ns angelic.search.action-set.asplan-r
-  (:require [edu.berkeley.ai.util :as util]
-            [edu.berkeley.ai.util.graphs :as graphs]
+  (:require [angelic.util :as util]
+            [angelic.util.graphs :as graphs]
             [angelic.env :as env]
             [angelic.env.util :as env-util]
             [angelic.env.state :as state]            
@@ -529,7 +529,7 @@
 
 
 
-;; (use 'angelic.env 'angelic.hierarchy 'angelic.search.textbook 'angelic.domains.taxi-infinite 'angelic.search.action-set.asplan  'angelic.domains.sas-problems 'angelic.sas 'angelic.sas.analysis 'edu.berkeley.ai.util 'angelic.sas.hm-heuristic)
+;; (use 'angelic.env 'angelic.hierarchy 'angelic.search.textbook 'angelic.domains.taxi-infinite 'angelic.search.action-set.asplan  'angelic.domains.sas-problems 'angelic.sas 'angelic.sas.analysis 'angelic.util 'angelic.sas.hm-heuristic)
 
 ;; (let [e (make-random-infinite-taxi-sas2 4 4 4 2)] (println (time (run-counted #(uniform-cost-search e)))) (println (time (run-counted #(asplan-solution-pair-name (uniform-cost-search (make-asplan-env e)))))))
 

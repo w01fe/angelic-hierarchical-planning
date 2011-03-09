@@ -1,6 +1,6 @@
 (ns angelic.search.implicit.dash-astar-early-eval-attempt
   (:require clojure.string
-            [edu.berkeley.ai.util :as util]
+            [angelic.util :as util]
             [clojure.contrib.core :as ccc]
             [angelic.env :as env]
             [angelic.env.util :as env-util]            

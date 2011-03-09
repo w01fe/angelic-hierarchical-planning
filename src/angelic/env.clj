@@ -1,5 +1,5 @@
 (ns angelic.env
-  (:require [edu.berkeley.ai.util :as util]))
+  (:require [angelic.util :as util]))
 
 
 (defprotocol Action

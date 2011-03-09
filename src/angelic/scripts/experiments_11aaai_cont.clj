@@ -1,6 +1,6 @@
 (ns angelic.scripts.experiments-11aaai-cont
- (:require [edu.berkeley.ai [util :as util]] 
-	   [edu.berkeley.ai.util  [datasets :as datasets] [experiments :as experiments]]
+ (:require [angelic.util :as util]  
+	   [angelic.util  [datasets :as datasets] [experiments :as experiments]]
            [angelic [env :as env] [hierarchy :as hierarchy] [sas :as sas]]
            [ros.planning.actions :as actions]
 	   [ros.planning.world :as world]
@@ -81,7 +81,7 @@
 (defresults cm make-cm-exp-set)
 
 
-;(use '[edu.berkeley.ai.util experiments cluster] 'angelic.scripts.experiments-11aaai-cont)
+;(use '[angelic.util experiments cluster] 'angelic.scripts.experiments-11aaai-cont)
 ;(run-experiment-set-cluster (make-dm-exp-set))
 
 ;; (time (run-experiment-set! (make-dm-lama-exp-set) 6 9))

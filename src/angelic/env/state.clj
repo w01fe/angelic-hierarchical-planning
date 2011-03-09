@@ -1,5 +1,5 @@
 (ns angelic.env.state
-  (:require [edu.berkeley.ai.util :as util]))
+  (:require [angelic.util :as util]))
 
 ; Get-logger takes a precondition context.  Its equality semantics will be based
 ;; on values within this context, and changes outside this context. 

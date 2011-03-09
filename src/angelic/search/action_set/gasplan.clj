@@ -1,6 +1,6 @@
 (ns angelic.search.action-set.gasplan
-  (:require [edu.berkeley.ai.util :as util]
-            [edu.berkeley.ai.util.graphs :as graphs]
+  (:require [angelic.util :as util]
+            [angelic.util.graphs :as graphs]
             [angelic.env :as env]
             [angelic.env.util :as env-util]
             [angelic.env.state :as state]

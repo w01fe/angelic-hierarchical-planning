@@ -1,5 +1,5 @@
 (ns angelic.sahucs-simple-dijkstra
-  (:require [edu.berkeley.ai.util :as util] [edu.berkeley.ai.util.queues :as queues]
+  (:require [angelic.util :as util] [angelic.util.queues :as queues]
             [angelic [env :as env] [hierarchy :as hierarchy]])
   (:import [java.util HashMap])
   )

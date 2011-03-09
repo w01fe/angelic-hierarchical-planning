@@ -1,6 +1,6 @@
 (ns angelic.hierarchy.state-set
   (:refer-clojure :exclude [empty?])
-  (:require [edu.berkeley.ai.util :as util]
+  (:require [angelic.util :as util]
             [clojure.contrib.combinatorics :as combos]
             [angelic.env.util :as env-util]            
             [angelic.env.state :as state]))

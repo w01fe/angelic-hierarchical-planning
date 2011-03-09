@@ -1,5 +1,5 @@
 (ns angelic.domains.sas-problems
-  (:require [edu.berkeley.ai [util :as util]]
+  (:require [angelic.util :as util] 
             [angelic.sas :as sas]
             [angelic.domains.taxi :as taxi]
             [angelic.domains.taxi-infinite :as taxi-infinite])

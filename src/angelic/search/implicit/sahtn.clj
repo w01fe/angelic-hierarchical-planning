@@ -1,6 +1,6 @@
 (ns angelic.search.implicit.sahtn
-  (:require [edu.berkeley.ai.util :as util]
-            [edu.berkeley.ai.util.queues :as queues]
+  (:require [angelic.util :as util]
+            [angelic.util.queues :as queues]
             [angelic.search.function-sets :as fs])
   (:import [java.util HashMap]))
 

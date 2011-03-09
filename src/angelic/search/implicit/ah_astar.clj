@@ -1,5 +1,5 @@
 (ns angelic.search.implicit.ah-astar
-  (:require [edu.berkeley.ai.util :as util]
+  (:require [angelic.util :as util]
             [angelic.search.function-sets :as fs]
             [angelic.search.explicit.core :as is])
   (:import  [java.util HashMap]))

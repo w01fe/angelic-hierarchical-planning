@@ -1,6 +1,6 @@
 (ns angelic.sas.lama-causal-graphs
-  (:require [edu.berkeley.ai.util :as util]
-            [edu.berkeley.ai.util [pdf :as pdf] [graphviz :as gv] [graphs :as graphs]]
+  (:require [angelic.util :as util]
+            [angelic.util [pdf :as pdf] [graphviz :as gv] [graphs :as graphs]]
 ;            [vijual.graphical :as vg]
             )
   )

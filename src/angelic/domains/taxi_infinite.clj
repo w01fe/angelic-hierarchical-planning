@@ -1,5 +1,5 @@
 (ns angelic.domains.taxi-infinite
-  (:require [edu.berkeley.ai.util :as util]
+  (:require [angelic.util :as util]
             [angelic.env :as env]
             [angelic.env.state :as state]
             [angelic.sas :as sas]

@@ -1,6 +1,6 @@
 (ns angelic.simple-tree-hierarchy
-  (:require [edu.berkeley.ai.util :as util]
-            [edu.berkeley.ai.util  [graphs :as graphs] [graphviz :as gv]]
+  (:require [angelic.util :as util]
+            [angelic.util  [graphs :as graphs] [graphviz :as gv]]
             [angelic [env :as env]  [hierarchy :as hierarchy] [sas :as sas] [sas-analysis :as sas-analysis]])
   )
 

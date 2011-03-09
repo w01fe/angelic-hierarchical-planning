@@ -1,5 +1,5 @@
 (ns angelic.search.explicit.hierarchical
-  (:require [edu.berkeley.ai.util :as util]
+  (:require [angelic.util :as util]
             [angelic.env :as env]
             [angelic.env.state :as state]
             [angelic.env.util :as env-util] 
@@ -451,7 +451,7 @@
      hfs-pretty-name)))
 
 (comment
-  (do (use '[angelic env hierarchy taxi ucs hierarchical-incremental-search] 'edu.berkeley.ai.util) (require '[angelic sahucs-simple sahucs-simple-dijkstra sahucs-inverted saha-simple] '[angelic.old ahois]))
+  (do (use '[angelic env hierarchy taxi ucs hierarchical-incremental-search] 'angelic.util) (require '[angelic sahucs-simple sahucs-simple-dijkstra sahucs-inverted saha-simple] '[angelic.old ahois]))
    (let [e (make-random-taxi-env 5 5 5 3) _ (println e) h (simple-taxi-hierarchy e)]  
     (time (println "ucs" (run-counted #(second (uniform-cost-search e)))))
     (doseq [alg `[sahucs-flat sahucs-fast-flat angelic.sahucs-simple/sahucs-simple sahucs-simple angelic.sahucs-simple-dijkstra/sahucs-simple-dijkstra sahucs-dijkstra angelic.sahucs-inverted/sahucs-inverted sahucs-inverted angelic.saha-simple/saha-simple saha-simple ]]

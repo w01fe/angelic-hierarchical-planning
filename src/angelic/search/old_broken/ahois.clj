@@ -1,5 +1,5 @@
 (ns angelic.old.ahois
-  (:require [edu.berkeley.ai.util :as util]
+  (:require [angelic.util :as util]
             [angelic.env :as env] 
             [angelic.hierarchy :as hierarchy]
             [angelic.old.incremental-search :as is])

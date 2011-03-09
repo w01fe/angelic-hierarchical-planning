@@ -1,6 +1,6 @@
 (ns angelic.search.implicit.dash-astar
-  (:require [edu.berkeley.ai.util :as util]
-            [edu.berkeley.ai.util.traits :as traits]
+  (:require [angelic.util :as util]
+            [angelic.util.traits :as traits]
             [angelic.search.summary :as summary]            
             [angelic.search.summary-graphs :as sg]
             [angelic.search.function-sets :as fs])

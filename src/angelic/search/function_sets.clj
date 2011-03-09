@@ -1,6 +1,6 @@
 (ns angelic.search.function-sets
   (:require
-   [edu.berkeley.ai.util :as util]
+   [angelic.util :as util]
    [angelic.env :as env]
    [angelic.env.util :as env-util]
    [angelic.env.state :as state]               

@@ -1,6 +1,6 @@
 (ns angelic.search.textbook
-  (:require [edu.berkeley.ai.util :as util]
-            [edu.berkeley.ai.util.queues :as queues]
+  (:require [angelic.util :as util]
+            [angelic.util.queues :as queues]
             [angelic.env :as env]))
 
 ;; TODO: tie breaking

@@ -1,6 +1,6 @@
 (ns angelic.search.implicit.dash-astar-opt
-  (:require [edu.berkeley.ai.util :as util]
-            [edu.berkeley.ai.util.traits :as traits]
+  (:require [angelic.util :as util]
+            [angelic.util.traits :as traits]
             [angelic.search.summary :as summary]            
             [angelic.search.summary-graphs :as sg]
             [angelic.search.function-sets :as fs])
@@ -293,7 +293,7 @@
 ;; Directly implements evaluable, so we don't need to show our queue to the outside
 ;; world; and we can eagerly evaluate left children.
 
-(use '[edu.berkeley.ai.util.queues :as queues])
+(use '[angelic.util.queues :as queues])
 
 (declare wrapped-atomic-name)
 
@@ -590,7 +590,7 @@
 
 
 
-;; (do (use 'edu.berkeley.ai.util '[angelic env hierarchy] 'angelic.domains.nav-switch  'angelic.domains.discrete-manipulation 'angelic.search.implicit.dash-astar-opt) (require '[angelic.search.summary-graphs :as sg] '[angelic.search.summary :as summary]) (defn s [x]  (sg/summarize x)) (defn sc [x] (summary/children x))  (defn src [x] (summary/source x)) (defn nc [x] (sg/child-nodes x)))
+;; (do (use 'angelic.util '[angelic env hierarchy] 'angelic.domains.nav-switch  'angelic.domains.discrete-manipulation 'angelic.search.implicit.dash-astar-opt) (require '[angelic.search.summary-graphs :as sg] '[angelic.search.summary :as summary]) (defn s [x]  (sg/summarize x)) (defn sc [x] (summary/children x))  (defn src [x] (summary/source x)) (defn nc [x] (sg/child-nodes x)))
 
 ;; (dotimes [_ 1] (reset! sg/*summary-count* 0) (debug 0 (let [h (make-nav-switch-hierarchy (make-random-nav-switch-env 20 4 0) true)]  (time (println (run-counted #(identity (implicit-dash-a*-opt h :gather true :d true :s :eager :dir :right))) @sg/*summary-count*)))))
 

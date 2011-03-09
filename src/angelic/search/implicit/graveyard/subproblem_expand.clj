@@ -1,6 +1,6 @@
 (ns angelic.search.implicit.subproblem-expand
-  (:require [edu.berkeley.ai.util :as util]
-            [edu.berkeley.ai.util.traits :as traits]            
+  (:require [angelic.util :as util]
+            [angelic.util.traits :as traits]            
             [angelic.search.summary :as summary]            
             [angelic.search.summaries_old :as summaries]))
 

@@ -1,6 +1,6 @@
 (ns angelic.search.old.sahucs-inverted
-  (:require [edu.berkeley.ai.util :as util] 
-            [edu.berkeley.ai.util [queues :as queues] [debug-repl :as dr]]
+  (:require [angelic.util :as util] 
+            [angelic.util [queues :as queues] [debug-repl :as dr]]
             [angelic.env :as env]
             [angelic.env.util :as env-util]
             [angelic.env.state :as state]

@@ -1,5 +1,5 @@
 (ns angelic.domains.discrete-manipulation
-  (:require [edu.berkeley.ai.util :as util]
+  (:require [angelic.util :as util]
             [angelic.env :as env]
             [angelic.env.state :as state]            
             [angelic.env.util :as env-util]
@@ -1359,11 +1359,11 @@
 (defn make-discrete-manipulation-hierarchy [env]
   (hierarchy-util/make-simple-hierarchical-env env [(make-tla env)]))
 
-                                        ; (do  (use 'edu.berkeley.ai.util '[angelic env hierarchy] 'angelic.domains.nav-switch 'angelic.search.incremental.implicit-dash-astar 'angelic.domains.discrete-manipulation) (require '[angelic.search.incremental.implicit-ah-astar :as aha]) (require '[ angelic.search.incremental.hierarchical :as his ]) (require '[ mycroft.main :as mm] ) (run 8081))
+                                        ; (do  (use 'angelic.util '[angelic env hierarchy] 'angelic.domains.nav-switch 'angelic.search.incremental.implicit-dash-astar 'angelic.domains.discrete-manipulation) (require '[angelic.search.incremental.implicit-ah-astar :as aha]) (require '[ angelic.search.incremental.hierarchical :as his ]) (require '[ mycroft.main :as mm] ) (run 8081))
 
 ;(let [h (make-discrete-manipulation-hierarchy (make-discrete-manipulation-env [5 5] [1 1] [ [ [2 2] [3 4] ] ] [ [:a [2 2] [ [3 2] [3 3] ] ] [:b [3 2] [ [2 3] [3 3] ] ] [:c [3 3] [ [2 2] [2 3] ] ] [:d [2 4] [ [3 4] [3 4] ] ] ] 1))] (println (time (run-counted #(his/h-ucs h))))#_  (println (run-counted #(aha/implicit-first-ah-a* h)))  (println (time (run-counted #(dotrace [refine-pn] (implicit-random-dash-a* h))))))
 
-; (use '[angelic discrete-manipulation env hierarchy hierarchical-incremental-search] 'edu.berkeley.ai.util)
+; (use '[angelic discrete-manipulation env hierarchy hierarchical-incremental-search] 'angelic.util)
 
 ; (make-discrete-manipulation-env [3 3] [1 1] [ [ [1 2] [2 2] ] ] [ [:a [1 2] [ [2 2] [2 2] ] ] ] 0)
 ; (make-discrete-manipulation-env [5 3] [1 1] [ [ [2 2] [3 2] ] ] [ [:a [2 2] [ [3 2] [3 2] ] ] ] 1)

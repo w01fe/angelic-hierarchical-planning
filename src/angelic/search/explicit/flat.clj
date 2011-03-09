@@ -1,5 +1,5 @@
 (ns angelic.search.explicit.flat
-  (:require [edu.berkeley.ai.util :as util]
+  (:require [angelic.util :as util]
             [angelic.env :as env] 
             [angelic.search.explicit.core :as is])
   (:import  [java.util HashMap]))

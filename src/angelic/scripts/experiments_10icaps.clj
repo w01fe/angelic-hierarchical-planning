@@ -1,8 +1,8 @@
 (ns angelic.scripts.experiments-10icaps
   (:require 
-   [edu.berkeley.ai.util :as util]
+   [angelic.util :as util]
    [angelic [env :as env] [hierarchy :as hierarchy] [taxi :as taxi] [ucs :as ucs] [sahtn-dijkstra :as sd]]
-   [edu.berkeley.ai.util [experiments :as experiments] [charts :as charts] [datasets :as datasets]]))
+   [angelic.util [experiments :as experiments] [charts :as charts] [datasets :as datasets]]))
 
 
 

@@ -1,6 +1,6 @@
 (ns angelic.scripts.experiments-11aaai
- (:require [edu.berkeley.ai [util :as util]] 
-	   [edu.berkeley.ai.util [charts :as charts] [datasets :as datasets] [experiments :as experiments]]
+ (:require [angelic.util :as util]  
+	   [angelic.util [charts :as charts] [datasets :as datasets] [experiments :as experiments]]
            [angelic [env :as env] [hierarchy :as hierarchy] [sas :as sas]]
            [angelic.search.textbook :as textbook]
            [angelic.domains.discrete-manipulation :as dm]
@@ -338,7 +338,7 @@
 
 
 
-;(use '[edu.berkeley.ai.util experiments cluster] 'angelic.scripts.experiments-11aaai)
+;(use '[angelic.util experiments cluster] 'angelic.scripts.experiments-11aaai)
 ;(run-experiment-set-cluster (make-dm-exp-set))
 
 ;; (time (run-experiment-set! (make-dm-lama-exp-set) 6 9))

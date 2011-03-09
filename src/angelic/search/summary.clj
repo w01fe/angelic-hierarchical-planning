@@ -1,6 +1,6 @@
 (ns angelic.search.summary
   (:refer-clojure :exclude [min max >= + ])
-  (:require [edu.berkeley.ai.util :as util])
+  (:require [angelic.util :as util])
   (:import [java.util ArrayList]))
 
 ;; Summaries are essentially sufficient statistics for searches.

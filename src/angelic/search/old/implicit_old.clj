@@ -1,5 +1,5 @@
 (ns angelic.search.implicit.implicit
-  (:require [edu.berkeley.ai.util :as util]
+  (:require [angelic.util :as util]
             [angelic.env :as env] 
             [angelic.hierarchy :as hierarchy]
             [angelic.hierarchy.state-set :as state-set]

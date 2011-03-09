@@ -1,5 +1,5 @@
 (ns angelic.search.explicit.lattices
-  (:require [edu.berkeley.ai.util :as util]
+  (:require [angelic.util :as util]
             #_  [angelic.search.summary :as summary])
   (:import [java.util HashMap List ArrayList]))
 
