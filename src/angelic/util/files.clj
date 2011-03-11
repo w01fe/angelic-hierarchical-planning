@@ -23,9 +23,9 @@
 (defmacro current-dir []
   `(dirname (current-file)))
 
-(def *local-root* (str (nth (iterate dirname (current-file)) 5) "/"))
+(def *local-root* (str (nth (iterate dirname (current-file)) 3) "/"))
 
-(def *base-root* (str (nth (iterate dirname (current-file)) 6) "/"))
+(def *base-root* (str (nth (iterate dirname (current-file)) 4) "/"))
 
 (defn path-local [s]
   (str *local-root* (.getParent (File. ^String *file*)) "/" s))
