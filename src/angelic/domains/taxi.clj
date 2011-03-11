@@ -227,13 +227,13 @@
 (defn- make-taxi-tla [env]
   (TaxiTLA. env (util/keyset (dissoc (env/initial-state env) :const))))
 
-(defn simple-taxi-hierarchy [#^TaxiEnv env]
+(defn simple-taxi-hierarchy [^TaxiEnv env]
   (hierarchy-util/make-simple-hierarchical-env
    env
    [(make-taxi-tla env)]))
 
 
-(defn simple-taxi-hierarchy-nsa [#^TaxiEnv env]
+(defn simple-taxi-hierarchy-nsa [^TaxiEnv env]
   (hierarchy-util/make-simple-hierarchical-env
    env
    [(angelic.hierarchy.util.NSAHLA. (make-taxi-tla env) (util/keyset (dissoc (env/initial-state env) :const)))]))
@@ -334,7 +334,7 @@
 (defn- make-taxi-tla2 [env]
   (Taxi2TLA. env (util/keyset (dissoc (env/initial-state env) :const))))
 
-(defn simple-taxi-hierarchy2 [#^TaxiEnv env]
+(defn simple-taxi-hierarchy2 [^TaxiEnv env]
   (hierarchy-util/make-simple-hierarchical-env
    env
    [(make-taxi-tla2 env)]))
@@ -392,7 +392,7 @@
 (defn- make-taxi-tla3 [env]
   (Taxi3TLA. env (util/keyset (dissoc (env/initial-state env) :const))))
 
-(defn simple-taxi-hierarchy3 [#^TaxiEnv env]
+(defn simple-taxi-hierarchy3 [^TaxiEnv env]
   (hierarchy-util/make-simple-hierarchical-env
    env
    [(make-taxi-tla3 env)]))

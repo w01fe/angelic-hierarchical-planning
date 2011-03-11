@@ -74,13 +74,13 @@
 (def *var-levels*   nil)  ; Map from var name to index in topological sort (0 is src, +n is sink)
 (def *extended-dtgs* nil) ; Map from var to map from prev val to map from post val to list of actions.
 (def *simple-dtgs* nil)   ; Map from var to edge list.
-(def #^HashMap *hla-cache* nil) ; a map from [action-name] to map from init-sets to action.
-(def #^IdentityHashMap *compile-cache* nil) ; a map from [action-name] to map from init-sets to action.
+(def ^HashMap *hla-cache* nil) ; a map from [action-name] to map from init-sets to action.
+(def ^IdentityHashMap *compile-cache* nil) ; a map from [action-name] to map from init-sets to action.
 (def *greedy-optimization?* true)
 
 ;; Memoized partial computations to speed up acylic edge generation.
-(def #^HashMap *forward-reachability-cache* nil)
-(def #^HashMap *backward-reachability-cache* nil)
+(def ^HashMap *forward-reachability-cache* nil)
+(def ^HashMap *backward-reachability-cache* nil)
 
 (defn forward-reachable-nodes-and-necessary-predecessors [var-name from-val]
   (util/cache-with *forward-reachability-cache* [var-name from-val]
@@ -617,7 +617,7 @@
 
 (defmulti pretty-print-action (fn [h done-set] (type h)))
 
-(defn pretty-print-hla [h #^HashSet done-set]
+(defn pretty-print-hla [h ^HashSet done-set]
   (when-not (.contains done-set h)
     (.add done-set h)
     (println (str "\nRefs for HLA" (env/action-name h)) );(precond-var-set h)  (effect-sets h))

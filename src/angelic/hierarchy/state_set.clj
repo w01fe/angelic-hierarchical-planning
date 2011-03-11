@@ -84,7 +84,7 @@
     (when (every? seq seqs)
       (lazy-seq (step v-original-seqs)))))
 
-(deftype LoggingFactoredStateSet [init #^java.util.Set context puts ooc meta] 
+(deftype LoggingFactoredStateSet [init ^java.util.Set context puts ooc meta] 
   Object 
   (equals   [ss lfs]
      (let [lfs ^LoggingFactoredStateSet lfs]

@@ -166,8 +166,8 @@
 
 (defn clause->pred-maps [conjunctive-clause]
   (let [true-map (HashMap.) poss-map (HashMap.)]
-    (doseq [[#^clojure.lang.APersistentVector pred stat] conjunctive-clause]
-      (let [#^HashMap m (if (= stat :true) true-map poss-map)
+    (doseq [[^clojure.lang.APersistentVector pred stat] conjunctive-clause]
+      (let [^HashMap m (if (= stat :true) true-map poss-map)
 	    pred-name (.get pred 0)]
 	(.put m pred-name (cons pred (.get m pred-name)))))
     [true-map poss-map]))

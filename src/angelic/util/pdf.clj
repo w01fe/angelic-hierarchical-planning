@@ -27,7 +27,7 @@
 
 (import '[javax.swing JLabel ImageIcon] '[java.awt Image])
 
-(defn show-image [#^Image img]
+(defn show-image [^Image img]
   (doto (JFrame. "Image")
     (.add (JLabel. (ImageIcon. img)))
     (.pack)

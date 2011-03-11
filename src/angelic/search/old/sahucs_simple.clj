@@ -82,7 +82,7 @@
    (when (seq actions) (get-sa-node cache state (first actions)))
    reward-to-state actions))
 
-(defn get-sa-node [#^HashMap cache s a]
+(defn get-sa-node [^HashMap cache s a]
   "Create a new sa-node, or returned the cached copy if it exists."
   (let [context (env/precondition-context a s)]
     (util/cache-with cache [(env/action-name a) (state/extract-context s context)]
@@ -97,7 +97,7 @@
 
 ;; May return states better than next-best, but these will be held at the parent.
  ; Note; must present consistent version of self for recursive calls too. 
-(defn expand-sa-node [node #^HashMap cache next-best state reward-to-state last-cutoff]
+(defn expand-sa-node [node ^HashMap cache next-best state reward-to-state last-cutoff]
   (loop [new-results (if (= last-cutoff (cutoff node)) {}
                          (util/filter-map #(<= (val %) last-cutoff)  @(:result-map-atom node)))]
      (if (< (cutoff node) next-best)

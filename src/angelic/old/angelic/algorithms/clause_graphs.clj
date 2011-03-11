@@ -138,7 +138,7 @@
 
 ;;; Helper functions
 
-(defn- connect-cg-node [#^HashMap node-map edge step-rew clause plan-suffix]
+(defn- connect-cg-node [^HashMap node-map edge step-rew clause plan-suffix]
   (let [pair [clause plan-suffix]
 	node (or (.get node-map pair)
 		 (let [n (make-cg-node clause plan-suffix)]
@@ -149,7 +149,7 @@
     (util/sref-up! pre-edges-ref assoc edge step-rew)
     node))
 
-(defn- get-cg-node [#^HashMap node-map clause plan-suffix]
+(defn- get-cg-node [^HashMap node-map clause plan-suffix]
   (util/safe-get node-map [clause plan-suffix]))
 		 
 (defn- get-outgoing-edge [node hla]
@@ -309,7 +309,7 @@
 					  (recur node next-state rest-reward target-reward max-gap max-gap-node)))))))
 
 (defn solve-cg [cg]
-  (let [#^HashMap node-map (:node-map cg)
+  (let [^HashMap node-map (:node-map cg)
 	final-node         (util/safe-get node-map [*finish-clause* nil])]
     (loop []
       (let [best-rew (util/sref-get (:max-in-reward final-node))]

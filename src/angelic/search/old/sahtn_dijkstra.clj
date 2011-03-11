@@ -69,7 +69,7 @@
                           {s 0} ref)))))
 
 
-(defn- sahtn-action [#^HashMap cache s a r]
+(defn- sahtn-action [^HashMap cache s a r]
   "Handling boring things - caching and stitching states, etc."
   (let [context-schema  (env/precondition-context a s)
         context         (state/extract-context s context-schema)

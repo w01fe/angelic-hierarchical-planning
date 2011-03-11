@@ -43,7 +43,7 @@
 
 
 
-(defn- sahtn-action [#^HashMap cache s a r]
+(defn- sahtn-action [^HashMap cache s a r]
   "Handling boring things - caching and stitching states, etc."
   (env/enforce-logger s)
 ;  (println s)

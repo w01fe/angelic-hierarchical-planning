@@ -137,7 +137,7 @@
 (defn trans-map "Get a map representing the (safe) composition of m1 and m2" [m1 m2]
   (map-vals #(safe-get m2 %) m1))
 
-(defmacro cache-with [#^HashMap m key expr]
+(defmacro cache-with [^HashMap m key expr]
   `(let [m# ~m, key# ~key]
     (if (.containsKey m# key#) 
       (.get m# key#)

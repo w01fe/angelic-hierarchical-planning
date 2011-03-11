@@ -118,7 +118,7 @@
               (atom (if (seq empty-refs) {s []} {}))
               (atom (if (seq empty-refs) (assoc (angelic/optimistic-map a s) s 0) (angelic/optimistic-map a s)))))))
 
-(defn get-sa-node [#^HashMap cache s a]
+(defn get-sa-node [^HashMap cache s a]
   (let [context   (env/precondition-context a s)
         node      (util/cache-with cache [(env/action-name a) (state/extract-context s context)] 
                                    (create-sa-node cache (env/get-logger s context) a))]
@@ -145,7 +145,7 @@
   (state-solution    [outcome-state]
     (get @solution-map-atom outcome-state)))
 
-(defn make-ref-node [#^HashMap cache s ref]
+(defn make-ref-node [^HashMap cache s ref]
   (assert (seq ref))
   (let [[first-action & more-actions] ref
         first-sa (get-sa-node cache s first-action)]

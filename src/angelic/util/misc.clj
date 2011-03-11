@@ -9,7 +9,7 @@
 
 (defn git-commit-id []
   (try 
-    (aget (.split #^String (sh "git" "log" "-1" :dir (root-local "")) "\n") 0)
+    (aget (.split ^String (sh "git" "log" "-1" :dir (root-local "")) "\n") 0)
     (catch Exception e "git-not-found")))
 
 
@@ -52,14 +52,14 @@
 (set! *warn-on-reflection* true)
 
 (import '[angelic.util Double2Arrays] '[java.util List])
-(defn to-double2 [#^List ss] (Double2Arrays/toDouble2Array ss))
-(defn aset-double2 [#^"[[D" a i j v] (Double2Arrays/set a i j v))
-(defn aget-double2 [#^"[[D" a i j] (Double2Arrays/get a i j))
+(defn to-double2 [^List ss] (Double2Arrays/toDouble2Array ss))
+(defn aset-double2 [^"[[D" a i j v] (Double2Arrays/set a i j v))
+(defn aget-double2 [^"[[D" a i j] (Double2Arrays/get a i j))
 
 
 (import '[angelic.util HungarianAlgorithm])
 (defn maximum-matching "Edges are [n1 n2 weight].  Returns weight." 
-  ([#^"[[D" arr] (HungarianAlgorithm/hgAlgorithm arr "max"))
+  ([^"[[D" arr] (HungarianAlgorithm/hgAlgorithm arr "max"))
   ([left-nodes right-nodes edges]
   (let [left-nodes    (seq left-nodes)
 	right-nodes   (seq right-nodes)
@@ -350,10 +350,10 @@
   ([] (make-weak-ref-seq []))
   ([s] (ArrayList. (map #(WeakReference. %) s))))
 
-(defn weak-ref-seq-add! [#^ArrayList s x]
+(defn weak-ref-seq-add! [^ArrayList s x]
   (.add s (WeakReference. x)))
 
-(defn weak-ref-seq [#^ArrayList s]
-  (filter identity (map #(.get #^WeakReference %) (seq s))))
+(defn weak-ref-seq [^ArrayList s]
+  (filter identity (map #(.get ^WeakReference %) (seq s))))
  )
 

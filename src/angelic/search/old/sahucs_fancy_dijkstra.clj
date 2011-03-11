@@ -99,7 +99,7 @@
      (concat (:remaining-actions entry) parent-actions)
      (:hash-code entry)))) ;; TODO?!
 
-(defn get-sa-node [#^HashMap cache s a]
+(defn get-sa-node [^HashMap cache s a]
   "Create a new sa-node, or returned the cached copy if it exists."
   (let [context (env/precondition-context a s)]
     (util/cache-with cache [(env/action-name a) (state/extract-context s context)]
@@ -124,7 +124,7 @@
 ;; In this version, 
 
 ;; May return states better than next-best, but these will be held at the parent.
-(defn expand-sa-node [node #^HashMap cache next-best state reward-to-state last-cutoff dijkstra? parent-cl following-actions]
+(defn expand-sa-node [node ^HashMap cache next-best state reward-to-state last-cutoff dijkstra? parent-cl following-actions]
 ;  (println (env/action-name (:action node)) (cutoff node) last-cutoff parent-cl next-best) (util/timeout)
   (loop [new-results (if (= last-cutoff (cutoff node)) {}
                          (util/filter-map #(<= (val %) last-cutoff)  @(:result-map-atom node)))]

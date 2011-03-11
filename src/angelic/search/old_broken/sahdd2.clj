@@ -191,7 +191,7 @@
                     (recur min-reward))
                 (PartialResult nil @next-reward-atom)))))))))
 
-(def #^HashMap *problem-cache*)
+(def ^HashMap *problem-cache*)
 
 (defmacro get-cached-search [name factory-expr]
   `((util/cache-with *problem-cache* ~name (make-cached-search-factory ~factory-expr))))
@@ -339,7 +339,7 @@
 
 (declare make-inverted-node)
 
-(defn connect-downward-cache [#^HashMap cc state action [new-parent new-reward :as new-parent-pair]]
+(defn connect-downward-cache [^HashMap cc state action [new-parent new-reward :as new-parent-pair]]
   (let [context (env/precondition-context action state)
         ic      (util/cache-with cc [(state/extract-context state context) (env/action-name action)]
                   (InvertedCache (atom []) (atom []) new-reward))

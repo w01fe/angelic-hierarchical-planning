@@ -20,7 +20,7 @@
       
 
 
-(defn- walk-graph [root node-key-fn node-label-fn edge-child-pair-fn #^HashSet visited indexer]
+(defn- walk-graph [root node-key-fn node-label-fn edge-child-pair-fn ^HashSet visited indexer]
   (let [node-key  (node-key-fn root)
 	node-map (node-label-fn root)]
 ;    (println node-key)

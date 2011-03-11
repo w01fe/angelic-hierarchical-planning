@@ -71,7 +71,7 @@
 (defn make-random [seed]
   (doto (Random. (long seed)) (.nextDouble) (.nextDouble)))
 
-(defn pseudo-shuffle [#^Random r #^java.util.Collection coll]
+(defn pseudo-shuffle [^Random r ^java.util.Collection coll]
   (seq (doto (java.util.ArrayList. coll) (java.util.Collections/shuffle r))))
 
 (defn spiral-to [max-d] 
@@ -170,7 +170,7 @@
      (make-discrete-manipulation-env size base obstacles objects g-rad Integer/MAX_VALUE))
   ([size base obstacles objects g-rad n-base-samples]
      (make-discrete-manipulation-env size base obstacles objects g-rad n-base-samples (make-random 1)))  
-  ([size base obstacles objects g-rad n-base-samples #^Random random]
+  ([size base obstacles objects g-rad n-base-samples ^Random random]
   (let [[width height] size
         border-regions [[[0 0] [0 height]] [[width 0] [width height]]
                         [[0 0] [width 0]] [[0 height] [width height]]]

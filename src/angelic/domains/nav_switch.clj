@@ -256,7 +256,7 @@
                  (if split-nav?  #(SplitNavHLA. %1 %2) #(SimpleNavHLA. %1 %2))
                  (env-util/make-finish-goal-state env)))
 
-(defn make-nav-switch-hierarchy [#^NavSwitchEnv env split-nav?]
+(defn make-nav-switch-hierarchy [^NavSwitchEnv env split-nav?]
   (hierarchy-util/make-simple-hierarchical-env env [(make-nav-switch-tla env split-nav?)]))
 
 

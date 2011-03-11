@@ -72,7 +72,7 @@
     (vec atom)))
 
 
-(defn simplify-atom  [m #^clojure.lang.APersistentVector atom]
+(defn simplify-atom  [m ^clojure.lang.APersistentVector atom]
 ;  (print (class m))
   (reduce (fn [v item]
 	    (conj v 

@@ -3,10 +3,10 @@
            [angelic.util [propositions :as props]])
  )
 
-(defmulti #^{:doc "Get metafied initial state"}   get-initial-state :class)
-(defmulti #^{:doc "Get instance of state-space"}  get-state-space   :class)
-(defmulti #^{:doc "Get instance of action-space"} get-action-space  :class)
-(defmulti #^{:doc "Get instance of goal struct"}  get-goal          :class)
+(defmulti ^{:doc "Get metafied initial state"}   get-initial-state :class)
+(defmulti ^{:doc "Get instance of state-space"}  get-state-space   :class)
+(defmulti ^{:doc "Get instance of action-space"} get-action-space  :class)
+(defmulti ^{:doc "Get instance of goal struct"}  get-goal          :class)
 
 (defn metafy-initial-state [s]
   (with-meta s {:act-seq [] :reward 0}))
@@ -32,7 +32,7 @@
 (defmethod get-goal          ::Environment [env]
   (:goal env))
 
-(defmulti #^{:doc "Get string rep of state"}      state-str (fn [env elt] (:class env)))
+(defmulti ^{:doc "Get string rep of state"}      state-str (fn [env elt] (:class env)))
 
 (defmethod state-str  ::Environment [env state] (state-str (get-state-space env) state))  
 
@@ -69,10 +69,10 @@
 
 (derive ::PropositionalEnvironment ::Environment)
 
-(defmulti #^{:doc "Get the ::PropositionalDomain associated with this ::PropositionalEnvironment"}
+(defmulti ^{:doc "Get the ::PropositionalDomain associated with this ::PropositionalEnvironment"}
   get-domain :class)
 
-(defmulti #^{:doc "Get the expected number of distinct values for arg-pos allowed by pred, given inst-pos vars instantiated."}
+(defmulti ^{:doc "Get the expected number of distinct values for arg-pos allowed by pred, given inst-pos vars instantiated."}
   expected-domain-size (fn [inst pred arg-pos inst-pos] (:class inst)))
 
 

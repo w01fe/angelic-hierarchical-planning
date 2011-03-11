@@ -85,7 +85,7 @@
 (defn- sahtn-result [fs ss]
   "Memoized result valuation for doing a from s."
   (let [sol             (:sol (meta ss))
-        #^HashMap cache *result-cache*
+        ^HashMap cache *result-cache*
 	cache-key       [(fs/fs-name fs) (fs/extract-context fs ss)]
 	cache-val       (.get cache cache-key)]
     (util/assert-is (not (= cache-val :in-progress)) "%s" [(fs/fs-name fs)])

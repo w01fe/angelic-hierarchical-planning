@@ -224,7 +224,7 @@
         extended-rdtgs              (reverse-domain-transition-graphs vars actions)]
     (filter
      (fn [[[var1 val1] [var2 val2]]]
-       (when (< (.compareTo #^Comparable var1 #^Comparable var2) 0)
+       (when (< (.compareTo ^Comparable var1 ^Comparable var2) 0)
          (every? (fn [[var val other-var other-val]]
                    (every? (fn [a] (not (= (get (:effect-map a) other-var other-val) other-val)))
                            (apply concat (vals ((extended-dtgs var) val)))))
@@ -378,20 +378,20 @@
     (doseq [key keys] (.put h key (HashSet.)))
     h))
 
-(defn add-mos [#^HashMap mos key val]
-  (.add #^HashSet (.get mos key) val))
+(defn add-mos [^HashMap mos key val]
+  (.add ^HashSet (.get mos key) val))
 
-(defn add-mos-new [#^HashSet dirty #^HashMap oldmos #^HashMap newmos key val]
-  (when-not (.contains #^HashSet (.get oldmos key) val)
+(defn add-mos-new [^HashSet dirty ^HashMap oldmos ^HashMap newmos key val]
+  (when-not (.contains ^HashSet (.get oldmos key) val)
     (.add dirty key)
-    (.add #^HashSet (.get newmos key) val)))
+    (.add ^HashSet (.get newmos key) val)))
 
 (defn edge-list->map [el]
   (persistent! (reduce (fn [m [k v]] (assoc m k (cons v (m k)))) (transient {}) el)))
 
 
 
-(defn exhaustive-dfs [src dst extended-dtg stack-set #^HashSet new-action-pool #^HashSet new-actions]
+(defn exhaustive-dfs [src dst extended-dtg stack-set ^HashSet new-action-pool ^HashSet new-actions]
   (cond (= src dst)               true
         (contains? stack-set src) false
         :else 
@@ -407,7 +407,7 @@
 (defn backward-simplify [sas-problem]
   (let [{:keys [vars actions init]} sas-problem
         extended-dtgs               (domain-transition-graphs vars actions)     
-        dead-actions                (HashSet. #^java.util.Collection actions)
+        dead-actions                (HashSet. ^java.util.Collection actions)
         now-live-actions            (HashSet.)
         new-goals                   (make-map-of-sets (keys vars))
         new-srcs                    (make-map-of-sets (keys vars))
@@ -422,20 +422,20 @@
     (while (not (.isEmpty dirty-var-set))
       (let [var (first dirty-var-set)]
         (println "doing" var)
-        (while (or (not (.isEmpty #^HashSet (get new-goals var))) (not (.isEmpty #^HashSet (get new-srcs var))))
+        (while (or (not (.isEmpty ^HashSet (get new-goals var))) (not (.isEmpty ^HashSet (get new-srcs var))))
           (if (not (empty? (get new-goals var)))
             (let [new-goal (first (get new-goals var))]
               (println " doing goal" new-goal)
               (doseq [old-src (get old-srcs var)]
                 (assert (exhaustive-dfs old-src new-goal (get extended-dtgs var) #{} dead-actions now-live-actions)))
-              (.remove #^HashSet (get new-goals var) new-goal)
-              (.add    #^HashSet (get old-goals var) new-goal))
+              (.remove ^HashSet (get new-goals var) new-goal)
+              (.add    ^HashSet (get old-goals var) new-goal))
             (let [new-src (first (get new-srcs var))]
               (println " doing src" new-src)              
               (doseq [old-goal (get old-goals var)]
                 (assert (exhaustive-dfs new-src old-goal (get extended-dtgs var) #{} dead-actions now-live-actions)))
-              (.remove #^HashSet (get new-srcs var) new-src)
-              (.add    #^HashSet (get old-srcs var) new-src)))
+              (.remove ^HashSet (get new-srcs var) new-src)
+              (.add    ^HashSet (get old-srcs var) new-src)))
           (doseq [a (seq now-live-actions)]
             (doseq [[pvar pval] (:precond-map a)]
               (add-mos-new dirty-var-set old-goals new-goals pvar pval))

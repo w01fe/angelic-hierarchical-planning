@@ -114,7 +114,7 @@
 
 ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;; Helpers ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
 
-(defn backward-reachable-nodes-and-preds [#^HashMap cache simple-dtgs var-name to-val]
+(defn backward-reachable-nodes-and-preds [^HashMap cache simple-dtgs var-name to-val]
   (util/cache-with cache [:backward var-name to-val]
     (graphs/compute-reachable-nodes-and-necessary-predecessors
      (map reverse (util/safe-get simple-dtgs var-name)) to-val)))

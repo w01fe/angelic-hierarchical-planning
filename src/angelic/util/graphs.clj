@@ -151,8 +151,8 @@
   (let [edges (distinct (concat edges (map (fn [x] [x x]) (apply concat edges))))
         pe (merge (into {} (map vector (map second edges) (repeat nil))) 
                   (map-vals #(map second %) (group-by first edges)))
-        e  (HashMap. #^Map pe)
-        re (HashMap. #^Map (map-vals #(map first %) (group-by second edges)))
+        e  (HashMap. ^Map pe)
+        re (HashMap. ^Map (map-vals #(map first %) (group-by second edges)))
         s (Stack.)]
     (while (not (.isEmpty e))
      ((fn dfs1 [n]
@@ -345,7 +345,7 @@
         edge-list    (concat (for [[g [s]] named-srcs] [g s]) edge-list)
         incoming-map (edge-list->incoming-map edge-list)
         outgoing-map (edge-list->outgoing-map edge-list)
-        node-vals    (HashMap. #^Map (into {} (for [[g [_ v]] named-srcs] [g v])))
+        node-vals    (HashMap. ^Map (into {} (for [[g [_ v]] named-srcs] [g v])))
         node-val     #(lazy-get node-vals % (init-fn %))
         queue        (LinkedList. (map first src-vals))
         queue-count  (HashMap. (into {} (for [x (map first src-vals)] [x 1])))]

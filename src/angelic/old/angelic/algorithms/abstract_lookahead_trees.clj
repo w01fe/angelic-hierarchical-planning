@@ -73,7 +73,7 @@
 ; Fate can be nil, :refined, :pruned; for visualizing only.
 
 (defn get-alt-node [alt hla previous-node was-tight?] "Returns a cached node if available."
-  (let [#^HashMap cache (when (util/safe-get alt :cache?) (util/safe-get (meta previous-node) :cache))]
+  (let [^HashMap cache (when (util/safe-get alt :cache?) (util/safe-get (meta previous-node) :cache))]
     (or (and cache (.get cache hla))
 	(let [ret (make-alt-node hla previous-node was-tight? nil nil)]
 	  (when cache (.put cache hla ret))
@@ -254,8 +254,8 @@
 	name ((:node-counter (meta alt)))]
     (when graph? (assert (graph-add-and-check! alt root initial-plan name))) ;*always-live*)))
  ;   (println (:graph-map (meta alt)))
-;    (.add #^HashSet (:live-set (meta alt)) *always-live*)
-    (.add #^HashSet (:live-set (meta alt)) name)
+;    (.add ^HashSet (:live-set (meta alt)) *always-live*)
+    (.add ^HashSet (:live-set (meta alt)) name)
     (loop [actions initial-plan
 	   previous root]
       (if (empty? actions)
@@ -282,7 +282,7 @@
 
 (defn add-node-pruning-info! [alt node rest-plan name]
   (util/assert-is (:graph? alt))
-  (let [#^HashMap graph-map (util/safe-get (meta alt) :graph-map)
+  (let [^HashMap graph-map (util/safe-get (meta alt) :graph-map)
 	subsumption-info    (util/safe-get alt :subsumption-info)
 	pess-val              (pessimistic-valuation node)]
     (when-not (empty-valuation? pess-val) 
@@ -302,8 +302,8 @@
  
 
 (defn node-prunable? [alt node rest-plan name]
-  (let [#^HashMap graph-map (util/safe-get (meta alt) :graph-map)
-	#^HashSet live-set  (util/safe-get (meta alt) :live-set)
+  (let [^HashMap graph-map (util/safe-get (meta alt) :graph-map)
+	^HashSet live-set  (util/safe-get (meta alt) :live-set)
 	subsumption-info    (util/safe-get alt :subsumption-info)
 	opt-val             (optimistic-valuation node)
 	[opt-states opt-si] (get-valuation-states opt-val subsumption-info)
@@ -356,8 +356,8 @@
 (declare construct-immediate-refinement)
 (defmethod search/reroot-at-node ::ALTPlanNode [node & args]
   (let [alt (:alt node)
-	#^HashMap cache (:graph-map (meta alt))
-	#^HashSet live-set (:live-set (meta alt))
+	^HashMap cache (:graph-map (meta alt))
+	^HashSet live-set (:live-set (meta alt))
 	name   (util/safe-get node :name)]
     (.clear live-set)
     (.clear cache)
@@ -443,7 +443,7 @@
 			  ;	(valuation-max-reward (pessimistic-valuation ref-node)))))
 	    after-actions  (map :hla (reverse (take-while #(not (identical? % ref-node)) 
 							  (iterate :previous plan))))]
-	(when graph? (.remove #^HashSet (:live-set (meta alt)) (util/safe-get node :name)))
+	(when graph? (.remove ^HashSet (:live-set (meta alt)) (util/safe-get node :name)))
 	(util/sref-set! (:fate (meta ref-node)) :refined)
 ;	(println (count (hla-immediate-refinements (:hla ref-node) (optimistic-valuation (:previous ref-node)))))
 	(filter identity
@@ -454,7 +454,7 @@
 	     (when (= graph? :full)
 	       (assert (test-and-add-edge! alt name (util/safe-get node :name))))
 	     (when-let [nxt (construct-immediate-refinement node (:previous ref-node) (concat ref after-actions) alt (util/safe-get node :depth) name was-tight?)]
-	       (when graph? (.add #^HashSet (:live-set (meta alt)) name))
+	       (when graph? (.add ^HashSet (:live-set (meta alt)) name))
 ;		 (when (> (search/upper-reward-bound nxt) urb) 
 ;		   (util/sref-set! (:upper-reward-bound (meta (:plan nxt))) urb)
 ;		   (println "Fixing Upper Inconcistency" urb (search/upper-reward-bound nxt)))
@@ -642,8 +642,8 @@
 ; Old version, no subsumption
 (defn graph-add-and-check! [alt node rest-plan name]
   (util/assert-is (:graph? alt))
-  (let [#^HashMap graph-map (util/safe-get (meta alt) :graph-map)
-	#^HashSet live-set  (util/safe-get (meta alt) :live-set)
+  (let [^HashMap graph-map (util/safe-get (meta alt) :graph-map)
+	^HashSet live-set  (util/safe-get (meta alt) :live-set)
 	subsumption-info    (util/safe-get alt :subsumption-info)
 	opt-val    (optimistic-valuation node)
 	[opt-states] (get-valuation-states opt-val subsumption-info)

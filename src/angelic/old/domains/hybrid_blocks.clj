@@ -29,7 +29,7 @@
     (hs/read-hybrid-strips-planning-domain f)))
  
 (declare process-block-tree)
-(defn- process-block-forest [stacks on-block on-lx on-rx on-ty max-h gripper-pos #^HashSet block-set #^HashSet on-set #^HashMap num-map]
+(defn- process-block-forest [stacks on-block on-lx on-rx on-ty max-h gripper-pos ^HashSet block-set ^HashSet on-set ^HashMap num-map]
   (loop [li [0 0], stacks (seq stacks)]
     (when stacks
       (let [ni (process-block-tree (first stacks) on-block on-lx on-rx on-ty max-h gripper-pos block-set on-set num-map)]
@@ -37,7 +37,7 @@
 	(util/assert-is (<= (second ni) on-rx))
 	(recur ni (next stacks))))))
 
-(defn- process-block-tree [stack on-block on-lx on-rx on-ty max-h gripper-pos #^HashSet block-set #^HashSet on-set #^HashMap num-map]
+(defn- process-block-tree [stack on-block on-lx on-rx on-ty max-h gripper-pos ^HashSet block-set ^HashSet on-set ^HashMap num-map]
   (let [[block l-offset c-dist width height on-items] stack
 	blx (+ l-offset on-lx)
 	bcx (+ blx c-dist)
@@ -292,8 +292,8 @@
 
 (import '[javax.swing JFrame JPanel] '[java.awt Graphics])
 
-(def #^JFrame *frame*  (JFrame.))
-(def #^JPanel *panel*  (JPanel.))
+(def ^JFrame *frame*  (JFrame.))
+(def ^JPanel *panel*  (JPanel.))
 
 (defn- get-blocks [numeric-vals]
   (set
@@ -303,14 +303,14 @@
 
 (defn visualize-hb-state [state]
     (when (not (.isVisible *frame*))
-      (def #^JPanel *panel* (JPanel.))
-      (def #^JFrame *frame* (JFrame. "Hybrid Blocks State"))
+      (def ^JPanel *panel* (JPanel.))
+      (def ^JFrame *frame* (JFrame. "Hybrid Blocks State"))
       (doto *frame*
 	(.add *panel*)
 	(.setSize 400 400)
 	(.setVisible true)))
     (let [[discrete-atoms numeric-vals] state
-	  #^Graphics g (.getGraphics *panel*)
+	  ^Graphics g (.getGraphics *panel*)
 	  height (util/safe-get numeric-vals '[height])
 	  width  (util/safe-get numeric-vals '[width])
 	  hpix (.getWidth *panel*)
@@ -331,7 +331,7 @@
 	      brw (util/safe-get numeric-vals ['blockrw b])
 	      bty (util/safe-get numeric-vals ['blockty b])
 	      bh  (util/safe-get numeric-vals ['blockh  b])
-	      #^String bs (str b)]
+	      ^String bs (str b)]
 ;	  (println bs (posy bty) (posy (- bty bh)))
 	  (doto g
 	    (.drawRoundRect (posx (- bcx blw)) (posy bty) (scalex (+ blw brw)) (scaley bh) 5 5)

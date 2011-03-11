@@ -155,7 +155,7 @@
  (defn- make-infinite-taxi-tla [env]
    (InfiniteTaxiTLA. env (util/keyset (dissoc (env/initial-state env) :const))))
 
- (defn simple-infinite-taxi-hierarchy [#^InfTaxiEnv env]
+ (defn simple-infinite-taxi-hierarchy [^InfTaxiEnv env]
    (hierarchy-util/make-simple-hierarchical-env
     env
     [(make-infinite-taxi-tla env)])))

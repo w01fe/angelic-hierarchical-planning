@@ -89,15 +89,15 @@
   "Read a groups file from LAMA and output a map from variable names to atoms."
   [file]
   (util/map-vals 
-   (fn [vl] (map #(let [tokens (remove empty? (.split #^String % "[,() ]"))]
+   (fn [vl] (map #(let [tokens (remove empty? (.split ^String % "[,() ]"))]
                     (if (= (second tokens) "Atom")
                         (do (assert (not (= (nth tokens 2) "other")))
                             (vec (map keyword (drop 2 tokens))))
                       [:other])) 
                  vl))
-   (map-ize #(when-not (.startsWith #^String % " ") 
-               (keyword (.substring #^String % 0 (dec (count %)))))
-            (.split #^String (slurp file) "\n"))))
+   (map-ize #(when-not (.startsWith ^String % " ") 
+               (keyword (.substring ^String % 0 (dec (count %)))))
+            (.split ^String (slurp file) "\n"))))
 
 (defn expand-condition [vars [varn valn]]
   (let [var (nth vars varn)]
@@ -121,12 +121,12 @@
   ([groups-file sas-file]     
      (let [var-map (assoc (read-groups-file groups-file)
                      goal-var-name [goal-false-val goal-true-val])
-           sas-q   (LinkedList. (seq (.split #^String (slurp sas-file) "\n")))
+           sas-q   (LinkedList. (seq (.split ^String (slurp sas-file) "\n")))
            _       (dotimes [_ 3] (.pop sas-q))
            _       (assert (= (.pop sas-q) "begin_variables"))
            n-vars  (read-string (.pop sas-q))
            vars-ds (doall (for [_ (range n-vars) 
-                                :let [[v ds] (.split #^String (.pop sas-q) " ")]]
+                                :let [[v ds] (.split ^String (.pop sas-q) " ")]]
                             (do (assert (not (= v "goal")))
                                 [(keyword v) (read-string ds)])))
            _       (assert (= (.pop sas-q) "end_variables"))
@@ -143,7 +143,7 @@
            _       (assert (= (.pop sas-q) "end_goal"))
            ops     (doall (for [_ (range (read-string (.pop sas-q)))]
                             (let [_        (assert (= (.pop sas-q) "begin_operator")) 
-                                  name     (vec (map keyword (.split #^String (.pop sas-q) " ")))
+                                  name     (vec (map keyword (.split ^String (.pop sas-q) " ")))
                                   prevails (doall (for [_ (range (read-string (.pop sas-q)))]
                                                     (read-string (str "[" (.pop sas-q) "]"))))
                                   effects  (doall (for [_ (range (read-string (.pop sas-q)))]

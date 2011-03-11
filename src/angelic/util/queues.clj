@@ -92,7 +92,7 @@
   [] {:class ::GraphQueuePriorityQueue :queue (sref clojure.lang.PersistentQueue/EMPTY) :map (new HashMap)})
 
 (defmethod pq-add! ::GraphQueuePriorityQueue [pq item cost]
-  (let [#^HashMap m (:map pq)
+  (let [^HashMap m (:map pq)
 	val (.get m item)] 
     (if (and val (<= (get-cost val) (get-cost cost)))
         :ignored
@@ -184,7 +184,7 @@
   [] {:class ::GraphStackPriorityQueue :stack (sref nil) :map (new HashMap)})
 
 (defmethod pq-add! ::GraphStackPriorityQueue [pq item cost]
-  (let [#^HashMap m (:map pq)
+  (let [^HashMap m (:map pq)
 	val (.get m item)] 
     (if (and val (<= (get-cost val) (get-cost cost)))
         :ignored
@@ -194,7 +194,7 @@
 
 ;(defmethod pq-add-all! ::GraphStackPriorityQueue [pq items]
 ;  (print " a ")
-;  (let [#^HashMap m (:map pq);
+;  (let [^HashMap m (:map pq);
 ;	old (sref-get (:stack pq))]
 ;    (sref-set! (:stack pq) 
 ;	       (concat (for [pair items :when (let [v (.get m (first pair))] 
@@ -242,36 +242,36 @@
   [] {:class ::TreePriorityQueue :heap (new FibonacciHeapComp)})
 
 (defmethod pq-add! ::TreePriorityQueue [pq item cost]
-  (let [#^FibonacciHeapComp heap (:heap pq)]
+  (let [^FibonacciHeapComp heap (:heap pq)]
     (.insert heap item cost)
     :added))
 
 (defmethod pq-peek-min ::TreePriorityQueue [pq]
-  (let [#^FibonacciHeapComp heap (:heap pq)
-	#^com.bluemarsh.graphmaker.core.util.FibonacciHeapComp$Node n (.min heap)]
+  (let [^FibonacciHeapComp heap (:heap pq)
+	^com.bluemarsh.graphmaker.core.util.FibonacciHeapComp$Node n (.min heap)]
     [(.getData n) (.getKey n)]))
 
 (defmethod pq-remove-min! ::TreePriorityQueue [pq]
-  (let [#^FibonacciHeapComp heap (:heap pq)]
+  (let [^FibonacciHeapComp heap (:heap pq)]
     (.removeMin heap)))
 
 (defmethod pq-remove-min-with-cost! ::TreePriorityQueue [pq]
-  (let [#^FibonacciHeapComp heap (:heap pq)
-	#^com.bluemarsh.graphmaker.core.util.FibonacciHeapComp$Node n (.min heap) 
+  (let [^FibonacciHeapComp heap (:heap pq)
+	^com.bluemarsh.graphmaker.core.util.FibonacciHeapComp$Node n (.min heap) 
 	c (.getKey n)]
     [(.removeMin heap) c]))
 
 (defmethod pq-empty?  ::TreePriorityQueue [pq]
-  (let [#^FibonacciHeapComp heap (:heap pq)]
+  (let [^FibonacciHeapComp heap (:heap pq)]
     (.isEmpty heap)))
 
 (defmethod pq-size  ::TreePriorityQueue [pq]
-  (let [#^FibonacciHeapComp heap (:heap pq)]
+  (let [^FibonacciHeapComp heap (:heap pq)]
     (.size heap)))
 
 (defmethod pq-peek-pairs ::TreePriorityQueue [pq]
-  (let [#^FibonacciHeapComp heap (:heap pq)]
-    (for [#^com.bluemarsh.graphmaker.core.util.FibonacciHeapComp$Node node (.nodeList heap)]
+  (let [^FibonacciHeapComp heap (:heap pq)]
+    (for [^com.bluemarsh.graphmaker.core.util.FibonacciHeapComp$Node node (.nodeList heap)]
       [(.getData node) (.getKey node)])))
   
 (deftest tree-search-pq 
@@ -304,8 +304,8 @@
 (defmethod pq-remove-min! ::SafeTreePriorityQueue [pq] (first (pq-remove-min-with-cost! pq) ))
 
 (defmethod pq-remove-min-with-cost! ::SafeTreePriorityQueue [pq]
-  (let [#^FibonacciHeapComp heap (:heap pq)
-	#^com.bluemarsh.graphmaker.core.util.FibonacciHeapComp$Node n (.min heap) 
+  (let [^FibonacciHeapComp heap (:heap pq)
+	^com.bluemarsh.graphmaker.core.util.FibonacciHeapComp$Node n (.min heap) 
 	c (.getKey n)
 	c-cost (get-cost c)]
     (assert-is (>= c-cost (sref-get (:last-min pq))))
@@ -349,35 +349,35 @@
   [] {:class ::FancyTreePriorityQueue :heap (new FibonacciHeapComp) :map (IdentityHashMap.)})
 
 (defmethod pq-add! ::FancyTreePriorityQueue [pq item cost]
-  (let [#^FibonacciHeapComp heap (:heap pq)
-	#^IdentityHashMap       m    (:map pq)]
+  (let [^FibonacciHeapComp heap (:heap pq)
+	^IdentityHashMap       m    (:map pq)]
     (assert-is (not (.put m item (.insert heap item cost))))
     :added))
 
 (defmethod pq-peek-min ::FancyTreePriorityQueue [pq]
-  (let [#^FibonacciHeapComp heap (:heap pq)
-	#^com.bluemarsh.graphmaker.core.util.FibonacciHeapComp$Node n (.min heap)]
+  (let [^FibonacciHeapComp heap (:heap pq)
+	^com.bluemarsh.graphmaker.core.util.FibonacciHeapComp$Node n (.min heap)]
     [(.getData n) (.getKey n)]))
 
 (defmethod pq-remove! ::FancyTreePriorityQueue [pq item]
-  (let [#^FibonacciHeapComp heap (:heap pq)
-	#^IdentityHashMap       m    (:map pq)
-	#^com.bluemarsh.graphmaker.core.util.FibonacciHeapComp$Node n (.get m item)]
+  (let [^FibonacciHeapComp heap (:heap pq)
+	^IdentityHashMap       m    (:map pq)
+	^com.bluemarsh.graphmaker.core.util.FibonacciHeapComp$Node n (.get m item)]
     (.delete heap n)
     (.remove m item)
     :removed))
 
 (defmethod pq-remove-min-with-cost! ::FancyTreePriorityQueue [pq]
-  (let [#^FibonacciHeapComp heap (:heap pq)
-	#^IdentityHashMap       m    (:map pq)
-	#^com.bluemarsh.graphmaker.core.util.FibonacciHeapComp$Node n (.min heap)
+  (let [^FibonacciHeapComp heap (:heap pq)
+	^IdentityHashMap       m    (:map pq)
+	^com.bluemarsh.graphmaker.core.util.FibonacciHeapComp$Node n (.min heap)
 	item (.removeMin heap)
 	c (.getKey n)]
     (.remove m item)
     [item c]))
 
 (defmethod pq-size  ::FancyTreePriorityQueue [pq]
-  (let [#^FibonacciHeapComp heap (:heap pq)]
+  (let [^FibonacciHeapComp heap (:heap pq)]
     (.size heap)))
 
 
@@ -427,13 +427,13 @@
 
 (defmethod pq-add!  ::GraphPriorityQueue [pq item cost]
   "Add or decrease key for item as appropriate.  Returns :added, :re-added :decreased, or :ignored"
-  (let [#^HashMap m (:map pq) 
-	#^FibonacciHeapComp heap (:heap pq)
+  (let [^HashMap m (:map pq) 
+	^FibonacciHeapComp heap (:heap pq)
 	n (.get m item)]
     (cond (nil? n)             (do (.put m item (.insert heap item cost)) :added)
 	  (instance? FibonacciHeapComp$Node n)
-	    (let [#^FibonacciHeapComp$Node n n] 
-	      (if (>= (.compareTo #^Comparable cost (.getKey n)) 0) 
+	    (let [^FibonacciHeapComp$Node n n] 
+	      (if (>= (.compareTo ^Comparable cost (.getKey n)) 0) 
 	           :ignored
 		 (do (.decreaseKey heap n item cost)        :decreased)))
 	  (number? n)          (if (< (get-cost cost) n)
@@ -444,13 +444,13 @@
 
 (defn g-pq-add!  [pq item cost]
   "Add or decrease key for item as appropriate.  Returns :added, :re-added :decreased, or :ignored"
-  (let [#^HashMap m (:map pq) 
-	#^FibonacciHeapComp heap (:heap pq)
+  (let [^HashMap m (:map pq) 
+	^FibonacciHeapComp heap (:heap pq)
 	n (.get m item)]
     (cond (nil? n)             (do (.put m item (.insert heap item cost)) :added)
 	  (instance? FibonacciHeapComp$Node n)
-	    (let [#^FibonacciHeapComp$Node n n] 
-	      (if (>= (.compareTo #^Comparable cost (.getKey n)) 0) 
+	    (let [^FibonacciHeapComp$Node n n] 
+	      (if (>= (.compareTo ^Comparable cost (.getKey n)) 0) 
 	           :ignored
 		 (do (.decreaseKey heap n item cost)        :decreased)))
 	  (number? n)          (if (< (get-cost cost) n)
@@ -464,8 +464,8 @@
 
 (defmethod pq-replace!  ::GraphPriorityQueue [pq item cost]
   "Like pq-add!, but always replace the current value."
-  (let [#^HashMap m (:map pq) 
-	#^FibonacciHeapComp heap (:heap pq)
+  (let [^HashMap m (:map pq) 
+	^FibonacciHeapComp heap (:heap pq)
 	n (.get m item)]
     (if (or (nil? n) (number? n)) 
         (do (.put m item (.insert heap item cost)) :added)
@@ -476,8 +476,8 @@
 (declare g-pq-remove!)
 (defn g-pq-replace!  [pq item cost]
   "Like pq-add!, but always replace the current value."
-  (let [#^HashMap m (:map pq) 
-	#^FibonacciHeapComp heap (:heap pq)
+  (let [^HashMap m (:map pq) 
+	^FibonacciHeapComp heap (:heap pq)
 	n (.get m item)]
     (if (or (nil? n) (number? n)) 
         (do (.put m item (.insert heap item cost)) :added)
@@ -486,90 +486,90 @@
 	  :replaced))))
 
 (defmethod pq-peek-min ::GraphPriorityQueue [pq]
-  (let [#^FibonacciHeapComp heap (:heap pq)
-	#^FibonacciHeapComp$Node n (.min heap)]
+  (let [^FibonacciHeapComp heap (:heap pq)
+	^FibonacciHeapComp$Node n (.min heap)]
     [(.getData n) (.getKey n)]))
 
 (defn g-pq-peek-min [pq]
-  (let [#^FibonacciHeapComp heap (:heap pq)
-	#^FibonacciHeapComp$Node n (.min heap)]
+  (let [^FibonacciHeapComp heap (:heap pq)
+	^FibonacciHeapComp$Node n (.min heap)]
     [(.getData n) (.getKey n)]))
 
 (defmethod pq-remove! ::GraphPriorityQueue [pq item]
-  (let [#^HashMap m (:map pq) 
-	#^FibonacciHeapComp heap (:heap pq)
-	#^FibonacciHeapComp$Node n (.get m item)]
+  (let [^HashMap m (:map pq) 
+	^FibonacciHeapComp heap (:heap pq)
+	^FibonacciHeapComp$Node n (.get m item)]
     (.delete heap n)
     (.put m item (get-cost (.getKey n)))
     :removed))
 
 (defn g-pq-remove! [pq item]
-  (let [#^HashMap m (:map pq) 
-	#^FibonacciHeapComp heap (:heap pq)
-	#^FibonacciHeapComp$Node n (.get m item)]
+  (let [^HashMap m (:map pq) 
+	^FibonacciHeapComp heap (:heap pq)
+	^FibonacciHeapComp$Node n (.get m item)]
     (.delete heap n)
     (.put m item (get-cost (.getKey n)))
     (.getData n)))
 
 (defmethod pq-remove-min! ::GraphPriorityQueue [pq]
-  (let [#^HashMap m (:map pq) 
-	#^FibonacciHeapComp heap (:heap pq)
-	#^FibonacciHeapComp$Node n (.min heap) 
+  (let [^HashMap m (:map pq) 
+	^FibonacciHeapComp heap (:heap pq)
+	^FibonacciHeapComp$Node n (.min heap) 
 	c (.getKey n)
 	ret (.removeMin heap)]
     (.put m ret (get-cost c))
     ret))
 
 (defmethod pq-remove-min-with-cost! ::GraphPriorityQueue [pq]
-  (let [#^HashMap m (:map pq) 
-	#^FibonacciHeapComp heap (:heap pq)
-	#^FibonacciHeapComp$Node n (.min heap) 
+  (let [^HashMap m (:map pq) 
+	^FibonacciHeapComp heap (:heap pq)
+	^FibonacciHeapComp$Node n (.min heap) 
 	c (.getKey n)
 	ret (.removeMin heap)]
     (.put m ret (get-cost c))
     [ret c]))
 
 (defn g-pq-remove-min-with-cost! [pq]
-  (let [#^HashMap m (:map pq) 
-	#^FibonacciHeapComp heap (:heap pq)
-	#^FibonacciHeapComp$Node n (.min heap) 
+  (let [^HashMap m (:map pq) 
+	^FibonacciHeapComp heap (:heap pq)
+	^FibonacciHeapComp$Node n (.min heap) 
 	c (.getKey n)
 	ret (.removeMin heap)]
     (.put m ret (get-cost c))
     [ret c]))
 
 (defmethod pq-empty? ::GraphPriorityQueue [pq]
-  (let [#^FibonacciHeapComp heap (:heap pq)]
+  (let [^FibonacciHeapComp heap (:heap pq)]
     (.isEmpty heap)))
 
-(defn g-pq-empty? [pq] (.isEmpty #^FibonacciHeapComp (:heap pq)))
+(defn g-pq-empty? [pq] (.isEmpty ^FibonacciHeapComp (:heap pq)))
 
 (defmethod pq-size ::GraphPriorityQueue [pq]
-  (let [#^FibonacciHeapComp heap (:heap pq)]
+  (let [^FibonacciHeapComp heap (:heap pq)]
     (.size heap)))
 
 (defn g-pq-priority 
   "Return nil if the queue never had item, otherwise its priority (currently, or when removed)"
   [pq item]
-  (let [#^HashMap m (:map pq) 
-	#^FibonacciHeapComp heap (:heap pq)
+  (let [^HashMap m (:map pq) 
+	^FibonacciHeapComp heap (:heap pq)
 	n (.get m item)]
     (cond (nil? n)                             nil
-	  (instance? FibonacciHeapComp$Node n) (.getKey #^FibonacciHeapComp$Node n)
+	  (instance? FibonacciHeapComp$Node n) (.getKey ^FibonacciHeapComp$Node n)
 	  (number? n)                          n
 	  :else                                (throw (RuntimeException.) "Shouldn't happen."))))
 
 (defn g-pq-key
   "Return nil if the queue never had item, otherwise its priority (currently, or when removed)"
   [pq item]
-  (let [#^HashMap m (:map pq) 
-	#^FibonacciHeapComp heap (:heap pq)
+  (let [^HashMap m (:map pq) 
+	^FibonacciHeapComp heap (:heap pq)
 	n (.get m item)]
-    (when (instance? FibonacciHeapComp$Node n) (.getData #^FibonacciHeapComp$Node n))))
+    (when (instance? FibonacciHeapComp$Node n) (.getData ^FibonacciHeapComp$Node n))))
 
 (defmethod pq-peek-pairs ::GraphPriorityQueue [pq]
-  (let [#^FibonacciHeapComp heap (:heap pq)]
-    (for [#^com.bluemarsh.graphmaker.core.util.FibonacciHeapComp$Node node (.nodeList heap)]
+  (let [^FibonacciHeapComp heap (:heap pq)]
+    (for [^com.bluemarsh.graphmaker.core.util.FibonacciHeapComp$Node node (.nodeList heap)]
       [(.getData node) (.getKey node)])))
 
 
@@ -716,21 +716,21 @@
   "A mutable priority queue that supports only add and remove-min"
   (new FibonacciHeapComp))
 
-(defn simple-pq-add! [#^FibonacciHeapComp pq item cost]
+(defn simple-pq-add! [^FibonacciHeapComp pq item cost]
   (.insert pq item cost))
 
-(defn simple-pq-remove-min! [#^FibonacciHeapComp pq]
+(defn simple-pq-remove-min! [^FibonacciHeapComp pq]
   (.removeMin pq))
 
-(defn simple-pq-remove-min-with-cost! [#^FibonacciHeapComp pq]
-  (let [#^FibonacciHeapComp$Node n (.min pq) 
+(defn simple-pq-remove-min-with-cost! [^FibonacciHeapComp pq]
+  (let [^FibonacciHeapComp$Node n (.min pq) 
 	c (.getKey n)]
     (vector (.removeMin pq) c)))
 
-(defn simple-pq-size [#^FibonacciHeapComp pq]
+(defn simple-pq-size [^FibonacciHeapComp pq]
   (.size pq))
 
-(defn simple-pq-empty? [#^FibonacciHeapComp pq]
+(defn simple-pq-empty? [^FibonacciHeapComp pq]
   (.isEmpty pq))
 
 
@@ -740,36 +740,36 @@
   "A slightly slower mutable priority queue that only allows for single instance of each object, maintaining min priority."
   (vector (new HashMap) (new FibonacciHeapComp)))
 
-(defn fancy-pq-add! [[#^HashMap m #^FibonacciHeapComp pq] item cost]
+(defn fancy-pq-add! [[^HashMap m ^FibonacciHeapComp pq] item cost]
   "Add or decrease key for item as appropriate.  Returns :added, :decreased, or :ignored"
-  (let [#^FibonacciHeapComp$Node n (.get m item)]
+  (let [^FibonacciHeapComp$Node n (.get m item)]
     (cond (nil? n)             (do (.put m item (.insert pq item cost)) :added)
 	  (< cost (.getKey n)) (do (.decreaseKey pq n item cost)        :decreased)
 	  true                 :ignored)))
 
-(defn fancy-pq-remove! [[#^HashMap m #^FibonacciHeapComp pq] item]
-  (let [#^FibonacciHeapComp$Node n (.get m item)]
+(defn fancy-pq-remove! [[^HashMap m ^FibonacciHeapComp pq] item]
+  (let [^FibonacciHeapComp$Node n (.get m item)]
     (.delete pq n)))
 
-(defn fancy-pq-remove-min! [[#^HashMap m #^FibonacciHeapComp pq]]
+(defn fancy-pq-remove-min! [[^HashMap m ^FibonacciHeapComp pq]]
   (let [ret (.removeMin pq)]
     (.remove m ret)
     ret))
 
-(defn fancy-pq-remove-min-with-cost! [[#^HashMap m #^FibonacciHeapComp pq]]
-  (let [#^FibonacciHeapComp$Node n (.min pq) 
+(defn fancy-pq-remove-min-with-cost! [[^HashMap m ^FibonacciHeapComp pq]]
+  (let [^FibonacciHeapComp$Node n (.min pq) 
 	c (.getKey n)
 	ret (.removeMin pq)]
     (.remove m ret)
     (vector ret c)))
 
-(defn fancy-pq-size [[#^HashMap m #^FibonacciHeapComp pq]]
+(defn fancy-pq-size [[^HashMap m ^FibonacciHeapComp pq]]
   (.size pq))
 
-(defn fancy-pq-empty? [[#^HashMap m #^FibonacciHeapComp pq]]
+(defn fancy-pq-empty? [[^HashMap m ^FibonacciHeapComp pq]]
   (.isEmpty pq))
 
-(defn fancy-pq-contains? [[#^HashMap m #^FibonacciHeapComp pq] item]
+(defn fancy-pq-contains? [[^HashMap m ^FibonacciHeapComp pq] item]
   (.containsKey m item))
 
 
@@ -785,46 +785,46 @@
 
 
 (defmethod pq-add! ::TreePriorityQueue [pq item cost]
-  (let [#^FibonacciHeapComp heap (:heap pq)]
+  (let [^FibonacciHeapComp heap (:heap pq)]
     (.insert heap item cost)))
 
 (defmethod pq-remove-min! ::TreePriorityQueue [pq]
-  (let [#^FibonacciHeapComp heap (:heap pq)]
+  (let [^FibonacciHeapComp heap (:heap pq)]
     (.removeMin heap)))
 
 (defmethod pq-empty?  ::TreePriorityQueue [pq]
-  (let [#^FibonacciHeapComp heap (:heap pq)]
+  (let [^FibonacciHeapComp heap (:heap pq)]
     (.isEmpty heap)))
 
 
 (defmethod pq-add!  ::GraphPriorityQueue [fpq item cost]
   "Add or decrease key for item as appropriate.  Returns :added, :decreased, or :ignored"
-  (let [#^HashMap m (:map fpq) 
-	#^FibonacciHeapComp pq (:heap fpq)
-	#^FibonacciHeapComp$Node n (.get m item)]
+  (let [^HashMap m (:map fpq) 
+	^FibonacciHeapComp pq (:heap fpq)
+	^FibonacciHeapComp$Node n (.get m item)]
     (cond (nil? n)             (do (.put m item (.insert pq item cost)) :added)
 	  (< cost (.getKey n)) (do (.decreaseKey pq n item cost)        :decreased)
 	  true                 :ignored)))
 
 (defmethod pq-remove-min! ::GraphPriorityQueue [fpq]
-  (let [#^HashMap m (:map fpq) 
-	#^FibonacciHeapComp pq (:heap fpq)
+  (let [^HashMap m (:map fpq) 
+	^FibonacciHeapComp pq (:heap fpq)
 	ret (.removeMin pq)]
     (.remove m ret)
     ret))
 
 (defmethod pq-empty? ::GraphPriorityQueue [fpq]
-  (let [#^FibonacciHeapComp pq (:heap fpq)]
+  (let [^FibonacciHeapComp pq (:heap fpq)]
     (.isEmpty pq)))
 
 
  ; Fairly comparable times.  Must wrap either with HaspMap to make usable. (FibHeap slightly slower w/o decreasekeys)
  ; Declaring types makes huge difference (factor of 6!)  (dotimes [_ 3]
-    (time (let [#^PriorityQueue pq (new PriorityQueue)]
+    (time (let [^PriorityQueue pq (new PriorityQueue)]
 	    (dotimes [_ 1000000] 
 	      (.add pq (rand-int 1000000)))
 	    (while (not (.isEmpty pq)) (.poll pq))))
-    (time (let [#^FibonacciHeapComp pq (new FibonacciHeapComp)]
+    (time (let [^FibonacciHeapComp pq (new FibonacciHeapComp)]
 	    (dotimes [i 1000000] 
 	      (.insert pq i (rand-int 1000000)))
 	    (while (not (.isEmpty pq)) (.removeMin pq))))

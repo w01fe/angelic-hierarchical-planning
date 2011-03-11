@@ -71,8 +71,8 @@
 (import '(java.util.concurrent ExecutorService Executors Future TimeUnit TimeoutException))
 (import '(java.lang.management ManagementFactory MemoryMXBean MemoryUsage))
 
-(def #^MemoryMXBean *mxbean* (ManagementFactory/getMemoryMXBean))
-(def #^Runtime      *runtime* (Runtime/getRuntime))
+(def ^MemoryMXBean *mxbean* (ManagementFactory/getMemoryMXBean))
+(def ^Runtime      *runtime* (Runtime/getRuntime))
 
 (defn force-gc [] (.gc *runtime*))
 
@@ -93,7 +93,7 @@
 ; Thread/sleep 0 1 (slows down a LOT, 10x).  0,0 does not do the job.
 
 
-(defn kill-future [#^ExecutorService pool #^Future f]
+(defn kill-future [^ExecutorService pool ^Future f]
 ;  (println "killing")
   (.cancel f true)
   (.shutdownNow pool)
@@ -105,9 +105,9 @@
    otherwise returning [returned-value time-took].  Expr may still execute for awhile after return"
   [expr max-seconds]
   `(let [out# *out*
-	 #^ExecutorService pool# (java.util.concurrent.Executors/newCachedThreadPool)
-	 #^Callable f#    #(binding [*out* out#] (get-time-pair ~expr))
-	 #^Future future# (.submit pool# f#)]
+	 ^ExecutorService pool# (java.util.concurrent.Executors/newCachedThreadPool)
+	 ^Callable f#    #(binding [*out* out#] (get-time-pair ~expr))
+	 ^Future future# (.submit pool# f#)]
     (try (let [v# (.get future# (long (* 1000 ~max-seconds)) java.util.concurrent.TimeUnit/MILLISECONDS)]
 	   (if (< (second v#) (* 1000 ~max-seconds)) v# :timeout2))	   
 	 (catch java.util.concurrent.TimeoutException e# 
@@ -120,14 +120,14 @@
    [returned-value ms-took].  Memory limiting may introduce significant, unpredictable
    time overhead when near limit, and will not work for short-running tasks."
   [expr max-seconds max-mb]
-  `(let [#^ExecutorService pool# (java.util.concurrent.Executors/newCachedThreadPool)
+  `(let [^ExecutorService pool# (java.util.concurrent.Executors/newCachedThreadPool)
 	 start-mem# (do (dotimes [_# 3] (force-gc)) (get-used-heap-bytes))
 	 limit-mem#  (+ start-mem# (* ~max-mb 1024 1024))
 	 start-time# (System/nanoTime)
 	 limit-time# (+ start-time# (* 1000000000 ~max-seconds)) 
 	 out# *out*
-	 #^Callable f#    #(binding [*out* out#] (get-time-pair ~expr))
-	 #^Future future# (.submit pool# f#)]
+	 ^Callable f#    #(binding [*out* out#] (get-time-pair ~expr))
+	 ^Future future# (.submit pool# f#)]
      (loop []
        (if-let [v# 
 		(try 
@@ -146,14 +146,14 @@
    time overhead, and will not work for short-running tasks.  Initial overhead of up to a second,
    which will also clobber the cache."
   [expr max-seconds max-mb]
-  `(let [#^ExecutorService pool# (java.util.concurrent.Executors/newCachedThreadPool)
+  `(let [^ExecutorService pool# (java.util.concurrent.Executors/newCachedThreadPool)
 	 start-mem# (do (dotimes [_# 3] (force-gc)) (get-used-heap-bytes))
 	 limit-mem#  (+ start-mem# (* ~max-mb 1024 1024))
 	 start-time# (System/nanoTime)
 	 limit-time# (+ start-time# (* 1000000000 ~max-seconds)) 
 	 out# *out*
-	 #^Callable f#    #(binding [*out* out#] (get-time-pair ~expr))
-	 #^Future future# (.submit pool# f#)]
+	 ^Callable f#    #(binding [*out* out#] (get-time-pair ~expr))
+	 ^Future future# (.submit pool# f#)]
      (loop [max-mem# start-mem#]
        (if-let [v# 
 		(try 
@@ -187,7 +187,7 @@
 
 
 (defn interrupt-all-threads []
-  (doseq [#^Thread thread (.keySet (Thread/getAllStackTraces))]
+  (doseq [^Thread thread (.keySet (Thread/getAllStackTraces))]
     (.interrupt thread)))
 
 	 

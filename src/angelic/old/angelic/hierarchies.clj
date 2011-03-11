@@ -25,29 +25,29 @@
 
 ;; Methods
 
-(defmulti #^{:doc "Take a hierarchy and instance and return an instantiated top-level HLA sequence."} 
+(defmulti ^{:doc "Take a hierarchy and instance and return an instantiated top-level HLA sequence."} 
   instantiate-hierarchy (fn [hierarchy instance] (:class hierarchy)))
 
-(defmulti #^{:doc "Get the env associated with this instantiated HLA."} 
+(defmulti ^{:doc "Get the env associated with this instantiated HLA."} 
   hla-environment :class)
 
-(defmulti #^{:doc "Get the default valuation type associated with this HLA"}
+(defmulti ^{:doc "Get the default valuation type associated with this HLA"}
   hla-default-optimistic-valuation-type :class)
 
-(defmulti #^{:doc "Get the default valuation type associated with this HLA"}
+(defmulti ^{:doc "Get the default valuation type associated with this HLA"}
   hla-default-pessimistic-valuation-type :class)
 
-(defmulti #^{:doc "Is the HLA primitive or noop?."} 
+(defmulti ^{:doc "Is the HLA primitive or noop?."} 
   hla-primitive? :class)
 
-(defmulti #^{:doc "If this HLA is primitive, return the primitive action, else nil. 
+(defmulti ^{:doc "If this HLA is primitive, return the primitive action, else nil. 
                    Can return :noop, which must be filtered out."} 
   hla-primitive :class)
 
 (defmulti hla-name                       :class)
 
 ; TODO: this way of doing things doubles up on calls to restrict.
-(defmulti  #^{:doc "Get refinements compatible with this optimistic valuation, representing 
+(defmulti  ^{:doc "Get refinements compatible with this optimistic valuation, representing 
             the situation before doing this action *or apply its hierarchical preconditions*"} 
     hla-immediate-refinements      (fn [hla val] [(:class hla) (:class val)]))
 

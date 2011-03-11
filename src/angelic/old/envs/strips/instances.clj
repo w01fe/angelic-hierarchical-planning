@@ -128,7 +128,7 @@
 ; Idea: make table, for each atom, set of pos and neg actions?
 ; Intersect set of current actions with each...
 (defn- get-next-atom [actions blacklist]
-  (let [#^HashMap atom-counts (HashMap.)]
+  (let [^HashMap atom-counts (HashMap.)]
     (doseq [action actions]
       (doseq [p (:pos (:precondition action))]
 	(.put atom-counts p (inc (or (.get atom-counts p) 0))))
@@ -383,7 +383,7 @@
        (time (make-successor-generator 
 	      (util/difference-coll (set actions) bad-actions)
 	      atom-order pos-set-map neg-set-map))))
-  ([actions atom-order #^HashMap pos-set-map #^HashMap neg-set-map]
+  ([actions atom-order ^HashMap pos-set-map ^HashMap neg-set-map]
   (util/timeout)
   (if (empty? atom-order) (fn [state] actions)
     (let [most-common-atom (first atom-order)

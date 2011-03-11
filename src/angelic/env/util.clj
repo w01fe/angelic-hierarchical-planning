@@ -14,7 +14,7 @@
       [(state/apply-effects s effect-map) reward])
   env/ContextualAction
     (precondition-context [this s]
-      (.keySet #^java.util.Map precond-map)))
+      (.keySet ^java.util.Map precond-map)))
 
 (defn make-factored-primitive [name precond-map effect-map reward]
   (FactoredPrimitive. name precond-map effect-map reward))

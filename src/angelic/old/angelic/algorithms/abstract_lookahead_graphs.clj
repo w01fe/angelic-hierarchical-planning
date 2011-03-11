@@ -255,7 +255,7 @@
   ([node key]
      (let [next-map-ref (util/safe-get node :next-map)
 	   next-map     (util/sref-get next-map-ref)]
-       (when-let [#^WeakHashMap m (get next-map key)]
+       (when-let [^WeakHashMap m (get next-map key)]
 	 (keys m)))))
 
 (defn- alg-node-key [node]
@@ -266,7 +266,7 @@
 	next-map     (util/sref-get next-map-ref)
 	key          (alg-node-key child)
 	old-wrs      (get next-map key)
-	#^WeakHashMap wrs 
+	^WeakHashMap wrs 
 	               (or old-wrs
 			 (let [wrs (WeakHashMap.)]
 			   (util/sref-set! next-map-ref (assoc next-map key wrs))
@@ -275,7 +275,7 @@
     child))
 
 (defn- remove-child! [node child]
-  (let [#^WeakHashMap m (util/safe-get (util/sref-get (:next-map node)) (alg-node-key child))]
+  (let [^WeakHashMap m (util/safe-get (util/sref-get (:next-map node)) (alg-node-key child))]
     (assert (.containsKey m child))
     (.remove m child)))
 
@@ -342,11 +342,11 @@
 	       (doseq [child (get-children new-node)]
 		 (add-previous! child new-node)))
 	 :forward
-	   (doseq [#^WeakHashMap child-wrs  (vals next-map)
+	   (doseq [^WeakHashMap child-wrs  (vals next-map)
 		   child                    (keys child-wrs)]
 	     (connect! new-node child))
 	 :full
-	   (doseq [[k #^WeakHashMap child-wrs] next-map]
+	   (doseq [[k ^WeakHashMap child-wrs] next-map]
 	     (let [new-children (keys child-wrs)
 		   old-children (get-children new-node k)]
 	       (util/assert-is (<= (count old-children) 1))
@@ -435,7 +435,7 @@
 				 (hla-hierarchical-preconditions (:hla node)))
 	     (hla-optimistic-description (:hla node)))]
 	(if (contains? #{:both :global} (util/safe-get alg :prune?))
-	    (let [#^HashMap prune-map (:prune-map (meta alg))
+	    (let [^HashMap prune-map (:prune-map (meta alg))
 		  rest-hlas (:rest-hlas node)]
 	      (alg-pessimistic-valuation alg node)
 	      (filter-valuation-clauses 
@@ -472,7 +472,7 @@
 	     (hla-pessimistic-description (:hla node)))]
 	(when (contains? #{:both :global} (util/safe-get alg :prune?))
 	  (doseq [[clause rew] (valuation-clause-map v)]
-	    (let [#^HashMap prune-map (:prune-map (meta alg))
+	    (let [^HashMap prune-map (:prune-map (meta alg))
 		  pair    [clause (:rest-hlas node)]
 		  old-rew (or (.get prune-map pair) Double/NEGATIVE_INFINITY)]
 	      (when (> rew old-rew)
@@ -537,12 +537,12 @@
 
 (declare invalidate-valuations)
 (defn handle-graph [alg node]
-  (let [#^HashMap graph-map (util/safe-get (meta alg) :merge-map)
+  (let [^HashMap graph-map (util/safe-get (meta alg) :merge-map)
 	opt-val             (util/sref-get (:optimistic-valuation (meta node)))
 	[opt-states _]      (get-valuation-states opt-val {})
 	rest-hlas           (util/safe-get node :rest-hlas)
 	key-pair            [opt-states rest-hlas]]
-    (if-let [[#^WeakHashMap s m-ref] (.get graph-map key-pair)]
+    (if-let [[^WeakHashMap s m-ref] (.get graph-map key-pair)]
         (when (not (.containsKey s node))
 	  (println "\n\nMerge\n\n" (:class node) (:class opt-val) (when (:hla node) (hla-name (:hla node))) (map hla-name (:rest-hlas node)) (if (util/sref-get m-ref) "merged" "new") (count s) (map :class (keys s)))
 	  #_(if (and (nil? (util/sref-get m-ref))

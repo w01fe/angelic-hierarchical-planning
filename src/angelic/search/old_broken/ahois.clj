@@ -139,7 +139,7 @@
 
 ;; TODO: recursive recursively is where polymorphism fits in.
  
-(def #^HashMap *problem-cache* nil)
+(def ^HashMap *problem-cache* nil)
 (defn recursively-searchify-hfs [hfs]
   (let [[name abstract-hfs-fn] (drop-hfs hfs)]
     [(is/get-cached-search *problem-cache* name
@@ -173,7 +173,7 @@
     (swap! results-atom conj hfs)
     (map #(make-upward-node cc % hfs base-reward) @parents-atom)))
 
-(defn add-cache-parent [#^HashMap cc [parent-hfs parent-ic :as parent-pair]]
+(defn add-cache-parent [^HashMap cc [parent-hfs parent-ic :as parent-pair]]
   (let [[name abstract-hfs-fn] (drop-hfs parent-hfs)
         ic (util/cache-with cc name (InvertedCache (atom []) (atom []) (:reward parent-hfs)))
         {:keys [results-atom parents-atom base-reward]} ic]

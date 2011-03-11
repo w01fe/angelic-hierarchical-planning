@@ -60,7 +60,7 @@
 
 (defn pad-right [x n]  
   (let [xs (str x) 
-        s #^String (str "                               " xs)]
+        s ^String (str "                               " xs)]
     (assert (<= (.length xs) n))
     (.substring s (- (.length s) n))))
 

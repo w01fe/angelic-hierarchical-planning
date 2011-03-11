@@ -79,7 +79,7 @@
 ;; A subproblem represents an input-set, action pair.  All of its actual computations are organized
 ;; by the output set lattice.  
 
-(def #^HashMap *subproblem-cache* nil)
+(def ^HashMap *subproblem-cache* nil)
 
 ; Dependencies on plans
 (declare make-dummy-root-plan make-initial-plan plan-summary plan-output-set expand-plan)

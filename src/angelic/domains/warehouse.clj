@@ -338,7 +338,7 @@
     (WarehouseTLA. env (util/keyset (dissoc (env/initial-state env) :const))
                   nav-context (fn [dx dy] [(make-simple-nav-hla dx dy nav-context)]))))
 
-(defn simple-warehouse-hierarchy [#^WarehouseEnv env]
+(defn simple-warehouse-hierarchy [^WarehouseEnv env]
   (hierarchy-util/make-simple-hierarchical-env env [(make-warehouse-tla env)]))
 
 
@@ -348,7 +348,7 @@
     (WarehouseTLA. env (util/keyset (dissoc (env/initial-state env) :const))
                   nav-context (fn [dx dy] (make-fancy-nav-plan dx dy h)))))
 
-(defn simple-warehouse-hierarchy-fancynav [#^WarehouseEnv env]
+(defn simple-warehouse-hierarchy-fancynav [^WarehouseEnv env]
   (hierarchy-util/make-simple-hierarchical-env env [(make-warehouse-tla-fancynav env)]))
 
 ;; TODO: heuristic

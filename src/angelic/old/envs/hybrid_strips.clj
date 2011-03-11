@@ -209,7 +209,7 @@
 (set! *warn-on-reflection* true)
 
 (defn- get-next-atom [actions blacklist]
-  (let [#^HashMap atom-counts (HashMap.)]
+  (let [^HashMap atom-counts (HashMap.)]
     (doseq [action actions]
       (doseq [p (:pos action)] (.put atom-counts p (inc (or (.get atom-counts p) 0))))
       (doseq [n (:neg action)] (.put atom-counts n (inc (or (.get atom-counts n) 0)))))

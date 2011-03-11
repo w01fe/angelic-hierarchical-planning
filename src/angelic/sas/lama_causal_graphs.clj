@@ -31,7 +31,7 @@
                     (map #(read-string (str "[" % "]"))
                       (next (take-while #(not (= % "end_CG")) 
                               (drop-while #(not (= % "begin_CG"))
-                                (.split #^String (slurp filename) "\n")))))))]
+                                (.split ^String (slurp filename) "\n")))))))]
       (cons [i i]
        (for [[j _] ls] [i j])))))
 
@@ -49,16 +49,16 @@
 (defn read-groups
   "Read a groups file from LAMA and output a map from variable names to atoms."
   [file]
-  (map-ize #(when-not (.startsWith #^String % " ") (.substring #^String % 0 (dec (count %))))
-           (.split #^String (slurp file) "\n")))
+  (map-ize #(when-not (.startsWith ^String % " ") (.substring ^String % 0 (dec (count %))))
+           (.split ^String (slurp file) "\n")))
 
 (defn read-var-ordering [preproc-filename]
   (vec
-   (map #(first (.split #^String % " "))
+   (map #(first (.split ^String % " "))
     (drop 2
      (take-while #(not (= % "end_variables")) 
       (drop-while #(not (= % "begin_variables"))
-       (.split #^String (slurp preproc-filename) "\n")))))))
+       (.split ^String (slurp preproc-filename) "\n")))))))
 
 (defn read-ordered-groups
   [groups-file preproc-file]

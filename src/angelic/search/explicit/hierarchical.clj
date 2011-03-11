@@ -19,7 +19,7 @@
 ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;; Utilities ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
 ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
 
-(def #^HashMap *problem-cache* nil)
+(def ^HashMap *problem-cache* nil)
 (def *state-abstraction?* true)
 (def *full-context* :dummy)  ; used if state abstraction off.
 
@@ -230,7 +230,7 @@
     (swap! results-atom conj hfs)
     (map #(make-upward-node % hfs base-reward) @parents-atom)))
 
-(defn add-cache-parent [#^HashMap cc [parent-hfs parent-ic :as parent-pair]]
+(defn add-cache-parent [^HashMap cc [parent-hfs parent-ic :as parent-pair]]
   (let [ic (util/cache-with cc (hfs-first-sub-name parent-hfs) 
              (InvertedCache. (atom []) (atom []) (:reward parent-hfs)))
         {:keys [results-atom parents-atom base-reward]} ic]

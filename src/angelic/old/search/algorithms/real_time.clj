@@ -40,7 +40,7 @@
 ; TODO: Various versions for search strategies, alpha pruning, etc.
 (defn lrta-star "Korf's classic LRTA* with a fixed depth limit. Only for state-space search."
   [env upper-reward-fn max-steps search-depth]
-  (let [#^HashMap m (HashMap.)]
+  (let [^HashMap m (HashMap.)]
     (real-time-search 
      env 
      max-steps

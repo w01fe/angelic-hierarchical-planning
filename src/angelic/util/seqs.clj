@@ -3,7 +3,7 @@
 ;(defn vec-map [f v]
 ;  (reduce (fn [v i] (assoc v i (f (nth v i)))) v (range (count v))))
 
-;(defn coll-seq [#^clojure.lang.IPersistentCollection coll] (.seq coll))
+;(defn coll-seq [^clojure.lang.IPersistentCollection coll] (.seq coll))
 
 (defn third [s] (nth s 2))
 

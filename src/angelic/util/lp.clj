@@ -50,8 +50,8 @@
   [] {:forward (HashMap.) :backward (HashMap.) :count (atom 0)})
 
 (defn obj->name [namer obj]
-  (let [#^HashMap forward  (:forward namer)
-	#^HashMap backward (:backward namer)
+  (let [^HashMap forward  (:forward namer)
+	^HashMap backward (:backward namer)
 	count              (:count namer)]
     (or (.get forward obj)
       (let [n (swap! count inc)
@@ -61,13 +61,13 @@
 	name))))
 
 (defn name->obj [namer name]
-  (let [x (.get #^HashMap (:backward namer) name)]
+  (let [x (.get ^HashMap (:backward namer) name)]
     (when-not x (throw (RuntimeException. (str name " not a defined name in LP."))))
     x))
 
 (def *mps-dec-format* (doto (DecimalFormat. "#.#######E0") (.setPositivePrefix "+")))
 (defn encode-mps-num [n] 
-  (let [s (.format #^DecimalFormat *mps-dec-format* (double n))]
+  (let [s (.format ^DecimalFormat *mps-dec-format* (double n))]
     (assert (<= (.length s) 12))
     (.substring (str s "            ") 0 12)))
   
@@ -106,7 +106,7 @@
     (doseq [[var var-cols] cols
 	    col var-cols]
       (when-not (contains? bounds var) (throw (RuntimeException. (str "Undefined variable " var))))
-      (.append out #^String col))
+      (.append out ^String col))
     
     (.append out "RHS\n")
     (doseq [[c [l u]] constraints
@@ -164,7 +164,7 @@
 ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
 
 (defn cheap-sh [& args]
-  (.waitFor (.exec (Runtime/getRuntime) #^"[Ljava.lang.String;" (into-array args))))
+  (.waitFor (.exec (Runtime/getRuntime) ^"[Ljava.lang.String;" (into-array args))))
 
 (defn solve-lp-glpk 
   "Solve the LP and return [var-binding-map sol-max-reward].  Returns nil for infeasible.

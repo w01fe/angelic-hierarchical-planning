@@ -137,7 +137,7 @@
 (defn- make-simpler-heuristic [table-pos-map floating-chains]
   (fn [dnf]
 ;    (println "simple")
-    (let [[#^HashSet gripper-pos, #^HashMap block-pos] (extract-positions dnf)]
+    (let [[^HashSet gripper-pos, ^HashMap block-pos] (extract-positions dnf)]
 ;      (if (.isEmpty gripper-pos) Double/NEGATIVE_INFINITY
    ;   (println "Going: ")
       (- 0 
@@ -160,7 +160,7 @@
 	block-set (set (apply concat chains))]
     (fn [dnf]
 ;      (println "matching")
-      (let [[#^HashSet gripper-pos, #^HashMap block-pos, holding] (extract-positions dnf)]
+      (let [[^HashSet gripper-pos, ^HashMap block-pos, holding] (extract-positions dnf)]
 ;	(if (.isEmpty gripper-pos) Double/NEGATIVE_INFINITY
         (- 
 	 ; Matching
@@ -212,11 +212,11 @@
     (let [on-map     (into {} (map #(subvec % 1) goal-atoms))
 	  top-blocks (util/difference (set (keys on-map)) (set (vals on-map)))
 	  chains     (map (fn [t] (util/iterate-while #(get on-map %) t)) top-blocks)
-	  [table-chains floating-chains] (util/separate #(.startsWith #^String (name (last %)) "table") chains)
+	  [table-chains floating-chains] (util/separate #(.startsWith ^String (name (last %)) "table") chains)
 	  table-pos-map (into {} 
 			  (apply concat
 			    (for [chain table-chains]
-			      (let [x (Integer/parseInt (.substring #^String (name (last chain)) 5))]
+			      (let [x (Integer/parseInt (.substring ^String (name (last chain)) 5))]
 				(for [[block y] (next (map vector (reverse chain) (iterate inc 0)))]
 				  [block [x y]])))))]
 ;      (println "CREATE ACT" chains floating-chains table-pos-map)

@@ -173,7 +173,7 @@
 (defn- postprocess-plan-known-states 
   "Push out values for known states, and return [new-node f [state rew-to-state]-seq], only for new parts of plan.
    Annotate plan with :g-rew and :min-f-to-go as we go along."
-  [node #^HashMap memory high-level-hla-set]
+  [node ^HashMap memory high-level-hla-set]
   (util/print-debug 3 "Processing refinement" (search/node-str node) "with f =" (search/upper-reward-bound node))
 ;  (println (search/node-str node))
   (let [new-nodes (reverse (take-while #(not (contains? % :g-so-far)) (util/iterate-while :previous (:plan node))))]
@@ -280,10 +280,10 @@
 (comment ;Some heavy debugging stuff
 
 
-(def #^HashMap *real-dists* (HashMap.))
+(def ^HashMap *real-dists* (HashMap.))
 
 (comment 
-  (let [#^HashMap rd *real-dists*, inits
+  (let [^HashMap rd *real-dists*, inits
 	(for [bpos [0 2 3]
 		[gpos fr] [[[0 2] true] [[2 2] false]]]
 	  (constant-predicate-simplify (make-warehouse-strips-env 4 4 gpos fr {bpos '[b] 1 '[a c]} nil ['[table1 table0]])))

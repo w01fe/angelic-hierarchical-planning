@@ -37,7 +37,7 @@
 
 (declare make-logging-factored-state)
 
-(deftype LoggingFactoredState [init #^java.util.Set context puts ooc meta] 
+(deftype LoggingFactoredState [init ^java.util.Set context puts ooc meta] 
   Object 
   (equals   [state lfs]
      (let [lfs ^LoggingFactoredState lfs]

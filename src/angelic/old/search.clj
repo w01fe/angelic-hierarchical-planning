@@ -10,13 +10,13 @@
 ;;;;;;;;;;;;;;;;;; Interface for search nodes
 
 
-(defmulti #^{:doc "Get the environment associated with this node"} node-environment :class)
+(defmulti ^{:doc "Get the environment associated with this node"} node-environment :class)
 
-(defmulti #^{:doc "A lower bound on the reward of the best refinement"} lower-reward-bound :class)
+(defmulti ^{:doc "A lower bound on the reward of the best refinement"} lower-reward-bound :class)
 
-(defmulti #^{:doc "An upper bound on the reward of the best refinement"} upper-reward-bound :class)
+(defmulti ^{:doc "An upper bound on the reward of the best refinement"} upper-reward-bound :class)
 
-(defmulti #^{:doc "Analogue of g-cost, if available"} reward-so-far :class)
+(defmulti ^{:doc "Analogue of g-cost, if available"} reward-so-far :class)
 
 
 (def *ref-counter* (util/sref 0))
@@ -26,30 +26,30 @@
   (util/sref-set! *ref-counter* 0)
   (util/sref-set! *plan-counter* 0))
 
-(defmulti #^{:doc "(pref. lazy) seq of node refinements; should begin with primitive.  Should increment ref-counter."} immediate-refinements :class)
+(defmulti ^{:doc "(pref. lazy) seq of node refinements; should begin with primitive.  Should increment ref-counter."} immediate-refinements :class)
 
-(defmulti #^{:doc "If this node represents a single plan, return [it reward]; otherwise, return nil"} primitive-refinement :class)
+(defmulti ^{:doc "If this node represents a single plan, return [it reward]; otherwise, return nil"} primitive-refinement :class)
 
-(defmulti #^{:doc "Return [optimal-solution-element reward] in constant time, or return nil"} extract-optimal-solution :class)
+(defmulti ^{:doc "Return [optimal-solution-element reward] in constant time, or return nil"} extract-optimal-solution :class)
 
-(defmulti #^{:doc "Return any [solution-element reward] in constant time, or return nil.  Solution must have reward >= lower bound."} extract-a-solution :class)
+(defmulti ^{:doc "Return any [solution-element reward] in constant time, or return nil.  Solution must have reward >= lower bound."} extract-a-solution :class)
 (defmethod extract-a-solution ::Node [node] (extract-optimal-solution node))
 
-(defmulti #^{:doc "Is this nodea provable dead-end?  Default implementation calls upper-reward-bound"} 
+(defmulti ^{:doc "Is this nodea provable dead-end?  Default implementation calls upper-reward-bound"} 
           dead-end? :class)
 (defmethod dead-end? ::Node [node]
   (<= (upper-reward-bound node) Double/NEGATIVE_INFINITY))
 
-(defmulti #^{:doc "[lower-bound upper-bound]"} reward-bounds :class)
+(defmulti ^{:doc "[lower-bound upper-bound]"} reward-bounds :class)
 (defmethod reward-bounds ::Node [node] 
   [(lower-reward-bound node) (upper-reward-bound node)])
 
 
-(defmulti #^{:doc "Get a human-readable string version of this node"} node-str :class)
+(defmulti ^{:doc "Get a human-readable string version of this node"} node-str :class)
 (defmethod node-str ::Node [node] 
   (str node))
 
-(defmulti #^{:doc "Inform the data structure that all refinements but this one have been discarded, and return a new node."} reroot-at-node (fn [node & args] (:class node)))
+(defmulti ^{:doc "Inform the data structure that all refinements but this one have been discarded, and return a new node."} reroot-at-node (fn [node & args] (:class node)))
 (defmethod reroot-at-node ::Node [node] node)
 
 
@@ -57,22 +57,22 @@
 
 ;; Optional methods: may throw unsupportedoperationexception if desired.
 
-(defmulti #^{:doc "Parent node"} node-parent :class)
+(defmulti ^{:doc "Parent node"} node-parent :class)
 (defmethod node-parent :Node [node] (throw (UnsupportedOperationException.)))
 
-(defmulti #^{:doc "Depth of node"} node-depth :class)
+(defmulti ^{:doc "Depth of node"} node-depth :class)
 (defmethod node-depth :Node [node] (throw (UnsupportedOperationException.)))
 
-(defmulti #^{:doc "Length of plan at node"} node-plan-length :class)
+(defmulti ^{:doc "Length of plan at node"} node-plan-length :class)
 (defmethod node-plan-length :Node [node] (throw (UnsupportedOperationException.)))
 
-(defmulti #^{:doc "plan at node"} node-plan :class)
+(defmulti ^{:doc "plan at node"} node-plan :class)
 (defmethod node-plan :Node [node] (throw (UnsupportedOperationException.)))
 
-(defmulti #^{:doc "First primitive action at node"} node-first-action :class)
+(defmulti ^{:doc "First primitive action at node"} node-first-action :class)
 (defmethod node-first-action :Node [node] (throw (UnsupportedOperationException.)))
 
-(defmulti #^{:doc "Env state associated with this node"} node-state :class)
+(defmulti ^{:doc "Env state associated with this node"} node-state :class)
 (defmethod node-state :Node [node] (throw (UnsupportedOperationException.)))
 
 

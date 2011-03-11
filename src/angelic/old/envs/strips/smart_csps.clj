@@ -21,9 +21,9 @@
 
 ; Returns new-domain
 ; TODO: change to use keyset
-(defn filter-pos-domain [#^HashMap map pred domain]
+(defn filter-pos-domain [^HashMap map pred domain]
 ;  (println "fpd" map pred domain)
-  (util/intersection-coll domain (if-let [#^Map m (first (.get map pred))] (.keySet m) nil)))
+  (util/intersection-coll domain (if-let [^Map m (first (.get map pred))] (.keySet m) nil)))
 
 (defn filter-neg-domain [map pred domain]
 ;  (println map pred domain)
@@ -31,14 +31,14 @@
     (reduce (fn [domain val] (if (true? (get sub val)) (disj domain val) domain)) domain domain)))
 ;  (util/difference domain (util/keyset (get map pred {}))))
 
-;(defn simplify-map [#^HashMap map preds val]
+;(defn simplify-map [^HashMap map preds val]
 ;  (if (empty? preds) map
-;    (let [#^HashMap m (.clone map)]
+;    (let [^HashMap m (.clone map)]
 ;      (doseq [pred preds]
 ;        (.put m pred (get (.get m pred) val)))
 ;      m))) 
 
-(defn simplify-map [#^HashMap map preds val]
+(defn simplify-map [^HashMap map preds val]
 ;  (println "simpl" map preds val)
   (doseq [pred preds]
     (let [sub (.get map pred)
@@ -46,14 +46,14 @@
       (.put map pred (cons (get fs val) sub)))))
 
 
-(defn unsimplify-map [#^HashMap map preds val]
+(defn unsimplify-map [^HashMap map preds val]
   (doseq [pred preds]
     (.put map pred (next (.get map pred)))))
 ;  (reduce (fn [map pred] (assoc map pred (get (get map pred) val)))
 ;	  map preds))
 
 
-(defn- all-solutions [vars-left initial-domains var-map const-map clause-maps inst-map #^ArrayList results]
+(defn- all-solutions [vars-left initial-domains var-map const-map clause-maps inst-map ^ArrayList results]
 ;  (println vars-left initial-domains var-map const-map clause-maps inst-map "\n\n")
   (if (empty? vars-left) (.add results inst-map);[inst-map]
     (let [[var arg?]    (first vars-left)
@@ -129,7 +129,7 @@
       (do (util/assert-is (not (const-preds (first prec))))
 	  [(first prec) dummy-unary-var]))))
 
-(defn fill-pred-map [atoms vars #^HashMap pred-names #^HashMap pred-instances]
+(defn fill-pred-map [atoms vars ^HashMap pred-names ^HashMap pred-instances]
   (util/merge-reduce concat {}
     (util/forcat [atom atoms]
       (let [pred-name (first atom)
@@ -187,13 +187,13 @@
     (vec (map first (sort-by second arg-positions)))))
 
 
-(defn my-assoc-in [#^HashMap m #^clojure.lang.APersistentVector key-vec #^clojure.lang.APersistentVector perm ind]
+(defn my-assoc-in [^HashMap m ^clojure.lang.APersistentVector key-vec ^clojure.lang.APersistentVector perm ind]
 ;  (println m key-vec perm ind)
   (if (< (inc ind) (count perm))
       (let [key (.get key-vec (.get perm ind))
-	    #^HashMap m2 
+	    ^HashMap m2 
              (or (.get m key) 
-		 (let [#^HashMap m2 (HashMap.)]
+		 (let [^HashMap m2 (HashMap.)]
 		   (.put m key m2)
 		   m2))]
 	(recur m2 key-vec perm (inc ind)))
@@ -212,13 +212,13 @@
     (let [permutation (get-permutation args var-ordering)]
       (if pos?
   	  (fn value-map-maker1 [true-tuple-map poss-tuple-map] 
-	    (let [#^HashMap m (HashMap.)]
+	    (let [^HashMap m (HashMap.)]
 	      (doseq [tuple (concat (get true-tuple-map pred) (get poss-tuple-map pred))]
 		(my-assoc-in m tuple permutation 0))
 	      m))
 ;	    (reduce (fn [m t] (assoc-in m (permuter t) true)) {} (concat (get true-tuple-map pred) (get poss-tuple-map pred))))
 	(fn value-map-maker2 [true-tuple-map poss-tuple-map] 
-	  (let [#^HashMap m (HashMap.)]
+	  (let [^HashMap m (HashMap.)]
 	      (doseq [tuple (get true-tuple-map pred)]
 		(my-assoc-in m tuple permutation 0))
 	      m))))))
@@ -241,7 +241,7 @@
 	sz (count map-makers)
 	bigsz (int (inc (* 1.12 sz)))]
     (fn pred-map-maker [[true-tuple-map poss-tuple-map]]
-      (let [#^HashMap m (HashMap. bigsz 0.9)]
+      (let [^HashMap m (HashMap. bigsz 0.9)]
 	(doseq [[pn map-maker] map-makers]
 	  (.put m pn (list (map-maker true-tuple-map poss-tuple-map))))
 	m))))

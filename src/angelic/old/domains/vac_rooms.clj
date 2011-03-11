@@ -18,7 +18,7 @@
    By default, all room squares (and no others) are dirty by default, must be cleaned."   
   [width height rooms doors initial-pos]
   (let [rooms (util/indexed rooms)
-	#^"[[Ljava.lang.Object;" arr (make-array Object height width)]
+	^"[[Ljava.lang.Object;" arr (make-array Object height width)]
     (doseq [[i [[sx sy] [lx ly]]] rooms
 	    x (range sx (inc lx))
 	    y (range sy (inc ly))]

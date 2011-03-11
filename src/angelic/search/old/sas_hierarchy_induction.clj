@@ -65,14 +65,14 @@
 (def *var-levels*   nil)  ; Map from var name to index in topological sort (0 is src, +n is sink)
 (def *extended-dtgs* nil) ; Map from var to map from prev val to map from post val to list of actions.
 (def *simple-dtgs* nil)   ; Map from var to edge list.
-(def #^HashMap *hla-cache* nil) ; a map from [action-name] to map from init-sets to action.
-(def #^IdentityHashMap *compile-cache* nil) ; a map from [action-name] to map from init-sets to action.
+(def ^HashMap *hla-cache* nil) ; a map from [action-name] to map from init-sets to action.
+(def ^IdentityHashMap *compile-cache* nil) ; a map from [action-name] to map from init-sets to action.
 (def *greedy-optimization?* false)
 
 ;; Memoized partial computations to speed up acylic edge generation.
-(def #^HashMap *forward-reachability-cache* nil)
-(def #^HashMap *backward-reachability-cache* nil)
-(def #^HashMap *good-edge-cache* nil) ; Map from [var, to-val] to HashSet of unused edges.
+(def ^HashMap *forward-reachability-cache* nil)
+(def ^HashMap *backward-reachability-cache* nil)
+(def ^HashMap *good-edge-cache* nil) ; Map from [var, to-val] to HashSet of unused edges.
 
 (defn forward-reachable-nodes-and-necessary-predecessors [var-name from-val]
   (util/cache-with *forward-reachability-cache* [var-name from-val]
@@ -121,8 +121,8 @@
    a particular to-val."  
   [var from-val to-val]
   (let [k         [var to-val]
-        cache-val #^HashSet (or (.get *good-edge-cache* k)
-                                (let [v (HashSet. #^Collection
+        cache-val ^HashSet (or (.get *good-edge-cache* k)
+                                (let [v (HashSet. ^Collection
                                           (remove #(= (first %) to-val) (util/safe-get *simple-dtgs* var)))]
                                   (.put *good-edge-cache* k v)
                                   v))]
@@ -669,7 +669,7 @@
 
 (defmulti pretty-print-action (fn [h done-set] (type h)))
 
-(defn pretty-print-hla [h #^HashSet done-set]
+(defn pretty-print-hla [h ^HashSet done-set]
   (when-not (.contains done-set h)
     (.add done-set h)
     (println (str "\nRefs for HLA" (env/action-name h)) "\nPrec: " (precond-var-set h) "\nEff: "(effect-sets h) "\nRefs:");  (effect-sets h))

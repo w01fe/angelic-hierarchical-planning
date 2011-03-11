@@ -161,7 +161,7 @@
   (SharedSubproblem cache (atom 0)))
 
 
-(def #^HashMap *subproblem-cache*)
+(def ^HashMap *subproblem-cache*)
 
 (defmacro get-subproblem-instance [name & body]
   `(let [name# ~name

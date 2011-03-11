@@ -24,7 +24,7 @@
   (assert (applicable? action state))
   (util/print-debug 4 "Progressing" action #_ state)
   (util/sref-set! *next-counter* (inc (util/sref-get *next-counter*)))
- ; (.put #^HashMap *next-ba* (action-name action) (inc (get *next-ba* (action-name action) 0)))
+ ; (.put ^HashMap *next-ba* (action-name action) (inc (get *next-ba* (action-name action) 0)))
   (let [[next reward] (next-state-and-reward action state)
         old-meta      (meta state)]
     [(vary-meta next assoc

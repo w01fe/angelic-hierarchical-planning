@@ -67,7 +67,7 @@
 ;; Stores abstracted results of a state-action pair.  result-map-atom maps states
 ;; to rewards (within this anode).  parent-vec-atom is a map of parent-entries to
 ;; total rewards (minimum up to current position). parent-set is set of parents.
-(defrecord SANode [ action result-map-atom parent-vec-atom #^HashSet parent-set])
+(defrecord SANode [ action result-map-atom parent-vec-atom ^HashSet parent-set])
 
 (defn make-sa-node [ a init-parent-entry ip-reward]
   (let [hs (HashSet.)]
@@ -101,18 +101,18 @@
 ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
 
 
-(defn get-sa-node [#^HashMap cache a ^ParentEntry parent-entry pre-reward]
+(defn get-sa-node [^HashMap cache a ^ParentEntry parent-entry pre-reward]
   "Create a new sa-node, or returned the cached copy if it exists."
   (let [s       (.state parent-entry)
         context (env/precondition-context a s)
         cache-key [(env/action-name a) (state/extract-context s context)]
         cache-val (.get cache cache-key)]
     (when cache-val (assert (<= pre-reward (second (peek @(:parent-vec-atom cache-val))))))
-    (cond (and cache-val (.contains #^HashSet (:parent-set cache-val) parent-entry))
+    (cond (and cache-val (.contains ^HashSet (:parent-set cache-val) parent-entry))
             []  
           cache-val
             (do (swap! (:parent-vec-atom cache-val) conj [parent-entry pre-reward])
-                (.add  #^HashSet (:parent-set cache-val) parent-entry)
+                (.add  ^HashSet (:parent-set cache-val) parent-entry)
                 (for [[ss sr] @(:result-map-atom cache-val)]
                   [(make-gqe ss sr cache-val [[parent-entry pre-reward]]) (- 0 pre-reward sr)]))
           :else 
