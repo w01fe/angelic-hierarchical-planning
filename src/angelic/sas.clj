@@ -64,9 +64,9 @@
 (defn lama-translate 
   ([stem] (lama-translate (str stem "-domain.pddl") (str stem ".pddl")))
   ([domain-file inst-file]
-     (let [ret #^String (util/sh (str *lama-dir* "translate/translate.py") 
+     (let [ret ^String (util/sh (str *lama-dir* "translate/translate.py") 
                                  domain-file inst-file :dir *working-dir*)]
-       (when-not (.endsWith ret "Done!\n")
+       (when-not (.startsWith ^String (last (.split ret "\n")) "Done!")
          (throw (RuntimeException. (str "LAMA-translate failed: "  ret))))
        ret  )))
 

@@ -1,5 +1,5 @@
 (ns angelic.test.env.state
-	(:require [edu.berkeley.ai.util :as util])
+	(:require [angelic.util :as util])
 	(:use clojure.test 
 		  angelic.env.state))
 

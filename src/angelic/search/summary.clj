@@ -1,5 +1,5 @@
 (ns angelic.search.summary
-  (:refer-clojure :exclude [min max >= + ])
+  (:refer-clojure :exclude [>= + ])
   (:require [angelic.util :as util])
   (:import [java.util ArrayList]))
 
@@ -119,13 +119,13 @@
   (status           [s] stat)
   (source          [s] src)
   (children        [s] chldren)
-  (leafen           [s bound new-stat new-src] (SimpleSummary. (clojure.core/min bound max-rew) new-stat new-src nil))
+  (leafen           [s bound new-stat new-src] (SimpleSummary. (min bound max-rew) new-stat new-src nil))
   (re-source       [s new-src bound stat-bound]
     (when (solved? s) (assert (clojure.core/>= (eps-bound bound) max-rew)))
-    (SimpleSummary. (clojure.core/min max-rew bound) (min-key status-val stat stat-bound) new-src [s]))
+    (SimpleSummary. (min max-rew bound) (min-key status-val stat stat-bound) new-src [s]))
   (eq               [s other] (and (= max-rew (max-reward other)) (= stat (status other))))
   (>=               [s1 s2 bound]
-    (let [r1 (clojure.core/min bound (max-reward s1)) r2 (clojure.core/min bound (max-reward s2))]
+    (let [r1 (min bound (max-reward s1)) r2 (min bound (max-reward s2))]
       (or (> r1 r2)
           (and (= r1 r2)
                (clojure.core/>= (status-val (status s1))
@@ -134,7 +134,7 @@
     (let [new-stat (min-key status-val stat (status other))
 	  r        (clojure.core/+ max-rew (max-reward other))]
       (when (= new-stat :solved) (assert (clojure.core/>= bound r)))      
-      (SimpleSummary. (clojure.core/min r bound) new-stat new-src [s other]))))
+      (SimpleSummary. (min r bound) new-stat new-src [s other]))))
 
 (defn make-live-simple-summary [max-reward source] (SimpleSummary. max-reward :live source nil))
 (defn make-blocked-simple-summary [max-reward source] (SimpleSummary. max-reward :blocked source nil))
@@ -169,7 +169,7 @@
 (defn bounded-f [sws wt ub]
   (cond (clojure.core/>= ub (:max-rew sws)) (:wtd-rew sws)
         (zero? (:max-rew sws)) (* wt ub)
-        :else                  (clojure.core/min ub (* (:wtd-rew sws) (/ ub (:max-rew sws)))))) ;; for rounding...
+        :else                  (min ub (* (:wtd-rew sws) (/ ub (:max-rew sws)))))) ;; for rounding...
 (defn bounded-sws-vec [sws wt ub] [(bounded-f sws wt ub) (:max-rew sws) (status-val (:stat sws))])
 
 (defrecord SimpleWeightedSummary [wtd-rew max-rew max-gap stat src chldren]
@@ -179,7 +179,7 @@
   (status           [s] stat)
   (source          [s] src)
   (children        [s] chldren)
-  (leafen           [s bound new-stat new-src] (SimpleWeightedSummary. (if (< bound max-rew) (clojure.core/min bound (* wtd-rew (/ bound max-rew))) wtd-rew) (clojure.core/min bound max-rew) max-gap new-stat new-src nil))  
+  (leafen           [s bound new-stat new-src] (SimpleWeightedSummary. (if (< bound max-rew) (min bound (* wtd-rew (/ bound max-rew))) wtd-rew) (min bound max-rew) max-gap new-stat new-src nil))  
   (re-source       [s new-src bound stat-bound] (make-simple-weighted-summary* wtd-rew max-rew max-gap stat new-src [s])) ;;Needed for single-sum; todo: bound?
   (eq               [s other] (= (sws-vec s) (sws-vec other)))
   (>=               [s1 s2 bound] (not (neg? (compare (sws-vec s1) (sws-vec s2))))) ;; TODO: bound?
@@ -187,14 +187,14 @@
     (make-simple-weighted-summary* 
      (clojure.core/+ wtd-rew (:wtd-rew other))
      (clojure.core/+ max-rew (:max-rew other))
-     (clojure.core/max (:max-gap s) (:max-gap other))
+     (max (:max-gap s) (:max-gap other))
      (min-key status-val stat (:stat other))
      new-src [s other])))
 
 (defn make-simple-weighted-summary* [wtd-rew max-rew max-gap stat src chldren]
   (util/assert-is (<= wtd-rew max-rew) "%s" [ stat src chldren])
   (util/assert-is (contains? statuses-set stat))
-  (SimpleWeightedSummary. wtd-rew max-rew (clojure.core/min max-gap (- max-rew wtd-rew)) stat src chldren))
+  (SimpleWeightedSummary. wtd-rew max-rew (min max-gap (- max-rew wtd-rew)) stat src chldren))
 
 (defn make-simple-weighted-summary [max-reward weight status source]
   (make-simple-weighted-summary*  (* max-reward weight) max-reward (* max-reward (- 1 weight)) status source nil))
@@ -206,12 +206,12 @@
   (fn or-combine-sws [summaries new-src ub]
     (if (empty? summaries)
       (make-simple-weighted-summary neg-inf 1 :blocked new-src)
-     (let [or-bound (reduce clojure.core/max (map :max-rew summaries))]
+     (let [or-bound (reduce max (map :max-rew summaries))]
        (loop [best (first summaries) summaries (next summaries)]
          (if summaries
            (recur (if (pos? (compare (bounded-sws-vec best weight ub) (bounded-sws-vec (first summaries) weight ub))) best (first summaries))
                   (next summaries))
-           (make-simple-weighted-summary* (bounded-f best weight ub) (clojure.core/min or-bound ub) (:max-gap best) (status best) new-src [best])))))))
+           (make-simple-weighted-summary* (bounded-f best weight ub) (min or-bound ub) (:max-gap best) (status best) new-src [best])))))))
 
 
 
@@ -268,18 +268,18 @@
    (let [p-sum (clojure.core/+ p-val (:p-val other))
          f-sum (clojure.core/+ f-val (:f-val other))]
      (make-sw-summary*
-      p-sum (clojure.core/min (clojure.core/max f-sum (* *sws-weight* bound)) bound) bound  ;; TODO?
-      (clojure.core/max max-gap (:max-gap other)) 
+      p-sum (min (max f-sum (* *sws-weight* bound)) bound) bound  ;; TODO?
+      (max max-gap (:max-gap other)) 
       (min-key status-val stat (status other))
       new-src [s other]))))
 
 (defn- make-sw-summary* [p-val f-val o-val max-gap status source children]
   (util/assert-is (<= p-val f-val o-val) "%s" [source children])
-  (SimpleWeightedSummary. p-val f-val o-val (clojure.core/min max-gap (- o-val p-val)) status source children))
+  (SimpleWeightedSummary. p-val f-val o-val (min max-gap (- o-val p-val)) status source children))
 
 (defn make-sw-summary [p-val o-val status source children]
   (util/assert-is (contains? statuses-set status))
-  (let [f-val (clojure.core/max p-val (* o-val *sws-weight*))]
+  (let [f-val (max p-val (* o-val *sws-weight*))]
     (make-sw-summary* p-val f-val o-val (- o-val p-val) status source children)))
 
 (defn sw-summary? [s] (instance? SimpleWeightedSummary s))
@@ -294,16 +294,16 @@
   (let [p-atom (atom (or init-lb neg-inf))]
     (fn or-combine-sws [summaries new-src ub]
       (assert (seq summaries))
-      (let [lb (reduce clojure.core/max (map :p-val summaries))
-            lb (if (can-cache?-fn new-src) (swap! p-atom clojure.core/max lb) lb)
-            bounded-f #(clojure.core/min (:o-val %) (clojure.core/max lb (:f-val %)))
+      (let [lb (reduce max (map :p-val summaries))
+            lb (if (can-cache?-fn new-src) (swap! p-atom max lb) lb)
+            bounded-f #(min (:o-val %) (max lb (:f-val %)))
             sws-lb-vec #(vector (bounded-f %) (status-val (status %)) (:p-val %))
             ]
         (loop [best (first summaries) summaries (next summaries)]
           (if summaries
             (recur (if (not (neg? (compare (sws-lb-vec best) (sws-lb-vec (first summaries))))) best (first summaries))
                    (next summaries))
-            (make-sw-summary* (clojure.core/min (:o-val best) lb)
+            (make-sw-summary* (min (:o-val best) lb)
                               (bounded-f best)
                               (:o-val best)
                               (:max-gap best) (status best) new-src [best])))))))
@@ -342,10 +342,10 @@
      (util/assert-is (<= p-val f-val o-val))
      (util/assert-is (<= lb ub))
      (util/assert-is (<= p-val ub))
-     (clojure.core/max (clojure.core/min o-val lb) p-val
-      (* *sws-weight* (clojure.core/min o-val ub))
+     (max (min o-val lb) p-val
+      (* *sws-weight* (min o-val ub))
       (if (< ub o-val)
-        (if (zero? o-val) neg-inf (clojure.core/min ub (* f-val (/ ub o-val))))
+        (if (zero? o-val) neg-inf (min ub (* f-val (/ ub o-val))))
         f-val))))
 
 (defrecord SimpleWeightedSummary [p-val f-val o-val max-gap stat src chldren]
@@ -364,18 +364,18 @@
          f-sum (clojure.core/+ f-val (:f-val other))
          o-sum (clojure.core/+ o-val (:o-val other))]
      (make-sw-summary*
-      p-sum (bounded-sw-f-val p-sum f-sum o-sum p-sum bound) (clojure.core/min bound o-sum)
-      (clojure.core/max max-gap (:max-gap other)) 
+      p-sum (bounded-sw-f-val p-sum f-sum o-sum p-sum bound) (min bound o-sum)
+      (max max-gap (:max-gap other)) 
       (min-key status-val stat (status other))
       new-src [s other]))))
 
 (defn- make-sw-summary* [p-val f-val o-val max-gap status source children]
   (util/assert-is (<= p-val f-val o-val) "%s" [source children])
-  (SimpleWeightedSummary. p-val f-val o-val (clojure.core/min max-gap (- o-val p-val)) status source children))
+  (SimpleWeightedSummary. p-val f-val o-val (min max-gap (- o-val p-val)) status source children))
 
 (defn make-sw-summary [p-val o-val status source children]
   (util/assert-is (contains? statuses-set status))
-  (let [f-val (clojure.core/max p-val (* o-val *sws-weight*))]
+  (let [f-val (max p-val (* o-val *sws-weight*))]
     (make-sw-summary* p-val f-val o-val (- o-val p-val) status source children)))
 
 (defn sw-summary? [s] (instance? SimpleWeightedSummary s))
@@ -388,7 +388,7 @@
   (let [p-atom (atom (or init-lb neg-inf))]
     (fn or-combine-sws [summaries new-src ub]
       (assert (seq summaries))
-      (let [lb (reset! p-atom (reduce clojure.core/max (cons @p-atom (map :p-val summaries))))
+      (let [lb (reset! p-atom (reduce max (cons @p-atom (map :p-val summaries))))
             bounded-sws-vec (fn [sws] [(bounded-sw-f-val sws lb ub) (status-val (status sws)) (:p-val sws)])]
         (util/assert-is (<= lb ub) "%s" [init-lb @p-atom summaries new-src (def *bad* summaries)])
         (loop [best (first summaries) summaries (next summaries)]
@@ -396,8 +396,8 @@
             (recur (if (not (neg? (compare (bounded-sws-vec best) (bounded-sws-vec (first summaries))))) best (first summaries))
                    (next summaries))
             (let [f-val (bounded-sw-f-val best lb ub)
-                  o-val (clojure.core/min ub (:o-val best))
-                  p-val (clojure.core/min lb o-val)]
+                  o-val (min ub (:o-val best))
+                  p-val (min lb o-val)]
               (make-sw-summary* p-val f-val o-val (:max-gap best) (status best) new-src [best]))))))))
 
 
@@ -427,14 +427,14 @@
    (source           [s] src)
    (children         [s] chldren)
    (re-source        [s new-src bound stat-bound]
-                     (make-interval-summary* min-rew (clojure.core/min max-rew bound)
+                     (make-interval-summary* min-rew (min max-rew bound)
                                              (min-key status-val stat stat-bound) new-src [s]))  
    (eq               [s other] (= (is-id-vec s) (is-id-vec other)))
    (>=               [s other bound] (not (neg? (compare (is-sort-vec s) (is-sort-vec other))))) ;; TODO: bound ???  
    (+                [s other new-src bound]
                      (make-interval-summary*
                       (clojure.core/+ min-rew (:min-rew other neg-inf))
-                      (clojure.core/min (clojure.core/+ max-rew (max-reward other)) bound)
+                      (min (clojure.core/+ max-rew (max-reward other)) bound)
                       (min-key status-val stat (status other))
                       new-src [s other])))
 
@@ -463,7 +463,7 @@
 ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;; Old stuff (to delete) ;;;;;;;;;;;;;;;;;;;;;;;;;;;
 
 
-(defn- max-compare [cf arg1 & args]
+(defn max-compare [cf arg1 & args]
   (if-let [[f & r] (seq args)]
     (recur cf (if (cf f arg1) f arg1) r)
     arg1))

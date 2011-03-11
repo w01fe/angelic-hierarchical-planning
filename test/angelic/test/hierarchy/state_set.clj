@@ -2,7 +2,7 @@
   (:refer-clojure :exclude [empty?])
   (:use clojure.test
         angelic.hierarchy.state-set)  
-  (:require [edu.berkeley.ai.util :as util]
+  (:require [angelic.util :as util]
             [angelic.env.state :as state]))
 
 
