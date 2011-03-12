@@ -2,7 +2,8 @@
 
 (ns angelic.old.angelic.hybrid
   (:use clojure.test angelic.old.angelic
-	[angelic.old [ util :as util] [envs :as envs]]
+  [angelic.util :as util]  
+	[angelic.old  [envs :as envs]]
 	[angelic.util [hybrid :as hybrid] [lp :as lp] [linear-expressions :as le]]
 	[angelic.old.envs.hybrid-strips :as hs]
 	[angelic.old.envs.hybrid-strips [constraints :as hc] [effects :as he]]))

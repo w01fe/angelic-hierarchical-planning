@@ -9,7 +9,7 @@
 
 (ns angelic.old.angelic.hybrid.fixed-lp-valuations
   (:use clojure.test angelic.old.angelic [angelic.old.angelic.hybrid :as hybrid]
-	[angelic.old [ util :as util] [envs :as envs]]
+	[angelic.util :as util] [angelic.old  [envs :as envs]]
 	[angelic.util  [linear-expressions :as le]]
 	[angelic.old.envs.hybrid-strips [constraints :as hc] [effects :as he]]
 	[angelic.old.angelic.hybrid [continuous-lp-states :as cls]]))

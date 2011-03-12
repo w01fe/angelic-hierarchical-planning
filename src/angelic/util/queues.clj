@@ -308,7 +308,7 @@
 	^com.bluemarsh.graphmaker.core.util.FibonacciHeapComp$Node n (.min heap) 
 	c (.getKey n)
 	c-cost (get-cost c)]
-    (assert-is (>= c-cost (sref-get (:last-min pq))))
+    (assert (>= c-cost (sref-get (:last-min pq))))
     (sref-set! (:last-min pq) c-cost)
     [ (.removeMin heap) c]))
 
@@ -327,7 +327,7 @@
     (is (= (pq-remove-all! pq) [[:a 10]]))
     (pq-add! pq :a 9)
     (is (= (pq-size pq) 1))
-    (is (thrown? Exception (pq-remove-min! pq))))
+    (is (thrown? AssertionError (pq-remove-min! pq))))
   (let [pq (make-safe-tree-search-pq)]
     (pq-add! pq :a [1 2])
     (pq-add! pq :b [1 -1])
@@ -338,7 +338,7 @@
     (is (= (pq-remove-all! pq) [[:a [0 100]] [:c [1 -10]] [:b [1 -1]] [:a [1 2]] [:b [1 3]] [:a [2 -100]]]))
     (pq-add! pq :a 1)
     (is (= (pq-size pq) 1))
-    (is (thrown? Exception (pq-remove-min! pq)))))
+    (is (thrown? AssertionError (pq-remove-min! pq)))))
 
 
 
@@ -351,7 +351,7 @@
 (defmethod pq-add! ::FancyTreePriorityQueue [pq item cost]
   (let [^FibonacciHeapComp heap (:heap pq)
 	^IdentityHashMap       m    (:map pq)]
-    (assert-is (not (.put m item (.insert heap item cost))))
+    (assert (not (.put m item (.insert heap item cost))))
     :added))
 
 (defmethod pq-peek-min ::FancyTreePriorityQueue [pq]
@@ -384,7 +384,7 @@
 (deftest fancy-tree-search-pq 
   (let [pq (make-fancy-tree-search-pq)]
     (pq-add! pq :a 1)
-    (is (thrown? Exception (pq-add! pq :a 2))))
+    (is (thrown? AssertionError (pq-add! pq :a 2))))
   (let [pq (make-fancy-tree-search-pq)]
     (pq-add-all! pq [[:a 1] [:b 0] [:c 2]])
     (is (= (pq-size pq) 3))
