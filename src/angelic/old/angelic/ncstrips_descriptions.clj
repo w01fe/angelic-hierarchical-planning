@@ -386,7 +386,6 @@
 ; You could try to extract the best state going backwards. 
  ; But, you may have a better (i.e., worse) bound than you thought (when there are cost-params).
  ; For now, just return any state and lie about the bound.
-; Shit.  we may be unable to extract 
 
 ;; TODO next: regressing dnf valuations.
 

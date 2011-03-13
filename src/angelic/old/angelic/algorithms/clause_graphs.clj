@@ -166,7 +166,7 @@
     (util/print-debug 3  "Adding edge " (map hla-name plan-suffix) " in-rew " reward)
     (concat
      (when (> reward (util/sref-get (:in-reward edge)))
-       (when (not (empty? (util/sref-get (:suffix-set edge)))) (println "crap!" (map hla-name plan-suffix) (util/sref-get (:in-reward edge)) reward))
+       (when (not (empty? (util/sref-get (:suffix-set edge)))) (println "bad edge!" (map hla-name plan-suffix) (util/sref-get (:in-reward edge)) reward))
        (util/sref-set! (:in-reward edge) reward)
        (doall
          (for [[clause step-rew] (:clause-map edge)
