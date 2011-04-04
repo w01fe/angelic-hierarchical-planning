@@ -289,7 +289,7 @@
           (for [n-val (acyclic-succ-fn v c-val d-val), a (dtg n-val)]
             (make-add-action-action var->cluster a)))
         (add-actions s c var->cluster cluster-sgs))) ;; only for cyclic domains -- TODO: remove?
-    (let [child-action (state/get-var s (action-var s (current-child s ccm c)))
+    (let [child-action (state/get-var s (action-var (current-child s ccm c)))
           restricted-pm (select-keys (:precond-map child-action) c)]
       (cond (empty? restricted-pm) (add-actions s c var->cluster cluster-sgs) ;; for cyclic ?
             (state/state-matches-map? s restricted-pm) [(make-freeze-var-action c)]
@@ -343,7 +343,11 @@
        (assert (= (util/keyset cluster-map)
                   (graphs/ancestor-set (remove #(apply = %) (sas-analysis/standard-causal-graph sas-problem))
                                        [sas/goal-var-name])))
-       (doseq [a (:actions sas-problem)] (assert (every? #(contains? (:precond-map a) %) (keys (:effect-map a)))))
+
+       ;;     (doseq [a (:actions sas-problem)] (assert (every? #(contains? (:precond-map a) %) (keys (:effect-map a)))))
+       ;; TODO: Need this for real generalization, here it only has to be true on cluster!
+       (doseq [a (:actions sas-problem)] (assert (some (var->cluster (first (keys (:effect-map a))))
+                                                        (keys (:precond-map a)))))
        (doseq [c clusters] (println c))
        (println )
        (ASPlanEnv.
@@ -374,8 +378,8 @@
                 (do (println "A!") (add-actions s (first sources) var->cluster cluster-sgs))
                 
                 :else (assert "Unknown source type!")))))
-        (env/goal-map sas-problem)))
-     ))
+        (env/goal-map sas-problem)))))
+
 
 
 
