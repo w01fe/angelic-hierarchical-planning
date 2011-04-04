@@ -41,6 +41,9 @@
         )
   )
 
+(defn sas-sample-problem [f]
+  (sas/make-sas-problem-from-pddl (str f "-domain.pddl") (str f ".pddl")))
+
 (defn funky-sort [strs]
   (sort (comparator (fn [^String s1, ^String s2] (or (< (count s1) (count s2)) (and (= (count s1) (count s2)) (< (compare s1 s2) 0))))) strs))
 
@@ -104,4 +107,14 @@
        (delay (sas/make-sas-problem-from-pddl 
                (str cptdir "domain-logisticsaips.pddl")
                (str cptdir "logisticsaips" (dig2 i) ".pddl")))))
+
+
+(def ipc3-depots-dir "/Users/jawolfe/Projects/research/IPC/IPC3/Tests1/Depots/Strips/")
+
+(def ipc3-depots
+  (for [i (range 1 23)]
+    (delay (sas/make-sas-problem-from-pddl
+            (str ipc3-depots-dir "Depots.pddl")
+            (str ipc3-depots-dir "pfile" i)))))
+
 

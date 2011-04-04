@@ -111,6 +111,36 @@
                 [evar eval] (concat (:effect-map a) (select-keys (:precond-map a) (keys (:effect-map a))))]
             [pval eval]))))))))
 
+(defn effect-clusters [sas-problem]
+  (->> (graphs/scc-graph
+        (for [a (:actions sas-problem)
+              e1 (keys (:effect-map a))
+              e2 (keys (:effect-map a))]
+          [e1 e2]))
+       second vals (map set)))
+
+(defn effect-clustered-causal-graph [sas-problem]
+  (let [clusters (effect-clusters sas-problem)
+        cluster-map (util/for-map [c clusters, x c] x c)]
+    (distinct
+     (for [a (:actions sas-problem)
+           p (keys (:precond-map a))
+           e (keys (:effect-map a))]
+       [(cluster-map p) (cluster-map e)]))))
+
+(defn show-effect-clustered-causal-graph [sas-problem]  
+  (let [clusters    (effect-clusters sas-problem)
+        cluster-map (into {} (for [[i cluster] (util/indexed clusters), x cluster]
+                               [x i]))]
+    (doseq [[i cluster] (util/indexed clusters)]
+      (println i cluster))
+    (gv/graphviz-el
+     (for [a (:actions sas-problem)
+           p (keys (:precond-map a))
+           e (keys (:effect-map a))]
+       [(cluster-map p) (cluster-map e)]))))
+
+
 
 ;;;;;;;;;;;;;;;;;;;;;;;;;;             Homogeneity            ;;;;;;;;;;;;;;;;;;;;;;;;
 
