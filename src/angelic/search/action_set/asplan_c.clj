@@ -1,6 +1,7 @@
 (ns angelic.search.action-set.asplan-c
   (:require [angelic.util :as util]
             [angelic.util.graphs :as graphs]
+            [angelic.util.queues :as queues]            
             [angelic.env :as env]
             [angelic.env.util :as env-util]
             [angelic.env.state :as state]            
@@ -24,7 +25,6 @@
 ;; (TODO).  if leaves are clustered, need multiple goal states -- see if
 ;; worth supporthing this case or not.  
 
-;; TODO: cluster successor generators?
 ;; TODO: state abstraction.
 
 ;; meta-vars are defined on clusters.
@@ -174,6 +174,30 @@
           :when (and (= s cur-val) (not (contains? (backward-sets t) s)))]
       t)))
 
+(defn reachability-map [dtg from-val]
+  (let [q (queues/make-graph-search-pq)]
+    (queues/pq-add! q from-val 0)
+    (while (not (queues/pq-empty? q))
+      (let [[v c] (queues/pq-remove-min-with-cost! q)]
+        (doseq [[nv actions] (util/safe-get dtg v)]
+          (queues/pq-add! q nv (- c (apply max (map :reward actions)))))))
+
+    (assert (:map q))
+    (into {} (:map q))))
+
+
+(defn teleport-to-val [^HashMap cache dtgs var-name from-val to-val]
+  (when-let [cost  (get (util/cache-with cache [var-name from-val]
+                          (reachability-map (dtgs var-name) from-val))       
+                        to-val)]
+    (env-util/make-factored-primitive
+     [::Teleport var-name from-val to-val]
+     {var-name from-val}
+     {var-name to-val, (action-var #{var-name}) :frozen}
+     (- cost))))
+
+
+
 
 
 (defn var-ordering-edges
@@ -277,17 +301,23 @@
 ;; TODO: "state abstraction" here for single clusters.
 ;; TODO: can we provide some notion of relevance/directedness within a cluster?
 ;;       i.e., may have actions affecting A & B or B & C.  If precond on C, ... ?
-(defn add-directed-actions [s c var->cluster cluster-sgs dtgs ccm acyclic-succ-fn]
+(defn add-directed-actions [s c var->cluster cluster-sgs dtgs acm ccm acyclic-succ-fn teleport-fn]
   (if-let [v (util/singleton c)]
     (let [c-val (state/get-var s v)
           dtg   (get-in dtgs [v c-val])
           child (current-child s ccm c)
           d-val (-> (state/get-var s (action-var child)) :precond-map (get v))]
       (if d-val 
-        (if (= c-val d-val)
-          [(make-freeze-var-action c)]
-          (for [n-val (acyclic-succ-fn v c-val d-val), a (dtg n-val)]
-            (make-add-action-action var->cluster a)))
+        (cond (= c-val d-val)
+              [(make-freeze-var-action c)]
+
+              (and teleport-fn (= 1 (count (acm c))))
+              (when-let [teleport (teleport-fn v c-val d-val)]
+                [teleport])
+
+              :else 
+              (for [n-val (acyclic-succ-fn v c-val d-val), a (dtg n-val)]
+                (make-add-action-action var->cluster a)))
         (add-actions s c var->cluster cluster-sgs))) ;; only for cyclic domains -- TODO: remove?
     (let [child-action (state/get-var s (action-var (current-child s ccm c)))
           restricted-pm (select-keys (:precond-map child-action) c)]
@@ -318,9 +348,9 @@
        Greedy means we forget about reserving preconditions when free and we can fire right now (less branching).
        Sloppy means we ignore if preconditions are free, but require no action on them.
        Extra-sloppy means anything goes -- if you can execute ignoring commitments, go for it."
-  ([sas-problem & {:keys [directed? greedy? deadlock? dead-vars? components?] :as m
-                   :or   {directed? true greedy? true deadlock? true dead-vars? true components? false}}]
-     (assert (every? #{:directed? :greedy? :deadlock? :dead-vars? :components?} (keys m)))
+  ([sas-problem & {:keys [directed? greedy? deadlock? dead-vars? components? teleport?] :as m
+                   :or   {directed? true greedy? true deadlock? true dead-vars? true components? false teleport? true}}]
+     (assert (every? #{:directed? :greedy? :deadlock? :dead-vars? :components? :teleport?} (keys m)))
      (let [edge-rule     (if greedy? :greedy :naive)
            cluster-cg    (remove #(apply = %) (sas-analysis/effect-clustered-causal-graph sas-problem))
            clusters      (graphs/ancestor-set cluster-cg [#{sas/goal-var-name}])
@@ -336,7 +366,8 @@
                            #{sas/goal-var-name} [])
            dtgs          (sas-analysis/domain-transition-graphs sas-problem)
            simple-dtgs   (util/map-vals (fn [dtg] (for [[pval emap] dtg, [eval _] emap] [pval eval])) dtgs)           
-           acyclic-succ-fn (partial possibly-acyclic-successors (HashMap.) simple-dtgs)]
+           acyclic-succ-fn (partial possibly-acyclic-successors (HashMap.) simple-dtgs)
+           teleport-fn   (when teleport? (partial teleport-to-val (HashMap.) dtgs))]
 ;       (assert (graphs/dag? causal-graph))    
 ;       (assert (sas-analysis/unary? sas-problem))
        (assert (contains? clusters #{sas/goal-var-name}))
@@ -346,10 +377,12 @@
 
        ;;     (doseq [a (:actions sas-problem)] (assert (every? #(contains? (:precond-map a) %) (keys (:effect-map a)))))
        ;; TODO: Need this for real generalization, here it only has to be true on cluster!
-       (doseq [a (:actions sas-problem)] (assert (some (var->cluster (first (keys (:effect-map a))))
-                                                        (keys (:precond-map a)))))
-       (doseq [c clusters] (println c))
-       (println )
+       (doseq [a (:actions sas-problem)]
+         (when-let [c (cluster-map (first (keys (:effect-map a))))]
+           (assert (some c (keys (:precond-map a))))))
+       
+;       (doseq [c clusters] (println c))
+
        (ASPlanEnv.
         sas-problem
         (expand-initial-state (env/initial-state sas-problem) clusters cc-map (goal-action dtgs))
@@ -365,7 +398,7 @@
 
                 (seq (sources-by-type :bottom-up-action))
                 (if directed?
-                  (add-directed-actions s (apply min-key tsi sources) var->cluster cluster-sgs dtgs cc-map acyclic-succ-fn)
+                  (add-directed-actions s (apply min-key tsi sources) var->cluster cluster-sgs dtgs ac-map cc-map acyclic-succ-fn teleport-fn)
                   (add-actions s (apply min-key tsi sources) var->cluster cluster-sgs))               
                      
                 (seq (sources-by-type :bottom-up-activate))
