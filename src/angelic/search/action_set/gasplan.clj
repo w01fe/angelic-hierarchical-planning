@@ -19,9 +19,9 @@
 ;   (i.e., can apply if var is free, or reserved for me.)
 
 ; Problems:
- ; (1) actions are split based on primary effect.
- ; (2) end up hallucinating huge pointless chains.
-                                        ; (3) ways to assign parents multiples in general -- need to keep in control somehow.
+;; (1) actions are split based on primary effect.
+;; (2) end up hallucinating huge pointless chains.
+;; (3) ways to assign parents multiples in general -- need to keep in control somehow.
 
 ;; Note: this fails completely, even on cyclic unary domains.
 ;; See, e.g., angelic.domains.unary-cyclic.clj.

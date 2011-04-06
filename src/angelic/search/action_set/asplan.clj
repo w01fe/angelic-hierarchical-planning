@@ -232,8 +232,15 @@
                                       unavail?   (not (or (= p-child nil) (= p-child v)))]
                                   (case rule
                                     :naive  (cond unavail?         [p-child v]
-                                                  (or (not (= p-child v)) (not (= (state/get-var s (action-var p)) :frozen))) [p v])                                       :greedy (cond unavail?         [p-child v]
-                                                  (not right-val?) [p v])
+                                                  (or (not (= p-child v)) (not (= (state/get-var s (action-var p)) :frozen))) [p v])
+                                    :greedy (cond unavail?         [p-child v]
+                                                  (not right-val?)
+                                                  #_(when-not (some #(let [c (current-child s child-map %)]
+                                                                     (not (or (= p-child nil) (= p-child v))))
+                                                                  (keys (dissoc (:precond-map a) v)))
+                                                    [p v])  ;; TODO: put back?
+
+                                                    [p v])
                                     :sloppy (cond (and unavail? (or (not right-val?) (when-let [a (state/get-var s (action-var p))] (not (= a :frozen)))))         [p-child v]
                                                   (and (not unavail?) (not right-val?)) [p v])
                                     :extra-sloppy

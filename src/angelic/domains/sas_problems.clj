@@ -118,3 +118,15 @@
             (str ipc3-depots-dir "pfile" i)))))
 
 
+
+(def sas-sample-problems
+ (memoize (fn [n]
+            (concat
+             [["IPC3-depots" @(nth ipc3-depots n)]
+              ["IPC2-logistics" @(nth ipc2-logistics n)]
+              ["IPC2-miconic" @(nth ipc2-miconic n)]]
+             (for [d ["gripper" "mystery" "grid"]]
+               (let [[nm ps] (first (filter #(.contains ^String (first %) ^String d) ipc1-problems))]
+                 [nm @(nth ps n)]))
+             (util/map-vals sas-sample-problem (sas-sample-files (inc n)))))))
+

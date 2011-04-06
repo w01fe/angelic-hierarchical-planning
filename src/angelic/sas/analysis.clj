@@ -140,6 +140,40 @@
            e (keys (:effect-map a))]
        [(cluster-map p) (cluster-map e)]))))
 
+;; TODO: implied truths are over-included.
+;;:when (do (util/assert-is (contains? nec-set v)) (> (count nec-set) 1))
+(defn auxiliary-vars [sas-problem]
+  (dissoc (util/for-map [[v nec-set]
+                  (apply merge-with util/intersection 
+                         (for [{:keys [precond-map effect-map]} (:actions sas-problem)
+                               p (keys precond-map)]
+                           {p (util/union (util/keyset precond-map)
+                                          (util/keyset effect-map))}))
+                  :let [r-set (disj nec-set v)]
+                  :when (seq r-set)]
+                        v r-set) sas/goal-var-name))
+
+
+; (doseq [[n p] (sas-sample-problems 0)] (println "\n" n) (let [av (auxiliary-vars p)] (doseq [v av] (println v)) (println (- (count (:vars p)) (count av)))))
+
+(defn prevail-causal-graph [sas-problem]
+  (distinct
+     (for [a (:actions sas-problem)
+           p (keys (apply dissoc (:precond-map a) (keys (:effect-map a))))
+           e (keys (:effect-map a))]
+       [p e])))
+(defn show-prevail-causal-graph [sas-problem] (gv/graphviz-el (prevail-causal-graph sas-problem)))
+
+
+(defn action-groupings
+  "Group actions by the set of variables they effect."
+  [sas-problem]
+  (group-by #(util/keyset (merge (:precond-map %) (:effect-map %))) (:actions sas-problem)))
+
+
+
+
+  
 
 
 ;;;;;;;;;;;;;;;;;;;;;;;;;;             Homogeneity            ;;;;;;;;;;;;;;;;;;;;;;;;
@@ -149,6 +183,8 @@
 
 ; For now, we only operate on DAGs, so that each action has exactly one effect.
 
+
+
 (defn homogenous? [sas-problem]
   (assert (graphs/dag? (standard-causal-graph sas-problem)))
   (every?
@@ -157,6 +193,7 @@
        (util/assert-is (apply = #{var} (map (comp util/keyset :effect-map) actions)))
        (apply = (map (comp util/keyset :precond-map) actions))))
    (domain-transition-graphs sas-problem)))
+
 
 ;;;;;;;;;;;;;;;;;;;;;;;;;;             Homogeneity            ;;;;;;;;;;;;;;;;;;;;;;;;
 
