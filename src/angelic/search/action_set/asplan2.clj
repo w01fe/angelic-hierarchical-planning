@@ -1,4 +1,4 @@
-(ns angelic.search.action-set.asplan
+(ns angelic.search.action-set.asplan2
   (:require [angelic.util :as util]
             [angelic.util.graphs :as graphs]
             [angelic.env :as env]
@@ -11,37 +11,36 @@
   (:import [java.util HashMap]))
 
 
-;; Fixed version.
+;; New version.
+;; Instead of choosing actions, together choose:
+;;   set of child intentions (all succeed or single failure), next value for each child variable.
+;; (next value can be left abstract, ignore this possibility for now.
+;; This can't work.
 
-; For now, pretend analysis is free, just brute-force it. 
+;; Instead, we can do:
+;;  choose an action set, narrow it.
+;;  note: being blocked does not change the set.
+;;  set is applicable iff there exists an action in the set with a precondition
+;;  that is neither blocked nor reserved.
+;;  actions with no preconditions are always immediately fired, don't live in the set.
 
-;; Note: alternative to frozen as implemented here is to
-;; necessitate ordering, and make a free-for-all over the (top-down) leavings
+;; First incarnation just for unary domains
 
-; Put stuff previous in HLAs into state, so we can keep track of, e.g.,
-; actions added while accomplishing some other action. 
-; For each var, a second var pointing to: pending action, :frozen, or :open
-;  This doesn't play with usual state abstraction.
-;  Except, we also need to keep track of *user* of frozen far w/o action.
+;; TODOS:
+;; - multiple effects
+;; - Possible next children (i.e., blocks held)
+;; - Auxiliary variables
+;; - Top-down mode?
+;; ...
+;; - Hueristic costs.
+;; Focusing on fail-fast case (repairing blocks).
 
-; We have simple, dijkstra-shared-goal options, with same acylic options.
+;; Investigate simply not-x choice.
+;; Means even bigger state space, hopefully not that big since we get to choose how to explore.
 
-; Can refine until *particular* action resolved, or *any* current action resolved. 
-;   (not just any action, steps are too small).
 
-;; TODO: think about variable orderings more.  i.e., in infinite taxi, DAG order is perfect.
+;; Note: not actually possible always to reserve all preconds at once.
 
-;; TODO: also look at using landmarks to structure search ? 
-; (but where's the state abstraction?)
-
-; TODO: ideally, we should avoid cyclies in the value of effect-var,
- ; NOT in whole state-abstracted states.
-
-;; NOTE: greedy should come in when we choose a parent for a var. 
-; If some parent can use current var RIGHT NOW, should assign to it, not branch.
- ; Except, greedy actions takes care of this.
-
-;; For state abstraction, split parent into n+1 booleans: (free? v), (parent? v1 v2)
 
 ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
 ;;;;;;;;;;;;;;;;;;;;;;;;;;;; States, (meta)primitives ;;;;;;;;;;;;;;;;;;;;;;;;;;
@@ -52,42 +51,31 @@
       (get-in [sas/goal-var-name sas/goal-false-val sas/goal-true-val])
       util/safe-singleton))
 
-;; Action vars have a special value, :frozen, meaning that current value must be used
-;; by child.  Only really useful 
-(defn action-var [v]       [:action v])
-(defn free-var [v]         [:free? v])
-(defn parent-var [v child] [:parent? v child])
+(defn target-var [v] [:target v])
+(defn possible-parent-var [p c]  [:parent? p c])
+(defn possible-actions-var [v]  [:actions v])
 
 (defn expand-initial-state 
   "Expand the initial state with lots more stuff.  Each var can be free, OR
    have a child (in which case it must eventually be used to fire an active action on
    that var), AND in such a case, it can also have an active action to help achieve that val.
    (which changes only that var)."
-  [init child-var-map goal-action]
+  [init child-var-map]
   (let [vars (state/list-vars init)]
     (state/set-vars init
       (concat 
-       (apply concat
-         (for [var vars]
-           (concat [[(action-var var) nil] [(free-var var) true]]
-                   (for [c (child-var-map var)] [(parent-var var c) false]))))
-       [[(action-var sas/goal-var-name) goal-action]]))))
-
-(defn current-child [s child-var-map p-var]
-  (when-not (state/get-var s (free-var p-var))
-    (or (util/find-first #(state/get-var s (parent-var p-var %))
-                         (child-var-map p-var))
-        :out-of-context)))
-
-(def *add-count* (util/sref 0))
+       (for [var vars] [(target-var v) nil])
+       (for [[p cs] child-var-map, c cs] [(possible-parent-var p c) true])
+       [[(target-var sas/goal-var-name) sas/goal-true-val]]))))
 
 
-(defn make-freeze-var-action [evar]
-  (env-util/make-factored-primitive
-     [::FreezeVar evar]
-     {(action-var evar) nil}
-     {(action-var evar) :frozen}
-     0))
+
+
+(defn action-effect-var [a] (util/safe-singleton (keys (:precond-map a))))
+
+
+
+
 
 (defn make-add-action-action [{:keys [name precond-map effect-map reward] :as factored-primitive}]
   (util/sref-set! *add-count* (inc (util/sref-get *add-count*)))
@@ -96,7 +84,7 @@
      [::AddAction name]
      {(action-var evar) nil, evar (precond-map evar)}
      {(action-var evar) factored-primitive}
-      reward)))
+     reward)))
 
 (defn make-set-parent-var-action [p-var c-var]
   (env-util/make-factored-primitive 
@@ -122,7 +110,7 @@
                    (for [v precond-vars] [(free-var v)              true])
                    (for [v precond-vars] [(parent-var v effect-var) false])
                    (for [v precond-vars] [(action-var v) nil])))
-      0)))
+     0)))
 
 
 ;; TODO: should fail if I own parent, it has right value, but an action. (right now, we assert)...
@@ -150,30 +138,40 @@
                    (for [v unfree-pv] [(free-var v)              true])
                    (for [v unfree-pv] [(parent-var v effect-var) false])
                    (for [v precond-vars] [(action-var v) nil])))
-      0)))
+     0)))
 
-(defn make-sloppy-fire-action [s effect-var]
+
+
+(defn make-greedy-fire-action [s firing-seq]
+  (doseq [[a1 a2] (partition 2 1 firing-seq)]
+    (let [v1 (action-effect-var a1)]
+      (assert (= (state/get-var s v1) (state/get-var s (target-var v1)) ((:precond-map a2) v1)))))
+  (assert (env/state-matches-map? s (apply util/merge-agree (map :precond-map firing-seq))))  
+  (env-util/make-factored-primitive
+   (vec (cons ::Fire (map :name firing-seq)))
+   (apply util/merge-agree (map :precond-map firing-seq))
+   (into precond-map 
+         (concat [[(action-var effect-var) factored-primitive]]
+                 (for [v free-pv]   [(free-var v)              true])
+                 (for [v unfree-pv] [(parent-var v effect-var) true])
+                 (for [v precond-vars] [(action-var v) (state/get-var s (action-var v))])))           
+   (into effect-map 
+         (concat [[(action-var effect-var) nil]]
+                 (for [v unfree-pv] [(free-var v)              true])
+                 (for [v unfree-pv] [(parent-var v effect-var) false])
+                 (for [v precond-vars] [(action-var v) nil])))
+   0)
+
+  
   (let [{:keys [name precond-map effect-map reward] :as factored-primitive}
         (->> effect-var action-var (state/get-var s))
         precond-vars (keys (dissoc precond-map effect-var))
-        [free-pv unfree-pv] (util/separate #(state/get-var s (free-var %)) precond-vars)
-        [reserved-pv external-pv] (util/separate #(state/get-var s (parent-var % effect-var))
-                                                 unfree-pv)]
-    (assert (every? #(contains? #{nil :frozen} (state/get-var s (action-var %))) reserved-pv))
-    (env-util/make-factored-primitive
-     [::Fire name]
-     (into precond-map 
-           (concat [[(action-var effect-var) factored-primitive]]
-                   (for [v free-pv]   [(free-var v)              true])
-                   (for [v reserved-pv] [(parent-var v effect-var) true])
-                   (for [v external-pv] [(free-var v) false])
-                   (for [v external-pv] [(parent-var v effect-var) false])))
-     (into effect-map 
-           (concat [[(action-var effect-var) nil]]
-                   (for [v reserved-pv] [(free-var v)              true])
-                   (for [v reserved-pv] [(parent-var v effect-var) false])
-                   (for [v reserved-pv] [(action-var v) nil])))
-     0)))
+        [free-pv unfree-pv] (util/separate #(state/get-var s (free-var %)) precond-vars)]
+    (assert (every? #(contains? #{nil :frozen} (state/get-var s (action-var %))) precond-vars))
+#_    (util/assert-is (every? #(contains? #{nil :frozen} (state/get-var s (action-var %))) precond-vars)
+                    "%s" [name precond-map effect-map s])    
+))
+
 
 (defn make-fire-action-type [s edge-rule effect-var]
   (doto (case edge-rule
@@ -203,6 +201,43 @@
     (for [[s t] (util/safe-get simple-dtgs var)
           :when (and (= s cur-val) (not (contains? (backward-sets t) s)))]
       t)))
+
+
+(defn allowed-action? [s a effect-var]
+  (assert (= effect-var (util/safe-singleton (keys (:effect-map a)))))
+  (every?
+   (fn [v]
+     (when (state/get-var s (possible-parent-var v effect-var))
+       (assert (not (state/get-var s (target-var v))))
+       true))   
+   (keys (:precond-map a))))
+
+(defn greedy-action? [s a] (state/state-matches-map? s (:precond-map a)))
+
+
+;; if a var is actually assigned and has a target and its value is right, ...
+(defn fire-sequences [s v])
+
+
+
+
+
+(defn bottom-up-actions [s v cvm dtgs acyclic-succ-fn]
+  (let [cur-val (state/get-var s v)
+        dst-val (state/get-var s (target-var v))
+        [greedy-actions ungreedy-actions] (->> (acyclic-succ-fn v cur-val dst-val)
+                                               (map (dtgs v cur-val))
+                                               (apply concat)
+                                               (filter #(allowed-action? s % v) )
+                                               (util/separate greedy-action?))]
+    (assert dst-val)
+    (assert (not (= cur-val dst-val)))
+    (concat
+     (intentional-actions s ungreedy-actions)
+     (for [a greedy-actions, fs (fire-sequences s a)]
+       (make-greedy-fire-action s fs)))))
+
+
 
 
 
@@ -329,17 +364,6 @@
       ;; This should only arise in cyclic domains -- TODO: remove?
       (add-actions s v dtgs))))
 
-
-
-
-(comment ; Dead-end check moved out to init.
- (defn possible-activation-actions  
-   "Return a list of possible activation actions for var v possible in state s.
-   To be possible parent, must be supported from below. "
-   [s ancestor-map child-map v]
-                                        ;   (activation-actions child-map v) #_   
-   (for [c (child-map v) :when (not (or (dead-end? s ancestor-map child-map [[ v c]])))]
-     (make-set-parent-var-action v c))))
 ;   (or (deadlocked? s child-map [[v c]]))
 
 
@@ -440,32 +464,7 @@
 (defn asplan-solution-pair-name [[sol rew]]
   [(asplan-solution-name sol) rew])
 
-(defn unrealized-reward [s]
-  (->> (state/as-map s)
-       (filter #(= (first (key %)) :action))
-       (keep val)
-       (map :reward)
-       (apply +)))
 
-
-(comment 
- (defn augmented-actions-and-goal-pair
-   "Return a set of actions and goal vv-pair that takes canceling of existing
-   commitments into account -- should really be incorporated into above?"
-   [asplan-env]
-   (let [init (env/initial-state asplan-env)
-         goal-var [::asplan-goal :?]
-         goal-val [::asplan-goal :true]]
-     [(cons
-       (env-util/make-factored-primitive
-        [::asplan-goal-action]
-        (into {sas/goal-var-name sas/goal-true-val}
-              (for [var (filter #(#{:action :free? :parent?} (first %)) (keys init))]
-                [var (case (first var) :free? true :parent? false :action nil)]))
-        {goal-var goal-val}
-        0)
-       (:actions asplan-env))
-      [goal-var goal-val]])))
 
 
 ;; TODO: cutoff when top-down and bottom-up meet, don't match ? (or earlier)
@@ -487,280 +486,3 @@
 
 ; (-> (nth (vals (sas-sample-files 1)) 5) make-sas-problem-from-pddl unarize make-asplan-env interactive-search)
 
-
-
-
-;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
-;;;;;;;;;;;;;;;;;;;;;; First attempt: "Skip" hierarchy ;;;;;;;;;;;;;;;;;;;;;;;;;
-;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
-
-
-;; OK, now we need a hierarchy.    Problems:
- ; some of the primitives as-implemented don't play well with state abstraction.
- ; want all derived knowledge to be represented explicitly ? 
-
-; Now an abstract subproblem should be, either:
- ; (1) achieve a particular precondition of some active action, or 
- ; (2) achieve some precondition of some active action.  
- ; (3) achieve some active action
-
-
-
-
-;; Can tell a number of things here:
-;; If :out-of-context is a source, we're ooc-deadlocked.
-;; If we have a cycle after dropping :ooc edges, we're real deadlocked.
-;; Right now we do lots of redundant checking rather than passing around state
-;; Better for state abstractino, I guess.
-;; Stick to that for now.  
-
-
-(defn restricted-source-vars
-  "Like get-sources, but take a sink-var that restricts the context
-   Will either return
-     (1) :deadlocked, if the state is truly deadlocked (within current context)
-     (2) :blocked, if the state is blocked on something out of context
-     (3) a non-empty list of sources, when neither of the above is true."
-  [s hierarchy sink-var edge-rule]
-  (let [restricted-cvm (util/safe-get-in hierarchy [:restricted-cvms sink-var])
-        edges          (var-ordering-edges s restricted-cvm edge-rule)
-        [ooc-edges context-edges] (util/separate (fn [[s t]] (= s :out-of-context)) edges)]
-;    (println "\n"  (state/as-map s) "\n" restricted-cvm sink-var ooc-edges context-edges "\n")
-    (cond (not (graphs/dag? context-edges)) :deadlocked
-          (seq ooc-edges)                   :blocked
-          :else           (clojure.set/difference (set (cons sink-var (map first context-edges)))
-                                                  (set (map second context-edges))))))
-
-
-(declare make-fire-action-hla)
-
-(defn make-achieve-precondition-hla [hierarchy var dst-val]
-  (let [name [:achieve-precondition var dst-val]
-        av   (action-var var)
-        pc   (util/safe-get-in hierarchy [:precondition-context-map var])
-;        pc   (:full-context hierarchy)
-        ]
-    (reify
-      env/Action
-       (action-name [a] name)
-       (primitive?  [a] false)
-      env/ContextualAction 
-       (precondition-context [a s] pc)
-      hierarchy/HighLevelAction
-       (immediate-refinements- [this s] 
-         (cond (= (state/get-var s var) dst-val)
-                 (do ;(print "!S") (flush)
-                   (assert (not (when-let [a (state/get-var s av)] (not (= a :frozen))))) [[]])
-               (state/get-var s av)
-                 (case (restricted-source-vars s hierarchy var :greedy)
-                   :deadlocked []
-                   :blocked    [[]]
-                   [[(make-fire-action-hla hierarchy var (state/get-var s av)) this]])                 
-               :else 
-                 (let [p-val (state/get-var s var)
-                       dtg   (util/safe-get-in hierarchy [:dtgs var p-val])]
-                   ;(print "!C")
-                   (for [n-val ((:acyclic-succ-fn hierarchy) var p-val dst-val), a (dtg n-val)]
-                     [(make-add-action-action a) this]))))
-       (cycle-level-           [a s] nil))))
-
-
-
-
-
-(defn make-fire-action-hla  [hierarchy effect-var a]
-  (let [name          [:fire-action effect-var]
-        reduced-pm    (dissoc (:precond-map a) effect-var)
-        ancestor-vars (util/safe-get-in hierarchy [:ancestor-var-map effect-var])
-        child-var-map (:child-var-map hierarchy)
-        pc (into #{(action-var effect-var)}
-                 (apply concat
-                        (for [v (distinct (apply concat (for [p (keys reduced-pm)] (util/safe-get-in hierarchy [:ancestor-var-map p]))))]
-                          (concat 
-                           [v (free-var v) (action-var v)]
-                           (for [c (child-var-map v) :when (ancestor-vars c)] (parent-var v c))))))]
-;    (println "FA" name pc "\n" (clojure.set/difference (:full-context hierarchy) pc))
-  (reify
-    env/Action
-      (action-name [a] name)
-      (primitive?  [a] false)
-    env/ContextualAction 
-      (precondition-context [a s] pc) ;; perhaps can do better?
-    hierarchy/HighLevelAction
-    (immediate-refinements- [this s]
-;                            (println (state/as-map s))
-;        (Thread/sleep 10)
-      
-      (assert (= (state/get-var s (action-var effect-var)) a))
-     #_ (println "REF!" effect-var)
-      (let [source-vars (restricted-source-vars s hierarchy effect-var :greedy)]
-        (case source-vars
-          :deadlocked (do #_(println "D!") [])
-          :blocked    (do #_(println "B!") [[]])
-          (if (contains? source-vars effect-var) ; Fire directly
-            [[(make-greedy-fire-action s effect-var)]]
-            (util/cond-let [p]
-              (util/find-first ; Achieve existing precondition
-               #(and (state/get-var s (parent-var % effect-var))
-                     (not (= (state/get-var s %) (reduced-pm %)))
-                     (not (keyword? (restricted-source-vars s hierarchy % :greedy) #_(util/prln  % "SV"))))
-               (sort-by (comp + (:topological-sort-indices hierarchy)) (keys reduced-pm)))
-              (do #_(println "BA!") [[(make-achieve-precondition-hla hierarchy p (reduced-pm p)) this]])
-
-              (util/find-first #(and (state/get-var s (free-var %)) ; Activate existing precondition
-                                     (not (= (state/get-var s %) (reduced-pm %))))
-                               (keys reduced-pm))
-              (do #_(println "BP!") (for [a (activation-actions child-var-map p)] [a this]))
-                
-              :else ; Top-down nonsense
-              (let [sources-by-type (group-by #(source-var-type s child-var-map %) source-vars)]
-                (util/cond-let [sources]
-                  (seq (sources-by-type :top-down-activate))
-                  (let [v (first sources)]
-                    (println "TP!" v)
-                    (for [a (activation-actions child-var-map v)]
-                      [a this]))
-                
-                  (seq (sources-by-type :top-down-action))
-                  (let [v (first sources)]
-                    (println "TA!" v) ;  (state/get-var s x) (state/get-var s (parent-var x sas/goal-var-name))
-                    (for [a (cons (make-freeze-var-action v)
-                                  (for [as (vals (get-in hierarchy [:dtgs v (state/get-var s v)])), a as]
-                                    (make-add-action-action a)))]
-                      [a this]))
-                
-                  :else (assert "Nothing to do"))))))))
-       (cycle-level-           [a s] nil))))
-
-
-;(def *bs* nil)
-
- ; include ancestor vars, action vars, free vars, in-pointing 'rents
-(defn make-asplan-skip-henv [sas-problem] 
-  (let [env    (make-asplan-env sas-problem)
-        cg     (:causal-graph env)
-        cvm    (:child-var-map env)
-        av-map (:ancestor-var-map env)
-        pc-map (into {} 
-                 (for [[k as] av-map] 
-                   [k 
-                    (into as
-                     (concat
-                      (for [v as] (free-var v))
-                      (for [v as] (action-var v))
-                      (for [v as, c (cvm v), :when (as c)] (parent-var v c))))]))
-        fa-map (into {} 
-                 (for [[k as] av-map] 
-                   [k 
-                    (into as
-                     (concat
-                      (for [v as] (free-var v))
-                      (for [v as] (action-var v))
-                      (for [v as, c (cvm v)] (parent-var v c))))]))
-        ]
- ;    (println "\n" av-map "\n\n" pc-map)
-    (hierarchy-util/make-simple-hierarchical-env 
-     env
-     [(make-fire-action-hla
-       {:type                     ::ASPlanSkipHierarchy
-        :full-context             (state/current-context (env/initial-state env))
-        :dtgs                     (:dtgs env)
-        :child-var-map            cvm
-        :restricted-cvms          (into {}
-                                        (for [sink (av-map sas/goal-var-name)
-                                              :let [ancestors (util/safe-get av-map sink)]]
-                                          [sink (util/map-vals #(filter ancestors  %) (select-keys cvm ancestors))]))        
-        :ancestor-var-map         av-map
-        :acyclic-succ-fn          (:acyclic-succ-fn env)
-        :topological-sort-indices (:topological-sort-indices env)
-        :precondition-context-map pc-map
-        :fire-action-pc-map       fa-map}
-       sas/goal-var-name
-       (state/get-var (env/initial-state env) (action-var sas/goal-var-name)))])))
-
-
-(defn asplan-skip-solution-name [sol]
-  (map second (filter #(= (first %) ::Fire) (map env/action-name sol))))
-
-(defn asplan-skip-solution-pair-name [[sol rew]]
-  [(asplan-skip-solution-name sol) rew])
-
-
-
-;; TODO: faster & early deadlock detection.
-;; TODO: detect "out-of-context" deadlock, fail immediately.
-;; TODO: precond ordering when we activate (handled by activation-actions?)
-
-;; (use 'angelic.search.explicit.hierarchical)
-
-;; (doseq [[alg sp search]  [[make-asplan-env asplan-solution-pair-name uniform-cost-search] [make-asplan-skip-henv asplan-skip-solution-pair-name dsh-ucs-inverted]] ] (println (time (run-counted #(sp (search (alg (make-random-infinite-taxi-sas2 3 3 3 3))))))))
-
-;; (doseq [[alg sp search]  [[angelic.search.action-set.asplan-broken/make-asplan-env angelic.search.action-set.asplan-broken/asplan-solution-pair-name uniform-cost-search] [angelic.search.action-set.asplan-broken/make-asplan-skip-henv angelic.search.action-set.asplan-broken/asplan-skip-solution-pair-name dsh-ucs-inverted]] ] (println (time (run-counted #(sp (search (alg (make-random-infinite-taxi-sas2 3 3 3 3))))))))
-
-
-
-;; TODO: (let [e (make-random-infinite-taxi-sas2 3 2 5 2)] (println (time (run-counted #(uniform-cost-search e)))) (println (time (run-counted #(asplan-solution-pair-name (uniform-cost-search (make-asplan-env e))))))  (println (debug 0 (time (run-counted #(asplan-skip-solution-pair-name (dsh-ucs-inverted (make-asplan-skip-henv e)))))))) gives bad results; replacing inverted iwht regular fixes it ... ?
-
-;; minimal exmaple:
-;; (let [i 25] (let [e (make-random-infinite-taxi-sas2 3 1 2 i)] #_ (println (time (run-counted #(uniform-cost-search e)))) (println (time (run-counted #(asplan-solution-pair-name (uniform-cost-search (make-asplan-env e))))))  (println (debug 0 (time (run-counted #(asplan-skip-solution-pair-name (dsh-ucs-inverted (make-asplan-skip-henv e)))))))))
-
-;  (let [e (make-random-infinite-taxi-sas2 1 2 1 2)] (println (time (run-counted #(uniform-cost-search e)))) (println (time (run-counted #(asplan-solution-pair-name (uniform-cost-search (make-asplan-env e))))))  (println (debug 0 (time (run-counted #(asplan-skip-solution-pair-name (dsh-ucs-inverted (make-asplan-skip-henv e))))))))
-
-; (let [e (make-random-infinite-taxi-sas2 1 2 1 2)] (interactive-hierarchical-search (make-asplan-skip-henv e)))
-
-; (let [e (make-random-infinite-taxi-sas2 2 2 2 2)] (interactive-hierarchical-search (make-asplan-skip-henv e)))
-
-; (let [e (force (nth ipc2-logistics 0))] (println (time (run-counted #(uniform-cost-search e)))) (println (time (run-counted #(asplan-solution-pair-name (uniform-cost-search (make-asplan-env e))))))  (println (debug 0 (time (run-counted #(asplan-skip-solution-pair-name (dsh-ucs-inverted (make-asplan-skip-henv e))))))))
-
-
-
-;(let [e (make-random-infinite-taxi-sas2 5 5 5 1) ] #_ (println (time (run-counted #(uniform-cost-search e)))) (println (time (run-counted #(asplan-solution-pair-name (uniform-cost-search (make-asplan-env e))))))   (println (debug 0 (time (run-counted #(asplan-skip-solution-pair-name (dsh-ucs-inverted (make-asplan-skip-henv e))))))))
-
-
-
-
-(comment
- ;; Like above, but tests actinos rather than asserting..
- (defn make-greedy-fire-action-h [s effect-var]
-   (let [{:keys [name precond-map effect-map reward] :as factored-primitive}
-         (->> effect-var action-var (state/get-var s))
-         precond-vars (keys (dissoc precond-map effect-var))
-         [free-pv unfree-pv] (util/separate #(state/get-var s (free-var %)) precond-vars)]
-     (when (every? #(contains? #{nil :frozen} (state/get-var s (action-var %))) precond-vars)
-       (let [a (env-util/make-factored-primitive
-                [::Fire name]
-                (into precond-map 
-                      (concat [[(action-var effect-var) factored-primitive]]
-                              (for [v free-pv]   [(free-var v)              true])
-                              (for [v unfree-pv] [(parent-var v effect-var) true])
-                              (for [v precond-vars] [(action-var v) (state/get-var s (action-var v))])))           
-                (into effect-map 
-                      (concat [[(action-var effect-var) nil]]
-                              (for [v unfree-pv] [(free-var v)              true])
-                              (for [v unfree-pv] [(parent-var v effect-var) false])
-                              (for [v precond-vars] [(action-var v) nil])))
-                0)]
-         (when (env/applicable? a s) a))))))
-
-(comment 
-;; TODO: these are too restrictive!  They'll say an action is deadlocked even
-; when one precondition is just waiting on another.
-  (declare precond-deadlocked?)
-  (defn action-deadlocked? [s var]
-    (when-let [a (state/get-var s (action-var var))]
-      (when-not (= a :frozen)
-        (some #(precond-deadlocked? s % var) (remove #{var} (keys (:precond-map a)))))))
-
-  (defn precond-deadlocked? [s precond e-var]
-    (or (and (not (state/get-var s (free-var precond)))
-             (not (state/get-var s (parent-var precond e-var))))
-        (action-deadlocked? s precond)))
-
-  (defn precond-deadlocked-ooc? [s precond e-var child-var-map context]
-    (or (and (not (state/get-var s (free-var precond)))
-             (not (state/get-var s (parent-var precond e-var)))
-             (not (contains? context (current-child s child-var-map precond))))
-        (when-let [a (state/get-var s (action-var precond))]
-          (when-not (= a :frozen)
-            (some #(precond-deadlocked-ooc? s % precond child-var-map context) 
-                  (remove #{precond} (keys (:precond-map a)))))))))
