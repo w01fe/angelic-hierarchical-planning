@@ -527,6 +527,8 @@
 
 ;; TODO: Take advantage of "greedy-chain" condition, don't assign
 
+;; (debug 0 (let [e (second (nth (sas-sample-problems 0) 11)) ] (println (time (run-counted #(rap/asplan-solution-pair-name (uniform-cost-search (rap/make-asplan-env e (fn [x] (= (first x) :capacity)) #{:drop}))))))))
+
 
 
 ;; (use 'angelic.env 'angelic.hierarchy 'angelic.search.textbook 'angelic.domains.taxi-infinite 'angelic.search.action-set.asplan  'angelic.domains.sas-problems 'angelic.sas 'angelic.sas.analysis 'angelic.util 'angelic.sas.hm-heuristic)

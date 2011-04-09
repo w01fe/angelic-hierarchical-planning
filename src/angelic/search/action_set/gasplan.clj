@@ -1,4 +1,4 @@
-(ns angelic.search.action-set.gasplan
+(ns angelic.search.action-set.gasplan2
   (:require [angelic.util :as util]
             [angelic.util.graphs :as graphs]
             [angelic.env :as env]
@@ -16,6 +16,11 @@
 ;; no greedy for side-effects,
 ;; no directed unless all side effects scheduled,
 ;; TODO greedy for 'nice' effects
+
+;; Need to identify possible actions, children given commitments.
+;; I.e., for resources no actions should e allowed, that propagates.
+;; 
+
 
 ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
 ;;;;;;;;;;;;;;;;;;;;;;;;;;;; States, (meta)primitives ;;;;;;;;;;;;;;;;;;;;;;;;;;
@@ -241,6 +246,11 @@
         (for [as (vals (get-in dtgs [v (state/get-var s v)])), a as]
           (make-add-action-action a v))))
 
+(defn conflicted-effects? [s v a]
+  (some #(scheduled-side-effector? s v %)
+        (keys (dissoc (:effect-map a) v))))
+
+
 ;; Here, need to worry about side effects.
 ;; If there are cycles that do not effect the reserving action
 (defn add-directed-actions [s v dtgs cvm acyclic-succ-fn effect-cluster-map]
@@ -252,16 +262,18 @@
       (if (every? (fn [side-var] (scheduled-side-effector? s v side-var)) (disj (effect-cluster-map v) v))      
         (if (= c-val d-val)
           [(make-freeze-var-action v)]
-          (for [n-val (acyclic-succ-fn v c-val d-val), a (dtg n-val)]
+          (for [n-val (acyclic-succ-fn v c-val d-val), a (dtg n-val)
+                :when (not (conflicted-effects? s v a))]
             (make-add-action-action a v)))
         (concat
          (when (= c-val d-val) [(make-freeze-var-action v)])
          (for [[n-val actions] dtg, action actions ;; TODO??
-               :when (not (some (fn [v] (= action (state/get-var s (action-var v)))) (keys (dissoc (:effect-map action) v))))]
+               :when (not (conflicted-effects? s v action))]
            (make-add-action-action action v))))      
       ;; This should only arise in cyclic domains -- TODO: remove?
       (do (assert nil) (add-actions s v dtgs)))))
 
+; (some (fn [sev] (= action (state/get-var s (action-var sev)))) (keys (dissoc (:effect-map action) v)))
 
 
 
@@ -277,6 +289,9 @@
     (goal-fn       [e] #(when (state/state-matches-map? % g-map) (env/solution-and-reward %)))
   env/FactoredEnv
     (goal-map      [e] g-map))
+
+;; TODO: should be pruning as soon as we reserve cap.
+
 
 ;; TODO: add assertions on precond var = effect var
 ;; Recall: greedy helps the most when, e.g., lots of passengers and not much room.
@@ -297,17 +312,23 @@
            causal-graph  (remove #(apply = %) (sas-analysis/standard-causal-graph sas-problem))
            vars          (graphs/ancestor-set causal-graph [sas/goal-var-name])
            causal-graph  (filter (fn [[v1 v2]] (and (vars v1) (vars v2))) causal-graph)
-           tsi           (graphs/df-topological-sort-indices causal-graph) ;; TODO: doesn't seem to matter...
            av-map        (into {} (for [v vars] [v (graphs/ancestor-set causal-graph [v])]))
            child-var-map (assoc (util/map-vals #(map second %) (group-by first causal-graph))
                            sas/goal-var-name [])
-           prevail-cvm   (util/map-vals set (graphs/edge-list->outgoing-map (sas-analysis/prevail-causal-graph sas-problem)))
+           prevail-cg    (sas-analysis/prevail-causal-graph sas-problem)
+;           tsi           (graphs/df-topological-sort-indices causal-graph) ;; TODO: doesn't seem to matter...
+           tsi           (graphs/df-topological-sort-indices prevail-cg) ;; way worse.
+           prevail-cvm   (util/map-vals set (graphs/edge-list->outgoing-map prevail-cg))
            effect-cluster-map (into {} (for [cluster (sas-analysis/effect-clusters sas-problem), v cluster] [v cluster]))
            dtgs          (sas-analysis/domain-transition-graphs sas-problem)
            simple-dtgs   (util/map-vals (fn [dtg] (for [[pval emap] dtg, [eval _] emap] [pval eval])) dtgs)
            acyclic-succ-fn (partial possibly-acyclic-successors (HashMap.) simple-dtgs)]
 ;       (assert (graphs/dag? causal-graph))    
-;       (assert (sas-analysis/unary? sas-problem))
+ ;       (assert (sas-analysis/unary? sas-problem))
+       (println tsi)
+       (doseq [a (:actions sas-problem)]
+         (when-not (every? (partial contains? (:precond-map a)) (keys (:effect-map a)))
+           (println (:name a) (apply dissoc (:effect-map a) (keys (:precond-map a))))))       
        (doseq [a (:actions sas-problem)]
          (assert (every? (partial contains? (:precond-map a)) (keys (:effect-map a)))))
 
@@ -317,6 +338,7 @@
         (expand-initial-state (env/initial-state sas-problem) child-var-map (goal-action dtgs))
 
         (fn asplan-actions [s]
+;          (println "\n" (:act-seq (meta s))) (Thread/sleep 100)
           (when-let [sources (and (or (not dead-vars?) (not (uses-dead-vars? s av-map child-var-map []))) 
                                   (seq (source-vars s child-var-map deadlock? components? edge-rule)))]
             (let [sources-by-type (group-by #(source-var-type s child-var-map %) sources)]
