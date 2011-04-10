@@ -83,9 +83,9 @@
 ;;;;;;;;;;;;;;;;;;;;; Misc TODOs 
 ;; TODO: add clusters -- leave out for now.
 ;; TODO: add top-down, leave out for now.
-;; TODO: heuristic costs for commitments.  At minimum, heuristic is sum of min costs of action intentions.
 ;; TODO: identify superflous resources -- i.e., over-capacity trucks.
-;; TODO: state abstraction / teleportation / generalized goal.
+;; TODO: better heuristics
+;; TODO: generalized goal ?
 ;; TODO greedy for 'nice' side-effects (doesn't really matter?)
 ;; TODO: Will still have to handle dangling effects.
 
@@ -256,6 +256,12 @@
    (:reward a)))
 
 
+(defn make-teleport-action [var from-val to-val rew]
+  (env-util/make-factored-primitive
+     [::Teleport var from-val to-val]
+     {var from-val}
+     {var to-val}
+     rew))
 
 
 
@@ -282,6 +288,22 @@
      (for [[s t] (util/safe-get simple-dtgs var)
            :when (and (= s cur-val) (not (contains? (backward-sets t) s)))]
        t))))
+
+(defn reachability-map [dtg from-val]
+  (let [q (queues/make-graph-search-pq)]
+    (queues/pq-add! q from-val 0)
+    (while (not (queues/pq-empty? q))
+      (let [[v c] (queues/pq-remove-min-with-cost! q)]
+        (doseq [[nv actions] (get dtg v)]
+          (queues/pq-add! q nv (- c (apply max (map :reward actions)))))))
+
+    (assert (:map q))
+    (util/map-vals - (into {} (:map q)))))
+
+(defn make-shortest-path-fn [dtgs]
+  (let [h (HashMap.)]
+    (fn [var from-val to-val]
+      (get (util/cache-with h [var from-val] (reachability-map (dtgs var) from-val)) to-val))))
 
 
 ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;; Helpers - VPG ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
@@ -460,6 +482,8 @@
 (defn structural-partitions [actions]
   (map set (vals (group-by (comp util/keyset :precond-map) actions))))
 
+
+
 ;; Here, need to worry about side effects.
 ;; If there are cycles that do not effect the reserving action
 ;; TODO: dynamic determination of effect clustering, conflicts
@@ -467,14 +491,17 @@
 ;;  and children are correct for vars other than (into or out of) v?
 ;;  but state may be otherwise inconsistent.
 ;;  (must take care, this happens in future state currently...)
-(defn make-possible-actions-fn [dtgs effect-cluster-map pre-partition?]
+(defn make-possible-actions-fn [dtgs effect-cluster-map pre-partition? teleport-set shortest-path-fn]
   (let [simple-dtgs   (util/map-vals (fn [dtg] (for [[pval emap] dtg, [eval _] emap] [pval eval])) dtgs)
         acyclic-succ-fn (partial possibly-acyclic-successors (HashMap.) simple-dtgs)]
     (fn [s v cur-val dst-val]
       (let [dtg (get-in dtgs [v cur-val])
             actions (remove #(conflicted-action? s v %)
                             (if (side-effect-free-var? s v effect-cluster-map)
-                              (mapcat dtg (acyclic-succ-fn v cur-val dst-val))
+                              (if (contains? teleport-set v)
+                                (when-not (= cur-val dst-val)
+                                  [(make-teleport-action v cur-val dst-val (shortest-path-fn v cur-val dst-val))])
+                                (mapcat dtg (acyclic-succ-fn v cur-val dst-val)))
                               (apply concat (vals dtg))))]
         (concat
          (when (= cur-val dst-val) [#{}])
@@ -534,7 +561,7 @@
 
 ;;;;;;;;;;;;;;;;;;;;;;;;;;;;; Actions fn, actual env ;;;;;;;;;;;;;;;;;;;;;;;;;;;
 
-(defrecord ASPlanEnv [base-sas-env init actions-fn g-map ]
+(defrecord ASPlanEnv [base-sas-env init actions-fn g-map relevant-vars shortest-path-fn ]
   env/Env 
     (initial-state [e] init)
     (actions-fn    [e] actions-fn)
@@ -579,9 +606,9 @@
     check-deadlock?: check for cycles in precedence graph above and beyond lack of sources
     check-components?: check for disconnected components, rule out sources outside of goal comp
     part?: initiall partition actions based on precondition variable set."
-  ([sas-problem & {:keys [directed? greedy? deadlock? dead-vars? components? part? aux?] :as m
-                   :or   {directed? true greedy? true deadlock? true dead-vars? true components? false part? true aux?  true}}]
-     (assert (every? #{:directed? :greedy? :deadlock? :dead-vars? :components? :aux? :part?} (keys m)))
+  ([sas-problem & {:keys [directed? greedy? deadlock? dead-vars? components? part? aux? teleport?] :as m
+                   :or   {directed? true greedy? true deadlock? true dead-vars? true components? false part? true aux?  true teleport? true}}]
+     (assert (every? #{:directed? :greedy? :deadlock? :dead-vars? :components? :aux? :part? :teleport?} (keys m)))
      (assert (= greedy? true))
      (let [edge-rule     (if greedy? :greedy :naive)
            causal-graph  (remove #(apply = %) (sas-analysis/standard-causal-graph sas-problem))
@@ -595,10 +622,15 @@
            tsi           (graphs/df-topological-sort-indices (rejigger-prevail-cg prevail-cg)) ;; way worse.
            prevail-cvm   (util/map-vals #(util/intersection (set %) vars)
                                         (graphs/edge-list->outgoing-map prevail-cg))
-
+           
            dtgs          (sas-analysis/domain-transition-graphs sas-problem)
            effect-cluster-map (into {} (for [cluster (sas-analysis/effect-clusters sas-problem), v cluster] [v cluster]))
-           possible-actions-fn (make-possible-actions-fn dtgs effect-cluster-map part?)
+           shortest-path-fn (make-shortest-path-fn dtgs)
+           teleport-vars    (if teleport?
+                              (util/difference (set (map first causal-graph)) (set (map second causal-graph)))
+                              #{})           
+           possible-actions-fn (make-possible-actions-fn dtgs effect-cluster-map part?
+                                                         teleport-vars shortest-path-fn)
 
            auxiliary-map (if aux? (get-auxiliary-map sas-problem) {})
            canonicalize  (fn [s bu-map]
@@ -611,7 +643,9 @@
                                              (assoc bum k #{nkc})
                                              (dissoc bum k))))
                                        bum))
-                                   (util/map-vals set bu-map) (keys bu-map)))] 
+                                   (util/map-vals set bu-map) (keys bu-map)))
+
+           ] 
 ;       (assert (graphs/dag? causal-graph))    
                                         ;       (assert (sas-analysis/unary? sas-problem))
        (println tsi "\n" auxiliary-map)
@@ -649,7 +683,8 @@
                (util/print-debug 1 "Pruning due to deadlock")))))
         
         
-        (env/goal-map sas-problem)))))
+        (env/goal-map sas-problem)
+        vars shortest-path-fn))))
 
 
 (defn asplan-solution-name [sol]
@@ -662,42 +697,51 @@
 ;;;;;;;;;;;;;;;;;;;;;;;;;;;;; Fancier search ;;;;;;;;;;;;;;;;;;;;;;;;;;;
 
 ;; Just hte cost of committed actions
-(defn committed-actions-heuristic [s]
-  (reduce +
-          (for [[var val] (state/as-map s)
-                :when (and (= (first var) :actions)
-                           (not (= :wait val))
-                           (not (empty? val)))]
-            (apply min (map :reward val)))))
+(defn make-committed-actions-heuristic [vars]
+  (fn [s]
+    (reduce + (for [v vars
+                    :let [val (state/get-var s (possible-actions-var v))]
+                    :when (and (not (= :wait val)) (seq val))]
+                (apply min (map :reward val))))))
 
 ;; Committed actions + shortest paths to target values.
-(defn domain-paths-heuristic [s]
-  0)
+;; could also maybe include reserved but not scheduled..
+(defn make-domain-paths-heuristic [vars shortest-path-fn]
+  (fn [s]
+    (reduce + (for [v vars
+                    :let [acts (state/get-var s (possible-actions-var v))]
+                    :when (and (not (= :wait acts)) (seq acts))]
+                (apply min (map #(+ (:reward %)
+                                    (shortest-path-fn v (get (:effect-map %) v) (target-value s v)))
+                                acts))))))
 
 ;; Committed actions + shortest paths + matching for preconds.
 (defn all-committments-heuristic [s]
   0)
 
-(defn canonicalize-state [s]
-  (into {} (for [[var val] (state/as-map s)
-                 :when (not (#{:actions :child} (first var)))]
-             [var val])))
+(defn canonicalize-state [s vars]
+  (for [v vars] (state/get-var s v)))
 
 ;; Keeps a separate closed list for canonical state pruning.
 (defn asplan-search
   ([env] (asplan-search env (constantly 0)))
-  ([env heuristic]
+  ([env h-type]
      (let [q       (queues/make-graph-search-pq)
            actions (env/actions-fn env) 
            goal    (env/goal-fn env)
            init    (env/initial-state env)
-           closed  (HashMap.)]
+           closed  (HashMap.)
+           relevant-vars    (:relevant-vars env)
+           shortest-path-fn (:shortest-path-fn env)
+           heuristic (case h-type
+                       :actions (make-committed-actions-heuristic relevant-vars)
+                       :paths   (make-domain-paths-heuristic relevant-vars shortest-path-fn))]
         (queues/pq-add! q init (heuristic init))
         (loop []
           (when-not (queues/pq-empty? q)
             (let [[s c] (queues/pq-remove-min-with-cost! q)
                   s-r     (or (:reward (meta s)) 0)
-                  canon-s (canonicalize-state s)
+                  canon-s (canonicalize-state s relevant-vars)
                   canon-r (get closed canon-s Double/NEGATIVE_INFINITY)]
               (util/print-debug 3 "dequeueing " (:act-seq (meta s)) c s "\n")
               (or (and (goal s) [(asplan-solution-name (reverse (:act-seq (meta s))))
