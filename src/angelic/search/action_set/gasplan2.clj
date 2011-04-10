@@ -70,6 +70,22 @@
 ;; TODO: don't choose dead var as child?
 ;; TODO: don't choose as child if current action will kill (i.e., final drop).
 
+;; TODO: if there are side-effecting actions, might not want to choose a value just yet,
+;; since we're not really goal directed anyway.
+;; TODO: ordering of prevail is funkified by hanging vars.
+;; TODO: we can generate cyclic plans -- figure out how to avoid this.
+
+;; TODO: directed doesn't work, e.g., for package in transport because of side effects...
+
+;; TODO: what if there are multiple actions on a var; some ready to fire, and some blocked?
+;; this will be a source, but we cannot proceed.
+;; need to split on this!
+;; Worse, can have none greedy and ones blocked on various things.
+;; Options are to split when blocking happens, always, or greedily execute just those that can.
+;; Wors
+
+;; TODO: think about if we should split when blocking happens
+
 ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
 ;;;;;;;;;;;;;;;;;;;;;;;;;;;; States, (meta)primitives ;;;;;;;;;;;;;;;;;;;;;;;;;;
 ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
@@ -143,7 +159,7 @@
     (when-not (= cur-c c) cur-c)))
 
 (defn can-greedily-use? [s a p-var e-var]
-  (assert (not (child-unavailable s p-var e-var)))
+  (util/assert-is (not (child-unavailable s p-var e-var)) "%s" [s a p-var e-var])
   (and (= (util/safe-get (:precond-map a) p-var) (state/get-var s p-var))
        (let [pav (state/get-var s (possible-actions-var p-var))]
          (or (and (= pav :wait) (not (contains? (:effect-map a) p-var)))
@@ -152,11 +168,11 @@
 ;; TODO: free increases.
 (defn make-greedy-fire-action [s a effect-var next-actions]
   (doseq [pvar (keys (dissoc (:precond-map a) effect-var))]
-    (assert (can-greedily-use? s a pvar effect-var))
+    (util/assert-is (can-greedily-use? s a pvar effect-var))
     (assert (contains? #{#{} :wait} (state/get-var s (possible-actions-var pvar)))))
   (assert (contains? (state/get-var s (possible-actions-var effect-var)) a))  
   (env-util/make-factored-primitive
-   [::Fire a]
+   [::Fire a next-actions]
    {}
    (into (:effect-map a)
          (apply concat
@@ -208,6 +224,7 @@
   (util/map-vals (partial map second) (group-by first (for [x s, k (f x)] [k x]))))
 
 ;; NOTE: could be much more efficient...
+;; TODO: possible block ...
 (defn vpg-edge-map [s vars]
   (util/for-map [v vars]
    v
@@ -218,7 +235,7 @@
        (remove nil?
         (for [[p-var p-actions] (dissoc (group-by-keys (comp keys :precond-map) actions) v)]
           (if-let [block (child-unavailable s p-var v)]
-            [:block block]
+            (when (= (count p-actions) (count actions)) [:block block])
             (let [need-count (util/count-when #(not (can-greedily-use? s % p-var v)) p-actions)]
               (cond (= need-count (count actions)) [:necessary-precond p-var]
                     (> need-count 0)               [:possible-precond p-var])))))))))
@@ -283,7 +300,8 @@
   (let [goal-action (util/safe-singleton (state/get-var s (possible-actions-var sas/goal-var-name)))
         live-set (apply clojure.set/union #{sas/goal-var-name}
                         (for [pv (keys (dissoc (:precond-map goal-action) sas/goal-var-name))
-                              :when (not (can-greedily-use? s goal-action pv sas/goal-var-name))]
+                              :when (or (child-unavailable s pv sas/goal-var-name)
+                                        (not (can-greedily-use? s goal-action pv sas/goal-var-name)))]
                           (ancestor-map pv)))
         vars     (util/safe-get ancestor-map sas/goal-var-name)]
  ;    (println live-set)
@@ -303,18 +321,20 @@
 ;;;;;;;;;;;;;;;;;;;;;;;;;;;;; Helpers - Branching ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
 
 ;; TODO: ???
-(defn scheduled-side-effector? [s v side]
+(defn possible-scheduled-side-effector? [s v side]
   (when-let [actions (state/get-var s (possible-actions-var side))]
-    (and (not (= actions #{}))
+    (and (not (#{#{} :wait} actions ))
          (some #(contains? (:effect-map %) v) actions))))
 
-(defn conflicted-effects? [s v a]
-  (some #(scheduled-side-effector? s v %)
-        (keys (dissoc (:effect-map a) v))))
+(defn guaranteed-scheduled-side-effector? [s v side]
+  (when-let [actions (state/get-var s (possible-actions-var side))]
+    (and (not (#{#{} :wait} actions ))
+         (every? #(contains? (:effect-map %) v) actions))))
+
 
 
 (defn possible-children [s p child-map prevail-map]
-  (let [children (filter #(or (get-in prevail-map [p %]) (scheduled-side-effector? s p %))
+  (let [children (filter #(or (get-in prevail-map [p %]) (possible-scheduled-side-effector? s p %))
                          (child-map p))
         child (state/get-var s (child-var p))]
     (if child
@@ -325,6 +345,11 @@
 (defn var-at-target? [s v]
   (= (state/get-var s v) (target-value s v)))
 
+(defn blocking-set [s a e-var]
+  (set (for [p (keys (dissoc (:precond-map a) e-var))
+             :when (child-unavailable s p e-var)]
+         p)))
+
 ;; TODO: improve
 (defn prune-and-group-actions
   "Group actions by value wanted for p, ruling out illegal values (e.g., unobtainable resource vals)."
@@ -332,33 +357,37 @@
   (group-by #((:precond-map %) p) unhappy-actions))
 
 
-(comment
- (defn side-effect-free-var? [s v effect-cluster-map]
-   (every? (fn [side] (scheduled-side-effector? s v side))
-           (disj (effect-cluster-map v) v))))
 
-(comment (remove #(conflicted-effects? s v %)
-                            (if (side-effect-free-var? s v effect-cluster-map)
-                              (mapcat dtg (acyclic-succ-fn v cur-val dst-val))
-                              (apply concat (vals dtg)))))
+(defn side-effect-free-var? [s v effect-cluster-map]
+   (every? (fn [side] (guaranteed-scheduled-side-effector? s v side))
+           (disj (effect-cluster-map v) v)))
 
-;; return NIL (not #{}) for dead end.
+(defn conflicted-effects? [s v a]
+  (some #(guaranteed-scheduled-side-effector? s v %)
+        (keys (dissoc (:effect-map a) v))))
+
+
 ;; Here, need to worry about side effects.
 ;; If there are cycles that do not effect the reserving action
 ;; TODO: dynamic determination of effect clustering, conflicts
+;; NOTE: we require that possible-actions-var is correct for vars other than v,
+;;  but state may be otherwise inconsistent.
 ;;  (must take care, this happens in future state currently...)
 (defn make-possible-actions-fn [dtgs effect-cluster-map]
   (let [simple-dtgs   (util/map-vals (fn [dtg] (for [[pval emap] dtg, [eval _] emap] [pval eval])) dtgs)
         acyclic-succ-fn (partial possibly-acyclic-successors (HashMap.) simple-dtgs)]
-    (fn [v cur-val dst-val]
+    (fn [s v cur-val dst-val]
       (let [dtg (get-in dtgs [v cur-val])
-            actions (if (util/singleton? (get effect-cluster-map v))
-                      (mapcat dtg (acyclic-succ-fn v cur-val dst-val))
-                      (apply concat (vals dtg)))]
-        (when (or (seq actions) (= cur-val dst-val))
-          (set actions))))))
+            actions (remove #(conflicted-effects? s v %)
+                            (if (side-effect-free-var? s v effect-cluster-map)
+                              (mapcat dtg (acyclic-succ-fn v cur-val dst-val))
+                              (apply concat (vals dtg))))]
+        (concat
+         (when (= cur-val dst-val) [#{}])
+         (when (seq actions) [(set actions)]))))))
 
 
+(comment (util/singleton? (get effect-cluster-map v)))
 
 ;; TODO: where do happy belong?
 (defn bottom-up-expand-actions [s p c child-map prevail-map possible-actions-fn]
@@ -370,25 +399,27 @@
         lazy-set                (set (concat happy indifferent))]
     (assert (seq unhappy))    
     (concat
-     (when (or (seq lazy-set) (var-at-target? s c))
+     (when (seq lazy-set)
        [(make-set-actions-action c lazy-set)])
      (for [other-c (remove #{c} (possible-children s p child-map prevail-map))]
        (make-set-child-action p other-c))
      (for [[p-val wanting-actions] (prune-and-group-actions s p c unhappy)
-           :let [possible-next-actions (possible-actions-fn p (state/get-var s p) p-val)]
-           :when possible-next-actions]
+           possible-next-actions (possible-actions-fn (state/set-var s (possible-actions-var c) (set wanting-actions))
+                                                      p (state/get-var s p) p-val)]
        (make-bottom-up-expand-action s p c (set wanting-actions) possible-next-actions)))))
 
 (defn greedy-fire-actions [s v possible-actions-fn]
-  (let [actions (state/get-var s (possible-actions-var v))]
-    (assert (seq actions))
+  (let [actions-by-block (group-by #(blocking-set s % v) (state/get-var s (possible-actions-var v)))]
+    (assert (or (seq (actions-by-block #{})) (> (count actions-by-block) 1)))
     (concat
-     (when (var-at-target? s v)
-       [(make-set-actions-action v #{})])
-     (for [a actions
-           :let [possible-next-actions (possible-actions-fn v (util/safe-get (:effect-map a) v) (target-value s v))]
-           :when possible-next-actions]
+     (for [[block as] (dissoc actions-by-block #{})]
+       (make-set-actions-action v (set as)))
+     (for [a (actions-by-block #{})
+           possible-next-actions (possible-actions-fn s v (util/safe-get (:effect-map a) v) (target-value s v))]
        (make-greedy-fire-action s a v possible-next-actions)))))
+
+(comment      (when (var-at-target? s v)
+       [(make-set-actions-action v #{})]))
 
 ;; TODO: auxiliary vars.
 
@@ -406,7 +437,17 @@
 (defn print-state [s]
   (println "\n")
   (doseq [a (reverse (:act-seq (meta s)))] (println a))
+  (println)
 #_  (println s))
+
+
+(defn rejigger-prevail-cg [prevail-cg]
+  (let [sinks (util/difference (set (map second prevail-cg)) (set (map first prevail-cg)))
+        bad-sinks (disj sinks sas/goal-var-name)]
+    (for [[f t] prevail-cg]
+      (if (bad-sinks t)
+        [t f]
+        [f t]))))
 
 
 ;; TODO: add assertions on precond var = effect var
@@ -433,7 +474,7 @@
                            sas/goal-var-name [])
            prevail-cg    (sas-analysis/prevail-causal-graph sas-problem)
 ;           tsi           (graphs/df-topological-sort-indices causal-graph) ;; TODO: doesn't seem to matter...
-           tsi           (graphs/df-topological-sort-indices prevail-cg) ;; way worse.
+           tsi           (graphs/df-topological-sort-indices (rejigger-prevail-cg prevail-cg)) ;; way worse.
            prevail-cvm   (util/map-vals #(util/intersection (set %) vars)
                                         (graphs/edge-list->outgoing-map prevail-cg))
            dtgs          (sas-analysis/domain-transition-graphs sas-problem)
@@ -441,7 +482,7 @@
            possible-actions-fn (make-possible-actions-fn dtgs effect-cluster-map)]
 ;       (assert (graphs/dag? causal-graph))    
                                         ;       (assert (sas-analysis/unary? sas-problem))
-;       (println tsi)
+       (println tsi)
        (doseq [a (:actions sas-problem)]
          (when-not (every? (partial contains? (:precond-map a)) (keys (:effect-map a)))
            (println (:name a) (apply dissoc (:effect-map a) (keys (:precond-map a))))))       
@@ -453,19 +494,28 @@
         (expand-initial-state (env/initial-state sas-problem) vars (goal-action dtgs))
 
         (fn asplan-actions [s]
-;          (print-state s) (Thread/sleep 100)
-          (when (or (not dead-vars?) (not (uses-dead-vars? s av-map )))
+          (util/do-debug 2 (print-state s) (Thread/sleep 100))
+          (if (and dead-vars? (uses-dead-vars? s av-map ))
+            (do (util/print-debug 1 "Pruning due to dead vars") nil)
             (let [sources-by-type (source-vars-by-type s vars deadlock? components? )]
  ;;           (println sources-by-type)
-              (util/cond-let [sources]
-               (seq (get sources-by-type :greedy))
-               (greedy-fire-actions s (first sources) possible-actions-fn)
+              (if sources-by-type
+                (util/prln-debug 2
+                 (util/cond-let [sources]
+                  (seq (get sources-by-type :greedy))
+                  (greedy-fire-actions s (first sources) possible-actions-fn)
 
-               (seq (get sources-by-type :bottom-up))
-               (let [[p-var children] (apply max-key (comp tsi first) sources)] ;; min?
-                 (bottom-up-expand-actions s p-var (first children) child-var-map prevail-cvm possible-actions-fn))
+                  (seq (get sources-by-type :bottom-up))
+                  (let [[p-var children] (apply max-key (comp tsi first) sources)] ;; min?
+                    (bottom-up-expand-actions s p-var (first children) child-var-map prevail-cvm possible-actions-fn))
                
-               :else (assert (empty? sources-by-type))))))
+                  :else (do (util/assert-is (empty? sources-by-type) "%s" [(do (print-state s) (clojure.inspector/inspect-tree (state/as-map s))
+                                                                               s)])
+                            (util/print-debug 1 "Pruning since nothing to do?!"))))
+               
+               (util/print-debug 1 "Pruning due to deadlock")))))
+        
+        
         (env/goal-map sas-problem)))))
 
 
@@ -479,8 +529,12 @@
 
 
 
-;; (do (use 'angelic.env 'angelic.hierarchy 'angelic.search.textbook 'angelic.domains.taxi-infinite 'angelic.domains.sas-problems 'angelic.sas 'angelic.sas.analysis 'angelic.util 'angelic.sas.hm-heuristic) (require '[angelic.search.action-set.gasplan2 :as gap2]))
+;; (do (use 'angelic.env 'angelic.hierarchy 'angelic.search.textbook 'angelic.domains.taxi-infinite 'angelic.domains.sas-problems 'angelic.sas 'angelic.sas.analysis 'angelic.util 'angelic.sas.hm-heuristic 'angelic.search.interactive) (require '[angelic.search.action-set.gasplan2 :as gap2]))
 
 ;; (let [e (force (nth ipc2-logistics 5)) ]  (println (time (run-counted #(ap/asplan-solution-pair-name (uniform-cost-search (ap/make-asplan-env e ))))))  (println (time (run-counted #(ap2/asplan-solution-pair-name (uniform-cost-search (ap2/make-asplan-env e )))))) (println (time (run-counted #(gap2/asplan-solution-pair-name (uniform-cost-search (gap2/make-asplan-env e )))))))
 
+;; (let [e (force (nth ipc2-logistics 7)) ]  (println (time (run-counted #(ap/asplan-solution-pair-name (uniform-cost-search (ap/make-asplan-env e ))))))  (println (time (run-counted #(ap2/asplan-solution-pair-name (uniform-cost-search (ap2/make-asplan-env e )))))) (println (time (run-counted #(gap2/asplan-solution-pair-name (uniform-cost-search (gap2/make-asplan-env e )))))))
 
+;; (let [e (force (nth ipc2-logistics 5)) ]  (println (time (run-counted #(uniform-cost-search e ))))  (println (time (run-counted #(gap/asplan-solution-pair-name (uniform-cost-search (gap/make-asplan-env e )))))) (println (time (run-counted #(gap2/asplan-solution-pair-name (uniform-cost-search (gap2/make-asplan-env e )))))))
+
+;; (let [e (second  (nth (sas-sample-problems 0) 11)) ] (println (time (debug 0 (run-counted #(gap2/asplan-solution-pair-name (interactive-search (gap2/make-asplan-env e ))))))))

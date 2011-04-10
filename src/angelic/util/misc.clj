@@ -34,7 +34,16 @@
 
 (defmacro print-debug [level & args]
   `(when (>= @~#'*debug-level* ~level)
-    (println ~@args)))
+     (println ~@args)))
+
+(defmacro do-debug [level & args]
+  `(when (>= @~#'*debug-level* ~level)
+     (do ~@args)))
+
+(defmacro prln-debug [level & args]
+  `(let [ret# ~(first args)]
+     (print-debug ~level ret# ~@(rest args))
+     ret#))
 
 (defn prln "Print all arguments and return the first argument"
   [& args] (do (println (apply print-str args)) (first args)))

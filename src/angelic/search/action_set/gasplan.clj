@@ -1,4 +1,4 @@
-(ns angelic.search.action-set.gasplan2
+(ns angelic.search.action-set.gasplan
   (:require [angelic.util :as util]
             [angelic.util.graphs :as graphs]
             [angelic.env :as env]
@@ -325,7 +325,7 @@
            acyclic-succ-fn (partial possibly-acyclic-successors (HashMap.) simple-dtgs)]
 ;       (assert (graphs/dag? causal-graph))    
  ;       (assert (sas-analysis/unary? sas-problem))
-       (println tsi)
+;       (println tsi)
        (doseq [a (:actions sas-problem)]
          (when-not (every? (partial contains? (:precond-map a)) (keys (:effect-map a)))
            (println (:name a) (apply dissoc (:effect-map a) (keys (:precond-map a))))))       
