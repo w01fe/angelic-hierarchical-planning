@@ -503,7 +503,7 @@
               (.put counts s (dec c))
               (.add open s))))))
 
-    (do #_ comment
+    (comment
       (println (count successors) (count counts) (count closed))
       
       (clojure.inspector/inspect-tree
