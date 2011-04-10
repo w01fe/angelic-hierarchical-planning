@@ -143,15 +143,17 @@
 ;; TODO: implied truths are over-included.
 ;;:when (do (util/assert-is (contains? nec-set v)) (> (count nec-set) 1))
 (defn auxiliary-vars [sas-problem]
-  (dissoc (util/for-map [[v nec-set]
-                  (apply merge-with util/intersection 
-                         (for [{:keys [precond-map effect-map]} (:actions sas-problem)
-                               p (keys precond-map)]
-                           {p (util/union (util/keyset precond-map)
-                                          (util/keyset effect-map))}))
-                  :let [r-set (disj nec-set v)]
-                  :when (seq r-set)]
-                        v r-set) sas/goal-var-name))
+  (dissoc (util/for-map
+           [[v nec-set]
+            (apply merge-with util/intersection 
+                   (for [{:keys [precond-map effect-map]} (:actions sas-problem)
+                         p (keys precond-map)]
+                     {p (util/union (util/keyset precond-map)
+                                    (util/keyset effect-map))}))
+            :let [r-set (disj nec-set v)]
+            :when (seq r-set)]
+           v r-set)
+          sas/goal-var-name))
 
 
 ; (doseq [[n p] (sas-sample-problems 0)] (println "\n" n) (let [av (auxiliary-vars p)] (doseq [v av] (println v)) (println (- (count (:vars p)) (count av)))))
@@ -358,8 +360,198 @@
 
 
 
+;;;;;;;;;;;;;;;;;;;;;;;;;; Static analysis for finding implications ;;;;;;;;;;;;;;;;;;;;;;;;
+
+;; u=x --> v=y if:
+;;   whenever v is set to y, u is set to x, or u is not set and has precond x
+;;   whenever v is set to not y, either u is already not x, or u is set to not x.
+
+;; Candidates [x y] where maybe x ==> y
+(defn find-candidate-implications [actions]
+  (->> (for [{:keys [precond-map effect-map]} actions
+             :let [final-map (merge precond-map effect-map)]
+             [evar eval] effect-map]
+         [[evar eval] (set (dissoc final-map evar))])
+       (group-by first)
+       (util/map-vals #(apply util/intersection (map second %)))
+       (graphs/outgoing-map->edge-list)))
+
+(defn valid-implication? [extended-dtgs [[u x] [v y]]]
+  (every? (fn [{:keys [precond-map effect-map]}]
+            (when-let [u-val ((merge precond-map effect-map) u)]
+              (not (= u-val x))))                
+          (apply concat (vals (get-in extended-dtgs [v y])))))
 
 
+
+(defn find-static-implications [sas-problem]
+  (let [{:keys [vars actions init]} sas-problem
+        actions                     (cons (env-util/make-factored-primitive [:init] {} init 0) actions)]    
+    (->> (find-candidate-implications actions)
+;         (map util/prln)
+         (filter (partial valid-implication? (domain-transition-graphs vars actions)))
+         (graphs/edge-list->outgoing-map)
+         (util/map-vals (partial into {})))))
+
+;; Unfortunately, that's not good enough for what we need.  Need to be able to track implications.
+;; So, we need a fixed point algorithm
+;; Basic idea will be to track, for each variable and value,
+;; allowed values for each other variable.
+;; Initially suppose nothing but initial state is allowed.
+;; Can do this with a quiescence search?
+;; Action is allowed when all combinatinos of preconds are allowed.
+;;  It creates combinations of all effect values,
+;;  Plus effect values with unchanged precondition values,
+;;  Plus effect values with all other values not ruled out by preconditions.
+
+;; Use planning-graph-type thing
+;; initialize with single, pairs of values from initial state,
+;; each value or pair may enable an action
+;;  plus pair of action and all currently applicable persists.
+;; action enables outcomes and all pairs
+;; action + persist enables pairs
+;; pairs enable action + persists.
+;; Implement it as await counts.
+
+;; action awaits all individuals + pairs.
+;; value awaits any action
+;; action + persist awaits all pairs of precond + other
+;; value pair awaits producing action or action + persist
+
+(set! *warn-on-reflection* true)
+
+(defn single-value [v] [:v v])
+(defn mutex-value [v1 v2] [:vm #{v1 v2}])
+(defn single-action [a] [:a a])
+(defn mutex-action [a pv] [:am a pv])
+
+(defn initial-items [init actions]
+  (concat
+   (for [kv init] (single-value kv))
+   (for [[v1 v2] (util/combinations init 2)] (mutex-value v1 v2))
+   (for [a actions :when (empty? (:precond-map a))] (single-action a))))
+
+
+(defn predecessors-and-counts [vars actions implications]
+  (let [rdtgs (reverse-domain-transition-graphs vars actions)
+        vv-pairs (for [v (vals vars), vl (:vals v)] [(:name v) vl])]
+    (concat
+     (for [vv vv-pairs]
+       [(single-value vv)
+        1
+        (for [a (apply concat (vals (get-in rdtgs vv)))]
+          (single-action a))])
+
+     (for [[[vr1 vl1 :as vv1] [vr2 vl2 :as vv2]] (util/combinations vv-pairs 2)
+           :when (not (= vr1 vr2))
+           :let [imp2 (get-in implications [vv1 vr2] vl2)
+                 imp1 (get-in implications [vv2 vr1] vl1)]]
+       [(mutex-value vv1 vv2)
+        (if (and (= imp1 vl1) (= imp2 vl2)) 1 Double/POSITIVE_INFINITY)
+        (for [a (distinct (concat (apply concat (vals (get-in rdtgs vv1)))
+                                  (apply concat (vals (get-in rdtgs vv2)))))]
+          (let [{:keys [precond-map effect-map]} a
+                persist-map (into precond-map effect-map)]
+            (cond (and (= (persist-map vr1) vl1) (= (persist-map vr2) vl2))
+                  (single-action a) 
+                  (= (persist-map vr1) vl1) (mutex-action a vv2)
+                  (= (persist-map vr2) vl2) (mutex-action a vv1)
+                  :else (assert nil))))])
+
+     (for [a actions
+           :let [{:keys [precond-map effect-map]} a
+                 preds (concat
+                        (map single-value precond-map)
+                        (map (fn [[vv1 vv2]] (mutex-value vv1 vv2)) (util/combinations precond-map 2)))]]
+       [(single-action a) (count preds) preds])
+
+     (for [a actions,
+           :let [{:keys [precond-map effect-map]} a]
+           [vr vl :as vv] vv-pairs
+           :when (and (not (contains? precond-map vr))
+                      (not (contains? effect-map vr)))
+           :let [preds (for [pvv precond-map] (mutex-value vv pvv))]]
+       [(mutex-action a vv) (count preds) preds]))))
+
+
+(defn find-mutexes [sas-problem]
+  (let [{:keys [vars actions init]} sas-problem
+        implications {} ;        (find-static-implications sas-problem) ;; Doesn't actually help, when fixed...
+        counts (HashMap.)
+        open   (ArrayList.)
+        successors (HashMap.)
+        closed     (HashSet.)]
+
+    (doseq [[x cnt preds] (predecessors-and-counts vars actions implications)]
+      (assert (> cnt 0))
+      (.put counts x cnt)
+      (doseq [pred preds]
+        (.put successors pred (cons x (.get successors pred)))))
+    
+    (doseq [i (initial-items init actions)]
+      (.remove counts i)
+      (.add open i))       
+
+    (while (> (.size open) 0)
+      (let [x  (.remove open (int (dec (.size open))))]
+;        (println x)
+        (assert (not (.contains closed x)))
+        (.add closed x)
+        (doseq [s (.remove successors x)]
+          (when-let [c (.remove counts s)]
+            (if (> c 1)
+              (.put counts s (dec c))
+              (.add open s))))))
+
+    (do #_ comment
+      (println (count successors) (count counts) (count closed))
+      
+      (clojure.inspector/inspect-tree
+       (for [[x cnt preds] (predecessors-and-counts vars actions implications)
+             :when (and (= (first x) :a)
+                        (not (.contains closed x)))]
+         [x (filter #(not (.contains closed %)) preds)]))
+    
+      (->> closed
+           (filter #(= (first %) :v))
+           (map second)
+           (group-by first)
+           (util/map-vals (partial map second))))
+
+    (let [{:keys [v vm a]} (util/map-vals (partial map second)
+                                             (group-by first (keys counts)))]
+      [(util/map-vals (comp set (partial map second)) (group-by first v)) 
+       (reduce (fn [m [[vr1 vl1] [vr2 vl2]]]
+                 (assoc-in m [[vr1 vl1] vr2 vl2] true))
+               {}
+               (mapcat util/permutations vm))
+       a])))
+
+
+(defn compute-implications [vars mutexes]
+  (->>
+   (util/map-vals
+    (fn [m] 
+      (into {}
+            (for [[k vs] m
+                  :let [r-vals (clojure.set/difference (set (:vals (vars k))) (util/keyset vs))]
+                  :when (<= (count r-vals) 1)]
+              [k (util/safe-singleton r-vals)])))
+    mutexes)   
+   (filter #(seq (val %)))
+   (into {})))
+
+
+
+
+
+(defn find-implications [sas-problem]
+  (compute-implications (:vars sas-problem) (second (find-mutexes sas-problem))))
+
+
+
+
+(set! *warn-on-reflection* false)
 
 
 

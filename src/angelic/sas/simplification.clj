@@ -1,9 +1,61 @@
 (ns angelic.sas.simplification
   (:require [angelic.util :as util]
             [angelic [env :as env] [sas :as sas]]
-            angelic.env.util
+            [angelic.env.util :as env-util]
             [angelic.sas.analysis :as sas-analysis]))
 
+
+
+
+
+
+
+;;;;;;;;;;;;;;;;;;;;;;; Eliminating dangling effects
+
+;; Dangling effects are pesky effects without preconditions.
+;; Typically the precondition is actually known, the domain designer was just too
+;; lazy to write it down.  We can imply them and fill them in.
+
+(defn nice-action? [{:keys [precond-map effect-map]}]
+  (every? (partial contains? precond-map) (keys effect-map)))
+
+(defn find-value [mutex-map val-sets v precond-map]
+  (let [candidates (apply util/difference (get val-sets v)
+                          (for [kv precond-map]
+                            (util/keyset (get-in mutex-map [kv v]))))]
+    (when-not (= (count candidates) 1)
+      (println "Got" (count candidates) "candidates" candidates "in" v "for" precond-map))
+    (first #_ util/safe-singleton candidates)))
+
+
+(defn fix-action [mutex-map val-sets a]
+  (let [{:keys [precond-map effect-map]} a
+        pesky-vars (remove (util/keyset precond-map) (keys effect-map))
+        _   (util/do-debug 1 (print "Filling in" a "vars" pesky-vars "with" ))
+        missing-vals (for [v pesky-vars] [v (find-value mutex-map val-sets v precond-map)])]
+    (util/print-debug 1 missing-vals)
+    (update-in a [:precond-map] into missing-vals)))
+
+
+(defn eliminate-dangling-effects [sas-problem]
+  (let [{:keys [vars actions init]} sas-problem
+        [bad-vals mutex-map dead-actions] (sas-analysis/find-mutexes sas-problem)
+        live-actions (remove (set dead-actions) actions)
+        [nice-actions pesky-actions] (util/separate nice-action? live-actions)
+        val-sets      (util/for-map [{:keys [name vals]} (vals vars)] name (set vals))
+        fixed-actions (doall (map #(fix-action mutex-map val-sets %) pesky-actions))]
+;    (assert (empty? bad-vals))
+    (util/print-debug 1 "Removing" (count dead-actions) "actions, fixing" (count pesky-actions)
+                         "skipping" (count bad-vals) "bad values, maybe value combinations.")
+    (sas/make-sas-problem vars init (concat nice-actions fixed-actions))))
+
+
+
+
+
+;; (debug 3 (do (eliminate-dangling-effects  (second  (nth (sas-sample-problems 0) 0))) nil))
+
+;;;;;;;;;;;;;;;;;;;;;;;;; First attempt at simplifying, not sure if itworks
 
 (defn merge-vals
   ([] nil)
@@ -28,7 +80,9 @@
                                  :let [val-map  (val-mappings vn)
                                        new-vals (vec (distinct (vals val-map)))
                                        _ (assert (and (> (count new-vals) 0)
-                                                      (val-map (init vn))))]
+                                                      (val-map (init vn))))
+                                       _ (when (<= (count new-vals) 1) (println vn new-vals) )
+                                       ]
                                  :when (> (count new-vals) 1)]
                              [vn (angelic.sas.SAS-Var. vn new-vals)]))
         final-actions    (vec (for [a (remove (set dead-actions) actions)
@@ -41,6 +95,7 @@
                                                         [var new-val]))]
                                     :when (seq fe)]
                                 (env-util/make-factored-primitive (:name a) fp fe (:reward a))))]
+    (println val-mappings)
     (println "Removing"   (- (count actions) (count final-actions)) "actions," 
                             (count dead-actions) "initial;" 
                           (- (count vars) (count final-vars)) "vars;"

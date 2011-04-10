@@ -88,7 +88,9 @@
 ;; TODO: generalized goal ?
 ;; TODO greedy for 'nice' side-effects (doesn't really matter?)
 ;; TODO: Will still have to handle dangling effects.
-
+;; TODO: have to see if multiplying will kill us.
+;; TODO: prevail tsi is missing some vars
+;; TODO: use other forward simplification ?
 
 ;;;;;;;;;;;;;;;;;;;;; Partition ordering
 ;; ** TODO: only work on preconditions of blocked actions if they can resolve
@@ -138,6 +140,12 @@
 
 ;;;;;;;;;; Implementation notes
 
+;; Pesky side effects (without preconds)...
+;; Can try to deal with them head-on, or remove them from domain.
+;; To remove them in most cases, can do analysis to find entailment
+;; relationships of the form: if v=x, then u=y, use these to fill in
+;; missing preconditions.
+;; To deal with them head-on, we can reserve 
 
 
 ;;;;;;;;;;;;;;;; Auxiliary
@@ -672,7 +680,8 @@
                   (greedy-fire-actions s (first sources) possible-actions-fn)
 
                   (seq (canonicalize s (get sources-by-type :bottom-up)))
-                  (let [[p-var children] (apply max-key (comp tsi first) sources)] 
+                  (let [_ (println (map first sources))
+                        [p-var children] (apply max-key (comp tsi first) sources)] 
                     (bottom-up-expand-actions s p-var children child-var-map prevail-cvm auxiliary-map possible-actions-fn)) 
                
                   :else (do (util/assert-is (empty? (:other sources-by-type))
@@ -762,7 +771,7 @@
                       (recur))))))))))
 
 
-;; (do (use 'angelic.env 'angelic.hierarchy 'angelic.search.textbook 'angelic.domains.taxi-infinite 'angelic.domains.sas-problems 'angelic.sas 'angelic.sas.analysis 'angelic.util 'angelic.sas.hm-heuristic 'angelic.search.interactive) (require '[angelic.search.action-set.gasplan2 :as gap2] '[angelic.search.action-set.asplan-r :as rap]))
+;; (do (use 'angelic.env 'angelic.hierarchy 'angelic.search.textbook 'angelic.domains.taxi-infinite 'angelic.domains.sas-problems 'angelic.sas 'angelic.sas.analysis 'angelic.util 'angelic.sas.hm-heuristic 'angelic.search.interactive) (require '[angelic.search.action-set.asplan :as ap] '[angelic.search.action-set.gasplan2 :as gap2] '[angelic.search.action-set.asplan-r :as rap]))
 
 ;; (let [e (force (nth ipc2-logistics 5)) ]  (println (time (run-counted #(ap/asplan-solution-pair-name (uniform-cost-search (ap/make-asplan-env e ))))))  (println (time (run-counted #(ap2/asplan-solution-pair-name (uniform-cost-search (ap2/make-asplan-env e )))))) (println (time (run-counted #(gap2/asplan-solution-pair-name (uniform-cost-search (gap2/make-asplan-env e )))))))
 
@@ -773,3 +782,5 @@
 ;; (let [e (second  (nth (sas-sample-problems 0) 11)) ] (println (time (debug 0 (run-counted #(gap2/asplan-solution-pair-name (interactive-search (gap2/make-asplan-env e ))))))))
 
 ;; (let [e (second  (nth (sas-sample-problems 0) 11)) ]  (println (time (run-counted #(uniform-cost-search e ))))   (println (time (run-counted #(rap/asplan-solution-pair-name (uniform-cost-search (rap/make-asplan-env e (fn [v] (= (first v) :capacity)) #{:drop} ))))))  (println (time (debug 0 (run-counted #(gap2/asplan-solution-pair-name (uniform-cost-search (gap2/make-asplan-env e ))))))))
+
+;; (let [e @(nth ipc2-logistics 10) ] #_ (println (time (run-counted #(uniform-cost-search e ))))     (println (time (debug 0 (run-counted #(gap2/asplan-search (gap2/make-asplan-env e :aux? true) :paths))))))
