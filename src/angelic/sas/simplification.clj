@@ -31,11 +31,11 @@
 (defn split-action [mutex-map val-sets a]
   (let [{:keys [precond-map effect-map]} a
         pesky-vars (remove (util/keyset precond-map) (keys effect-map))
-        _   (util/do-debug 2 (print "Filling in" a "vars" pesky-vars "with" ))
+        _   (util/do-debug 2 (print "Filling in" a "vars" pesky-vars "with " ))
         missing-vals (for [v pesky-vars] (find-values mutex-map val-sets v precond-map))]
     (util/print-debug 2 missing-vals)
     (for [vls (apply util/cartesian-product missing-vals)]
-      (update-in a [:precond-map] into (map vector pesky-vars missing-vals)))))
+      (update-in a [:precond-map] into (map vector pesky-vars vls)))))
 
 
 (defn eliminate-dangling-effects [sas-problem]
@@ -46,8 +46,8 @@
         val-sets      (util/for-map [{:keys [name vals]} (vals vars)] name (set vals))
         fixed-actions (doall (mapcat #(split-action mutex-map val-sets %) pesky-actions))]
 ;    (assert (empty? bad-vals))
-    (util/print-debug 1 "Removing" (count dead-actions) "actions, splitting" (count pesky-actions)
-                      "into" (count fixed-actions)
+    (println #_ util/print-debug 1 "Removing" (count dead-actions) "actions, keeping" (count nice-actions)
+                       "splitting " (count pesky-actions) "into" (count fixed-actions)
                          ", skipping" (count bad-vals) "bad values, maybe ignoring value combinations.")
     (sas/make-sas-problem vars init (concat nice-actions fixed-actions))))
 

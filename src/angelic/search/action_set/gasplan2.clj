@@ -680,7 +680,7 @@
                   (greedy-fire-actions s (first sources) possible-actions-fn)
 
                   (seq (canonicalize s (get sources-by-type :bottom-up)))
-                  (let [_ (println (map first sources))
+                  (let [;                        _ (println (map first sources))
                         [p-var children] (apply max-key (comp tsi first) sources)] 
                     (bottom-up-expand-actions s p-var children child-var-map prevail-cvm auxiliary-map possible-actions-fn)) 
                
@@ -784,3 +784,5 @@
 ;; (let [e (second  (nth (sas-sample-problems 0) 11)) ]  (println (time (run-counted #(uniform-cost-search e ))))   (println (time (run-counted #(rap/asplan-solution-pair-name (uniform-cost-search (rap/make-asplan-env e (fn [v] (= (first v) :capacity)) #{:drop} ))))))  (println (time (debug 0 (run-counted #(gap2/asplan-solution-pair-name (uniform-cost-search (gap2/make-asplan-env e ))))))))
 
 ;; (let [e @(nth ipc2-logistics 10) ] #_ (println (time (run-counted #(uniform-cost-search e ))))     (println (time (debug 0 (run-counted #(gap2/asplan-search (gap2/make-asplan-env e :aux? true) :paths))))))
+
+;; (let [e (eliminate-dangling-effects (nth (sas-sample-problems 0) 8))] (println (time (run-counted #(uniform-cost-search e )))) (println (time (debug 0 (run-counted #(gap2/asplan-search (gap2/make-asplan-env e :aux? true) :paths))))))
