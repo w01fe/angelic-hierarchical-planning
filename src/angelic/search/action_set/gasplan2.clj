@@ -60,31 +60,94 @@
 ;; Last question, how to handle blind side effects
 ;; Skip it for now.
 
-;; TODO: add clusters -- leave out for now.
-;; TODO: add top-down, leave out for now.
 
-;; TODO: do all the splitting and choosing at once?
+;; MAYBE: do all the splitting and choosing at once?
 
-
-;; TODO TODO: if children need same value, don't need to choose ?
-;; TODO: don't choose dead var as child?
-;; TODO: don't choose as child if current action will kill (i.e., final drop).
 
 ;; TODO: if there are side-effecting actions, might not want to choose a value just yet,
-;; since we're not really goal directed anyway.
-;; TODO: ordering of prevail is funkified by hanging vars.
+;;       since we're not really goal directed anyway. -- except, fired actions encodes path?
+
+;; NOTE: directed doesn't work, e.g., for package in transport because of side effects...
+;;       this is as it should be -- suppose cap-1 truck.  May need to put down & re-pick.
+
+
+;; How auxilary works:
+;; Clearly, should prefer to pick canonical var child first,
+;;   and this should determine the child of auxiliary vars.
+;; This happens when listing possible children,
+;;   and when finding parents (consider as part of block edge).
+;; If we're greedily OK with canonical, not clear what to do. -- TODO: figure out
+
+
+
+;;;;;;;;;;;;;;;;;;;;; Misc TODOs 
+;; TODO: add clusters -- leave out for now.
+;; TODO: add top-down, leave out for now.
 ;; TODO: we can generate cyclic plans -- figure out how to avoid this.
+;; TODO: heuristic costs for commitments.  At minimum, heuristic is sum of min costs of action intentions.
+;; TODO: identify superflous resources -- i.e., over-capacity trucks.
+;; TODO: state abstraction / teleportation / generalized goal.
 
-;; TODO: directed doesn't work, e.g., for package in transport because of side effects...
 
-;; TODO: what if there are multiple actions on a var; some ready to fire, and some blocked?
-;; this will be a source, but we cannot proceed.
-;; need to split on this!
-;; Worse, can have none greedy and ones blocked on various things.
-;; Options are to split when blocking happens, always, or greedily execute just those that can.
-;; Wors
+;;;;;;;;;;;;;;;;;;;;; Partition ordering
+;; ** TODO: only work on preconditions of blocked actions if they can resolve
+;;       blocking of blocker
+;; TODO: consider depth-first ordering instead.  Tension between greedy and intention space size.
 
-;; TODO: think about if we should split when blocking happens
+
+;;;;;;;;;;;;;;;;;;;;; Child pruning
+;; TODO: don't choose dead var as child?
+;;       further: don't choose as child if current action will kill (i.e., final drop).
+;; TODO: prune children based on which values can actually be used next.  I.e., gripper in blocks world.
+;;       if all next actions require a variable p, plus
+;;       a different value on some other variable s.t. acheiving requires p,
+;;       this variable cannot be next child of p.
+;; TODO: additional child pruning.  If action has multiple prevails:
+;;    if p reserved for v with action a, a also needs u,
+;;    when selecting child for u, skip children where all
+;;    next actions that need u also need v.
+;;    Can be implemented with implied edges in VPG.
+;;     (this generalizes auxiliary notion?)
+;; TODO: if children need same value, don't need to choose ?
+
+
+;;;;;;;;;;;;;;;;;;;;; Auxiliary 
+;; TODO: auxiliary -- use in selecting variables, not just children
+;;   note: if multiple auxiliaries for single canonical, don't necessarily want to
+;;         choose for canonical -- screws up greedy. 
+;; TODO: don't allow reserving truck for capacity (??)
+;;       note: seems we must allow, since if t1 on p1, p1 wants t2 first,
+;;             prevail rules don't allow making tc1 parent of p1.
+;; TODO: should not even allow actions on capacity ?
+;; TODO: auxiliary -- don't even allow reservation of auxiliary?  Or actions on aux, if no self actions.
+;;      (sometimes need it, i.e., gas-up only at gas stations).
+
+;; How can we get around auxiliary reservation problem in nice way?
+;;  Can say, no reservy unless you own canonical.
+;;  This means you must be able to reserve canonical even if want value greedily.
+;;  If you don't own canonical, we don't generate the edge?  Or we remove it.
+;; This also prevents actions on capacity, since they need truck, which ....
+;; And auxiliary as child of canonical should be prevented by child pruning, based on this fact.
+
+
+
+;;;;;;;;;;;;;;;;;;;;; Action pruning
+;; TODO: object symmetries?
+;;       if parents are symmetric, don't need to choose between them...
+
+
+
+;; Suppose t1 reserved for p1, p1 wants t2 next.
+;; If we try to reserve capacity for p2, we fail.
+;; Notes: we actually should allow reserve capacity for p2,
+;;        since we could generate action for p1-t1 from p2?  Nope, can't.
+;; Case is covered by reserving t1 for tc1?  Seems OK.
+
+
+
+
+
+
 
 ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
 ;;;;;;;;;;;;;;;;;;;;;;;;;;;; States, (meta)primitives ;;;;;;;;;;;;;;;;;;;;;;;;;;
@@ -224,7 +287,8 @@
   (util/map-vals (partial map second) (group-by first (for [x s, k (f x)] [k x]))))
 
 ;; NOTE: could be much more efficient...
-;; TODO: possible block ...
+;; TODO: possible block?
+;; TODO: when part? is true, this can be much more efficient?
 (defn vpg-edge-map [s vars]
   (util/for-map [v vars]
    v
@@ -331,16 +395,18 @@
     (and (not (#{#{} :wait} actions ))
          (every? #(contains? (:effect-map %) v) actions))))
 
+;; TODO TODO TODO: must allow reserving for FUTURE action on other var.? blech.
+;; Idea was that we'd just add the action here directly.
 
-
-(defn possible-children [s p child-map prevail-map]
-  (let [children (filter #(or (get-in prevail-map [p %]) (possible-scheduled-side-effector? s p %))
-                         (child-map p))
-        child (state/get-var s (child-var p))]
-    (if child
-      (do (assert (some #{child} children))
-          [child])
-      children)))
+;; TODO: look at other precondition variables too?
+(defn possible-children [s p child-map prevail-map auxiliary-map]
+  (let [potential-children (or (when-let [c (state/get-var s (child-var p))] [c]) (child-map p))]
+    (filter #(or (get-in prevail-map [p %]) (possible-scheduled-side-effector? s p %))
+            (let [aux (when-let [av (auxiliary-map p)] (state/get-var s (child-var av)))]
+              (if (and aux (not (= aux p)))
+                (do (util/assert-is (some #{aux} potential-children))
+                    [aux])
+                potential-children)))))
 
 (defn var-at-target? [s v]
   (= (state/get-var s v) (target-value s v)))
@@ -367,13 +433,16 @@
         (keys (dissoc (:effect-map a) v))))
 
 
+(defn structural-partitions [actions]
+  (map set (vals (group-by (comp util/keyset :precond-map) actions))))
+
 ;; Here, need to worry about side effects.
 ;; If there are cycles that do not effect the reserving action
 ;; TODO: dynamic determination of effect clustering, conflicts
 ;; NOTE: we require that possible-actions-var is correct for vars other than v,
 ;;  but state may be otherwise inconsistent.
 ;;  (must take care, this happens in future state currently...)
-(defn make-possible-actions-fn [dtgs effect-cluster-map]
+(defn make-possible-actions-fn [dtgs effect-cluster-map pre-partition?]
   (let [simple-dtgs   (util/map-vals (fn [dtg] (for [[pval emap] dtg, [eval _] emap] [pval eval])) dtgs)
         acyclic-succ-fn (partial possibly-acyclic-successors (HashMap.) simple-dtgs)]
     (fn [s v cur-val dst-val]
@@ -384,30 +453,41 @@
                               (apply concat (vals dtg))))]
         (concat
          (when (= cur-val dst-val) [#{}])
-         (when (seq actions) [(set actions)]))))))
+         (when (seq actions) (if pre-partition? (structural-partitions actions) [(set actions)])))))))
 
 
 (comment (util/singleton? (get effect-cluster-map v)))
 
 ;; TODO: where do happy belong?
-(defn bottom-up-expand-actions [s p c child-map prevail-map possible-actions-fn]
-  (assert (= :wait (state/get-var s (possible-actions-var p))))
-  (when-let [cur-c (state/get-var s (child-var p))] (assert (= cur-c c)))
-  (let [actions (state/get-var s (possible-actions-var c))
+;; TODO: better choice of unhappy child?
+(defn bottom-up-expand-actions [s p unhappy-children child-map prevail-map auxiliary-map possible-actions-fn]
+  (let [children                (possible-children s p child-map prevail-map auxiliary-map)
+        c                       (first (util/intersection (set children) (set unhappy-children)))
+        _ (util/assert-is (identity c) "%s" [s p unhappy-children children (do (clojure.inspector/inspect-tree (sort-by key s)) nil)])
+        actions (state/get-var s (possible-actions-var c))
         [concerned indifferent] (util/separate #(contains? (:precond-map %) p) actions)
         [happy unhappy]         (util/separate #(can-greedily-use? s % p c) concerned)
         lazy-set                (set (concat happy indifferent))]
-    (assert (seq unhappy))    
+    (assert (= :wait (state/get-var s (possible-actions-var p))))
+    (when-let [cur-c (state/get-var s (child-var p))] (assert (= cur-c c)))
+    (assert (seq unhappy))
     (concat
      (when (seq lazy-set)
        [(make-set-actions-action c lazy-set)])
-     (for [other-c (remove #{c} (possible-children s p child-map prevail-map))]
+     (for [other-c (remove #{c} children)]
        (make-set-child-action p other-c))
      (for [[p-val wanting-actions] (prune-and-group-actions s p c unhappy)
            possible-next-actions (possible-actions-fn (state/set-var s (possible-actions-var c) (set wanting-actions))
                                                       p (state/get-var s p) p-val)]
        (make-bottom-up-expand-action s p c (set wanting-actions) possible-next-actions)))))
 
+;; NOTE: what if there are multiple actions on a var; some ready to fire, and some blocked?
+;; this will be a source, but we cannot proceed.
+;; need to split on this!
+;; Worse, can have none greedy and ones blocked on various things.
+;; Options are to split when blocking happens, always, or greedily execute just those that can.
+;; TODO: think about if we should split when blocking happens
+;; With part?, this is no longer an issue.
 (defn greedy-fire-actions [s v possible-actions-fn]
   (let [actions-by-block (group-by #(blocking-set s % v) (state/get-var s (possible-actions-var v)))]
     (assert (or (seq (actions-by-block #{})) (> (count actions-by-block) 1)))
@@ -418,8 +498,6 @@
            possible-next-actions (possible-actions-fn s v (util/safe-get (:effect-map a) v) (target-value s v))]
        (make-greedy-fire-action s a v possible-next-actions)))))
 
-(comment      (when (var-at-target? s v)
-       [(make-set-actions-action v #{})]))
 
 ;; TODO: auxiliary vars.
 
@@ -441,6 +519,7 @@
 #_  (println s))
 
 
+;; Hack to deal with hanging vars -- shouldn't be needed much when auxiliary handling added.
 (defn rejigger-prevail-cg [prevail-cg]
   (let [sinks (util/difference (set (map second prevail-cg)) (set (map first prevail-cg)))
         bad-sinks (disj sinks sas/goal-var-name)]
@@ -449,6 +528,16 @@
         [t f]
         [f t]))))
 
+;; TODO: fix auxiliary var mapping.
+
+;; TODO: improve
+(defn get-auxiliary-map [sas-problem]
+  (let [auxiliary-map (util/map-vals first (sas-analysis/auxiliary-vars sas-problem))]
+    (assert (graphs/dag? auxiliary-map))
+    auxiliary-map))
+
+
+
 
 ;; TODO: add assertions on precond var = effect var
 ;; Recall: greedy helps the most when, e.g., lots of passengers and not much room.
@@ -456,13 +545,9 @@
   "Make an actino-set planning environment.  Switches are:
     check-deadlock?: check for cycles in precedence graph above and beyond lack of sources
     check-components?: check for disconnected components, rule out sources outside of goal comp
-    edge-rule: :naive, :greedy, :sloppy, or :extra-sloppy.
-       Naive means we stick exactly to the simple semantics of the vanilla actions.
-       Greedy means we forget about reserving preconditions when free and we can fire right now (less branching).
-       Sloppy means we ignore if preconditions are free, but require no action on them.
-       Extra-sloppy means anything goes -- if you can execute ignoring commitments, go for it."
-  ([sas-problem & {:keys [directed? greedy? deadlock? dead-vars? components?] :as m
-                   :or   {directed? true greedy? true deadlock? true dead-vars? true components? false}}]
+    part?: initiall partition actions based on precondition variable set."
+  ([sas-problem & {:keys [directed? greedy? deadlock? dead-vars? components? part? aux?] :as m
+                   :or   {directed? true greedy? true deadlock? true dead-vars? true components? false part? true aux? true}}]
      (assert (every? #{:directed? :greedy? :deadlock? :dead-vars? :components?} (keys m)))
      (assert (= greedy? true))
      (let [edge-rule     (if greedy? :greedy :naive)
@@ -477,12 +562,21 @@
            tsi           (graphs/df-topological-sort-indices (rejigger-prevail-cg prevail-cg)) ;; way worse.
            prevail-cvm   (util/map-vals #(util/intersection (set %) vars)
                                         (graphs/edge-list->outgoing-map prevail-cg))
+
            dtgs          (sas-analysis/domain-transition-graphs sas-problem)
            effect-cluster-map (into {} (for [cluster (sas-analysis/effect-clusters sas-problem), v cluster] [v cluster]))
-           possible-actions-fn (make-possible-actions-fn dtgs effect-cluster-map)]
+           possible-actions-fn (make-possible-actions-fn dtgs effect-cluster-map part?)
+
+           auxiliary-map (if aux? (get-auxiliary-map sas-problem) {})
+           canonicalize  (fn [bu-map]
+                           (reduce (fn [bum k]
+                                     (if-let [nk (auxiliary-map k)]
+                                       (assoc (dissoc bum k) nk (util/union (get bum k) (get bum nk #{})))
+                                       bum))
+                                   (util/map-vals set bu-map) (keys bu-map)))] 
 ;       (assert (graphs/dag? causal-graph))    
                                         ;       (assert (sas-analysis/unary? sas-problem))
-       (println tsi)
+       (println tsi "\n" auxiliary-map)
        (doseq [a (:actions sas-problem)]
          (when-not (every? (partial contains? (:precond-map a)) (keys (:effect-map a)))
            (println (:name a) (apply dissoc (:effect-map a) (keys (:precond-map a))))))       
@@ -498,7 +592,7 @@
           (if (and dead-vars? (uses-dead-vars? s av-map ))
             (do (util/print-debug 1 "Pruning due to dead vars") nil)
             (let [sources-by-type (source-vars-by-type s vars deadlock? components? )]
- ;;           (println sources-by-type)
+;              (println sources-by-type)
               (if sources-by-type
                 (util/prln-debug 2
                  (util/cond-let [sources]
@@ -506,8 +600,8 @@
                   (greedy-fire-actions s (first sources) possible-actions-fn)
 
                   (seq (get sources-by-type :bottom-up))
-                  (let [[p-var children] (apply max-key (comp tsi first) sources)] ;; min?
-                    (bottom-up-expand-actions s p-var (first children) child-var-map prevail-cvm possible-actions-fn))
+                  (let [[p-var children] (apply max-key (comp tsi first) (identity #_ canonicalize sources))] 
+                    (bottom-up-expand-actions s p-var children child-var-map prevail-cvm auxiliary-map possible-actions-fn)) 
                
                   :else (do (util/assert-is (empty? sources-by-type) "%s" [(do (print-state s) (clojure.inspector/inspect-tree (state/as-map s))
                                                                                s)])
@@ -529,7 +623,7 @@
 
 
 
-;; (do (use 'angelic.env 'angelic.hierarchy 'angelic.search.textbook 'angelic.domains.taxi-infinite 'angelic.domains.sas-problems 'angelic.sas 'angelic.sas.analysis 'angelic.util 'angelic.sas.hm-heuristic 'angelic.search.interactive) (require '[angelic.search.action-set.gasplan2 :as gap2]))
+;; (do (use 'angelic.env 'angelic.hierarchy 'angelic.search.textbook 'angelic.domains.taxi-infinite 'angelic.domains.sas-problems 'angelic.sas 'angelic.sas.analysis 'angelic.util 'angelic.sas.hm-heuristic 'angelic.search.interactive) (require '[angelic.search.action-set.gasplan2 :as gap2] '[angelic.search.action-set.asplan-r :as rap]))
 
 ;; (let [e (force (nth ipc2-logistics 5)) ]  (println (time (run-counted #(ap/asplan-solution-pair-name (uniform-cost-search (ap/make-asplan-env e ))))))  (println (time (run-counted #(ap2/asplan-solution-pair-name (uniform-cost-search (ap2/make-asplan-env e )))))) (println (time (run-counted #(gap2/asplan-solution-pair-name (uniform-cost-search (gap2/make-asplan-env e )))))))
 
@@ -538,3 +632,5 @@
 ;; (let [e (force (nth ipc2-logistics 5)) ]  (println (time (run-counted #(uniform-cost-search e ))))  (println (time (run-counted #(gap/asplan-solution-pair-name (uniform-cost-search (gap/make-asplan-env e )))))) (println (time (run-counted #(gap2/asplan-solution-pair-name (uniform-cost-search (gap2/make-asplan-env e )))))))
 
 ;; (let [e (second  (nth (sas-sample-problems 0) 11)) ] (println (time (debug 0 (run-counted #(gap2/asplan-solution-pair-name (interactive-search (gap2/make-asplan-env e ))))))))
+
+;; (let [e (second  (nth (sas-sample-problems 0) 11)) ]  (println (time (run-counted #(uniform-cost-search e ))))   (println (time (run-counted #(rap/asplan-solution-pair-name (uniform-cost-search (rap/make-asplan-env e (fn [v] (= (first v) :capacity)) #{:drop} ))))))  (println (time (debug 0 (run-counted #(gap2/asplan-solution-pair-name (uniform-cost-search (gap2/make-asplan-env e ))))))))
