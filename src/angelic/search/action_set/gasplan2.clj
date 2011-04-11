@@ -87,10 +87,11 @@
 ;; TODO: better heuristics
 ;; TODO: generalized goal ?
 ;; TODO greedy for 'nice' side-effects (doesn't really matter?)
-;; TODO: Will still have to handle dangling effects.
-;; TODO: have to see if multiplying will kill us.
-;; TODO: prevail tsi is missing some vars
 ;; TODO: use other forward simplification ?
+;; TODO: a way to use mutexes?
+;;      i.e., for any var with a value, arc from there to
+;;      any precondition we're trying to achieve.
+;; TODO: some things are better off waiting for
 
 ;;;;;;;;;;;;;;;;;;;;; Partition ordering
 ;; ** TODO: only work on preconditions of blocked actions if they can resolve
@@ -122,7 +123,7 @@
 ;;             prevail rules don't allow making tc1 parent of p1.
 ;; TODO: should not even allow actions on capacity ?
 ;;       (sometimes need it, i.e., gas-up only at gas stations).
-
+;; TODO: fix rejigger of causal graph -- actually better without it when we have aux on.
 
 ;;;;;;;;;;;;;;;;;;;;; Action pruning
 ;; LATER TODO: object symmetries?
@@ -311,7 +312,7 @@
 (defn make-shortest-path-fn [dtgs]
   (let [h (HashMap.)]
     (fn [var from-val to-val]
-      (get (util/cache-with h [var from-val] (reachability-map (dtgs var) from-val)) to-val))))
+      (get (util/cache-with h [var from-val] (reachability-map (dtgs var) from-val)) to-val Double/NEGATIVE_INFINITY))))
 
 
 ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;; Helpers - VPG ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
@@ -588,21 +589,33 @@
 
 
 ;; Hack to deal with hanging vars -- shouldn't be needed much when auxiliary handling added.
-(defn rejigger-prevail-cg [prevail-cg]
-  (let [sinks (util/difference (set (map second prevail-cg)) (set (map first prevail-cg)))
-        bad-sinks (disj sinks sas/goal-var-name)]
-    (for [[f t] prevail-cg]
-      (if (bad-sinks t)
-        [t f]
-        [f t]))))
+(defn rejigger-prevail-cg [prevail-cg vars]
+  (concat (for [v vars] [v sas/goal-var-name])
+           prevail-cg ;; TODO: put this back?
+          #_ (let [sinks (util/difference (set (map second prevail-cg)) (set (map first prevail-cg)))
+                bad-sinks (disj sinks sas/goal-var-name)]
+            (for [[f t] prevail-cg]
+              (if (bad-sinks t)
+                [t f]
+                [f t])))))
 
-;; TODO: fix auxiliary var mapping.
 
-;; TODO: improve
+(comment
+ (defn get-auxiliary-map [sas-problem]
+   (let [auxiliary-map (util/map-vals first (sas-analysis/auxiliary-vars sas-problem))]
+     (assert (graphs/dag? auxiliary-map))
+     auxiliary-map)))
+
 (defn get-auxiliary-map [sas-problem]
-  (let [auxiliary-map (util/map-vals first (sas-analysis/auxiliary-vars sas-problem))]
-    (assert (graphs/dag? auxiliary-map))
-    auxiliary-map))
+  (loop [auxiliary-edges (graphs/outgoing-map->edge-list (sas-analysis/auxiliary-vars sas-problem))
+         chosen-edges     nil]
+    (if (empty? auxiliary-edges)
+      (into {} chosen-edges)
+      (let [best-sink (key (last (sort-by val (frequencies (map second auxiliary-edges)))))
+            new-edges (filter #(= (second %) best-sink) auxiliary-edges)
+            dead-set  (set (cons best-sink (map first new-edges)))]
+        (recur (remove (fn [[s t]] (or (dead-set s) (dead-set t))) auxiliary-edges)
+               (concat chosen-edges new-edges))))))
 
 
 
@@ -627,7 +640,7 @@
                            sas/goal-var-name [])
            prevail-cg    (sas-analysis/prevail-causal-graph sas-problem)
 ;           tsi           (graphs/df-topological-sort-indices causal-graph) ;; TODO: doesn't seem to matter...
-           tsi           (graphs/df-topological-sort-indices (rejigger-prevail-cg prevail-cg)) ;; way worse.
+           tsi           (graphs/df-topological-sort-indices (rejigger-prevail-cg prevail-cg vars)) ;; way worse.
            prevail-cvm   (util/map-vals #(util/intersection (set %) vars)
                                         (graphs/edge-list->outgoing-map prevail-cg))
            
@@ -641,7 +654,7 @@
                                                          teleport-vars shortest-path-fn)
 
            auxiliary-map (if aux? (get-auxiliary-map sas-problem) {})
-           canonicalize  (fn [s bu-map]
+           canonicalize  (fn [s bu-map] ;; Move desired reservations from aux to canon.
                            (reduce (fn [bum k]
                                      (if-let [nk (auxiliary-map k)]
                                        (let [nkc (state/get-var s (child-var nk))]
@@ -662,6 +675,7 @@
            (println (:name a) (apply dissoc (:effect-map a) (keys (:precond-map a))))))       
        (doseq [a (:actions sas-problem)]
          (assert (every? (partial contains? (:precond-map a)) (keys (:effect-map a)))))
+       (util/assert-is (empty? (remove tsi vars)))
        
        (ASPlanEnv.
         sas-problem
@@ -680,11 +694,10 @@
                   (greedy-fire-actions s (first sources) possible-actions-fn)
 
                   (seq (canonicalize s (get sources-by-type :bottom-up)))
-                  (let [;                        _ (println (map first sources))
-                        [p-var children] (apply max-key (comp tsi first) sources)] 
+                  (let [[p-var children] (apply max-key (comp tsi first) sources)] 
                     (bottom-up-expand-actions s p-var children child-var-map prevail-cvm auxiliary-map possible-actions-fn)) 
                
-                  :else (do (util/assert-is (empty? (:other sources-by-type))
+                  :else (do (util/assert-is (identity true) #_ (empty? (:other sources-by-type)) ;; TODO
                                             "%s" [(do (print-state s) (inspect-state s)
                                                       s)])
                             (util/print-debug 1 "Pruning since nothing to do?!"))))
@@ -711,7 +724,7 @@
     (reduce + (for [v vars
                     :let [val (state/get-var s (possible-actions-var v))]
                     :when (and (not (= :wait val)) (seq val))]
-                (apply min (map :reward val))))))
+                (apply max (map :reward val))))))
 
 ;; Committed actions + shortest paths to target values.
 ;; could also maybe include reserved but not scheduled..
@@ -720,7 +733,7 @@
     (reduce + (for [v vars
                     :let [acts (state/get-var s (possible-actions-var v))]
                     :when (and (not (= :wait acts)) (seq acts))]
-                (apply min (map #(+ (:reward %)
+                (apply max (map #(+ (:reward %)
                                     (shortest-path-fn v (get (:effect-map %) v) (target-value s v)))
                                 acts))))))
 

@@ -528,6 +528,43 @@
        a])))
 
 
+
+(defn allowed-combinations [vv-map mutex-map]
+  (assert (> (count vv-map) 1))
+  (let [var-pairs    (util/combinations (keys vv-map) 2)
+        init-combos  (set
+                      (for [[v1 v2] var-pairs,
+                            vl1 (vv-map v1),
+                            vl2 (vv-map v2)
+                            :when (not (get-in mutex-map [[v1 vl1] v2 vl2]))]
+                        #{[v1 vl1] [v2 vl2]}))]
+    (loop [combos init-combos, size 2]
+      (if (= size (count vv-map))
+        combos
+        (recur (set (for [c1 combos, c2 combos
+                          :let [nc (util/union c1 c2)]
+                          :when (and (= (count nc) (inc size))
+                                     (every? #(contains? combos %)
+                                             (map set (util/combinations nc size))))]
+                      nc))
+               (inc size))))))
+
+(defn analyze-effect-clusters [sas-problem]
+  (let [{:keys [vars actions init]} sas-problem
+        mutex-map (second (find-mutexes sas-problem))
+        prevail-cg (prevail-causal-graph sas-problem)
+        clusters   (filter #(> (count %) 1) (map second (second (graphs/scc-graph prevail-cg))))
+        full-vv-map (util/for-map [v (vals vars)] (:name v) (:vals v))]
+    (doseq [cluster clusters]
+      (println "\nCluster has")
+      (doseq [c cluster] (println (count (full-vv-map c)) c))
+      (let [combos (allowed-combinations (select-keys full-vv-map cluster) mutex-map)]
+        (println (count combos) "combos:" combos)))))
+
+
+
+
+
 (defn compute-implications [vars mutexes]
   (->>
    (util/map-vals
