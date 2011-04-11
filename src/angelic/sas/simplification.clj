@@ -2,6 +2,7 @@
   (:require [angelic.util :as util]
             [angelic [env :as env] [sas :as sas]]
             [angelic.env.util :as env-util]
+            [angelic.util.graphs :as graphs]            
             [angelic.sas.analysis :as sas-analysis]))
 
 
@@ -49,9 +50,72 @@
     (println #_ util/print-debug 1 "Removing" (count dead-actions) "actions, keeping" (count nice-actions)
                        "splitting " (count pesky-actions) "into" (count fixed-actions)
                          ", skipping" (count bad-vals) "bad values, maybe ignoring value combinations.")
-    (sas/make-sas-problem vars init (concat nice-actions fixed-actions))))
+    (assoc (sas/make-sas-problem vars init (concat nice-actions fixed-actions)) :mutex-map mutex-map)))
 
 
+
+(defn split-merge-action [a new-vv-entries]
+  (if (empty? new-vv-entries)
+    [a]
+    (apply concat
+     (for [a (split-merge-action a (next new-vv-entries))]
+       (let [{:keys [precond-map effect-map]} a
+             [vs vls] (first new-vv-entries)]
+         (if (some #(contains? precond-map %) vs)
+           (let [pre-subs (set (select-keys precond-map vs))
+                 rest-pre (apply dissoc precond-map vs)
+                 eff-sub  (select-keys effect-map vs)
+                 rest-eff (apply dissoc effect-map vs)
+                 pvals    (filter #(util/subset? pre-subs %) vls)
+                 ]
+             (if (and (= (first (:name a)) :goal) (> (count pvals) 1))
+               (cons (assoc a :precond-map (assoc rest-pre vs ::goal))
+                     (for [st pvals]
+                       (env-util/make-factored-primitive
+                        [:tog st] 
+                        {vs st}
+                        {vs ::goal}
+                        0)))               
+               (for [st pvals]
+                 (assoc a
+                   :precond-map (assoc rest-pre vs st)
+                   :effect-map (assoc rest-eff vs (set (concat eff-sub (remove (comp (util/keyset eff-sub) first) st))))))))    
+           [a]))))))
+
+
+(defn merge-variables [sas-problem var-sets]
+  (let [{:keys [vars actions init]} sas-problem
+        mutex-map (:mutex-map sas-problem)
+        full-vv-map (util/for-map [v (vals vars)] (:name v) (:vals v))
+        old-var-map (apply dissoc vars (apply concat var-sets))
+        new-vv-map  (util/for-map [vs var-sets] vs (sas-analysis/allowed-combinations (select-keys full-vv-map vs) mutex-map))
+        new-acts (mapcat #(split-merge-action % new-vv-map) actions)]
+    (println (util/map-vals count new-vv-map))
+    (println "Split " (count actions) "into" (count new-acts))
+    (assoc (sas/make-sas-problem
+            (into old-var-map
+                  (for [[n vs] new-vv-map]
+                    [n (sas/make-sas-var n vs)]))
+            (reduce (fn [m vs]
+                      (assoc (apply dissoc m vs)
+                        vs (set (for [v vs] [v (get init v)]))))                    
+                    init var-sets)
+            new-acts)
+      :mutex-map mutex-map)))
+
+
+(defn fix-printer [sas-problem]
+  (let [vars (keys (:vars sas-problem))
+        bad (filter #(when-not (keyword? (second %)) (#{:available :uninitialized} (first (second %)))) vars)]
+    (merge-variables sas-problem [(set bad)])))
+
+(defn merge-effect-clusters [sas-problem]
+  (let [{:keys [vars actions init]} sas-problem
+        mutex-map (:mutex-map sas-problem)
+        prevail-cg (sas-analysis/prevail-causal-graph sas-problem)
+        clusters   (filter #(> (count %) 1) (map second (second (graphs/scc-graph prevail-cg))))]
+    (println clusters)
+    (merge-variables sas-problem clusters)))
 
 
 

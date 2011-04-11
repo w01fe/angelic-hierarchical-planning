@@ -13,6 +13,14 @@
   (:import [java.util HashMap]))
 
 
+;; This is broken, and I'm tired.
+;; Some promising results on some domains, but nothing definative.
+;; Seems things that are needed are either:
+;; -- better child pruning, which takes possible next actions into account
+;;     (i.e., var clustering).
+;; -- better conflict identification and chasing.
+;; -- perhaps simplification, just focus on conflicts and forget everything else.
+
 ;; Generalized version of asplan for non-unary domains forked from,
 ;; gasplan, with partial commitment features of asplan2, effect
 ;; clusters of asplan_c, implicitly resource features of asplan_r.
@@ -582,7 +590,7 @@
   (println "\n")
   (doseq [a (reverse (:act-seq (meta s)))] (println a))
   (println)
-#_  (println s))
+  (println s))
 
 (defn inspect-state [s]
   (clojure.inspector/inspect-tree (sort-by key (state/as-map s))))
@@ -591,8 +599,8 @@
 ;; Hack to deal with hanging vars -- shouldn't be needed much when auxiliary handling added.
 (defn rejigger-prevail-cg [prevail-cg vars]
   (concat (for [v vars] [v sas/goal-var-name])
-           prevail-cg ;; TODO: put this back?
-          #_ (let [sinks (util/difference (set (map second prevail-cg)) (set (map first prevail-cg)))
+          #_ prevail-cg ;; TODO: put this back?
+           (let [sinks (util/difference (set (map second prevail-cg)) (set (map first prevail-cg)))
                 bad-sinks (disj sinks sas/goal-var-name)]
             (for [[f t] prevail-cg]
               (if (bad-sinks t)
@@ -697,7 +705,7 @@
                   (let [[p-var children] (apply max-key (comp tsi first) sources)] 
                     (bottom-up-expand-actions s p-var children child-var-map prevail-cvm auxiliary-map possible-actions-fn)) 
                
-                  :else (do (util/assert-is (identity true) #_ (empty? (:other sources-by-type)) ;; TODO
+                  :else (do (util/assert-is  #_ (identity true) (empty? (:other sources-by-type)) ;; TODO
                                             "%s" [(do (print-state s) (inspect-state s)
                                                       s)])
                             (util/print-debug 1 "Pruning since nothing to do?!"))))

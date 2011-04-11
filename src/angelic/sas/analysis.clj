@@ -531,23 +531,18 @@
 
 (defn allowed-combinations [vv-map mutex-map]
   (assert (> (count vv-map) 1))
-  (let [var-pairs    (util/combinations (keys vv-map) 2)
-        init-combos  (set
-                      (for [[v1 v2] var-pairs,
-                            vl1 (vv-map v1),
-                            vl2 (vv-map v2)
-                            :when (not (get-in mutex-map [[v1 vl1] v2 vl2]))]
-                        #{[v1 vl1] [v2 vl2]}))]
-    (loop [combos init-combos, size 2]
-      (if (= size (count vv-map))
-        combos
-        (recur (set (for [c1 combos, c2 combos
-                          :let [nc (util/union c1 c2)]
-                          :when (and (= (count nc) (inc size))
-                                     (every? #(contains? combos %)
-                                             (map set (util/combinations nc size))))]
-                      nc))
-               (inc size))))))
+  (if (= (count vv-map) 2)
+    (let [[[v1 vls1] [v2 vls2]] (seq vv-map)]
+     (set (for [vl1 vls1
+                vl2 vls2
+                :when (not (get-in mutex-map [[v1 vl1] v2 vl2]))]
+            #{[v1 vl1] [v2 vl2]})))
+    (for [sub (allowed-combinations (next vv-map) mutex-map)
+          :let [[vr vls] (first vv-map)]
+          vl vls
+          :when (not-any? #(get-in mutex-map [% vr vl]) sub)]
+      (conj sub [vr vl]))))
+
 
 (defn analyze-effect-clusters [sas-problem]
   (let [{:keys [vars actions init]} sas-problem
