@@ -103,7 +103,9 @@
 
 ;;;;;;;;;;;;;;;;;;;;; Partition ordering
 ;; ** TODO: only work on preconditions of blocked actions if they can resolve
-;;       blocking of blocker
+;;       blocking of blocker --
+;;        (if i have a (descendant) that's blocked, only work on me if
+;;         i have a floating ancestor).
 ;; TODO: consider depth-first ordering instead.  Tension between greedy and intention space size.
 
 
@@ -375,6 +377,33 @@
     (when-not (= (count sources) (count goal-component-sources)) (println "Warning: multiple components..."))
     goal-component-sources))
 
+(defn blocked-descendant? [s v block-set]
+  (or (block-set v)
+      (when-let [c (state/get-var s (child-var v))]
+        (blocked-descendant? s c block-set))))
+
+(defn prune-bottom-up [s ancestor-map bottom-up-map edge-map]
+  (let [blocks (vpg-edges edge-map #{:possible-precond :frozen :necessary-precond})
+        blocked (set (map second blocks))
+        voids   (set (filter #(let [pav (state/get-var s (possible-actions-var %))]
+                                (or (= pav :wait) (= pav #{})))
+                             (map first blocks)))]
+#_    (println (count bottom-up-map)
+             (map #(seq (util/intersection (ancestor-map %) voids)) (keys bottom-up-map))
+             (map count (vals bottom-up-map))
+             (map (fn [cs] (count (filter #(blocked-descendant? s % blocked) cs))) (vals bottom-up-map))
+             (count (util/filter-map (fn [[b cs]] (or (seq (util/intersection (ancestor-map b) voids))
+                                                      (not-every? #(blocked-descendant? s % blocked) cs)
+                                   ))
+                     bottom-up-map))
+             )
+      (util/filter-map (fn [[b cs]] (or (seq (util/intersection (ancestor-map b) voids))
+                                        (not-every? #(blocked-descendant? s % blocked) cs)
+                                   ))
+                     bottom-up-map)))
+
+
+
 
 ;; Tricky bit is that bottom-up can either give precondition or effect as source,
 ;; depending on if all actions want it or not.
@@ -384,7 +413,7 @@
     :greedy -> var with only greedy actions left on it
     :bottom-up -> map from precond vars to effect vars with at least one action needing res.
     :top-down -> whatever else"
-  [s vars check-deadlock? check-components?]
+  [s vars ancestor-map check-deadlock? check-components? pbu?]
   (let [edge-map (vpg-edge-map s vars)]
 ;    (println edge-map)
     (when (or (not check-deadlock?) (graphs/dag? (vpg-edges edge-map #{:possible-precond})))
@@ -398,7 +427,10 @@
                                            other)]
 ;        (println greedy precond-use-map bottom-up bad)
         (when check-deadlock? (assert (seq sources)))1
-        {:greedy greedy :bottom-up (select-keys precond-use-map bottom-up) :other bad}))))
+        {:greedy greedy
+         :bottom-up (if pbu? (prune-bottom-up s ancestor-map (select-keys precond-use-map bottom-up) edge-map)
+                        (select-keys precond-use-map bottom-up))
+         :other bad}))))
 
 
 
@@ -693,7 +725,7 @@
           (util/do-debug 2 (print-state s) (Thread/sleep 100))
           (if (and dead-vars? (uses-dead-vars? s av-map ))
             (do (util/print-debug 1 "Pruning due to dead vars") nil)
-            (let [sources-by-type (source-vars-by-type s vars deadlock? components? )]
+            (let [sources-by-type (source-vars-by-type s vars av-map deadlock? components?  true)]
 ;              (println sources-by-type)
               (if sources-by-type
                 (util/prln-debug 2
@@ -705,7 +737,7 @@
                   (let [[p-var children] (apply max-key (comp tsi first) sources)] 
                     (bottom-up-expand-actions s p-var children child-var-map prevail-cvm auxiliary-map possible-actions-fn)) 
                
-                  :else (do (util/assert-is  #_ (identity true) (empty? (:other sources-by-type)) ;; TODO
+                  :else (do (util/assert-is   (identity true) #_ (empty? (:other sources-by-type)) ;; TODO
                                             "%s" [(do (print-state s) (inspect-state s)
                                                       s)])
                             (util/print-debug 1 "Pruning since nothing to do?!"))))

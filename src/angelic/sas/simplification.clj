@@ -79,7 +79,7 @@
                (for [st pvals]
                  (assoc a
                    :precond-map (assoc rest-pre vs st)
-                   :effect-map (assoc rest-eff vs (set (concat eff-sub (remove (comp (util/keyset eff-sub) first) st))))))))    
+                   :effect-map (if (seq eff-sub) (assoc rest-eff vs (set (concat eff-sub (remove (comp (util/keyset eff-sub) first) st)))) effect-map)))))    
            [a]))))))
 
 
