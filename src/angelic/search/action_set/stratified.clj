@@ -134,6 +134,40 @@
        (actions state)))
     (actions state)))
 
+
+(defn simple-neighborhoods [tsi moralized-cg]
+  (let [full-moralized-cg (concat moralized-cg (for [v (keys tsi)] [v v]))]
+    (util/for-map [[v l] tsi]
+     v
+     (->> full-moralized-cg
+          (filter (fn [[s t]] (and (<= (tsi s) l) (<= (tsi t) l))))
+          graphs/scc-graph
+          second
+          vals
+          (map set)
+          (filter #(contains? % v))
+          first))))
+
+
+(defn moralized-causal-graph [actions]
+  (distinct
+   (for [{:keys [precond-map effect-map]} actions
+         c (util/combinations (keys (merge precond-map effect-map)) 2)
+         cr [c (reverse c)]]
+     cr)))
+
+(defn inf-neighborhood-stratified-applicable-actions [last-a state neighborhoods actions]
+  (filter
+   (if last-a
+     (let [a-var (effect-var last-a)
+           nb    (util/safe-get neighborhoods a-var)]
+       (fn [b]
+         (or (contains? nb (effect-var b))
+             (contains? (:precond-map b) a-var))))
+     (constantly true))
+   (actions state)))
+
+
 (defn inf-stratified-applicable-actions [last-a state tsi actions]
   (if last-a
     (let [a-var   (effect-var last-a)
@@ -148,7 +182,7 @@
     (actions state)))
 
 (defn stratified-search [sas-problem type]
-  (assert (#{:simple :dynamic :fluid} type))
+  (assert (#{:simple :neighborhood :dynamic :fluid} type))
   (let [q       (queues/make-tree-search-pq)
         closed  (HashSet.)
         actions (env/actions-fn sas-problem)
@@ -166,8 +200,13 @@
         goal-map (:precond-map (util/safe-singleton (filter #(= (:name %) sas/goal-action-name) (:actions sas-problem))))
         goal    (env/goal-fn sas-problem)
         init    (env/initial-state sas-problem)
+        mcg     (moralized-causal-graph (:actions sas-problem))
+        nb-map  (simple-neighborhoods tsi mcg)
+        _ (clojure.inspector/inspect-tree nb-map)
+        _ (assert nil)
         strat-actions (case type
                         :simple     (fn [last-a state] (inf-stratified-applicable-actions last-a state tsi actions))
+                        :neighborhood (fn [last-a state] (inf-neighborhood-stratified-applicable-actions last-a state nb-map actions))
                         :structural (fn [last-a state] (improved-inf-stratified-applicable-actions last-a state tsi cav-map actions))                       :dynamic    (fn [last-a state] (dynamic-inf-stratified-applicable-actions last-a state tsi av-map ap-map cg-map actions))
                         :fluid    (fn [last-a state] (dynamic-fluid-inf-stratified-applicable-actions last-a state tsi av-map ap-map goal-map cg-map icg-map actions))
                         )]
@@ -228,32 +267,4 @@
 
 
 
-
-
-;; Wrong!
-;; Logistics results (# states) to match table. -- fluid
-;; 5 5-2: 10230
-;; 7 6-1: 96430
-;; 2 4-2: 182321
-;; 4 5-1: 229929
-;; 1 4-1: 324127
-;; 0 4-0: 473231
-;; 9 6-3: 1087515
-;; 6 6-0: 899623
-;; 8 6-2: 903447
-;; 3 5-0: 1155503
-
-
-
-;; Wrong ? 
-;; Logistics results (# states) to match table. -- structural
-;; 5-2: 8585
-;; 6-1: 226446
-;; 4-2: 122924
-;; 5-1: 390726
-;; 4-1: 414577
-;; 4-0: 646398
-;; 6-3: 2747824
-;; 6-0: 3435578
-;; 6-2: 3286212
-;; 5-0: 3085333
+;; (doseq [ i [5 7 2 4 1 0 9 6 8 3]] (let [e  (force (nth ipc2-logistics i))] (println "\n\n" i) (doseq [t [:simple :neighborhood]] (println "\n"  t (time (run-counted #(stratified-search e t)))))))

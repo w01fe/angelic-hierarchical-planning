@@ -20,6 +20,7 @@
 ;;     (i.e., var clustering).
 ;; -- better conflict identification and chasing.
 ;; -- perhaps simplification, just focus on conflicts and forget everything else.
+;; -- Split children
 
 ;; Generalized version of asplan for non-unary domains forked from,
 ;; gasplan, with partial commitment features of asplan2, effect
@@ -105,7 +106,9 @@
 ;; ** TODO: only work on preconditions of blocked actions if they can resolve
 ;;       blocking of blocker --
 ;;        (if i have a (descendant) that's blocked, only work on me if
-;;         i have a floating ancestor).
+;;         i have a floating ancestor). -- what's implemented now.
+;;         Not really what we want -- we want shallowest to prevent transitive thing
+;;         Want to work on "main conflict line" if it exists.  
 ;; TODO: consider depth-first ordering instead.  Tension between greedy and intention space size.
 
 
@@ -337,6 +340,14 @@
 (defn group-by-keys [f s]
   (util/map-vals (partial map second) (group-by first (for [x s, k (f x)] [k x]))))
 
+;; If I'm a wait, and I have incoming children,
+;; for each child, if before/while using it, I necessarily
+;; have to use another variable, I get speculative precond links.
+;; Moreover, if before/while using it, I necessarily need
+;; a new value for another variable, which needs to change parent,
+;; dead (this is blocks case)
+
+
 ;; NOTE: could be much more efficient...
 ;; TODO: possible block?
 ;; TODO: when part? is true, this can be much more efficient?
@@ -385,25 +396,27 @@
 (defn prune-bottom-up [s ancestor-map bottom-up-map edge-map]
   (let [blocks (vpg-edges edge-map #{:possible-precond :frozen :necessary-precond})
         blocked (set (map second blocks))
-        voids   (set (filter #(let [pav (state/get-var s (possible-actions-var %))]
-                                (or (= pav :wait) (= pav #{})))
-                             (map first blocks)))]
-#_    (println (count bottom-up-map)
+        voids   (set (map first blocks))]
+   #_ (println (count bottom-up-map)
              (map #(seq (util/intersection (ancestor-map %) voids)) (keys bottom-up-map))
              (map count (vals bottom-up-map))
              (map (fn [cs] (count (filter #(blocked-descendant? s % blocked) cs))) (vals bottom-up-map))
              (count (util/filter-map (fn [[b cs]] (or (seq (util/intersection (ancestor-map b) voids))
-                                                      (not-every? #(blocked-descendant? s % blocked) cs)
+                                                      (not-every? #(and (blocked-descendant? s % blocked)
+                                                          (not (blocked-descendant? s % voids))) cs)
                                    ))
-                     bottom-up-map))
+                     bottom-up-map)) blocked voids
              )
       (util/filter-map (fn [[b cs]] (or (seq (util/intersection (ancestor-map b) voids))
-                                        (not-every? #(blocked-descendant? s % blocked) cs)
+                                        (not-every? #(and (blocked-descendant? s % blocked)
+                                                          (not (blocked-descendant? s % voids))) cs)
                                    ))
                      bottom-up-map)))
 
 
-
+(comment filter #(let [pav (state/get-var s (possible-actions-var %))]
+                                (or (= pav :wait) (= pav #{})))
+                             )
 
 ;; Tricky bit is that bottom-up can either give precondition or effect as source,
 ;; depending on if all actions want it or not.
@@ -725,7 +738,7 @@
           (util/do-debug 2 (print-state s) (Thread/sleep 100))
           (if (and dead-vars? (uses-dead-vars? s av-map ))
             (do (util/print-debug 1 "Pruning due to dead vars") nil)
-            (let [sources-by-type (source-vars-by-type s vars av-map deadlock? components?  true)]
+            (let [sources-by-type (source-vars-by-type s vars av-map deadlock? components?   true)]
 ;              (println sources-by-type)
               (if sources-by-type
                 (util/prln-debug 2
@@ -737,7 +750,7 @@
                   (let [[p-var children] (apply max-key (comp tsi first) sources)] 
                     (bottom-up-expand-actions s p-var children child-var-map prevail-cvm auxiliary-map possible-actions-fn)) 
                
-                  :else (do (util/assert-is   (identity true) #_ (empty? (:other sources-by-type)) ;; TODO
+                  :else (do (util/assert-is #_ (identity true) (empty? (:other sources-by-type)) ;; TODO
                                             "%s" [(do (print-state s) (inspect-state s)
                                                       s)])
                             (util/print-debug 1 "Pruning since nothing to do?!"))))
