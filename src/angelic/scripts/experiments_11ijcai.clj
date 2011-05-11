@@ -146,6 +146,14 @@
       [[:asplan false] "BIP"]
       [[:asplan true] "BIP+c"]])
 
+(def *alg-order2*
+     [[[:baseline false] "baseline"]
+      [[:asplan false] "BIP"]
+      [[:baseline true] "baseline+c"]
+      [[:strat  true] "{/Symbol \\245}-strat+c"]
+      [[:ec true] "EC+c"]
+      [[:asplan true] "BIP+c"]])
+
 (def *alg-names* (into {} *alg-order*))
 
 (defn order [things key-fn desired-order]
@@ -156,7 +164,7 @@
 
 ; Use pdfcrop to remove whitespace
 (defn make-taxi-charts []
-  (doseq [[type-key [file name]] (take 3 (drop 0 taxi-types))]
+  (doseq [[type-key [file name]] (take 1 (drop 0 taxi-types))]
     (charts/plot
      (datasets/ds->chart
       (filter (datasets/ds-fn [type output constrain? alg size]
@@ -171,7 +179,7 @@
       {:term "solid dashed size 2.0, 1.5" 
        :ylog true :key (case type-key :independent "top right" :pairwise "bottom right spacing 0.8" :single "bottom right spacing 0.8")
        ;;       :xlabel "# passengers"
-       :ylabel (when (= type-key :independent) "# states to optimal")
+       :ylabel (when (= type-key :independent) "# states generated")
        :xrange (if (= type-key :pairwise) "[2:6]" "[1:9]") :yrange "[10:10000000]"
        ;;       :title (str name " taxi")
        :extra-commands [(str "set title \"" name "\" offset 0,-0.8")
@@ -187,7 +195,9 @@
                       :else 2)]
           {:lw 3 :pt v :lt v}))
       *alg-names* 
-      #(order % :title (map second *alg-order*)))
+      (if (= type-key :pairwise)
+        #(order % :title (map second *alg-order2*))
+        #(order % :title (map second *alg-order*))))
      (str "/Users/jawolfe/Projects/reports/11-ijcai/graphs/" file ".pdf"))))
 
 

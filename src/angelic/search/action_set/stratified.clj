@@ -202,8 +202,8 @@
         init    (env/initial-state sas-problem)
         mcg     (moralized-causal-graph (:actions sas-problem))
         nb-map  (simple-neighborhoods tsi mcg)
-        _ (clojure.inspector/inspect-tree nb-map)
-        _ (assert nil)
+;        _ (clojure.inspector/inspect-tree nb-map)
+;        _ (assert nil)
         strat-actions (case type
                         :simple     (fn [last-a state] (inf-stratified-applicable-actions last-a state tsi actions))
                         :neighborhood (fn [last-a state] (inf-neighborhood-stratified-applicable-actions last-a state nb-map actions))
