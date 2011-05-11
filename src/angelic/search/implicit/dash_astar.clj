@@ -126,17 +126,17 @@
 
 (defrecord PubSubHub [^ArrayList subscribers ^ArrayList publications])
 
-(defn make-pubsubhub
+(defn- make-pubsubhub
   "A hub for publications streams; every subscriber fn is called on every publication."
   [] (PubSubHub. (ArrayList.) (ArrayList.)))
 
-(defn publications [psh] (doall (seq (:publications psh))))
+(defn- publications [psh] (doall (seq (:publications psh))))
 
-(defn publish!     [psh pub]
+(defn- publish!     [psh pub]
   (.add ^ArrayList (:publications psh) pub)
   (doseq [sub (doall (seq (:subscribers psh)))] (sub pub)))
 
-(defn subscribe!   [psh sub]
+(defn- subscribe!   [psh sub]
   (.add ^ArrayList (:subscribers psh) sub)
   (doseq [pub (doall (seq (:publications psh)))] (sub pub)))
 
@@ -152,17 +152,17 @@
 (def *decreases* (ArrayList.))
 (def *subsumes* (ArrayList.))
 
-(defn schedule-increase! [sp] (.add ^ArrayList *increases* sp))
-(defn schedule-decrease! [sp] (.add ^ArrayList *decreases* sp))
-(defn schedule-subsumption! [ts subsumed-ts] (.add ^ArrayList *subsumes* [ts subsumed-ts]))
+(defn- schedule-increase! [sp] (.add ^ArrayList *increases* sp))
+(defn- schedule-decrease! [sp] (.add ^ArrayList *decreases* sp))
+(defn- schedule-subsumption! [ts subsumed-ts] (.add ^ArrayList *subsumes* [ts subsumed-ts]))
 
-(defn do-changes! [^ArrayList a f] (doseq [sp a] (f sp)) (.clear a))
+(defn- do-changes! [^ArrayList a f] (doseq [sp a] (f sp)) (.clear a))
 
 (defprotocol Evaluable
   (evaluate! [s])
   (sp-name             [s] "A name to identify this subproblem type (indep. of input)"))
 
-(defn evaluate-and-update! [s]
+(defn- evaluate-and-update! [s]
   (evaluate! s)
   (do-changes! *increases* sg/summary-increased!)
   (do-changes! *subsumes* (fn [[ts subsumed-ts]] (sg/connect-subsumed! ts subsumed-ts)))
