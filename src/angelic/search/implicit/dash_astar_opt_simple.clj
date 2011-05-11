@@ -24,7 +24,7 @@
 ;; skeleton, and an unevaluated child for first in the sequence.
 ;; I.e., the skeleton really represents the real deal, should not be shared.
 
-;; A relatively clean version of dash-A*, for optimistic descriptions only.
+;; Initially, remove complexities like dijkstra actions.
 
 ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
 ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;       Options      ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
@@ -38,7 +38,6 @@
 (declare *decompose-cache*       ) ;; Cache subproblems? Requires *collect-equal-outputs*
 (declare *state-abstraction*     ) ;; Use state abstraction?  Requires *decompose-cache*
 (declare *propagate-subsumption* ) ;; Automatically propagate subsumption links to corresponding children
-(declare *dijkstra-actions*      ) ;; Use dijkstra for these action types (set).
 
 
 ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
@@ -296,80 +295,6 @@
 
 
 
-;;;;;;;;;;;;;;;;;;;;;;;;;;;;      Dijkstra       ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
-
-;; This subproblem does a flattened, pruned search for right-recursive HLAs.
-
-;; TODO: how do i know if i'm already in a dijkstra or not?
-;; Does it matter?
-;; If we have dijkstra all the way down, don't even need full dijkstra?
-;; Nah, remember whole deal about GG versus Dijkstra versus Caching.
-;; Dijkstra all the way down means n dijkstras running, no fun.
-;; For now, just do straight top-level dijkstra, skip caching of right.
-;; I.e., generate our own refinements.  Just use pairs, doens't matter since
-;; everything will be solved already.
-;; Directly implements evaluable, so we don't need to show our queue to the outside
-;; world; and we can eagerly evaluate left children.
-
-(use '[angelic.util.queues :as queues])
-
-(declare wrapped-atomic-name)
-
-(defn dijkstra-name [fs] [:Dijkstra fs])
-
-;; This seems a bit dangerous, but should be ok...
-(defn get-evaluated-sp [fs inp-set]
-  (let [n (wrapped-atomic-name fs)
-        s (get-subproblem n inp-set)]
-    (when (summary/live? (sg/summary s))
-      (evaluate! (ts-sp (sp-ts s)))
-      (sg/summary-changed! (ts-sp (sp-ts s))))
-    (assert (summary/solved? (sg/summary s)))
-    s))
-
-
-;; We bend the rules a bit and eval immediately, for simplicity.
-(defn make-dijkstra-subproblem [fs inp-set]
-  (let [nm (dijkstra-name fs)
-        q  (queues/make-graph-search-pq)
-        ret (make-subproblem
-             nm inp-set nil
-             (fn eval-dijkstra! [s]
-;               (println "EVAL" s)
-               (assert (not (queues/pq-empty? q)))
-               (schedule-decrease! s)
-               (let [[mid-set [_ _ _ _ prim-r]] (queues/pq-remove-min-with-cost! q)]
-                 (doseq [child-seq (fs/child-seqs fs mid-set)]
-                   (util/assert-is (#{1 2} (count child-seq)) "%s" [child-seq])
-                   (when (= 2 (count child-seq)) (assert (= (second child-seq) fs)))
-                   (let [l (get-evaluated-sp (first child-seq) mid-set)
-                         next-mid-set (get-output-set! l)
-                         next-prim-r (+ prim-r (summary/max-reward (sg/summary l)))]
-;                     (when (= 1 (count child-seq)) (println l (sg/summary l)))
-                     (if (= 1 (count child-seq))
-                       (queues/pq-replace! q next-mid-set [(- 0 next-prim-r) -2 next-prim-r :solved :d])
-                       (let [[out-set reward status] (fs/apply-opt fs next-mid-set)]
-                         (when out-set
-                           (let [tot-rew (+ next-prim-r reward)]
-                             (queues/pq-add! q next-mid-set
-                                             [(- 0 tot-rew) (- (summary/status-val status))
-                                              tot-rew status next-prim-r])))))))))             
-             (fn [s ri] (make-dijkstra-subproblem fs ri))
-             (fn summarize [s]
-;               (println "SUM" s (que))
-               (if (queues/pq-empty? q)
-                 (make-summary Double/NEGATIVE_INFINITY :blocked s)
-                 (let [[_ [_ _ reward status]] (queues/pq-peek-min q)]
-                   (make-summary reward status s)))))]    
-    (let [[out-set reward status] (fs/apply-opt fs inp-set)]
-      (set-output-set! ret out-set)
-      (queues/pq-add! q inp-set [(- reward) (- (summary/status-val status)) reward status 0]))
-    ret))
-
-
-(defmethod get-subproblem :Dijkstra [[_ fs :as n] inp-set] 
-  (make-dijkstra-subproblem fs inp-set))
-
 
 ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;      Pair      ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
 ;; Pair subproblems represent sequntial composition of two subproblems.
@@ -476,7 +401,7 @@
 
 
 
-(defn atomic-name-fs [n] (assert (#{:Atomic :Dijkstra} (first n))) (second n))
+(defn atomic-name-fs [n] (assert (#{:Atomic} (first n))) (second n))
 (defn log-input [fs inp-set] (if *state-abstraction* (fs/get-logger fs inp-set) inp-set))
 (defn get-input-key [fs inp-set] (if *state-abstraction* (fs/extract-context fs inp-set) inp-set))
 
@@ -486,7 +411,7 @@
 ;; TODO: only :Atomic or :Pair inside, when SA off 
 (defn- make-output-collecting-subproblem [fs inp-key inner-sp]
   (make-wrapped-subproblem
-   (oc-name (sp-name inner-sp)) (input-set inner-sp) #{:Atomic :Dijkstra :Pair #_ ::TODO??? :SA :OC} inner-sp
+   (oc-name (sp-name inner-sp)) (input-set inner-sp) #{:Atomic :Pair #_ ::TODO??? :SA :OC} inner-sp
    identity
    (fn child-watch [sp child-sp] 
      (if (fs/=-state-sets (get-output-set! inner-sp) (get-output-set! child-sp))
@@ -496,7 +421,7 @@
      (let [ninp-key (get-input-key fs ni)]
        (if (= inp-key ninp-key)
          s
-         (if (#{:Atomic :Dijkstra} (first (sp-name inner-sp))) ;; TODO!
+         (if (#{:Atomic} (first (sp-name inner-sp))) ;; TODO!
            (let [ret (get-ocs (sp-name inner-sp) fs ninp-key ni)]
              (util/assert-is (not (identical? (canonicalize ret) inner-sp)) "%s" [(def *bad* [s inner-sp (input-set s) ni])])
              (add-subsuming-sp! (canonicalize ret) inner-sp)
@@ -546,9 +471,7 @@
   (if (seq r) (pair-name f (right-factor r)) f))
 
 (defn- wrapped-atomic-name [fs]
-  (let [in  (if (*dijkstra-actions* (first (fs/fs-name fs)))
-              (dijkstra-name fs)
-              (atomic-name fs))
+  (let [in  (atomic-name fs)
         mid (if *collect-equal-outputs* (oc-name in) in)]
     (if *state-abstraction* (sa-name mid) mid)))
 
@@ -588,18 +511,17 @@
     :dir       Factor sequences into pairs using :left or :right recursion
     :prop      Automatically propagate subsumption from parents to matching children?"
   [henv & {gather :gather d :d  s :s   choice-fn :choice-fn
-           local? :local?  dir :dir   prop :prop dijkstra :dijkstra :as m
+           local? :local?  dir :dir   prop :prop :as m
       :or {gather true   d true s true choice-fn last
-           local? true     dir :right prop true dijkstra #{}}}]
-  (assert (every? #{:gather :d :s :choice-fn :local? :dir :prop :dijkstra} (keys m)))
+           local? true     dir :right prop true}}]
+  (assert (every? #{:gather :d :s :choice-fn :local? :dir :prop} (keys m)))
   (when s (assert d))
   (when d (assert gather))
   (binding [*collect-equal-outputs* gather
             *decompose-cache*       (when d (HashMap.))
             *state-abstraction*     s
             *left-recursive*        (case dir :left true :right false)
-            *propagate-subsumption* prop
-            *dijkstra-actions*      dijkstra]
+            *propagate-subsumption* prop]
     (def *root* (sp-ts (apply make-atomic-subproblem (reverse (fs/make-init-pair henv)))))
     (summary/solve
      #(sg/summary *root*)
