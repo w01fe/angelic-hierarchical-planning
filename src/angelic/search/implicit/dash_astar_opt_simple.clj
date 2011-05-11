@@ -1,28 +1,21 @@
 (ns angelic.search.implicit.dash-astar-opt-simple
   (:require [angelic.util :as util]
             [angelic.util.traits :as traits]
+	    [angelic.util.channel :as channel]
             [angelic.search.summary :as summary]            
             [angelic.search.summary-graphs :as sg]
             [angelic.search.function-sets :as fs])
   (:import [java.util HashMap ArrayList IdentityHashMap]))
 
-;; A simplified version of dash-A*-opt.  The goal is to keep the same
-;; granularify of evaluation rather than expansion, without all of the
-;; complexity of allowing unevaluated subproblems.  Basic idea is to make
-;; dummy top-level subproblems, and rely on set propagation everywhere.
+;; A simplified version of dash-A*-opt.
+;; Basic idea is to get rid of lazy evaluation, and just do expansion.
+;; Insight is that if we want lazy evaluation, we can preprocess hierarchy
+;; so expansions happen in two stages, almost exactly simulating lazy evaluation
+;; but without cluttering up the code.
+;; (may need set subsumption for this)
 
-;; So, basic operation will be to evaluate a *child* of an existing atomic
-;; subproblem -- the child does not actually need to exist as a subproblem
-;; until it is evaluated.
-
-;; One issue - making this work effectively means that when we refine an HLA,
-;; Need to start with original output set -- and output collecting will prevent
-;; extra work.  This means that subproblem is not really SP(Act, all-states),
-;; and it can't really be shared.  Or, we need set subsumption.
-
-;; How does this actually work?  When we refine, I create a fresh top-level
-;; skeleton, and an unevaluated child for first in the sequence.
-;; I.e., the skeleton really represents the real deal, should not be shared.
+;; Alternative was to directly simulate this process in the code, but
+;; above seems much simpler and nicer.
 
 ;; Initially, remove complexities like dijkstra actions.
 
@@ -44,24 +37,6 @@
 ;;;;;;;;;;;;;;;;;;;;;;;;;;;;       Utilities      ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
 ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
 
-;;;;;;;;;;;;;;;;;;;;;;;;;;         PubSubHub          ;;;;;;;;;;;;;;;;;;;;;;;;;;
-
-(defrecord PubSubHub [^ArrayList subscribers ^ArrayList publications])
-
-(defn- make-pubsubhub
-  "A hub for publications streams; every subscriber fn is called on every publication."
-  [] (PubSubHub. (ArrayList.) (ArrayList.)))
-
-(defn- publications [psh] (doall (seq (:publications psh))))
-
-(defn- publish!     [psh pub]
-  (.add ^ArrayList (:publications psh) pub)
-  (doseq [sub (doall (seq (:subscribers psh)))] (sub pub)))
-
-(defn- subscribe!   [psh sub]
-  (.add ^ArrayList (:subscribers psh) sub)
-  (doseq [pub (doall (seq (:publications psh)))] (sub pub)))
-
 ;;;;;;;;;;;;;;;;;;;;;;;;;      Change Scheduling      ;;;;;;;;;;;;;;;;;;;;;;;;;;
 
 ;; Trying to keep cached summaries up-to-date while simultaneously modifying the
@@ -69,6 +44,8 @@
 ;; This code allows the set of root subproblems with changed summaries to be recorded
 ;; during evaluation and tree update, and then played back once the tree is fixed,
 ;; decoupling the processes of tree change and summary updates.
+
+;; TODO: get this out of here into sg, get rid of global state.
 
 (def *increases* (ArrayList.))
 (def *decreases* (ArrayList.))
@@ -172,9 +149,9 @@
    eval!-fn, ri-fn, and summary-fn specify how to evaluate, refine input, and summarize."
   [nm inp-set wrapped-ts eval!-fn ri-fn summary-fn]
  (let [                 ts-atom          (atom wrapped-ts)
-       ^PubSubHub       output-ps        (make-pubsubhub)
-       ^PubSubHub       child-ps         (make-pubsubhub)
-       ^PubSubHub       all-child-ps     (make-pubsubhub) ;; For sub-following -- remove if no help.
+       ^PubSubHub       output-ps        (channel/make-channel)
+       ^PubSubHub       child-ps         (channel/make-channel)
+       ^PubSubHub       all-child-ps     (channel/make-channel) ;; For sub-following -- remove if no help.
        ^IdentityHashMap subsuming-sp-set (IdentityHashMap.)]
   (traits/reify-traits [sg/simple-cached-node]
    sg/Summarizable (summarize [s] (summary-fn s))
@@ -184,25 +161,25 @@
   (sp-ts               [s] (or @ts-atom (reset! ts-atom (make-tree-summarizer s))))
   (evaluate!           [s] (eval!-fn s))
   
-  (get-output-set      [s] (first (publications output-ps)))
-  (add-output-watcher! [s w] (subscribe! output-ps w))
-  (set-output-set!    [s o] (assert (not (get-output-set s))) (publish! output-ps o))
+  (get-output-set      [s] (first (channel/publications output-ps)))
+  (add-output-watcher! [s w] (channel/subscribe! output-ps w))
+  (set-output-set!    [s o] (assert (not (get-output-set s))) (channel/publish! output-ps o))
   
-  (get-children        [s] (publications child-ps))
-  (add-child-watcher!  [s w] (subscribe! child-ps w))
+  (get-children        [s] (channel/publications child-ps))
+  (add-child-watcher!  [s w] (channel/subscribe! child-ps w))
   (add-sp-child!       [sp child-sp up?] ;; TODO: subsumption should prevent child from getting output before parent ??
    (util/print-debug 2 "AC" sp child-sp)
    (assert (get-output-set sp))
    (when (canonical? sp)
      (schedule-subsumption! (sp-ts sp) (sp-ts child-sp))
-     (publish! all-child-ps child-sp))
+     (channel/publish! all-child-ps child-sp))
    (let [pub! (fn publish-sp-child! []
                 (util/assert-is (not (identical? sp child-sp)))
                 (util/assert-is (and (get-output-set sp) (get-output-set child-sp)))
                 (when (canonical? sp)
                   (sg/connect! (sp-ts sp) (sp-ts child-sp))
                   (schedule-increase! (sp-ts sp)))    
-                (publish! child-ps child-sp))]
+                (channel/publish! child-ps child-sp))]
      (if (get-output-set child-sp)
        (pub!)
        (do (sg/connect! sp (sp-ts child-sp)) 
@@ -212,7 +189,7 @@
                       (schedule-decrease! sp)))
            (when up? (schedule-increase! sp))))))
 
-  (add-all-child-watcher! [s w] (subscribe! all-child-ps w))    
+  (add-all-child-watcher! [s w] (channel/subscribe! all-child-ps w))    
   (subsuming-sps [s] (keys subsuming-sp-set))
   (add-subsuming-sp! [s subsuming-sp]
     (util/assert-is (canonical? s))
@@ -488,18 +465,6 @@
 ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
 
 (declare *root*)
-
-(defn wtd-sample [item-wt-pairs]
-  (let [tot-wt (reduce + (map second item-wt-pairs))]
-    (loop [[[item wt] & more-items] (seq item-wt-pairs)]
-      (cond (empty? more-items) item
-            (<= (rand) (/ wt tot-wt)) item
-            :else (recur more-items)))))
-
-;; Doesn't really do what's intended, since solved wt is counted too.
-(defn even-sample [nodes]
-  (wtd-sample (for [n nodes] [n (inc (- (summary/max-reward (sg/summary n))))])))
-
 
 (defn implicit-dash-a*-opt
   "Solve this hierarchical env using implicit DASH-A*, or variants thereupon.  Options are:
