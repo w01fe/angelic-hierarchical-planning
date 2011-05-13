@@ -97,7 +97,7 @@
           (let [{:keys [precond-map effect-map reward]} this
                 restrict (state-set/constrain ss (util/map-vals (fn [x] #{x}) precond-map))]
             (when-not (state-set/empty? restrict)
-              [(state/set-vars ss (util/map-vals (fn [x] #{x}) effect-map)) reward])))]    
+              [(state/set-vars restrict (util/map-vals (fn [x] #{x}) effect-map)) reward])))]    
     {:precondition-context-set (fn [this ss] (util/keyset (:precond-map this)))
      :optimistic-set-and-reward- exact
      :pessimistic-set-and-reward- exact}))
