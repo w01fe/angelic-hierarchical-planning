@@ -156,7 +156,7 @@
 
 
 (defn refine-input    [s ni]
-  (when-let [ret ((:ri-fn s) s ni)]
+  (when-let [ret ((:refine-input-fn s) s ni)]
     (util/assert-is (= (:name s) (:name ret)))
     (when (canonical? s) (add-subsuming-sp! ret s))
     ret))
