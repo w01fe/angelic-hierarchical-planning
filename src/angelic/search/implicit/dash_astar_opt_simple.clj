@@ -1,4 +1,4 @@
-(ns angelic.search.implicit.dash-astar-opt-simpler
+(ns angelic.search.implicit.dash-astar-opt-simple
   (:require [angelic.util :as util]
 	    [angelic.util.channel :as channel]
             [angelic.search.summary :as summary]            
@@ -25,15 +25,6 @@
 
 ;; TODO: can we factor out ri equality check?
 
-;; Further idea -- traits aren't really helping.
-;; Can instead go one or two steps towards simple at some expense.
-;; One step: switch to multimethods or javascript-style objects, but keep mutability.
-;; Two steps: Above, plus go immutable.  use global hash table.
-;;   That can double as decomposition -- just choide of keys.
-;;   mutation just replaces entry in table.
-;; Or intermediate -- e.g., cache can probably stay mutable, other things less so.
-;; If we have mutable state, options are to make it explicit or close over.
-;; Depends on what makes sense, either way trait thing should be fresh every time.
 
 ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
 ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;       Options      ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
@@ -121,9 +112,11 @@
 (defn sp-ts [sp]
   (let [ts-atom (:ts-atom sp)]
     (or @ts-atom (reset! ts-atom (make-tree-summarizer sp)))))
+
 ;; Canonical SPs are Atomic and Pair; wrappers use TS of inner SP.
 (defn- canonicalize [sp] (:ts-sp (sp-ts sp)))
 (defn- canonical? [sp] (identical? sp (canonicalize sp)))
+
 
 (defn publish-child! [sp child-sp]
   (when child-sp			
@@ -134,10 +127,14 @@
       (sg/connect! (sp-ts sp) (sp-ts child-sp))
       (schedule-increase! (sp-ts sp)))    
     (channel/publish! (:child-channel sp) child-sp)))
+
 (defn list-children        [s] (channel/publications (:child-channel s)))
+
 (defn subscribe-children!  [s w] (channel/subscribe! (:child-channel s) w))
 
+
 (defn subsuming-sps        [s] (keys (:subsuming-sp-set s)))
+
 (defn add-subsuming-sp! [s subsuming-sp]
   (util/assert-is (canonical? s))
   (util/assert-is (canonical? subsuming-sp))                     
@@ -155,19 +152,16 @@
               (fn [subsuming-child]
                 (let [can-subsuming-child (canonicalize subsuming-child)]
                   (when (= (:name can-child) (:name can-subsuming-child))
-                    (add-subsuming-sp! can-child can-subsuming-child)))))))))))
-  )
+                    (add-subsuming-sp! can-child can-subsuming-child))))))))))))
+
+
 (defn refine-input    [s ni]
   (when-let [ret ((:ri-fn s) s ni)]
     (util/assert-is (= (:name s) (:name ret)))
     (when (canonical? s) (add-subsuming-sp! ret s))
     ret))
-
-(defmethod print-method ::Subproblem [sp o]
-  (print-method (format "#<SP$%8h %s>" (System/identityHashCode sp) (:name sp)) o))
-
-;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;  Auxillary fns  ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
   
+
 (defn- terminal? [sp]
   (and (empty? (list-children sp))
        (not (summary/live? (sg/summary sp)))))
@@ -185,12 +179,12 @@
   (sg/connect! p (sp-ts c)))
 
 
-;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;  Constructors  ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
-
-
+(defmethod print-method ::Subproblem [sp o]
+  (print-method (format "#<SP$%8h %s>" (System/identityHashCode sp) (:name sp)) o))
 
 ;; Multimethod to get a subproblem by name, or nil for dead.
 (defmulti get-subproblem (fn get-subproblem-dispatch [nm inp] (first nm)))
+
 
 
 ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
