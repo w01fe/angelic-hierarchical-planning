@@ -25,6 +25,8 @@
 
 ;; TODO: can we factor out ri equality check?
 
+;; TODO: cache pairs too ? 
+
 
 ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
 ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;       Options      ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
@@ -39,6 +41,10 @@
 (declare *state-abstraction*     ) ;; Use state abstraction?  Requires *decompose-cache*
 (declare *propagate-subsumption* ) ;; Automatically propagate subsumption links to corresponding children
 
+(defmacro cache-under [ks body]
+  `(if-let [^HashMap dc# *decompose-cache*]
+     (util/cache-with dc# ~ks ~body)
+     ~body))
 
 ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
 ;;;;;;;;;;;;;;;;;;;;;;;;;;;;       Utilities      ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
@@ -118,19 +124,32 @@
 (defn- canonical? [sp] (identical? sp (canonicalize sp)))
 
 
-(defn publish-child! [sp child-sp]
-  (when child-sp			
-    (util/print-debug 2 "AC" sp child-sp)
-    (util/assert-is (not (identical? sp child-sp)))
-    (when (canonical? sp)
-      (schedule-subsumption! (sp-ts sp) (sp-ts child-sp))
-      (sg/connect! (sp-ts sp) (sp-ts child-sp))
-      (schedule-increase! (sp-ts sp)))    
-    (channel/publish! (:child-channel sp) child-sp)))
+
 
 (defn list-children        [s] (channel/publications (:child-channel s)))
 
 (defn subscribe-children!  [s w] (channel/subscribe! (:child-channel s) w))
+
+(defn- connect-and-watch! [p c child-f]
+  (sg/connect! p c)
+  (subscribe-children! c child-f))
+
+(defn- connect-ts! [p c]
+  (sg/connect! p (sp-ts c)))
+
+(defn publish-child! [sp child-sp]
+  (when child-sp			
+    (util/print-debug 2 "AC" sp child-sp)
+    (util/assert-is (not (identical? sp child-sp)))
+    (if (and *collect-equal-outputs*
+             (fs/=-state-sets (:output-set sp) (:output-set child-sp)))
+      (do (schedule-increase! sp)
+          (connect-and-watch! sp child-sp (partial publish-child! sp)))
+      (do (when (canonical? sp)
+            (schedule-subsumption! (sp-ts sp) (sp-ts child-sp))
+            (sg/connect! (sp-ts sp) (sp-ts child-sp))
+            (schedule-increase! (sp-ts sp)))    
+          (channel/publish! (:child-channel sp) child-sp)))))
 
 
 (defn subsuming-sps        [s] (keys (:subsuming-sp-set s)))
@@ -171,13 +190,6 @@
        (summary/solved? (sg/summary sp))))
 
 
-(defn- connect-and-watch! [p c child-f]
-  (sg/connect! p c)
-  (subscribe-children! c child-f))
-
-(defn- connect-ts! [p c]
-  (sg/connect! p (sp-ts c)))
-
 
 (defmethod print-method ::Subproblem [sp o]
   (print-method (format "#<SP$%8h %s>" (System/identityHashCode sp) (:name sp)) o))
@@ -206,27 +218,34 @@
 
 (declare refinement-names)
 
-(defn- make-atomic-subproblem [fs inp-set]
-  (let [[out-set reward status] (fs/apply-opt fs inp-set)]
-    (when out-set
-     (let [nm         (atomic-name fs)
-	   summary-fn (atom #(make-summary reward status %))
-	   set-sf!    (fn [s f] (reset! summary-fn f) (schedule-decrease! s))] 
-       (make-subproblem
-	nm inp-set out-set nil
-	(fn expand! [s]
-	  (util/print-debug 1 "expand" nm)
-	  (set-sf! s sg/or-summary) 
-	  (if-let [subsuming-sps (seq (remove terminal? (subsuming-sps s)))]
-	    (connect-and-watch! s (apply min-key (comp sg/get-bound sp-ts) subsuming-sps)
-	      (fn [sub-child] (publish-child! s (refine-input sub-child inp-set)))) 
-	    (doseq [ref-name (refinement-names fs inp-set)] 
-	      (publish-child! s (get-subproblem ref-name inp-set)))))     
-	(fn [s ri]  (assert (not *collect-equal-outputs*))  
-	  (if (= ri inp-set) s (get-subproblem nm  ri)))
-	(fn summarize [s] (@summary-fn s)))))))
+(defn get-input-key [fs inp-set]
+  (if *state-abstraction* (fs/extract-context fs inp-set) inp-set))
 
-(defmethod get-subproblem :Atomic [[_ fs :as n] inp-set] 
+(defn- make-atomic-subproblem [fs inp-set]
+  (let [nm (atomic-name fs)]
+    (cache-under [nm (get-input-key fs inp-set)]
+     (let [[out-set reward status] (fs/apply-opt fs inp-set)]
+       (when out-set
+         (let [summary-fn (atom #(make-summary reward status %))
+               set-sf!    (fn [s f] (reset! summary-fn f) (schedule-decrease! s))] 
+           (make-subproblem
+            nm inp-set out-set nil
+            (fn expand! [s]
+              (util/print-debug 1 "expand" nm)
+              (set-sf! s sg/or-summary) 
+              (if-let [subsuming-sps (seq (remove terminal? (subsuming-sps s)))]
+                (connect-and-watch! s (apply min-key (comp sg/get-bound sp-ts) subsuming-sps)
+                  (fn [sub-child] (publish-child! s (refine-input sub-child inp-set)))) 
+                (doseq [ref-name (refinement-names fs inp-set)] 
+                  (publish-child! s (get-subproblem ref-name inp-set)))))     
+            (fn [s ri]  #_ (assert (not *collect-equal-outputs*))  
+              (if (= ri inp-set) s (get-subproblem nm  ri)))
+            (fn summarize [s] (@summary-fn s)))))))))
+
+
+;; TODO: handle state abstraction
+;; TODO: should wrap pairs like this too?
+(defmethod get-subproblem :Atomic [[_ fs] inp-set]
   (make-atomic-subproblem fs inp-set))          
 
 
@@ -299,71 +318,8 @@
   (make-half-pair-subproblem (get-subproblem left-name inp) #(get-subproblem right-name %)))
 
 ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
-;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;     Wrappers     ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
-;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
+;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;    SA Wrapper     ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
 
-(defn make-wrapped-subproblem
-  "Make a wrapped subproblem, which modifies the behavior of a wrapped 'canonical'
-   subproblem while retaining the same semantics, tree summarizer, etc."
-  [nm inp-set out-set prefix-set inner-sp child-watch ri-fn]
-  (util/assert-is (contains? prefix-set (first (:name inner-sp))))
-  (let [ret (make-subproblem nm inp-set out-set (sp-ts inner-sp)
-                             (fn [_] (throw (RuntimeException.)))
-                             ri-fn sg/or-summary)]
-    (connect-and-watch! ret inner-sp #(child-watch ret %))
-    ret))
-
-;;;;;;;;;;;;;;;;;;;;;;;;;;;     Output Collection     ;;;;;;;;;;;;;;;;;;;;;;;;;;
-;; Output Collector captures children with the same output set, and only
-;; releases new children for refined output sets.
-
-;; OutputCollector also handles decomposition and inside of state abstraction, when applicable.
-
-(defn oc-name [inner-name] [:OC inner-name])
-
-
-
-(defn log-input [fs inp-set] (if *state-abstraction* (fs/get-logger fs inp-set) inp-set))
-(defn get-input-key [fs inp-set] (if *state-abstraction* (fs/extract-context fs inp-set) inp-set))
-
-(declare get-ocs)
-
-;; Input-key caching not necessary, but speeds things up a lot on, e.g., discrete-manipulation.
-;; TODO: only :Atomic or :Pair inside, when SA off 
-(defn- make-output-collecting-subproblem [fs inp-key inner-sp]
-  (when inner-sp
-   (make-wrapped-subproblem
-    (oc-name (:name inner-sp)) (:input-set inner-sp) (:output-set inner-sp)
-    #{:Atomic :Pair #_ ::TODO??? :SA :OC} inner-sp
-    (fn child-watch [sp child-sp]
-      (if (fs/=-state-sets (:output-set inner-sp) (:output-set child-sp))
-	(do (schedule-increase! sp) (connect-and-watch! sp child-sp #(child-watch sp %))) 
-	(publish-child! sp (make-output-collecting-subproblem fs inp-key child-sp)))) 
-    (fn refine-input [s ni]
-      (let [ninp-key (get-input-key fs ni)]
-	(if (= inp-key ninp-key)
-	  s
-	  (if (#{:Atomic} (first (:name inner-sp))) ;; TODO!
-	    (when-let [ret (get-ocs (:name inner-sp) fs ninp-key ni)]
-	      (util/assert-is (not (identical? (canonicalize ret) inner-sp)) "%s" [(def *bad* [s inner-sp (:input-set s) ni])])
-	      (add-subsuming-sp! (canonicalize ret) inner-sp)
-	      ret)
-	    (make-output-collecting-subproblem fs ninp-key (refine-input inner-sp (log-input fs ni))))))))))
-
-(defn get-ocs [inner-n fs inp-key inp-set] 
-  (let [make-sp #(make-output-collecting-subproblem fs inp-key (get-subproblem inner-n (log-input fs inp-set)))]
-    (if-let [^HashMap dc *decompose-cache*]
-      (util/cache-with dc [inner-n inp-key] (make-sp))
-      (make-sp))))
-
-(defmethod get-subproblem :OC [[_ inner-n :as n] inp-set]
-  (let [fs (atomic-name-fs inner-n)] (get-ocs inner-n fs (get-input-key fs inp-set) inp-set)))
-
-
-
-
-;;;;;;;;;;;;;;;;;;;;;;;;;;;     State Abstraction     ;;;;;;;;;;;;;;;;;;;;;;;;;;
-;; State abstractor puts the output of a subproblem (and all children) in a new context.
 
 (defn sa-name [inner-name] [:SA inner-name])
 
@@ -371,14 +327,31 @@
 ;; Also note: new input can have subset of variables of old. (=-state-sets does ntthis now).
 (defn- make-state-abstracted-subproblem [fs inner-sp inp-set]
   (when inner-sp
-   (make-wrapped-subproblem
-    (sa-name (:name inner-sp)) inp-set (fs/transfer-effects inp-set (:output-set inner-sp)) #{:OC} inner-sp
-    (fn [sp child-sp] (publish-child! sp (make-state-abstracted-subproblem fs child-sp inp-set))) 
-    (fn [sp ni] (if (fs/=-state-sets ni inp-set) sp (make-state-abstracted-subproblem fs (refine-input inner-sp ni) ni))))))
+    (let [ret (make-subproblem 
+               (sa-name (:name inner-sp))
+               inp-set (fs/transfer-effects inp-set (:output-set inner-sp))
+               (sp-ts inner-sp)
+               (fn [_] (throw (RuntimeException.)))
+               (fn [sp ni]
+                 (if (fs/=-state-sets ni inp-set) sp
+                     (let [log-ni (fs/get-logger fs ni)]                      
+                       (make-state-abstracted-subproblem fs (refine-input inner-sp log-ni) ni))))
+               sg/or-summary)]      
+      (connect-and-watch! ret inner-sp 
+       #(publish-child! ret (make-state-abstracted-subproblem fs % inp-set)))
+      ret)))
+
 
 (defmethod get-subproblem :SA [[_ inner-n :as n] inp-set]
-  (let [fs (atomic-name-fs (second inner-n))] 
-    (make-state-abstracted-subproblem fs (get-subproblem inner-n inp-set) inp-set)))
+  (let [fs (atomic-name-fs inner-n)] 
+    (make-state-abstracted-subproblem fs
+      (get-subproblem inner-n (fs/get-logger fs inp-set))
+      inp-set)))
+
+(defn log-input [fs inp-set] (if *state-abstraction* (fs/get-logger fs inp-set) inp-set))
+
+
+
 
 
 ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
@@ -394,7 +367,7 @@
 
 (defn- wrapped-atomic-name [fs]
   (let [in  (atomic-name fs)
-        mid (if *collect-equal-outputs* (oc-name in) in)]
+        mid in #_ (if *collect-equal-outputs* (oc-name in) in)]
     (if *state-abstraction* (sa-name mid) mid)))
 
 
@@ -440,7 +413,9 @@
 
 
 
-;; (do (use 'angelic.util '[angelic env hierarchy] 'angelic.domains.nav-switch  'angelic.domains.discrete-manipulation 'angelic.search.implicit.dash-astar-opt-simple) (require '[angelic.search.summary-graphs :as sg] '[angelic.search.summary :as summary]) (defn s [x]  (sg/summarize x)) (defn sc [x] (summary/children x))  (defn src [x] (summary/source x)) (defn nc [x] (sg/child-nodes x)))
+;; (do (use 'angelic.util '[angelic env hierarchy] 'angelic.domains.nav-switch  'angelic.domains.discrete-manipulation 'angelic.search.implicit.dash-astar-opt-simple) (require '[angelic.search.summary-graphs-new :as sg] '[angelic.search.summary :as summary]) (defn s [x]  (sg/summarize x)) (defn sc [x] (summary/children x))  (defn src [x] (summary/source x)) (defn nc [x] (sg/child-nodes x)))
+
+;; (require '[angelic.search.implicit.dash-astar-opt :as dao])
 
 ;; (do (use 'clojure.test) (use 'angelic.test.search.implicit.dash-astar-opt-simple) (run-tests 'angelic.test.search.implicit.dash-astar-opt-simple))
 
