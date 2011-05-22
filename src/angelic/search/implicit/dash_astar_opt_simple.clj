@@ -348,10 +348,6 @@
       (get-subproblem inner-n (fs/get-logger fs inp-set))
       inp-set)))
 
-(defn log-input [fs inp-set] (if *state-abstraction* (fs/get-logger fs inp-set) inp-set))
-
-
-
 
 
 ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
@@ -366,10 +362,8 @@
   (if (seq r) (pair-name f (right-factor r)) f))
 
 (defn- wrapped-atomic-name [fs]
-  (let [in  (atomic-name fs)
-        mid in #_ (if *collect-equal-outputs* (oc-name in) in)]
-    (if *state-abstraction* (sa-name mid) mid)))
-
+  (let [in  (atomic-name fs)]
+    (if *state-abstraction* (sa-name in) in)))
 
 (defn- refinement-names
   "Generate the names of subproblems representing refinements of fs from inp-set"
