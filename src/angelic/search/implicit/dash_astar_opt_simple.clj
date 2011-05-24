@@ -78,16 +78,6 @@
   (do-changes! *subsumes* (fn [[ts subsumed-ts]] (sg/connect-subsumed! ts subsumed-ts)))
   (do-changes! *decreases* sg/summary-changed!))
 
-;;;;;;;;;;;;;;;;;;;;;;;;;;      Tree Summarizers      ;;;;;;;;;;;;;;;;;;;;;;;;;;
-
-(defn make-tree-summarizer [sp]
-  (doto (with-meta (merge {:ts-sp sp} (sg/make-simple-cached-node) (sg/make-or-summary))
-          {:type ::TreeSummarizer})
-    (sg/connect! sp)
-    (schedule-subsumption! sp)))
-
-(defmethod print-method  ::TreeSummarizer [s o]
-  (print-method (format "#<TS %s>" (print-str (:ts-sp s))) o))
 
 ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
 ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;  Subproblems  ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
@@ -116,8 +106,16 @@
     {:type ::Subproblem}))
 
 (defn sp-ts [sp]
-  (let [ts-atom (:ts-atom sp)]
-    (or @ts-atom (reset! ts-atom (make-tree-summarizer sp)))))
+  (or @(:ts-atom sp)
+      (reset! (:ts-atom sp)
+              (doto (with-meta (merge {:ts-sp sp :summarize-fn sg/or-summary}
+                                      (sg/make-simple-cached-node))
+                      {:type ::TreeSummarizer})
+                (sg/connect! sp)
+                (schedule-subsumption! sp)))))
+
+(defmethod print-method  ::TreeSummarizer [s o]
+  (print-method (format "#<TS %s>" (print-str (:ts-sp s))) o))
 
 ;; Canonical SPs are Atomic and Pair; wrappers use TS of inner SP.
 (defn- canonicalize [sp] (:ts-sp (sp-ts sp)))
@@ -225,13 +223,13 @@
     (cache-under [nm (get-input-key fs inp-set)]
      (let [[out-set reward status] (fs/apply-opt fs inp-set)]
        (when out-set
-         (let [summary-fn (atom #(make-summary reward status %))
-               set-sf!    (fn [s f] (reset! summary-fn f) (schedule-decrease! s))] 
+         (let [summary-fn (atom #(make-summary reward status %))] 
            (make-subproblem
             nm inp-set out-set nil
             (fn expand! [s]
               (util/print-debug 1 "expand" nm)
-              (set-sf! s sg/or-summary) 
+              (reset! summary-fn sg/or-summary)
+              (schedule-decrease! s)
               (if-let [subsuming-sps (seq (remove terminal? (subsuming-sps s)))]
                 (connect-and-watch! s (apply min-key (comp sg/get-bound sp-ts) subsuming-sps)
                   (fn [sub-child] (publish-child! s (refine-input sub-child inp-set)))) 

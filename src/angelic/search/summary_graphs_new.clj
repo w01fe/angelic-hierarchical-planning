@@ -157,7 +157,6 @@
 
 
 (def or-summary #(or-summarize % summary/or-combine-b))
-(defn make-or-summary [] {:summarize-fn or-summary})
 
 
 (defn sum-summary [s]
