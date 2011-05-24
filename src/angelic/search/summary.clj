@@ -57,7 +57,7 @@
 (def neg-inf Double/NEGATIVE_INFINITY)
 (declare +worst-simple-summary+)
 
-(defn viable? [summary] (> (reward summary) neg-inf))
+(defn viable? [summary] (> (max-reward summary) neg-inf))
 
 ;; TODO: can we safely handle empty case here?
 (defn apply-max-b [stats bound]
@@ -218,6 +218,109 @@
 
 
 
+;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
+;;;;;;;;;;;;;;;;;;;;;;;;;;;; BoundedWeightedSummary ;;;;;;;;;;;;;;;;;;;;;;;;;;;;
+;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
+
+;; Bounded weighted summary, with reward = max(opt * weight, pess)
+;; Although not strictly necessary, keep track of best pess reward and use to bound.
+
+;; TODO: safe way to take bounds into account
+;; TODO: way to prevent blocked even when (worse) live option is available ?
+;; TODO: lower-bounding is not correct for subproblems; they get worse as they release children...
+;;    this leads to infinite loops ieven in easy problems, e.g., nav switch.
+;; TODO: do not release children until at least one achieves the previous bound?
+
+(declare make-bw-summary*)
+
+(defrecord BoundedWeightedSummary [wt p-val w-val o-val max-gap stat src
+                                   p-children w-children o-children]
+  Summary
+  (max-reward       [s] o-val)
+  (reward           [s] w-val) 
+  (status           [s] stat)
+  (source           [s] src)
+  (children         [s] o-children)
+  (re-source        [s new-src bound stat-bound] (throw (RuntimeException.)))  
+  (eq               [s other]
+    (let [rel-keys [:p-val :w-val :o-val :stat]]
+      (= (map #(% s) rel-keys) (map #(% other) rel-keys))))
+  (>=               [s other bound]  ;; TODO: bound ???  
+    (or (> o-val (:o-val other))
+        (and (= o-val (:o-val other))
+             (clojure.core/>= (status-val stat) (status-val (status other))))))
+  (+                [s other new-src bound]
+   (let [p-sum (clojure.core/+ p-val (:p-val other))
+         w-sum (clojure.core/+ w-val (:w-val other))
+         o-sum (min (clojure.core/+ o-val (:o-val other)) bound)]
+     (assert (<= p-sum o-sum))
+     (make-bw-summary*
+      wt p-sum
+      (max p-sum w-sum (* (:wt s) o-sum))
+      o-sum
+      (max max-gap (:max-gap other))
+      (min-key status-val stat (status other))
+      new-src [s other] [s other] [s other]))))
+
+(defn- make-bw-summary* [wt p-val f-val o-val max-gap status source
+                         p-children w-children o-children]
+  (util/assert-is (<= p-val f-val o-val) "%s" [source children])
+  (BoundedWeightedSummary. wt p-val f-val o-val (min max-gap (- o-val p-val))
+                           status source p-children w-children o-children))
+
+(defn make-bw-summary [wt p-val o-val status source]
+  (util/assert-is (contains? statuses-set status))
+  (make-bw-summary* wt p-val (max p-val (* o-val wt)) o-val
+                    (- o-val p-val) status source nil nil nil))
+
+;(defn bw-summary? [s] (instance? SimpleWeightedSummary s))
+(defmethod print-method BoundedWeightedSummary [s o]
+  (print-method (pr-str "<BWSum:" [(:p-val s) (:w-val s) (:o-val s)]
+                        (:max-gap s) (status s) ">")
+                o))
+
+(def worst-bws (make-bw-summary 1 neg-inf neg-inf :blocked :dummy ))
+
+;; TODO: ignoring upper bounds and
+;; possibility of keeping lower bounds (see below) for now.
+;; Warning, this semantics may hide :blocked issues.
+
+(defn apply-max-ge [ge s]
+  (assert (seq s))
+  (loop [best (first s) s (next s)]
+    (if s
+      (recur (if (ge (first s) best) (first s) best) (next s))
+      best)))
+
+(defn better-bws [k]
+  (fn [b1 b2]
+    (cond (and (not (= :blocked (status b1))) (= :blocked (status b2)))
+          true
+
+          (and (= :blocked (status b1)) (not (= :blocked (status b2))))
+          false
+
+          (> (k b1) (k b2))
+          true
+
+          (< (k b1) (k b2))
+          false
+
+          :else
+          (clojure.core/>= (status-val (status b1)) (status-val (status b2))))))
+
+(defn or-combine-bws [summaries new-src _]
+  (if (empty? summaries)
+    worst-bws
+   (let [best-p (apply-max-ge (better-bws :p-val) summaries)
+         best-w (apply-max-ge (better-bws :w-val) summaries)
+         best-o (apply-max-ge (better-bws :o-val) summaries)]
+     (make-bw-summary*
+      (:wt (first summaries))
+      (:p-val best-p) (:w-val best-w) (:o-val best-o)
+      (:max-gap best-o) (:stat best-o) new-src
+      [best-p] [best-w] [best-o]))))
+
 
 
 
@@ -350,7 +453,7 @@
 
 (defrecord SimpleWeightedSummary [p-val f-val o-val max-gap stat src chldren]
   Summary
-  (max-reward       [s] nil)
+  (max-reward       [s] o-val)
   (reward           [s] f-val) 
   (status           [s] stat)
   (source           [s] src)

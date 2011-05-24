@@ -158,10 +158,13 @@
 
 (def or-summary #(or-summarize % summary/or-combine-b))
 
+(def or-summary-bws #(or-summarize % summary/or-combine-bws))
+
 
 (defn sum-summary [s]
   (swap! *summary-count* inc)
   (let [kids (child-nodes s)]
+    (assert (= (count kids) 2))
     (summary/+ (summary (first kids)) (summary (second kids)) s (get-bound s))))
 
 

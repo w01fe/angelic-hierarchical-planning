@@ -35,6 +35,21 @@
 (defn get-logger [fs input-set]
   (state/get-logger input-set (precondition-context-set fs input-set)))
 
+(defn apply-descs [fs [p-set o-set]]
+  (let [[o-out o-rew o-stat] (apply-opt fs o-set)]
+    (when o-set
+      (if (and (= o-stat :solved) p-set (state-set/singleton o-set))
+        [[o-out o-out] [o-rew o-rew] :solved]
+        (let [[p-out p-rew p-stat] (when p-set (apply-pess fs p-set))]
+          (when p-out
+            (case o-stat
+                  :solved (assert (= p-stat :solved))
+                  :live   (assert (= p-stat :live))
+                  :blocked (assert (#{:blocked :solved} p-stat))))
+          [[p-out o-out]
+           [(if p-out p-rew Double/NEGATIVE_INFINITY) o-rew]
+           o-stat])))))
+
 (def dead-outcome [nil Double/NEGATIVE_INFINITY :blocked])
 (defn- output-or-nil [desc-fn stat-fn action input-set]
   (or (when-let [[out-set rew] (desc-fn action input-set)]
@@ -110,6 +125,11 @@
   (util/assert-is (clojure.set/subset? (state/current-context s1)
                                        (state/current-context s2)) "%s" [s1 s2])
   (= s1 s2))
+
+(defn =-state-set-pairs [[p1 o1] [p2 o2]]
+  (and (=-state-sets o1 o2)
+       (or (and (nil? p1) (nil? p2))
+           (and (not (nil? p1)) (not (nil? p2)) (=-state-sets p1 p2)))))
 
 (defn transfer-effects [to-set from-set]
   (state/transfer-effects to-set from-set))
