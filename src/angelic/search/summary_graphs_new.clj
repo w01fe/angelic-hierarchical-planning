@@ -164,9 +164,6 @@
   (let [kids (child-nodes s)]
     (summary/+ (summary (first kids)) (summary (second kids)) s (get-bound s))))
 
-(defn make-sum-summarizer []
-  (assoc (make-simple-cached-node) :summarize-fn sum-summary))
-
 
 ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;; Searching ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
 

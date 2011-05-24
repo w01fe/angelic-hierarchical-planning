@@ -278,7 +278,7 @@
   (when right-sp
     (let [nm          (pair-name (:name left-sp) (:name right-sp))
 	  right?-atom (atom false) ;; Expand on right            
-	  ss          (sg/make-sum-summarizer)
+	  ss          (assoc (sg/make-simple-cached-node) :summarize-fn sg/sum-summary)
 	  go-right! (fn [s]
 		      (reset! right?-atom true)                          
 		      (sg/disconnect! ss (sp-ts right-sp))
