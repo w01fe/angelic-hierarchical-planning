@@ -626,7 +626,7 @@
            [(state/set-var con-ss [:gripper-offset] #{dst-go})
             (apply max (for [cgo (state/get-var con-ss [:gripper-offset])]
                          (move-gripper-reward cgo dst-go)))])))
-     (pessimistic-set-and-reward- [a ss] ::TODO))))
+     (pessimistic-set-and-reward- [a ss] nil #_ ::TODO))))
 
 
 (defn possible-grasp-gos [const base pos]
@@ -804,7 +804,7 @@
     (assert (state-set/vars-known? ss [[:base]]))                              
     [(state/set-var ss [:base] #{dst})
      (nav-reward (state-set/get-known-var ss [:base]) dst)])
-  (pessimistic-set-and-reward- [a ss] ::TODO)))
+  (pessimistic-set-and-reward- [a ss] nil #_ ::TODO)))
 ; manhattan
 ; pess? SLD? (try direct line, if occ then -inf).
 
