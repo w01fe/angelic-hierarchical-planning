@@ -243,30 +243,29 @@
   (children         [s] o-children)
   (re-source        [s new-src bound stat-bound] (throw (RuntimeException.)))  
   (eq               [s other]
-    (let [rel-keys [:p-val :w-val :o-val :stat]]
+    (let [rel-keys [#_ :p-val #_ :w-val :o-val :stat]]
       (= (map #(% s) rel-keys) (map #(% other) rel-keys))))
   (>=               [s other bound]  ;; TODO: bound ???  
-    (or (> o-val (:o-val other))
-        (and (= o-val (:o-val other))
+    (or (> (min bound o-val) (min bound (:o-val other)))
+        (and (= (min bound o-val) (min bound (:o-val other)))
              (clojure.core/>= (status-val stat) (status-val (status other))))))
-  (+                [s other new-src bound]
+  (+                [s other new-src bound] 
    (let [p-sum (clojure.core/+ p-val (:p-val other))
          w-sum (clojure.core/+ w-val (:w-val other))
          o-sum (min (clojure.core/+ o-val (:o-val other)) bound)]
      (assert (<= p-sum o-sum))
      (make-bw-summary*
-      wt p-sum
-      (max p-sum w-sum (* (:wt s) o-sum))
-      o-sum
+      wt p-sum w-sum o-sum
       (max max-gap (:max-gap other))
       (min-key status-val stat (status other))
       new-src [s other] [s other] [s other]))))
 
 (defn- make-bw-summary* [wt p-val f-val o-val max-gap status source
                          p-children w-children o-children]
-  (util/assert-is (<= p-val f-val o-val) "%s" [source children])
-  (BoundedWeightedSummary. wt p-val f-val o-val (min max-gap (- o-val p-val))
-                           status source p-children w-children o-children))
+  (let [final-f (min (max p-val f-val (* wt o-val)) o-val)]
+    (util/assert-is (<= p-val final-f o-val) "%s" [source children])
+    (BoundedWeightedSummary. wt p-val final-f o-val (min max-gap (- o-val p-val))
+                             status source p-children w-children o-children)))
 
 (defn make-bw-summary [wt p-val o-val status source]
   (util/assert-is (contains? statuses-set status))
@@ -292,24 +291,26 @@
       (recur (if (ge (first s) best) (first s) best) (next s))
       best)))
 
-(defn better-bws [k]
-  (fn [b1 b2]
-    (cond (and (not (= :blocked (status b1))) (= :blocked (status b2)))
-          true
+(defn better-bws
+  ([k] (better-bws k Double/POSITIVE_INFINITY))
+  ([k b]
+     (fn [b1 b2]
+       (cond #_ (and (not (= :blocked (status b1))) (= :blocked (status b2)))
+             #_ true
 
-          (and (= :blocked (status b1)) (not (= :blocked (status b2))))
-          false
+             #_ (and (= :blocked (status b1)) (not (= :blocked (status b2))))
+             #_ false
 
-          (> (k b1) (k b2))
-          true
+             (> (min (k b1) b) (min (k b2) b))
+             true
 
-          (< (k b1) (k b2))
-          false
+             (< (min (k b1) b) (min (k b2) b))
+             false
 
-          :else
-          (clojure.core/>= (status-val (status b1)) (status-val (status b2))))))
+             :else
+             (clojure.core/>= (status-val (status b1)) (status-val (status b2)))))))
 
-(defn or-combine-bws [summaries new-src _]
+(defn or-combine-bws [summaries new-src bound]
   (if (empty? summaries)
     worst-bws
    (let [best-p (apply-max-ge (better-bws :p-val) summaries)
@@ -317,7 +318,7 @@
          best-o (apply-max-ge (better-bws :o-val) summaries)]
      (make-bw-summary*
       (:wt (first summaries))
-      (:p-val best-p) (:w-val best-w) (:o-val best-o)
+      (:p-val best-p) (:w-val best-w) (min (:o-val best-o) bound)
       (:max-gap best-o) (:stat best-o) new-src
       [best-p] [best-w] [best-o]))))
 
