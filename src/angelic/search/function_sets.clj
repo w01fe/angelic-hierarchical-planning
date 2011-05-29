@@ -37,7 +37,7 @@
 
 (defn apply-descs [fs [p-set o-set]]
   (let [[o-out o-rew o-stat] (apply-opt fs o-set)]
-    (when o-set
+    (when o-out
       (if (and (= o-stat :solved) p-set (state-set/singleton o-set))
         [[o-out o-out] [o-rew o-rew] :solved]
         (let [[p-out p-rew p-stat] (when p-set (apply-pess fs p-set))]
@@ -126,10 +126,13 @@
                                        (state/current-context s2)) "%s" [s1 s2])
   (= s1 s2))
 
-(defn =-state-set-pairs [[p1 o1] [p2 o2]]
-  (and (=-state-sets o1 o2)
+(defn map-sets [f fs [ps os]] [(when ps (f fs ps)) (f fs os)])
+
+(defn eq-sets [pred [p1 o1] [p2 o2]]
+  (and (pred o1 o2)
        (or (and (nil? p1) (nil? p2))
-           (and (not (nil? p1)) (not (nil? p2)) (=-state-sets p1 p2)))))
+           (and (not (nil? p1)) (not (nil? p2)) (pred p1 p2)))))
+
 
 (defn transfer-effects [to-set from-set]
   (state/transfer-effects to-set from-set))

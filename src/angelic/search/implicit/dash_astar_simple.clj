@@ -56,6 +56,14 @@
 ;; should be easy .... . . . ..
 ;; Start with that, just for fun.  
 
+;; NOTE: output collecting is not really good enough, since any change in
+;; recursive hierarchy can trigger infinite loop.  Need hierarchical
+;; collecting of some sort.
+
+;; This really throws a wrengh in things, cause output things are no longer really
+;; subproblems, shouldn't have tree summarizers (?), etc.
+;; Well, why not?  
+
 ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
 ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;       Options      ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
 ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
@@ -107,6 +115,7 @@
   (do-changes! *subsumes* (fn [[ts subsumed-ts]] (sg/connect-subsumed! ts subsumed-ts)))
   (do-changes! *decreases* sg/summary-changed!))
 
+(def or-summary sg/or-summary-bws)
 
 ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
 ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;  Subproblems  ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
@@ -129,6 +138,7 @@
                :ts-atom (atom wrapped-ts)
                :child-channel    (channel/make-channel)
                :subsuming-sp-set (IdentityHashMap.)
+               :child-output-map        (HashMap.)
                :expand!-fn expand!-fn
                :refine-input-fn ri-fn
                :summarize-fn summary-fn)    
@@ -137,7 +147,7 @@
 (defn sp-ts [sp]
   (or @(:ts-atom sp)
       (reset! (:ts-atom sp)
-              (doto (with-meta (merge {:ts-sp sp :summarize-fn sg/or-summary-bws}
+              (doto (with-meta (merge {:ts-sp sp :summarize-fn or-summary}
                                       (sg/make-simple-cached-node))
                       {:type ::TreeSummarizer})
                 (sg/connect! sp)
@@ -164,19 +174,59 @@
 (defn- connect-ts! [p c]
   (sg/connect! p (sp-ts c)))
 
+;; TODO: issue is a general one with summary propagation and loops
+;; This was never really properly handled -- lazy was the way out. 
+
+(declare publish-child! refine-input)
+(defn make-output-collector [nm inp-sets out-sets]
+; (println "MOC" nm)
+  (assoc
+      (make-subproblem
+       [:OC nm #_ out-sets] inp-sets out-sets
+       nil (fn [] (throw (RuntimeException. "foo")))
+       (fn [oc ni]
+         (if (fs/eq-sets = ni inp-sets)
+           oc
+           (let [noc (make-output-collector nm ni out-sets)]
+             (channel/subscribe! (:oc-bits oc) #(publish-child! noc (refine-input % ni)))
+ ;            (println "pf")
+ ;            (println "force2" (sg/summary noc))
+             (sg/summary noc) ;; ???
+             noc)))
+       or-summary)
+    :oc-bits (channel/make-channel)))
+
 (defn publish-child! [sp child-sp]
   (when child-sp			
     (util/print-debug 2 "AC" sp child-sp)
     (util/assert-is (not (identical? sp child-sp)))
     (if (and *collect-equal-outputs*
-             (fs/=-state-set-pairs (:output-sets sp) (:output-sets child-sp)))
+             (fs/eq-sets fs/=-state-sets (:output-sets sp) (:output-sets child-sp)))
       (do (schedule-increase! sp)
           (connect-and-watch! sp child-sp (partial publish-child! sp)))
       (do (when (canonical? sp)
             (schedule-subsumption! (sp-ts sp) (sp-ts child-sp))
             (sg/connect! (sp-ts sp) (sp-ts child-sp))
-            (schedule-increase! (sp-ts sp)))    
-          (channel/publish! (:child-channel sp) child-sp)))))
+            (schedule-increase! (sp-ts sp)))
+          (if *collect-equal-outputs*
+            (let [^HashMap com (:child-output-map sp)
+                  [oc new?] (or (when-let [oc  (.get com (:output-sets child-sp))]
+ ;                                 (println "catch!" sp oc child-sp)
+                                  [oc false])
+                                (let [oc (make-output-collector
+                                          (:name sp) (:input-sets sp) (:output-sets child-sp))]
+                                  (.put com (:output-sets child-sp) oc)
+                                  [oc true]))]
+              (schedule-increase! oc)
+              (connect-and-watch! oc child-sp (partial publish-child! oc))
+              (channel/publish! (:oc-bits oc) child-sp)
+              (when new?
+ ;               (println "pf")
+;                (println "force" oc (sg/summary oc))
+                (sg/summary oc) ;; TODO??
+                (channel/publish! (:child-channel sp) oc)))              
+            (channel/publish! (:child-channel sp) child-sp))))))
+;; TODO: how to refine-input of output collector ??
 
 
 (defn subsuming-sps        [s] (keys (:subsuming-sp-set s)))
@@ -240,14 +290,15 @@
 
 ;; TODO: bound
 (defn make-summary [[p-rew o-rew] stat src]
-  (summary/make-bw-summary *weight* p-rew o-rew stat src))
+  (let [b (sg/get-bound src)]
+    #_ (summary/make-simple-summary (min b o-rew) stat src)
+    (summary/make-bw-summary *weight* p-rew (min b o-rew) stat src)))
 
 (declare refinement-names)
 
-(defn map-sets [f fs [ps os]] [(when ps (f fs ps)) (f fs os)])
 
 (defn get-input-key [fs inp-sets]
-  (if *state-abstraction* (map-sets fs/extract-context fs inp-sets) inp-sets))
+  (if *state-abstraction* (fs/map-sets fs/extract-context fs inp-sets) inp-sets))
 
 
 (defn- make-atomic-subproblem [fs inp-sets]
@@ -260,7 +311,7 @@
             nm inp-sets out-sets nil
             (fn expand! [s]
               (util/print-debug 1 "expand" nm)
-              (reset! summary-fn sg/or-summary-bws)
+              (reset! summary-fn or-summary)
               (schedule-decrease! s)
               (if-let [subsuming-sps (seq (remove terminal? (subsuming-sps s)))]
                 (connect-and-watch! s (apply min-key (comp sg/get-bound sp-ts) subsuming-sps)
@@ -268,7 +319,7 @@
                 (doseq [ref-name (refinement-names fs inp-sets)] 
                   (publish-child! s (get-subproblem ref-name inp-sets)))))     
             (fn [s ri]  #_ (assert (not *collect-equal-outputs*))  
-              (if (= ri inp-sets) s (get-subproblem nm ri)))
+              (if (fs/eq-sets = ri inp-sets) s (get-subproblem nm ri)))
             (fn summarize [s] (@summary-fn s)))))))))
 
 
@@ -324,7 +375,7 @@
 		  (schedule-decrease! s)
 		  (go-right! s)) 
 		(fn [s ni]
-		  (if (= ni (:input-sets left-sp)) s
+		  (if (fs/eq-sets = ni (:input-sets left-sp)) s
 		      (make-half-pair-subproblem (refine-input left-sp ni) #(refine-input right-sp %))))
 		(fn [s] 
 		  (or (and (not @right?-atom)
@@ -332,8 +383,8 @@
 			   (if (empty? (list-children right-sp))
 			     (do (go-right! s) nil)
 			     (let [r (min (summary/max-reward (sg/summary ss)) (sg/get-bound s))]
-			       (make-summary r :live s))))
-		      (sg/or-summary-bws s))))]    
+			       (make-summary [summary/neg-inf r] :live s))))
+		      (or-summary s))))]    
       (sg/connect! ret ss) 
       (connect-and-watch! ss left-sp
 	#(publish-child! ret (make-pair-subproblem % (refine-input right-sp (:output-sets %)))))    
@@ -360,25 +411,26 @@
   (when inner-sp
     (let [ret (make-subproblem 
                (sa-name (:name inner-sp))
-               inp-sets (map #(when %1 (fs/transfer-effects %1 %2))
+               inp-sets (map #(when %2 (fs/transfer-effects %1 %2))
                              inp-sets (:output-sets inner-sp))
                (sp-ts inner-sp)
                (fn [_] (throw (RuntimeException.)))
                (fn [sp ni]
-                 (if (fs/=-state-set-pairs ni inp-sets) sp
-                     (let [log-ni (map-sets fs/get-logger fs ni)
+                 (if (fs/eq-sets fs/=-state-sets ni inp-sets) sp
+                     (let [log-ni (fs/map-sets fs/get-logger fs ni)
                            ri     (refine-input inner-sp log-ni)]                      
                        (make-state-abstracted-subproblem fs ri ni))))
-               sg/or-summary-bws)]      
+               or-summary)]      
       (connect-and-watch! ret inner-sp 
        #(publish-child! ret (make-state-abstracted-subproblem fs % inp-sets)))
       ret)))
 
 
 (defmethod get-subproblem :SA [[_ inner-n :as n] inp-sets]
-  (let [fs (atomic-name-fs inner-n)] 
+  (let [fs (atomic-name-fs inner-n)]
+    (assert (second inp-sets))
     (make-state-abstracted-subproblem fs
-      (get-subproblem inner-n (map-sets fs/get-logger fs inp-sets))
+      (get-subproblem inner-n (fs/map-sets fs/get-logger fs inp-sets))
       inp-sets)))
 
 
@@ -432,7 +484,7 @@
             *state-abstraction*     s
             *left-recursive*        (case dir :left true :right false)
             *propagate-subsumption* prop
-            *weight*                1]
+            *weight*                1.5]
     (let [[init fs] (fs/make-init-pair henv)] 
       (def *root* (sp-ts (make-atomic-subproblem fs [init init]))))
     (summary/solve
@@ -453,7 +505,7 @@
 
 ;; (dotimes [_ 1] (reset! sg/*summary-count* 0) (debug 0 (let [h (make-discrete-manipulation-hierarchy  (make-random-hard-discrete-manipulation-env 3 3))]   (time (println (run-counted #(identity (implicit-dash-a*-opt h :gather true :d true :s :eager :dir :right))) @sg/*summary-count*)))))
 
-
+;; (dotimes [_ 1] (reset! sg/*summary-count* 0) (debug 1 (let [h (make-discrete-manipulation-hierarchy  (make-discrete-manipulation-env-regions [4 4] [1 1] [ [ [2 2] [3 3] ] ] [ [:a [2 2] [ [3 3] [3 3 ] ] ] ] 1 2 2 1))]   (time (println (run-counted #(identity (implicit-dash-a* h :gather true :d true :s :eager :dir :right))) @sg/*summary-count*)))))
 
 
 
