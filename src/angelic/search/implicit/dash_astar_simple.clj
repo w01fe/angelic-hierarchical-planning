@@ -68,6 +68,13 @@
 ;; Doing things this way, have to stay optimistic!  I.e., always publish, then decrease
 ;; lcoally ...
 
+;; Note issue with subsumption at atomic: wrapped thing can become blocked, and we're stuck.
+
+;; Two obvious problems
+;; 1.  Once blocked propagates, solved can't beat it.
+;; 2.  Massive proliferation of subproblems with cycles -- probbly due to OC ??
+
+
 ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
 ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;       Options      ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
 ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
@@ -99,8 +106,6 @@
 ;; during evaluation and tree update, and then played back once the tree is fixed,
 ;; decoupling the processes of tree change and summary updates.
 
-;; TODO: get this out of here into sg, get rid of global state.
-
 ;; Only increase should ever be change of status. live->blocked or solved.
 ;; This can only happen starting at expanded atomic leaf.
 ;; It can happen automatically, with no explicit calls to summary.
@@ -116,18 +121,9 @@
 ;; Just forces us to work on left sometimes, that's all.
 ;; It's not a real part of the summary.
 
-(def ^ArrayList *decreases* (ArrayList.))
-
-(defn- schedule-decrease! [sp] (.add ^ArrayList *decreases* sp))
-
-(defn- do-changes! [^ArrayList a f] (doseq [sp a] (f sp)) (.clear a))
-
 (defn- expand-and-update! [s]
   ((:expand!-fn s) s)
-  (sg/summaries-decreased! (doall (seq *decreases*)))
-  (.clear *decreases*))
-
-
+  (sg/summaries-decreased! [s]))
 
 (def or-summary sg/or-summary #_ sg/or-summary-bws)
 
@@ -151,16 +147,16 @@
    subproblem (e.g., output collector or state abstractor), pass tree summarizer
    of wrapped SP; otherwise, pass nil and a tree summarizer will be created.
    eval!-fn, ri-fn, and summary-fn specify how to evaluate, refine input, and summarize."
-  [nm inp-set out-set wrapped-ts expand!-fn ri-fn summary-fn]
+  [nm inp-set out-set wrapped-ts ri-fn summary-fn]
   (with-meta (assoc (sg/make-simple-cached-node)
                :name nm
                :input-sets inp-set
                :output-sets out-set
                :ts-atom (atom wrapped-ts)
                :child-channel    (channel/make-channel)
+               :inner-child-channel (channel/make-channel)
                :subsuming-sp-set (IdentityHashMap.)
                :child-output-map        (HashMap.)
-               :expand!-fn expand!-fn
                :refine-input-fn ri-fn
                :summarize-fn summary-fn)    
     {:type ::Subproblem}))
@@ -202,24 +198,20 @@
 ;; Is there an easy way to fix it ? ??
 ;; OC should treat parent as a child.
 
+(defn refine-channel [channel refined-sp]
+  (channel/subscribe! channel #(publish-child! refined-sp (refine-input % (:input-sets refined-sp))))
+  refined-sp)
+
+;; TODO: put out-sets back?
 (declare publish-child! refine-input)
 (defn make-output-collector [nm inp-sets out-sets]
-; (println "MOC" nm)
-  (assoc
-      (make-subproblem
-       [:OC nm #_ out-sets] inp-sets out-sets
-       nil (fn [] (throw (RuntimeException. "foo")))
-       (fn [oc ni]
-         (if (fs/eq-sets = ni inp-sets)
-           oc
-           (let [noc (make-output-collector nm ni out-sets)]
-             (channel/subscribe! (:oc-bits oc) #(publish-child! noc (refine-input % ni)))
- ;            (println "pf")
- ;            (println "force2" (sg/summary noc))
-;             (sg/summary noc) ;; ???
-             noc)))
-       or-summary)
-    :oc-bits (channel/make-channel)))
+  (make-subproblem
+   [:OC nm #_ out-sets #_ (angelic.env.state/extract-context (second out-sets) (angelic.env.state/current-context (second out-sets)))] inp-sets out-sets nil 
+   (fn ri-fn [oc ni]
+     (if (fs/eq-sets = ni inp-sets)
+       oc
+       (refine-channel (:inner-child-channel oc) (make-output-collector nm ni out-sets))))
+   or-summary))
 
 (defn publish-child! [sp child-sp]
   (when child-sp			
@@ -228,6 +220,7 @@
     (if (and *collect-equal-outputs*
              (fs/eq-sets fs/=-state-sets (:output-sets sp) (:output-sets child-sp)))
       (do (connect-and-watch! sp child-sp (partial publish-child! sp))
+          (channel/publish! (:inner-child-channel sp) child-sp)
           (sg/status-increased! sp child-sp))
       (do (when (canonical? sp)
             (sg/connect-subsumed! (sp-ts sp) (sp-ts child-sp))
@@ -243,14 +236,11 @@
                                   (.put com (:output-sets child-sp) oc)
                                   [oc true]))]
               (connect-and-watch! oc child-sp (partial publish-child! oc))
+              (channel/publish! (:inner-child-channel oc) child-sp)
               (sg/status-increased! oc child-sp)
-              (channel/publish! (:oc-bits oc) child-sp)
               (when new?
- ;               (println "pf")
-;                (println "force" oc (sg/summary oc))
-                (sg/summary oc) ;; TODO??
                 (channel/publish! (:child-channel sp) oc)))              
-            (channel/publish! (:child-channel sp) child-sp))))))
+            (do (channel/publish! (:child-channel sp) child-sp)))))))
 ;; TODO: how to refine-input of output collector ??
 
 
@@ -283,9 +273,10 @@
     ret))
   
 
-(defn- terminal? [sp]
-  (and (empty? (list-children sp))
-       (not (summary/live? (sg/summary sp)))))
+(comment
+  (defn- terminal? [sp]
+    (and (empty? (list-children sp))
+         (not (summary/live? (sg/summary sp))))))
 
 (defn- solved-terminal? [sp]
   (and (empty? (list-children sp))
@@ -319,33 +310,43 @@
 (defn get-input-key [fs inp-sets]
   (if *state-abstraction* (fs/map-sets fs/extract-context fs inp-sets) inp-sets))
 
-
-(defn- make-atomic-subproblem [fs inp-sets]
+;; Note: treatment of subsuming-sps was wrong in several ways ...
+;; Right thing is: if not expandable, start fresh.
+;; If expandable and expanded, do current thing (except, also wait on inner???)
+;; If expandable and not expanded, do current thing
+;; (problem is, inner bits may be hidden; may have non-correspondence).
+;; TODO: all-child-channel!
+(defn- make-atomic-subproblem [fs inp-sets subsuming-sp]
   (let [nm (atomic-name fs)]
     (cache-under [nm (get-input-key fs inp-sets)]
      (let [[out-sets rewards status] (fs/apply-descs fs inp-sets)]
        (when out-sets
-         (let [summary-fn (atom #(make-summary rewards status %))] 
-           (make-subproblem
-            nm inp-sets out-sets nil
+         (let [expanded?  (atom false)
+               summary-fn (atom #(make-summary rewards status %))]
+           (assoc 
+            (make-subproblem
+             nm inp-sets out-sets nil     
+             (fn [s ri]  #_ (assert (not *collect-equal-outputs*))  
+               (if (fs/eq-sets = ri inp-sets) s (make-atomic-subproblem fs ri (when (= status :live) s))))
+             (fn summarize [s] (@summary-fn s)))
+            :subsuming-sp subsuming-sp
+            :expanded?-atom expanded?
+            :expand!-fn
             (fn expand! [s]
               (util/print-debug 1 "expand" nm)
+              (reset! expanded? true)
               (reset! summary-fn or-summary)
-              (if-let [subsuming-sps (seq (remove terminal? (subsuming-sps s)))]
-                (connect-and-watch! s (apply min-key (comp sg/get-bound sp-ts) subsuming-sps)
-                  (fn [sub-child] (publish-child! s (refine-input sub-child inp-sets)))) 
+              (if (and subsuming-sp @(:expanded?-atom subsuming-sp)) ;; TODO: don't require expanded?
+                (do (refine-channel (:child-channel subsuming-sp) s)
+                    (refine-channel (:inner-child-channel subsuming-sp) s))
                 (doseq [ref-name (refinement-names fs inp-sets)] 
-                  (publish-child! s (get-subproblem ref-name inp-sets))))
-              (schedule-decrease! s))     
-            (fn [s ri]  #_ (assert (not *collect-equal-outputs*))  
-              (if (fs/eq-sets = ri inp-sets) s (get-subproblem nm ri)))
-            (fn summarize [s] (@summary-fn s)))))))))
+                  (publish-child! s (get-subproblem ref-name inp-sets))))))))))))
 
 
 ;; TODO: handle state abstraction
 ;; TODO: should wrap pairs like this too?
 (defmethod get-subproblem :Atomic [[_ fs] inp-sets]
-  (make-atomic-subproblem fs inp-sets))          
+  (make-atomic-subproblem fs inp-sets nil))          
 
 
 ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;      Pair      ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
@@ -380,30 +381,32 @@
   (when right-sp
     (let [nm          (pair-name (:name left-sp) (:name right-sp))
 	  right?-atom (atom false) ;; Expand on right            
-	  ss          (assoc (sg/make-simple-cached-node) :summarize-fn sg/sum-summary)
-	  go-right! (fn [s]
+          go-right! (fn [ss]
 		      (reset! right?-atom true)                          
 		      (sg/disconnect! ss (sp-ts right-sp))
-		      (subscribe-children! left-sp (fn [c] (def *bad* [s c]) (assert (not "S + C"))))
+		      (subscribe-children! left-sp (fn [c] (def *bad* [ss c]) (assert (not "S + C"))))
 		      (connect-and-watch! ss right-sp
-			#(publish-child! s (make-pair-subproblem left-sp %)))
-		      (schedule-decrease! ss))
-	  ret (make-subproblem nm (:input-sets left-sp) (:output-sets right-sp) nil 
-		(fn expand! [s]
-		  (util/print-debug 1 "expand-pair" nm)
-		  (go-right! s)
-		  (schedule-decrease! s)) 
-		(fn [s ni]
+                        #(publish-child! (util/safe-singleton (sg/parent-nodes ss))
+                                         (make-pair-subproblem left-sp %))))
+	  ss          (assoc (sg/make-simple-cached-node)
+                        :summarize-fn
+                        (fn [ss] 
+                          (or (and (not @right?-atom)
+                                   (solved-terminal? left-sp)
+                                   (if (empty? (list-children right-sp)) 
+                                     (do (go-right! ss) nil)
+                                     (let [r (min (summary/max-reward (sg/summary ss)) (sg/get-bound ss))]
+                                       (make-summary [summary/neg-inf r] :live ss))))
+                              (sg/sum-summary ss)))
+                        :expand!-fn
+                        (fn expand! [ss] 
+                          (util/print-debug 1 "expand-pair" nm)
+                          (go-right! ss)))
+	  ret (make-subproblem nm (:input-sets left-sp) (:output-sets right-sp) nil 		 
+		(fn ri-fn [s ni]
 		  (if (fs/eq-sets = ni (:input-sets left-sp)) s
-		      (make-half-pair-subproblem (refine-input left-sp ni) #(refine-input right-sp %))))
-		(fn [s] 
-		  (or (and (not @right?-atom)
-			   (solved-terminal? left-sp)
-			   (if (empty? (list-children right-sp)) 
-			     (do (go-right! s) nil)
-			     (let [r (min (summary/max-reward (sg/summary ss)) (sg/get-bound s))]
-			       (make-summary [summary/neg-inf r] :live s))))
-		      (or-summary s))))]    
+		      (refine-channel (:child-channel s) (make-half-pair-subproblem (refine-input left-sp ni) #(refine-input right-sp %)))))
+                or-summary)]    
       (sg/connect! ret ss) 
       (connect-ts! ss right-sp)
       (connect-and-watch! ss left-sp
@@ -433,12 +436,11 @@
                inp-sets (map #(when %2 (fs/transfer-effects %1 %2))
                              inp-sets (:output-sets inner-sp))
                (sp-ts inner-sp)
-               (fn [_] (throw (RuntimeException.)))
-               (fn [sp ni]
+               (fn ri-fn [sp ni]
                  (if (fs/eq-sets fs/=-state-sets ni inp-sets) sp
                      (let [log-ni (fs/map-sets fs/get-logger fs ni)
                            ri     (refine-input inner-sp log-ni)]                      
-                       (make-state-abstracted-subproblem fs ri ni))))
+                       (refine-channel (:child-channel sp) (make-state-abstracted-subproblem fs ri ni)))))
                or-summary)]      
       (connect-and-watch! ret inner-sp 
        #(publish-child! ret (make-state-abstracted-subproblem fs % inp-sets)))
@@ -508,7 +510,7 @@
             *propagate-subsumption* prop
             *weight*                1.5]
     (let [[init fs] (fs/make-init-pair henv)] 
-      (def *root* (sp-ts (make-atomic-subproblem fs [init init]))))
+      (def *root* (sp-ts (make-atomic-subproblem fs [nil #_ init init] nil))))
     (case strategy
           :ao (summary/solve
                #(sg/summary *root*)
@@ -526,7 +528,7 @@
 
 ;; (do (use 'clojure.test) (use 'angelic.test.search.implicit.dash-astar-opt-simple) (run-tests 'angelic.test.search.implicit.dash-astar-opt-simple))
 
-;; (dotimes [_ 1] (reset! sg/*summary-count* 0) (debug 0 (let [h (make-nav-switch-hierarchy (make-random-nav-switch-env 20 4 0) true)]  (time (println (run-counted #(identity (implicit-dash-a*-opt h :gather true :d true :s :eager :dir :right))) @sg/*summary-count*)))))
+;; (dotimes [_ 1] (reset! sg/*summary-count* 0) (debug 0 (let [h (make-nav-switch-hierarchy (make-random-nav-switch-env 20 4 0) true)]  (time (println (run-counted #(identity (implicit-dash-a* h :gather true :d true :s :eager :dir :right))) @sg/*summary-count*)))))
 
 ;; (dotimes [_ 1] (reset! sg/*summary-count* 0) (debug 0 (let [h (make-discrete-manipulation-hierarchy  (make-random-hard-discrete-manipulation-env 3 3))]   (time (println (run-counted #(identity (implicit-dash-a*-opt h :gather true :d true :s :eager :dir :right))) @sg/*summary-count*)))))
 
@@ -535,3 +537,4 @@
 
 
 
+;; (dorun (map println (map (juxt s identity) (->> *root* nc first nc first nc first nc first nc (drop 3) first nc last nc first nc last nc first nc first nc first nc first nc first nc first nc first nc first nc first nc second nc first nc first nc first nc first nc first nc first nc first nc))))

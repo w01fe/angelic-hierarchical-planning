@@ -110,10 +110,12 @@
 (defn status-increased! [parent child]
   (let [cs (summary child)
         ops (summary parent)]
-    (when (and (not (summary/live? cs)) (summary/live? ops))
+    (when (> (summary/status-val (summary/status cs))
+             (summary/status-val (summary/status ops)))
       (let [nps (summarize parent)]
 ;        (println parent ops nps) (Thread/sleep 100)
-        (when (and (not (summary/live? nps))
+        (when (and (> (summary/status-val (summary/status nps))
+                      (summary/status-val (summary/status ops)))
                    (>= (summary/max-reward nps) (summary/max-reward ops)))
           (assert (= (summary/max-reward nps) (summary/max-reward ops)))
           (reset! (:summary-atom parent) nps)
