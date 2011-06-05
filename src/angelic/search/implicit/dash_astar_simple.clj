@@ -2,7 +2,7 @@
   (:require [angelic.util :as util]
 	    [angelic.util.channel :as channel]
             [angelic.search.summary :as summary]            
-            [angelic.search.summary-graphs-new :as sg]
+            [angelic.search.summary-graphs-newer :as sg]
             [angelic.search.function-sets :as fs])
   (:import [java.util HashMap ArrayList IdentityHashMap]))
 
@@ -127,7 +127,16 @@
   (sg/summaries-decreased! (doall (seq *decreases*)))
   (.clear *decreases*))
 
-(def or-summary sg/or-summary-bws)
+
+
+(def or-summary sg/or-summary #_ sg/or-summary-bws)
+
+
+;; TODO: bound
+(defn make-summary [[p-rew o-rew] stat src]
+  (let [b (sg/get-bound src)]
+     (summary/make-simple-summary (min b o-rew) stat src)
+    #_ (summary/make-bw-summary *weight* p-rew (min b o-rew) stat src)))
 
 ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
 ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;  Subproblems  ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
@@ -304,12 +313,6 @@
 (defn atomic-name [fs] [:Atomic fs])
 (defn atomic-name-fs [n] (assert (#{:Atomic} (first n))) (second n))
 
-;; TODO: bound
-(defn make-summary [[p-rew o-rew] stat src]
-  (let [b (sg/get-bound src)]
-    #_ (summary/make-simple-summary (min b o-rew) stat src)
-    (summary/make-bw-summary *weight* p-rew (min b o-rew) stat src)))
-
 (declare refinement-names)
 
 
@@ -333,7 +336,7 @@
                   (fn [sub-child] (publish-child! s (refine-input sub-child inp-sets)))) 
                 (doseq [ref-name (refinement-names fs inp-sets)] 
                   (publish-child! s (get-subproblem ref-name inp-sets))))
-              (sg/schedule-decrease! s))     
+              (schedule-decrease! s))     
             (fn [s ri]  #_ (assert (not *collect-equal-outputs*))  
               (if (fs/eq-sets = ri inp-sets) s (get-subproblem nm ri)))
             (fn summarize [s] (@summary-fn s)))))))))
@@ -384,19 +387,19 @@
 		      (subscribe-children! left-sp (fn [c] (def *bad* [s c]) (assert (not "S + C"))))
 		      (connect-and-watch! ss right-sp
 			#(publish-child! s (make-pair-subproblem left-sp %)))
-		      (sg/schedule-decrease! ss))
+		      (schedule-decrease! ss))
 	  ret (make-subproblem nm (:input-sets left-sp) (:output-sets right-sp) nil 
 		(fn expand! [s]
 		  (util/print-debug 1 "expand-pair" nm)
 		  (go-right! s)
-		  (sg/schedule-decrease! s)) 
+		  (schedule-decrease! s)) 
 		(fn [s ni]
 		  (if (fs/eq-sets = ni (:input-sets left-sp)) s
 		      (make-half-pair-subproblem (refine-input left-sp ni) #(refine-input right-sp %))))
 		(fn [s] 
 		  (or (and (not @right?-atom)
 			   (solved-terminal? left-sp)
-			   (if (empty? (list-children right-sp))
+			   (if (empty? (list-children right-sp)) 
 			     (do (go-right! s) nil)
 			     (let [r (min (summary/max-reward (sg/summary ss)) (sg/get-bound s))]
 			       (make-summary [summary/neg-inf r] :live s))))
@@ -479,6 +482,9 @@
 
 (declare *root*)
 
+(defn extract-action [sp]
+  (let [fs (second (:name sp)) n (fs/fs-name fs)] (when-not (= (first n) :noop) fs)))
+
 (defn implicit-dash-a*
   "Solve this hierarchical env using implicit DASH-A*, or variants thereupon.  Options are:
     :gather    Don't publish child subproblems with identical outputs?
@@ -489,10 +495,10 @@
     :dir       Factor sequences into pairs using :left or :right recursion
     :prop      Automatically propagate subsumption from parents to matching children?"
   [henv & {gather :gather d :d  s :s   choice-fn :choice-fn
-           local? :local?  dir :dir   prop :prop :as m
+           local? :local?  dir :dir   prop :prop strategy :strategy :as m
       :or {gather true   d true s true choice-fn last
-           local? true     dir :right prop true}}]
-  (assert (every? #{:gather :d :s :choice-fn :local? :dir :prop} (keys m)))
+           local? true     dir :right prop true strategy :ao}}]
+  (assert (every? #{:gather :d :s :choice-fn :local? :dir :prop :strategy} (keys m)))
   (when s (assert d))
   (when d (assert gather))
   (binding [*collect-equal-outputs* gather
@@ -503,14 +509,17 @@
             *weight*                1.5]
     (let [[init fs] (fs/make-init-pair henv)] 
       (def *root* (sp-ts (make-atomic-subproblem fs [init init]))))
-    (summary/solve
-     #(sg/summary *root*)
-     (sg/best-leaf-operator choice-fn local? expand-and-update!)
-     #(let [fs (second (:name %)) n (fs/fs-name fs)] (when-not (= (first n) :noop) fs)))))
+    (case strategy
+          :ao (summary/solve
+               #(sg/summary *root*)
+               (sg/best-leaf-operator choice-fn local? expand-and-update!)
+               extract-action)
+          :ldfs (do (sg/ldfs! *root* choice-fn Double/NEGATIVE_INFINITY)
+                    (summary/extract-solution-pair (sg/summary *root*) extract-action)))))
 
 
 
-;; (do (use 'angelic.util '[angelic env hierarchy] 'angelic.domains.nav-switch  'angelic.domains.discrete-manipulation 'angelic.search.implicit.dash-astar-simple) (require '[angelic.search.summary-graphs-new :as sg] '[angelic.search.summary :as summary]) (defn s [x]  (sg/summarize x)) (defn sc [x] (summary/children x))  (defn src [x] (summary/source x)) (defn nc [x] (sg/child-nodes x)))
+;; (do (use 'angelic.util '[angelic env hierarchy] 'angelic.domains.nav-switch  'angelic.domains.discrete-manipulation 'angelic.search.implicit.dash-astar-simple) (require '[angelic.search.summary-graphs-newer :as sg] '[angelic.search.summary :as summary]) (defn s [x]  (sg/summarize x)) (defn sc [x] (summary/children x))  (defn src [x] (summary/source x)) (defn nc [x] (sg/child-nodes x)))
 
 ;; (require '[angelic.search.implicit.dash-astar-opt :as dao])
 ;; (require '[angelic.search.implicit.dash-astar-simple :as das])

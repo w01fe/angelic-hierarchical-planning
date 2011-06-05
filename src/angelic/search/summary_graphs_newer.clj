@@ -76,7 +76,8 @@
 (defn summarize [n] ((:summarize-fn n) n))
 
 (def *subsumption* true)
-(def *kill* true) ;; Remove dead children of OR-nodes.  Doesn't seem to really help or hurt...
+;; TODO: can't kill with KLD.
+(def *kill* false #_ true) ;; Remove dead children of OR-nodes.  Doesn't seem to really help or hurt...
 (def *summary-count* (atom 0))
 
 
@@ -90,72 +91,87 @@
 ;; Ignore bounds for now, figure out how to add them back later.
 ;; (they're a bit tricky with KLD stuff, since we temporarily do cost increases...)
 
+(declare update-summary!)
+
 (defn summary [n] (or @(:summary-atom n) (update-summary! n)))
 
 (defn get-bound [n] @(:bound-atom n))
 (defn add-bound! [n b] ::TODO)
 
-(comment ;; TODO: just try lumping all together for now?
- ;; Called when child is just added as new child of parent.
- ;; Status of child may increase status of parent.
- ;; Propagate this upwards as status increases and cost does not decrease.
- ;; Cost increases are not allowed.  This must only change statuses in the
- ;; tree (and perhaps children?) -- rewards must not change.
- (defn status-increased! [parent child]
-  
-   ))
+;; TODO: just try lumping all together for now?
+;; Called when child is just added as new child of parent.
+;; Status of child may increase status of parent.
+;; Propagate this upwards as status increases and cost does not decrease.
+;; Cost increases are not allowed.  This must only change statuses in the
+;; tree (and perhaps children?) -- rewards must not change.
+;; However, can use some other intuitions as well?
+;; I.e., when a node marked solved, its cost must be right (ie no cycles)
+;; Same is true for blocked. 
+(defn status-increased! [parent child]
+  (let [cs (summary child)
+        ops (summary parent)]
+    (when (and (not (summary/live? cs)) (summary/live? ops))
+      (let [nps (summarize parent)]
+;        (println parent ops nps) (Thread/sleep 100)
+        (when (and (not (summary/live? nps))
+                   (>= (summary/max-reward nps) (summary/max-reward ops)))
+          (assert (= (summary/max-reward nps) (summary/max-reward ops)))
+          (reset! (:summary-atom parent) nps)
+          (doseq [gp (doall (seq (parent-nodes parent)))] ;; TODO: comodification in pair -- safe?
+            (status-increased! gp parent)))))))
 
-(defn- update-summary! [n]
-  (let [old   (summary n)
-        new (reset! (:summary-atom n) (summarize n))]
-    (when (not (summary/= old new))
-      new)))
+(defn- update-summary! [n] (reset! (:summary-atom n) (summarize n)))
+
+(defn- update-summary-inc?! [n]
+  (when-let [old   (summary n)]
+    (let [new (update-summary! n)]
+      (not (summary/>= old new 0)))))
+
+(defn- update-summary-dec?! [n]
+  (when-let [old   (summary n)]
+    (let [new (update-summary! n)]
+      (not (summary/>= new old 0)))))
 
 ;; Run KLD and return any nodes whose summaries have changed.
-(defn knuth-lightest-derivation [active-nodes]
+(defn knuth-lightest-derivation! [active-nodes]
   (let [open  (IdentityHashMap.)
-        dec   (IdentityHashMap.)
+        all   (IdentityHashMap.)        
         q     (queues/make-fancy-tree-search-pq)
-        cost  (fn [n] (let [s (summary n)] [(- (summary/max-reward n))
-                                            (- (summary/status-val (summary/status n)))]))]
+        cost  (fn [n] (let [s (summary n)] [(- (summary/max-reward s))
+                                            (- (summary/status-val (summary/status s)))]))]
+;   (println active-nodes)
     (doseq [n active-nodes]
-      (.put open n (summary n))
-      (reset! (:summary-atom n) +worst-simple-summary+))
-    (doseq [n active-nodes]
-      (when (update-summary! n)
+      (.put all n (summary n))
+      (reset! (:summary-atom n) summary/+worst-simple-summary+))
+    (doseq [n (keys all)]
+      (when (update-summary-inc?! n)
+        (.put open n true)
         (queues/pq-add! q n (cost n))))
-    (while (not (queues/empty? q)) ;; Can short circuit on dead too.
+    (while (not (queues/pq-empty? q)) ;; Can short circuit on dead too.
       (let [n (queues/pq-remove-min! q)]
-        (let [old (.remove open n)]
-          (when-not (summary/= new old) ;; TODO: trying to handle increases too for now...
-            (.put closed n old)))
-        (doseq [p (node-parents n)]
-          (when (.containsKey open p)
-            (when (update-summary! p)
-              (queues/pq-remove! q p)
-              (queues/pq-add! q p (cost p)))))))
-    (keys dec)))
+        (.remove all n)
+        (doseq [p (parent-nodes n)]
+          (when (.containsKey all p)
+            (when (update-summary-inc?! p)
+              (if (.containsKey open p)
+                (queues/pq-remove! q p)
+                (.put open p true))
+              (queues/pq-add! q p (cost p)))))))))
 
-;; Expand active set to include modified ancestors.
-;; Return ful lactive-set if any new cycles possibly discovered;
-;; otherwise, all costs guaranteed to be up-to-date.
-(defn expand-active-set [active-nodes decreased-nodes]
+;; Find and locally update all nodes that need updating
+;; Return a conservative estimate of nodes that may be in cycles
+;; TODO: add cycle checking.
+(defn update-and-find-cycles! [active-nodes]
   (let [active-set (IdentityHashMap.)
-        chase      (fn [n]
+        chase      (fn chase [n]
                      (when-not (.containsKey active-set n)
-                       (when (update-summary! n)
-                         (.add active-set n true)
-                         )
-                       )
-                     
-                     )
-        ]
-    (doseq [n active-nodes] (.put active-set n true))
-    (doseq [n decreased-nodes]
-      (assert (.containsKey active-set n))
-      (doseq [p (node-parents n)]
-        (chase p)))
-    (seq active-set)))
+                       (when (update-summary-dec?! n)
+                         (.put active-set n true)
+                         (doseq [p (parent-nodes n)]
+                           (chase p)))))]
+    (doseq [n active-nodes]
+      (chase n))
+    (keys active-set)))
 
 
 ;; Summaries of nodes may have decreased.  Propagate these changes upwards
@@ -165,8 +181,8 @@
 ;; all nodes out of active set are fixed, then expand active set to
 ;; incorporate any new nodes that may change given the new updates.
 (defn summaries-decreased! [nodes]
-  
-  )
+  (when-let [cycle-nodes (update-and-find-cycles! nodes)]
+    (knuth-lightest-derivation! cycle-nodes)))
 
 
 (comment
@@ -267,10 +283,15 @@
 
 
 
-
-
-
-
-
-
-
+(defn ldfs! [root consistent-choice-fn bound op!-fn]
+  (assert (summary/live? (summary root)))
+  (when (summary/viable? (summary root) bound)
+    (let [kids (summary/children root)]
+      (if (empty? kids)
+        (do (op!-fn (summary/source root))
+            (recur root consistent-choice-fn bound op!-fn))
+        (let [c (consistent-choice-fn (filter (comp summary/live? summary summary/source) kids))]
+          (ldfs! (summary/source c) consistent-choice-fn (summary/max-reward c) op!-fn)
+          (update-summary-inc?! root)
+          (when (summary/live? (summary root))
+            (recur root consistent-choice-fn bound op!-fn)))))))

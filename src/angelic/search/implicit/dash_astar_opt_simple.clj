@@ -434,3 +434,4 @@
 
 
 
+;; (dotimes [_ 1] (reset! sg/*summary-count* 0) (debug 0 (let [h (make-discrete-manipulation-hierarchy  (make-random-hard-discrete-manipulation-env 3 3))]   (time (println (run-counted #(identity (implicit-dash-a*-opt h :gather true :d true :s :eager :dir :right :choice-fn (partial apply min-key (comp :min-leaf s))))) @sg/*summary-count*)))))

@@ -111,18 +111,19 @@
 ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
 
 ;; Simple summary, with upper reward bound only
+;; TODO: if we knew which was which, sum should go blocked when left blocked.
 
-(defrecord SimpleSummary [max-rew stat src chldren]
+(defrecord SimpleSummary [max-rew min-leaf stat src chldren]
   Summary
   (max-reward       [s] max-rew)
   (reward           [s] max-rew)
   (status           [s] stat)
   (source          [s] src)
   (children        [s] chldren)
-  (leafen           [s bound new-stat new-src] (SimpleSummary. (min bound max-rew) new-stat new-src nil))
+  (leafen           [s bound new-stat new-src] (SimpleSummary. (min bound max-rew) min-leaf new-stat new-src nil))
   (re-source       [s new-src bound stat-bound]
     (when (solved? s) (assert (clojure.core/>= (eps-bound bound) max-rew)))
-    (SimpleSummary. (min max-rew bound) (min-key status-val stat stat-bound) new-src [s]))
+    (SimpleSummary. (min max-rew bound) min-leaf (min-key status-val stat stat-bound) new-src [s]))
   (eq               [s other] (and (= max-rew (max-reward other)) (= stat (status other))))
   (>=               [s1 s2 bound]
     (let [r1 (min bound (max-reward s1)) r2 (min bound (max-reward s2))]
@@ -134,16 +135,16 @@
     (let [new-stat (min-key status-val stat (status other))
 	  r        (clojure.core/+ max-rew (max-reward other))]
       (when (= new-stat :solved) (assert (clojure.core/>= bound r)))      
-      (SimpleSummary. (min r bound) new-stat new-src [s other]))))
+      (SimpleSummary. (min r bound) (min min-leaf (:min-leaf other)) new-stat new-src [s other]))))
 
-(defn make-live-simple-summary [max-reward source] (SimpleSummary. max-reward :live source nil))
-(defn make-blocked-simple-summary [max-reward source] (SimpleSummary. max-reward :blocked source nil))
-(defn make-solved-simple-summary [max-reward source] (SimpleSummary. max-reward :solved source nil))
+(defn make-live-simple-summary [max-reward source] (SimpleSummary. max-reward max-reward :live source nil))
+(defn make-blocked-simple-summary [max-reward source] (SimpleSummary. max-reward max-reward :blocked source nil))
+(defn make-solved-simple-summary [max-reward source] (SimpleSummary. max-reward max-reward :solved source nil))
 
 (defn make-simple-summary [max-reward status source]
   (util/assert-is (contains? statuses-set status))
   (assert source)
-  (SimpleSummary. max-reward status source nil))
+  (SimpleSummary. max-reward max-reward status source nil))
 
 (def +worst-simple-summary+ (make-blocked-simple-summary neg-inf :worst))
 
