@@ -278,7 +278,7 @@
     (and (empty? (list-children sp))
          (not (summary/live? (sg/summary sp))))))
 
-(defn- solved-terminal? [sp]
+(defn solved-terminal? [sp]
   (and (empty? (list-children sp))
        (summary/solved? (sg/summary sp))))
 
@@ -395,7 +395,9 @@
                                    (solved-terminal? left-sp)
                                    (if (empty? (list-children right-sp)) 
                                      (do (go-right! ss) nil)
-                                     (let [r (min (summary/max-reward (sg/summary ss)) (sg/get-bound ss))]
+                                     (let [r (min (+ (summary/max-reward (sg/summary left-sp))
+                                                     (summary/max-reward (sg/summary (sp-ts right-sp))))
+                                                  (sg/get-bound ss))]
                                        (make-summary [summary/neg-inf r] :live ss))))
                               (sg/sum-summary ss)))
                         :expand!-fn

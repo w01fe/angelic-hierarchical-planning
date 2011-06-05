@@ -114,13 +114,13 @@
              (summary/status-val (summary/status ops)))
       (let [nps (summarize parent)]
 ;        (println parent ops nps) (Thread/sleep 100)
-        (when (and (> (summary/status-val (summary/status nps))
-                      (summary/status-val (summary/status ops)))
-                   (>= (summary/max-reward nps) (summary/max-reward ops)))
+        (when (>= (summary/max-reward nps) (summary/max-reward ops)) ;; accomodate pair case.
           (assert (= (summary/max-reward nps) (summary/max-reward ops)))
           (reset! (:summary-atom parent) nps)
-          (doseq [gp (doall (seq (parent-nodes parent)))] ;; TODO: comodification in pair -- safe?
-            (status-increased! gp parent)))))))
+          (when (> (summary/status-val (summary/status nps))
+                   (summary/status-val (summary/status ops)))
+            (doseq [gp (doall (seq (parent-nodes parent)))] ;; TODO: comodification in pair -- safe?
+              (status-increased! gp parent))))))))
 
 (defn- update-summary! [n] (reset! (:summary-atom n) (summarize n)))
 
