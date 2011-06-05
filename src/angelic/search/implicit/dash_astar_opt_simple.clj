@@ -27,6 +27,9 @@
 
 ;; TODO: cache pairs too ? 
 
+;; with modifications below, actually does OK for TAV.
+;; not quite as good as actual TAV, presumably due to output capturing -- perhaps
+;; more eager approach could fix.
 
 ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
 ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;       Options      ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
@@ -177,7 +180,19 @@
     (util/assert-is (= (:name s) (:name ret)))
     (when (canonical? s) (add-subsuming-sp! ret s))
     ret))
-  
+
+(comment ;; For TAV, put this in, and comment out get-input-key in make-atomic caching..
+ (defn sp-fs [s]
+   (if (vector? s) (sp-fs (second s)) s))
+
+ (defn refine-input [s ni] ;; for TAV
+   (if (seq (clojure.set/intersection
+             (angelic.env.state/get-var ni '[s])
+             (let [[_ l [from]] (fs/fs-name (sp-fs (:name s)))]
+               (angelic.domains.tav/make-state-set l from))))
+     s
+     (println "???")
+     )))
 
 (defn- terminal? [sp]
   (and (empty? (list-children sp))
@@ -220,7 +235,7 @@
 
 (defn- make-atomic-subproblem [fs inp-set]
   (let [nm (atomic-name fs)]
-    (cache-under [nm (get-input-key fs inp-set)]
+    (cache-under [nm (get-input-key fs inp-set)] 
      (let [[out-set reward status] (fs/apply-opt fs inp-set)]
        (when out-set
          (let [summary-fn (atom #(make-summary reward status %))] 

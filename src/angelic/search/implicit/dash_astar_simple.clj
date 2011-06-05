@@ -64,6 +64,10 @@
 ;; subproblems, shouldn't have tree summarizers (?), etc.
 ;; Well, why not?  
 
+
+;; Doing things this way, have to stay optimistic!  I.e., always publish, then decrease
+;; lcoally ...
+
 ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
 ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;       Options      ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
 ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
@@ -97,23 +101,31 @@
 
 ;; TODO: get this out of here into sg, get rid of global state.
 
-(def *increases* (ArrayList.))
-(def *decreases* (ArrayList.))
-(def *subsumes* (ArrayList.))
+;; Only increase should ever be change of status. live->blocked or solved.
+;; This can only happen starting at expanded atomic leaf.
+;; It can happen automatically, with no explicit calls to summary.
+;; Iff status is increased with identical cost, propagate it all the way up
+;; until hit a +.
+;; Otherwise, it's a decrease.
+;; Increase never changes children.
+;; by simply following active links as long as cost i
 
-(defn- schedule-increase! [sp] (.add ^ArrayList *increases* sp))
+;; TODO: summary/+ should take order into account !  live iff left live or left solved, right live, ..
+
+;; In fact, what does blocked even do for us ? ?  ??? ? ?? ? ?? ??
+;; Just forces us to work on left sometimes, that's all.
+;; It's not a real part of the summary.
+
+(def ^ArrayList *decreases* (ArrayList.))
+
 (defn- schedule-decrease! [sp] (.add ^ArrayList *decreases* sp))
-(defn- schedule-subsumption! [ts subsumed-ts] (.add ^ArrayList *subsumes* [ts subsumed-ts]))
 
 (defn- do-changes! [^ArrayList a f] (doseq [sp a] (f sp)) (.clear a))
 
-(defn expand! [s] ((:expand!-fn s) s))
-
 (defn- expand-and-update! [s]
-  (expand! s)
-  (do-changes! *increases* sg/summary-increased!) 
-  (do-changes! *subsumes* (fn [[ts subsumed-ts]] (sg/connect-subsumed! ts subsumed-ts)))
-  (do-changes! *decreases* sg/summary-changed!))
+  ((:expand!-fn s) s)
+  (sg/summaries-decreased! (doall (seq *decreases*)))
+  (.clear *decreases*))
 
 (def or-summary sg/or-summary-bws)
 
@@ -151,7 +163,7 @@
                                       (sg/make-simple-cached-node))
                       {:type ::TreeSummarizer})
                 (sg/connect! sp)
-                (schedule-subsumption! sp)))))
+                (sg/connect-subsumed! sp)))))
 
 (defmethod print-method  ::TreeSummarizer [s o]
   (print-method (format "#<TS %s>" (print-str (:ts-sp s))) o))
@@ -175,7 +187,11 @@
   (sg/connect! p (sp-ts c)))
 
 ;; TODO: issue is a general one with summary propagation and loops
-;; This was never really properly handled -- lazy was the way out. 
+;; This was never really properly handled -- lazy was the way out.
+
+;; TODO TODO: this solution is not correct in presence of bounding ...
+;; Is there an easy way to fix it ? ??
+;; OC should treat parent as a child.
 
 (declare publish-child! refine-input)
 (defn make-output-collector [nm inp-sets out-sets]
@@ -191,7 +207,7 @@
              (channel/subscribe! (:oc-bits oc) #(publish-child! noc (refine-input % ni)))
  ;            (println "pf")
  ;            (println "force2" (sg/summary noc))
-             (sg/summary noc) ;; ???
+;             (sg/summary noc) ;; ???
              noc)))
        or-summary)
     :oc-bits (channel/make-channel)))
@@ -202,12 +218,12 @@
     (util/assert-is (not (identical? sp child-sp)))
     (if (and *collect-equal-outputs*
              (fs/eq-sets fs/=-state-sets (:output-sets sp) (:output-sets child-sp)))
-      (do (schedule-increase! sp)
-          (connect-and-watch! sp child-sp (partial publish-child! sp)))
+      (do (connect-and-watch! sp child-sp (partial publish-child! sp))
+          (sg/status-increased! sp child-sp))
       (do (when (canonical? sp)
-            (schedule-subsumption! (sp-ts sp) (sp-ts child-sp))
+            (sg/connect-subsumed! (sp-ts sp) (sp-ts child-sp))
             (sg/connect! (sp-ts sp) (sp-ts child-sp))
-            (schedule-increase! (sp-ts sp)))
+            (sg/status-increased! (sp-ts sp) (sp-ts child-sp)))
           (if *collect-equal-outputs*
             (let [^HashMap com (:child-output-map sp)
                   [oc new?] (or (when-let [oc  (.get com (:output-sets child-sp))]
@@ -217,8 +233,8 @@
                                           (:name sp) (:input-sets sp) (:output-sets child-sp))]
                                   (.put com (:output-sets child-sp) oc)
                                   [oc true]))]
-              (schedule-increase! oc)
               (connect-and-watch! oc child-sp (partial publish-child! oc))
+              (sg/status-increased! oc child-sp)
               (channel/publish! (:oc-bits oc) child-sp)
               (when new?
  ;               (println "pf")
@@ -239,7 +255,7 @@
   (when-not (or (identical? s subsuming-sp)
                 (.containsKey subsuming-sp-set subsuming-sp))
     (.put subsuming-sp-set subsuming-sp true)
-    (schedule-subsumption! (sp-ts subsuming-sp) (sp-ts s))
+    (sg/connect-subsumed! (sp-ts subsuming-sp) (sp-ts s))
     (when *propagate-subsumption*  ;; TODO: efficiency, etc.
       (subscribe-children! s
         (fn [child]
@@ -312,12 +328,12 @@
             (fn expand! [s]
               (util/print-debug 1 "expand" nm)
               (reset! summary-fn or-summary)
-              (schedule-decrease! s)
               (if-let [subsuming-sps (seq (remove terminal? (subsuming-sps s)))]
                 (connect-and-watch! s (apply min-key (comp sg/get-bound sp-ts) subsuming-sps)
                   (fn [sub-child] (publish-child! s (refine-input sub-child inp-sets)))) 
                 (doseq [ref-name (refinement-names fs inp-sets)] 
-                  (publish-child! s (get-subproblem ref-name inp-sets)))))     
+                  (publish-child! s (get-subproblem ref-name inp-sets))))
+              (sg/schedule-decrease! s))     
             (fn [s ri]  #_ (assert (not *collect-equal-outputs*))  
               (if (fs/eq-sets = ri inp-sets) s (get-subproblem nm ri)))
             (fn summarize [s] (@summary-fn s)))))))))
@@ -368,12 +384,12 @@
 		      (subscribe-children! left-sp (fn [c] (def *bad* [s c]) (assert (not "S + C"))))
 		      (connect-and-watch! ss right-sp
 			#(publish-child! s (make-pair-subproblem left-sp %)))
-		      (sg/summary-changed-local! ss))
+		      (sg/schedule-decrease! ss))
 	  ret (make-subproblem nm (:input-sets left-sp) (:output-sets right-sp) nil 
 		(fn expand! [s]
 		  (util/print-debug 1 "expand-pair" nm)
-		  (schedule-decrease! s)
-		  (go-right! s)) 
+		  (go-right! s)
+		  (sg/schedule-decrease! s)) 
 		(fn [s ni]
 		  (if (fs/eq-sets = ni (:input-sets left-sp)) s
 		      (make-half-pair-subproblem (refine-input left-sp ni) #(refine-input right-sp %))))
@@ -386,9 +402,9 @@
 			       (make-summary [summary/neg-inf r] :live s))))
 		      (or-summary s))))]    
       (sg/connect! ret ss) 
+      (connect-ts! ss right-sp)
       (connect-and-watch! ss left-sp
 	#(publish-child! ret (make-pair-subproblem % (refine-input right-sp (:output-sets %)))))    
-      (connect-ts! ss right-sp)
       ret)))
 
 (defn make-half-pair-subproblem [left-sp right-fn]

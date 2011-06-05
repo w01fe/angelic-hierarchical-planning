@@ -16,7 +16,7 @@
 
 (defrecord TopLevelAction [env initial-plans reward]
   env/Action
-  (action-name [_] ['act])
+  (action-name [_] ['act (hash initial-plans)])
   (primitive?  [_] false)  
 
   env/ContextualAction

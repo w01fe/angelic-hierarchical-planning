@@ -72,7 +72,7 @@
 
 (defn or-combine-b [summaries new-src bound]
   (let [best (apply-max-b summaries bound)]
-    (when (solved? best) (util/assert-is (clojure.core/>= (eps-bound bound) (max-reward best)) "%s" [new-src]))
+    (when (solved? best) (util/assert-is (clojure.core/>= (eps-bound bound) (max-reward best)) "%s" [new-src (def *bad* new-src)]))
     (re-source best new-src bound :solved)))
 
 
