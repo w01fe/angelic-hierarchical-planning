@@ -286,14 +286,14 @@
 
 
 (defn ldfs! [root consistent-choice-fn bound op!-fn]
+  (util/print-debug 1 "LDFS" root (summary root))
   (assert (summary/live? (summary root)))
   (when (summary/viable? (summary root) bound)
-    (let [kids (summary/children root)]
-      (if (empty? kids)
-        (do (op!-fn (summary/source root))
-            (recur root consistent-choice-fn bound op!-fn))
-        (let [c (consistent-choice-fn (filter (comp summary/live? summary summary/source) kids))]
-          (ldfs! (summary/source c) consistent-choice-fn (summary/max-reward c) op!-fn)
-          (update-summary-inc?! root)
+    (let [kids (summary/children (summary root))]
+      (do (if (empty? kids)
+            (op!-fn root)
+            (let [c (consistent-choice-fn (filter (comp summary/live? summary summary/source) kids))]
+              (ldfs! (summary/source c) consistent-choice-fn (summary/max-reward c) op!-fn)))
+          (update-summary! root)
           (when (summary/live? (summary root))
-            (recur root consistent-choice-fn bound op!-fn)))))))
+            (recur root consistent-choice-fn bound op!-fn))))))

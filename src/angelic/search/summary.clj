@@ -57,7 +57,9 @@
 (def neg-inf Double/NEGATIVE_INFINITY)
 (declare +worst-simple-summary+)
 
-(defn viable? [summary] (> (max-reward summary) neg-inf))
+(defn viable?
+  ([summary] (> (max-reward summary) neg-inf))
+  ([summary bound] (clojure.core/>= (max-reward summary) bound)))
 
 ;; TODO: can we safely handle empty case here?
 (defn apply-max-b [stats bound]
@@ -112,6 +114,7 @@
 
 ;; Simple summary, with upper reward bound only
 ;; TODO: if we knew which was which, sum should go blocked when left blocked.
+;; What's the purpose of blocked anyway ? Tells us which children we can work on at ANDs.
 
 (defrecord SimpleSummary [max-rew min-leaf stat src chldren]
   Summary

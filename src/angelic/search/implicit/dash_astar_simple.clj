@@ -121,8 +121,9 @@
 ;; Just forces us to work on left sometimes, that's all.
 ;; It's not a real part of the summary.
 
+(defn- expand! [s]  ((:expand!-fn s) s))
 (defn- expand-and-update! [s]
-  ((:expand!-fn s) s)
+  (expand! s)
   (sg/summaries-decreased! [s]))
 
 (def or-summary sg/or-summary #_ sg/or-summary-bws)
@@ -198,12 +199,14 @@
 ;; Is there an easy way to fix it ? ??
 ;; OC should treat parent as a child.
 
+(declare publish-child! refine-input)
+
 (defn refine-channel [channel refined-sp]
   (channel/subscribe! channel #(publish-child! refined-sp (refine-input % (:input-sets refined-sp))))
   refined-sp)
 
 ;; TODO: put out-sets back?
-(declare publish-child! refine-input)
+
 (defn make-output-collector [nm inp-sets out-sets]
   (make-subproblem
    [:OC nm #_ out-sets #_ (angelic.env.state/extract-context (second out-sets) (angelic.env.state/current-context (second out-sets)))] inp-sets out-sets nil 
@@ -518,7 +521,7 @@
                #(sg/summary *root*)
                (sg/best-leaf-operator choice-fn local? expand-and-update!)
                extract-action)
-          :ldfs (do (sg/ldfs! *root* choice-fn Double/NEGATIVE_INFINITY)
+          :ldfs (do (sg/ldfs! *root* choice-fn Double/NEGATIVE_INFINITY expand!)
                     (summary/extract-solution-pair (sg/summary *root*) extract-action)))))
 
 
