@@ -6,6 +6,8 @@
             [angelic.search.function-sets :as fs])
   (:import [java.util HashMap ArrayList IdentityHashMap]))
 
+(set! *warn-on-reflection* true)
+
 ;; Take dash_astar_opt_simple and add back complexities from
 ;; dash_astar.clj.
 
@@ -74,25 +76,11 @@
 ;; 1.  Once blocked propagates, solved can't beat it.
 ;; 2.  Massive proliferation of subproblems with cycles -- probbly due to OC ??
 
+;; TODO: TODO TODO TODO why refining of outer children in refine-input ? 
 
-;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
-;;;;;;;;;;;;;;;;;;;;;;;;;;;;;       Options      ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
-;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
+;; TODO: lots of expnad-pairs in dm.
 
-(set! *warn-on-reflection* true)
 
-;; These are all bound by the implicit-dash-a* main fn at the end of this file.
-(declare *left-recursive*        ) ;; Use left, not right recursion for seqs 
-(declare *collect-equal-outputs* ) ;; Collect descendants with identical output sets
-(declare *decompose-cache*       ) ;; Cache subproblems? Requires *collect-equal-outputs*
-(declare *state-abstraction*     ) ;; Use state abstraction?  Requires *decompose-cache*
-(declare *propagate-subsumption* ) ;; Propagate subsumption links to corresponding children
-(declare *weight*                ) ;; weighted A* weight.
-
-(defmacro cache-under [ks body]
-  `(if-let [^HashMap dc# *decompose-cache*]
-     (util/cache-with dc# ~ks ~body)
-     ~body))
 
 ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
 ;;;;;;;;;;;;;;;;;;;;;;;;;;;;       Utilities      ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
@@ -121,27 +109,6 @@
 ;; Just forces us to work on left sometimes, that's all.
 ;; It's not a real part of the summary.
 
-(defn- expand! [s]  ((:expand!-fn s) s))
-(defn- expand-and-update! [s]
-  (expand! s)
-  (sg/summaries-decreased! [s]))
-
-(comment
-  (def or-summary sg/or-summary #_ sg/or-summary-bws)
-
-  ;; TODO: bound
-  (defn make-summary [[p-rew o-rew] stat src]
-    (let [b (sg/get-bound src)]
-      (summary/make-simple-summary (min b o-rew) stat src)
-      #_ (summary/make-bw-summary *weight* p-rew (min b o-rew) stat src))))
-
-(def or-summary sg/or-summary-bws)
-
-;; TODO: bound
-(defn make-summary [[p-rew o-rew] stat src]
-  (let [b (sg/get-bound src)]
-    (summary/make-bw-summary *weight* p-rew (min b o-rew) stat src)))
-
 ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
 ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;  Subproblems  ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
 ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
@@ -155,8 +122,9 @@
    subproblem (e.g., output collector or state abstractor), pass tree summarizer
    of wrapped SP; otherwise, pass nil and a tree summarizer will be created.
    eval!-fn, ri-fn, and summary-fn specify how to evaluate, refine input, and summarize."
-  [nm inp-set out-set wrapped-ts ri-fn summary-fn]
+  [config nm inp-set out-set wrapped-ts ri-fn summary-fn]
   (with-meta (assoc (sg/make-simple-cached-node)
+               :config config
                :name nm
                :input-sets inp-set
                :output-sets out-set
@@ -172,7 +140,8 @@
 (defn sp-ts [sp]
   (or @(:ts-atom sp)
       (reset! (:ts-atom sp)
-              (doto (with-meta (merge {:ts-sp sp :summarize-fn or-summary}
+              (doto (with-meta (merge {:ts-sp sp
+                                       :summarize-fn (util/safe-get (:config sp) :or-summarize)}
                                       (sg/make-simple-cached-node))
                       {:type ::TreeSummarizer})
                 (sg/connect! sp)
@@ -214,42 +183,43 @@
 
 ;; TODO: put out-sets back?
 
-(defn make-output-collector [nm inp-sets out-sets]
+(defn make-output-collector [config nm inp-sets out-sets]
   (make-subproblem
+   config
    [:OC nm #_ out-sets #_ (angelic.env.state/extract-context (second out-sets) (angelic.env.state/current-context (second out-sets)))] inp-sets out-sets nil 
    (fn ri-fn [oc ni]
      (if (fs/eq-sets = ni inp-sets)
        oc
-       (refine-channel (:inner-child-channel oc) (make-output-collector nm ni out-sets))))
-   or-summary))
+       (refine-channel (:inner-child-channel oc) (make-output-collector config nm ni out-sets))))
+   (util/safe-get config :or-summarize)))
+
+
+(defn- publish-inner-child! [sp child-sp]
+  (connect-and-watch! sp child-sp (partial publish-child! sp))
+  (channel/publish! (:inner-child-channel sp) child-sp)
+  (sg/status-increased! sp child-sp))
 
 (defn publish-child! [sp child-sp]
   (when child-sp			
     (util/print-debug 2 "AC" sp child-sp)
     (util/assert-is (not (identical? sp child-sp)))
-    (if (and *collect-equal-outputs*
+    (if (and (util/safe-get (:config sp) :collect?)
              (fs/eq-sets fs/=-state-sets (:output-sets sp) (:output-sets child-sp)))
-      (do (connect-and-watch! sp child-sp (partial publish-child! sp))
-          (channel/publish! (:inner-child-channel sp) child-sp)
-          (sg/status-increased! sp child-sp))
+      (publish-inner-child! sp child-sp)
       (do (when (canonical? sp)
             (sg/connect-subsumed! (sp-ts sp) (sp-ts child-sp))
             (sg/connect! (sp-ts sp) (sp-ts child-sp))
             (sg/status-increased! (sp-ts sp) (sp-ts child-sp)))
-          (if *collect-equal-outputs*
+          (if (util/safe-get (:config sp) :collect?)
             (let [^HashMap com (:child-output-map sp)
                   [oc new?] (or (when-let [oc  (.get com (:output-sets child-sp))]
- ;                                 (println "catch!" sp oc child-sp)
                                   [oc false])
                                 (let [oc (make-output-collector
-                                          (:name sp) (:input-sets sp) (:output-sets child-sp))]
+                                          (:config sp) (:name sp) (:input-sets sp) (:output-sets child-sp))]
                                   (.put com (:output-sets child-sp) oc)
                                   [oc true]))]
-              (connect-and-watch! oc child-sp (partial publish-child! oc))
-              (channel/publish! (:inner-child-channel oc) child-sp)
-              (sg/status-increased! oc child-sp)
-              (when new?
-                (channel/publish! (:child-channel sp) oc)))              
+              (publish-inner-child! oc child-sp)
+              (when new? (channel/publish! (:child-channel sp) oc)))              
             (do (channel/publish! (:child-channel sp) child-sp)))))))
 ;; TODO: how to refine-input of output collector ??
 
@@ -265,7 +235,7 @@
                 (.containsKey subsuming-sp-set subsuming-sp))
     (.put subsuming-sp-set subsuming-sp true)
     (sg/connect-subsumed! (sp-ts subsuming-sp) (sp-ts s))
-    (when *propagate-subsumption*  ;; TODO: efficiency, etc.
+    (when (util/safe-get (:config s) :propagate-subsumption?)
       (subscribe-children! s
         (fn [child]
           (let [can-child (canonicalize child)]
@@ -276,34 +246,61 @@
                     (add-subsuming-sp! can-child can-subsuming-child))))))))))))
 
 
+;; Note: used to verify =-state-sets on entry to sa
 (defn refine-input    [s ni]
-  (when-let [ret ((:refine-input-fn s) s ni)]
-    (util/assert-is (= (:name s) (:name ret)))
-    (when (canonical? s) (add-subsuming-sp! ret s))
-    ret))
+  (if (fs/eq-sets = (:input-sets s) ni)
+    s
+    (when-let [ret ((:refine-input-fn s) s ni)]
+      (util/assert-is (= (:name s) (:name ret)))
+      (when (canonical? s) (add-subsuming-sp! ret s))
+      ret)))
   
-
-(comment
-  (defn- terminal? [sp]
-    (and (empty? (list-children sp))
-         (not (summary/live? (sg/summary sp))))))
-
 (defn solved-terminal? [sp]
   (and (empty? (list-children sp))
        (summary/solved? (sg/summary sp))))
 
 
-
 (defmethod print-method ::Subproblem [sp o]
   (print-method (format "#<SP$%8h %s>" (System/identityHashCode sp) (:name sp)) o))
 
-;; Multimethod to get a subproblem by name, or nil for dead.
-(defmulti get-subproblem (fn get-subproblem-dispatch [nm inp-sets] (first nm)))
 
 
 ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
 ;;;;;;;;;;;;;;;;;;;;;;;;;;     Core Subproblems     ;;;;;;;;;;;;;;;;;;;;;;;;;;;;
 ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
+
+
+;;;;;;;;;;;;;;;;;;;;;;;;;;           Names          ;;;;;;;;;;;;;;;;;;;;;;;;;;;;
+
+(defn atomic-name [fs] [:Atomic fs])
+
+(defn atomic-name-fs [n] (assert (#{:Atomic} (first n))) (second n))
+
+(defn pair-name [l r] [:Pair l r])
+
+(defn sa-name [inner-name] [:SA inner-name])
+
+
+(defn- left-factor [is]
+  (loop [s (next is) ret (first is)]
+    (if s (recur (next s) (pair-name ret (first s))) ret)))
+
+(defn- right-factor [[f & r]]
+  (if (seq r) (pair-name f (right-factor r)) f))
+
+(defn- refinement-names
+  "Generate the names of subproblems representing refinements of fs from inp-set,
+   in canonical form."
+  [config fs inp-sets]
+  (for [fs-seq (fs/child-seqs fs (second inp-sets))]
+    ((if (util/safe-get config :left-recursive?) left-factor right-factor)
+     (map (if (util/safe-get config :abstract?)
+            (comp sa-name atomic-name)
+            atomic-name)
+          fs-seq))))
+
+(defmulti get-subproblem (fn get-sp-dispatch [config nm inp-sets] (first nm)))
+
 
 ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;      Atomic       ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
 ;; Atomic subproblems represent the plans for a single action from an input set.
@@ -311,33 +308,35 @@
 ;; Initially we are evaluated but have no children. (Lazy can be simulated by hierarchy)
 ;; Expanding generates and publishes child subproblems, based on children of subsuming if possible.
 
-(defn atomic-name [fs] [:Atomic fs])
-(defn atomic-name-fs [n] (assert (#{:Atomic} (first n))) (second n))
-
-(declare refinement-names)
 
 
-(defn get-input-key [fs inp-sets]
-  (if *state-abstraction* (fs/map-sets fs/extract-context fs inp-sets) inp-sets))
-
+;; TODO: this assumes no inner child releases another inner child.  
 ;; Note: treatment of subsuming-sps was wrong in several ways ...
 ;; Right thing is: if not expandable, start fresh.
 ;; If expandable and expanded, do current thing (except, also wait on inner???)
 ;; If expandable and not expanded, do current thing
 ;; (problem is, inner bits may be hidden; may have non-correspondence).
 ;; TODO: all-child-channel!
-(defn- make-atomic-subproblem [fs inp-sets subsuming-sp]
+
+(defmacro cache-under [dc ks body]
+  `(if-let [^HashMap dc# ~dc]
+     (util/cache-with dc# ~ks ~body)
+     ~body))
+
+(defn- make-atomic-subproblem [config fs inp-sets subsuming-sp]
   (let [nm (atomic-name fs)]
-    (cache-under [nm (get-input-key fs inp-sets)]
+    (cache-under (util/safe-get config :decompose?)
+                 [nm (if (util/safe-get config :abstract?)
+                       (fs/map-sets fs/extract-context fs inp-sets)
+                       inp-sets)]
      (let [[out-sets rewards status] (fs/apply-descs fs inp-sets)]
        (when out-sets
          (let [expanded?  (atom false)
-               summary-fn (atom #(make-summary rewards status %))]
+               summary-fn (atom #((:make-summary config) rewards status %))]
            (assoc 
             (make-subproblem
-             nm inp-sets out-sets nil     
-             (fn [s ri]  #_ (assert (not *collect-equal-outputs*))  
-               (if (fs/eq-sets = ri inp-sets) s (make-atomic-subproblem fs ri (when (= status :live) s))))
+             config nm inp-sets out-sets nil     
+             (fn [s ri] (make-atomic-subproblem config fs ri (when (= status :live) s)))
              (fn summarize [s] (@summary-fn s)))
             :subsuming-sp subsuming-sp
             :expanded?-atom expanded?
@@ -345,18 +344,15 @@
             (fn expand! [s]
               (util/print-debug 1 "expand" nm)
               (reset! expanded? true)
-              (reset! summary-fn or-summary)
+              (reset! summary-fn (util/safe-get config :or-summarize))
               (if (and subsuming-sp @(:expanded?-atom subsuming-sp)) ;; TODO: don't require expanded?
                 (do (refine-channel (:child-channel subsuming-sp) s)
                     (refine-channel (:inner-child-channel subsuming-sp) s))
-                (doseq [ref-name (refinement-names fs inp-sets)] 
-                  (publish-child! s (get-subproblem ref-name inp-sets))))))))))))
+                (doseq [ref-name (refinement-names config fs inp-sets)] 
+                  (publish-child! s (get-subproblem config ref-name inp-sets))))))))))))
 
-
-;; TODO: handle state abstraction
-;; TODO: should wrap pairs like this too?
-(defmethod get-subproblem :Atomic [[_ fs] inp-sets]
-  (make-atomic-subproblem fs inp-sets nil))          
+(defmethod get-subproblem :Atomic [config [_ fs] inp-sets]
+  (make-atomic-subproblem config fs inp-sets nil))          
 
 
 ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;      Pair      ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
@@ -383,11 +379,10 @@
 ;; So, if right-sp already has children, we make the SP a leaf and wait for
 ;; it to be evaluated to switch; otherwise, we safely switch immediately.
 
-(defn pair-name [l r] [:Pair l r])
 
 (declare make-half-pair-subproblem)
 
-(defn- make-pair-subproblem [left-sp right-sp]
+(defn- make-pair-subproblem [config left-sp right-sp]
   (when right-sp
     (let [nm          (pair-name (:name left-sp) (:name right-sp))
 	  right?-atom (atom false) ;; Expand on right            
@@ -397,7 +392,7 @@
 		      (subscribe-children! left-sp (fn [c] (def *bad* [ss c]) (assert (not "S + C"))))
 		      (connect-and-watch! ss right-sp
                         #(publish-child! (util/safe-singleton (sg/parent-nodes ss))
-                                         (make-pair-subproblem left-sp %))))
+                                         (make-pair-subproblem config left-sp %))))
 	  ss          (assoc (sg/make-simple-cached-node)
                         :summarize-fn
                         (fn [ss] 
@@ -408,43 +403,43 @@
                                      (let [r (min (+ (summary/max-reward (sg/summary left-sp))
                                                      (summary/max-reward (sg/summary (sp-ts right-sp))))
                                                   (sg/get-bound ss))]
-                                       (make-summary [summary/neg-inf r] :live ss))))
+                                       ((:make-summary config) [summary/neg-inf r] :live ss))))
                               (sg/sum-summary ss)))
                         :expand!-fn
                         (fn expand! [ss] 
                           (util/print-debug 1 "expand-pair" nm)
                           (go-right! ss)))
-	  ret (make-subproblem nm (:input-sets left-sp) (:output-sets right-sp) nil 		 
+	  ret (make-subproblem config nm (:input-sets left-sp) (:output-sets right-sp) nil 		 
 		(fn ri-fn [s ni]
-		  (if (fs/eq-sets = ni (:input-sets left-sp)) s
-		      (refine-channel (:child-channel s) (make-half-pair-subproblem (refine-input left-sp ni) #(refine-input right-sp %)))))
-                or-summary)]    
+		  (refine-channel (:child-channel s)
+                   (make-half-pair-subproblem config (refine-input left-sp ni) #(refine-input right-sp %))))
+                (util/safe-get config :or-summarize))]    
       (sg/connect! ret ss) 
       (connect-ts! ss right-sp)
       (connect-and-watch! ss left-sp
-	#(publish-child! ret (make-pair-subproblem % (refine-input right-sp (:output-sets %)))))    
+	#(publish-child! ret (make-pair-subproblem config % (refine-input right-sp (:output-sets %)))))    
       ret)))
 
-(defn make-half-pair-subproblem [left-sp right-fn]
-  (when left-sp (make-pair-subproblem left-sp (right-fn (:output-sets left-sp)))))
+(defn make-half-pair-subproblem [config left-sp right-fn]
+  (when left-sp (make-pair-subproblem config left-sp (right-fn (:output-sets left-sp)))))
 
-(defmethod get-subproblem :Pair [[_ left-name right-name :as n] inp-sets]
+(defmethod get-subproblem :Pair [config [_ left-name right-name :as n] inp-sets]
   (make-half-pair-subproblem
-   (get-subproblem left-name inp-sets)
-   #(get-subproblem right-name %)))
+   config 
+   (get-subproblem config left-name inp-sets)
+   #(get-subproblem config right-name %)))
 
 ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
 ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;    SA Wrapper     ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
 
 
-(defn sa-name [inner-name] [:SA inner-name])
 
 ;; Note: subsumed subproblems can have different irrelevant vars
 ;; Also note: new input can have subset of variables of old. (=-state-sets does ntthis now).
-(defn- make-state-abstracted-subproblem [fs inner-sp inp-sets]
+(defn- make-state-abstracted-subproblem [config fs inner-sp inp-sets]
   (when inner-sp
     (let [ret (make-subproblem 
-               (sa-name (:name inner-sp))
+               config (sa-name (:name inner-sp))
                inp-sets (map #(when %2 (fs/transfer-effects %1 %2))
                              inp-sets (:output-sets inner-sp))
                (sp-ts inner-sp)
@@ -452,43 +447,22 @@
                  (if (fs/eq-sets fs/=-state-sets ni inp-sets) sp
                      (let [log-ni (fs/map-sets fs/get-logger fs ni)
                            ri     (refine-input inner-sp log-ni)]                      
-                       (refine-channel (:child-channel sp) (make-state-abstracted-subproblem fs ri ni)))))
-               or-summary)]      
+                       (refine-channel (:child-channel sp)
+                         (make-state-abstracted-subproblem config fs ri ni)))))
+               (util/safe-get config :or-summarize))]      
       (connect-and-watch! ret inner-sp 
-       #(publish-child! ret (make-state-abstracted-subproblem fs % inp-sets)))
+       #(publish-child! ret (make-state-abstracted-subproblem config fs % inp-sets)))
       ret)))
 
 
-(defmethod get-subproblem :SA [[_ inner-n :as n] inp-sets]
+(defmethod get-subproblem :SA [config [_ inner-n :as n] inp-sets]
   (let [fs (atomic-name-fs inner-n)]
     (assert (second inp-sets))
-    (make-state-abstracted-subproblem fs
-      (get-subproblem inner-n (fs/map-sets fs/get-logger fs inp-sets))
+    (make-state-abstracted-subproblem config fs
+      (get-subproblem config inner-n (fs/map-sets fs/get-logger fs inp-sets))
       inp-sets)))
 
 
-
-;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
-;;;;;;;;;;;;;;;;;;;;;;;;;;     Refinement Names     ;;;;;;;;;;;;;;;;;;;;;;;;;;;;
-;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
-
-(defn- left-factor [is]
-  (loop [s (next is) ret (first is)]
-    (if s (recur (next s) (pair-name ret (first s))) ret)))
-
-(defn- right-factor [[f & r]]
-  (if (seq r) (pair-name f (right-factor r)) f))
-
-(defn- wrapped-atomic-name [fs]
-  (let [in  (atomic-name fs)]
-    (if *state-abstraction* (sa-name in) in)))
-
-(defn- refinement-names
-  "Generate the names of subproblems representing refinements of fs from inp-set"
-  [fs inp-sets]
-  (for [fs-seq (fs/child-seqs fs (second inp-sets))]
-    ((if *left-recursive* left-factor right-factor)
-     (map wrapped-atomic-name fs-seq))))
 
 ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
 ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;; Planning ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
@@ -496,41 +470,48 @@
 
 (declare *root*)
 
+(defn- expand! [s]  ((:expand!-fn s) s))
+
 (defn extract-action [sp]
-  (let [fs (second (:name sp)) n (fs/fs-name fs)] (when-not (= (first n) :noop) fs)))
+  (let [fs (second (:name sp)) n (fs/fs-name fs)]
+    (when-not (= (first n) :noop) fs)))
 
-(defn implicit-dash-a*
-  "Solve this hierarchical env using implicit DASH-A*, or variants thereupon.  Options are:
-    :gather    Don't publish child subproblems with identical outputs?
-    :d         Decomposition: cache and re-use subproblems by [name inp-set] pair?  Requires :gather.
-    :s         State Abstraction: take state abstraction into account when caching?  Requires :d.
-    :choice-fn Choose a child node to evaluate from alternatives (in sequence)
-    :local?    Apply choice-fn recursively at each pair, or to an entire leaf sequence (slower)?
-    :dir       Factor sequences into pairs using :left or :right recursion
-    :prop      Automatically propagate subsumption from parents to matching children?"
-  [henv & {gather :gather d :d  s :s   choice-fn :choice-fn
-           local? :local?  dir :dir   prop :prop strategy :strategy :as m
-      :or {gather true   d true s true choice-fn last
-           local? true     dir :right prop true strategy :ao}}]
-  (assert (every? #{:gather :d :s :choice-fn :local? :dir :prop :strategy} (keys m)))
-  (when s (assert d))
-  (when d (assert gather))
-  (binding [*collect-equal-outputs* gather
-            *decompose-cache*       (when d (HashMap.))
-            *state-abstraction*     s
-            *left-recursive*        (case dir :left true :right false)
-            *propagate-subsumption* prop
-            *weight*                1.5]
-    (let [[init fs] (fs/make-init-pair henv)] 
-      (def *root* (sp-ts (make-atomic-subproblem fs [init init] nil))))
-    (case strategy
-          :ao (summary/solve
-               #(sg/summary *root*)
-               (sg/best-leaf-operator choice-fn local? expand-and-update!)
-               extract-action)
-          :ldfs (do (sg/ldfs! *root* choice-fn Double/NEGATIVE_INFINITY expand!)
-                    (summary/extract-solution-pair (sg/summary *root*) extract-action)))))
-
+(defn implicit-dash-a* [henv & {:as opts}] 
+  (let [defaults {:collect?               true  ; Don't publish child subproblems with identical outputs?
+                  :decompose?             true  ; Decomposition.  Requires :collect?
+                  :abstract?              true  ; State Abstraction.  Requires :d
+                  :choice-fn              last  ; Choose a child node to evaluate 
+                  :search-strategy        :ao   ; :ldfs, :ao, :ao-global (enumerates whole soln subtree)
+                  :left-recursive?        false ; Factor sequences into pairs using left recursion
+                  :propagate-subsumption? true  ; propagate subsumption from parents to matching children?
+                  :weight                 nil}   ; Weight for bw-summary, nil for simple-summary.
+        config    (-> (merge defaults opts)
+                      (update-in [:decompose?] #(when % (HashMap.)))
+                      (into (if-let [w (:weight opts)]
+                              {:or-summarize sg/or-summary-bws
+                               :make-summary (fn [[p-r o-r] stat src]
+                                               (summary/make-bw-summary
+                                                w p-r (min (sg/get-bound src) o-r) stat src))}
+                              {:or-summarize sg/or-summary
+                               :make-summary (fn [[p-r o-r] stat src]
+                                               (summary/make-simple-summary
+                                                (min (sg/get-bound src) o-r) stat src))})))
+        [init fs] (fs/make-init-pair henv)
+        root      (sp-ts (make-atomic-subproblem config fs [(when (:weight opts) init) init] nil))]
+    (let [ks (util/keyset defaults)] (doseq [k (keys opts)] (util/assert-is (ks k))))
+    (when (:abstract? config)  (assert (:decompose? config)))
+    (when (:decompose? config)  (assert (:collect? config)))
+    (def *root* root)
+    (case (:search-strategy config)
+          :ldfs (do (sg/ldfs! root (:choice-fn config) Double/NEGATIVE_INFINITY expand!)
+                    (summary/extract-solution-pair (sg/summary root) extract-action))
+          (summary/solve
+           #(sg/summary root)
+           (sg/best-leaf-operator
+            (:choice-fn config)
+            (case (:search-strategy config) :ao true :al-global false)
+            (fn [s] (expand! s) (sg/summaries-decreased! [s])))
+           extract-action))))
 
 
 ;; (do (use 'angelic.util '[angelic env hierarchy] 'angelic.domains.nav-switch  'angelic.domains.discrete-manipulation 'angelic.search.implicit.dash-astar-simple) (require '[angelic.search.summary-graphs-newer :as sg] '[angelic.search.summary :as summary]) (defn s [x]  (sg/summarize x)) (defn sc [x] (summary/children x))  (defn src [x] (summary/source x)) (defn nc [x] (sg/child-nodes x)))

@@ -686,6 +686,7 @@
           base (state-set/get-known-var ss [:base])
           cgo  (state-set/get-known-var ss [:gripper-offset])
           gos  (set (possible-grasp-gos (state-set/get-known-var ss :const) base opos))]
+      (when (empty? gos) (def *bad* ss) #_(swank.core/break))
       [(state/set-vars ss [[[:gripper-offset] gos]
                            [[:pos o] #{nil}] [[:holding] #{o}]
                            [[:object-at opos] #{nil}]])
