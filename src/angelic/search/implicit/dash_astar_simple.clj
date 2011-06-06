@@ -126,14 +126,21 @@
   (expand! s)
   (sg/summaries-decreased! [s]))
 
-(def or-summary sg/or-summary #_ sg/or-summary-bws)
+(comment
+  (def or-summary sg/or-summary #_ sg/or-summary-bws)
 
+  ;; TODO: bound
+  (defn make-summary [[p-rew o-rew] stat src]
+    (let [b (sg/get-bound src)]
+      (summary/make-simple-summary (min b o-rew) stat src)
+      #_ (summary/make-bw-summary *weight* p-rew (min b o-rew) stat src))))
+
+(def or-summary sg/or-summary-bws)
 
 ;; TODO: bound
 (defn make-summary [[p-rew o-rew] stat src]
   (let [b (sg/get-bound src)]
-     (summary/make-simple-summary (min b o-rew) stat src)
-    #_ (summary/make-bw-summary *weight* p-rew (min b o-rew) stat src)))
+    (summary/make-bw-summary *weight* p-rew (min b o-rew) stat src)))
 
 ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
 ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;  Subproblems  ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
@@ -515,7 +522,7 @@
             *propagate-subsumption* prop
             *weight*                1.5]
     (let [[init fs] (fs/make-init-pair henv)] 
-      (def *root* (sp-ts (make-atomic-subproblem fs [nil #_ init init] nil))))
+      (def *root* (sp-ts (make-atomic-subproblem fs [init init] nil))))
     (case strategy
           :ao (summary/solve
                #(sg/summary *root*)

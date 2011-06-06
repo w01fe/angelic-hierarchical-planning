@@ -253,16 +253,18 @@
     (or (> (min bound o-val) (min bound (:o-val other)))
         (and (= (min bound o-val) (min bound (:o-val other)))
              (clojure.core/>= (status-val stat) (status-val (status other))))))
-  (+                [s other new-src bound] 
-   (let [p-sum (clojure.core/+ p-val (:p-val other))
-         w-sum (clojure.core/+ w-val (:w-val other))
-         o-sum (min (clojure.core/+ o-val (:o-val other)) bound)]
-     (assert (<= p-sum o-sum))
-     (make-bw-summary*
-      wt p-sum w-sum o-sum
-      (max max-gap (:max-gap other))
-      (min-key status-val stat (status other))
-      new-src [s other] [s other] [s other]))))
+  (+                [s other new-src bound]
+    (if (not (viable? other))
+      other 
+    (let [p-sum (clojure.core/+ p-val (:p-val other))
+          w-sum (clojure.core/+ w-val (:w-val other))
+          o-sum (min (clojure.core/+ o-val (:o-val other)) bound)]
+      (assert (<= p-sum o-sum))
+      (make-bw-summary*
+       wt p-sum w-sum o-sum
+       (max max-gap (:max-gap other))
+       (min-key status-val stat (status other))
+       new-src [s other] [s other] [s other])))))
 
 (defn- make-bw-summary* [wt p-val f-val o-val max-gap status source
                          p-children w-children o-children]
@@ -315,16 +317,17 @@
              (clojure.core/>= (status-val (status b1)) (status-val (status b2)))))))
 
 (defn or-combine-bws [summaries new-src bound]
-  (if (empty? summaries)
-    worst-bws
-   (let [best-p (apply-max-ge (better-bws :p-val) summaries)
-         best-w (apply-max-ge (better-bws :w-val) summaries)
-         best-o (apply-max-ge (better-bws :o-val) summaries)]
-     (make-bw-summary*
-      (:wt (first summaries))
-      (:p-val best-p) (:w-val best-w) (min (:o-val best-o) bound)
-      (:max-gap best-o) (:stat best-o) new-src
-      [best-p] [best-w] [best-o]))))
+  (let [summaries (filter viable? summaries)]
+   (if (empty? summaries)
+     worst-bws
+     (let [best-p (apply-max-ge (better-bws :p-val) summaries)
+           best-w (apply-max-ge (better-bws :w-val) summaries)
+           best-o (apply-max-ge (better-bws :o-val) summaries)]
+       (make-bw-summary*
+        (:wt (first summaries))
+        (:p-val best-p) (:w-val best-w) (min (:o-val best-o) bound)
+        (:max-gap best-o) (:stat best-o) new-src
+        [best-p] [best-w] [best-o])))))
 
 
 

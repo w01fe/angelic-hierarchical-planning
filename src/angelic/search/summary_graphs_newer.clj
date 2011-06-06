@@ -115,7 +115,7 @@
       (let [nps (summarize parent)]
 ;        (println parent ops nps) (Thread/sleep 100)
         (when (>= (summary/max-reward nps) (summary/max-reward ops)) ;; accomodate pair case.
-          (assert (= (summary/max-reward nps) (summary/max-reward ops)))
+          (util/assert-is (= (summary/max-reward nps) (summary/max-reward ops)) "%s" (def *bad* [parent child]))
           (reset! (:summary-atom parent) nps)
           (when (> (summary/status-val (summary/status nps))
                    (summary/status-val (summary/status ops)))
