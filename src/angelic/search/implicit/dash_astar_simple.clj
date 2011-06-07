@@ -11,111 +11,44 @@
 ;; Take dash_astar_opt_simple and add back complexities from
 ;; dash_astar.clj.
 
-;; Do bounded suboptimal by propagating pessimistic into optimistic, versus
-;; other way?  Issue was that ???
+;; For now, just do single tree on (pess, opt) pairs. (or pure opt).
+;; Ideally, would have separate opt & pess trees as well for caching.
 
-;; One issue is with propagation -- can't just take the min thing, need
-;; to construct a composite summary.
-;; But this doesn't rule out pess-side thing, since the same fn could be used
-;; on either side.
-
-;; Note: ignoring subsumption, communication only needs to happen at leaves.
-;; Problem can just be with aliasing.
+;; Rationale for why we need this:
 ;; Suppose I have A, B.  Opt description of A has 3 branches of output.
 ;; Pess has single empty branch.  [-inf -inf] is valid description of this branch.
 ;;  i.e., doing things that way is effectively pessimistic about opt.
-
-;; Going other way, spse we have single vacuous opt branch.
-;; Suppose I have some vacuous pessimistic description.  I accumulate
-;; all upper bounds there,
-
-;; Right way to do it is: store the combined info in the opt-pess subsumption links.
-;; Or, just make nodes opt-pess pairs.  But then, we lose out on caching.
-;; Can just add caching on top -- but we may want separate opt-only tree still?
-;; Actually, pretty clear we still want separate trees, so knowledge transfers to
-;; new pess match with a given opt, for example.
-;; So, we actually want to build three trees for now.
-
-;; Are we guaranteed that every pess has an opt parent?  Even in presence
-;; of ouptut collecting, etc. ?
-;; Bridge means: exists some set of sequences that produce this opt, pess set pair.
 
 ;; Can try to do this as: separate trees, plus "bridge" superstructure built on
 ;; top.  Or, as scaffolding which controls construction of lower trees.
 ;; Scaffolding seems preferable.
 
-;; There's this logic that goes with names that's independent of everything.
-;; Drop SA
-;; Atomic = leaf
-;; Pair = sum of individuals.
-
-;; Then there's refinement logic --
-;; How to generate and propagate children.
-;; If we have all children,
-
-;; What if we think of this as just pair thing?  Conceptually, really simple.
-;; If this is the "ontological" thing, construting other trees after the fact
-;; should be easy .... . . . ..
-;; Start with that, just for fun.  
-
+;; Also try to add real output collecting, since without it, any change
+;; in a recursive hierarchy can trigger an infinite loop.
 ;; NOTE: output collecting is not really good enough, since any change in
 ;; recursive hierarchy can trigger infinite loop.  Need hierarchical
 ;; collecting of some sort.
 
+;; Except this comes with problems of its own, loses current syntatic guarantees.
 ;; This really throws a wrengh in things, cause output things are no longer really
 ;; subproblems, shouldn't have tree summarizers (?), etc.
-;; Well, why not?  
 
+;; Solution to avoid huge syntactic/semantic mess of true hierarchical output
+;; collection, and infinite loops of flat output collection:
+;; - Only allow each to grow on a single step.  But, this is slow.
+;; Impelemented: start new OC after input refined.  Don't add to OC if > reward.
 
-;; Doing things this way, have to stay optimistic!  I.e., always publish, then decrease
-;; lcoally ...
+;; TODO: RI of child not connected to child of RI.
 
-;; Note issue with subsumption at atomic: wrapped thing can become blocked, and we're stuck.
-
-;; Two obvious problems
-;; 1.  Once blocked propagates, solved can't beat it.
-;; 2.  Massive proliferation of subproblems with cycles -- probbly due to OC ??
-
-;; TODO: TODO TODO TODO why refining of outer children in refine-input ? 
-
-;; TODO: lots of expnad-pairs in dm.
-
-
-
-;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
-;;;;;;;;;;;;;;;;;;;;;;;;;;;;       Utilities      ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
-;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
-
-;;;;;;;;;;;;;;;;;;;;;;;;;      Change Scheduling      ;;;;;;;;;;;;;;;;;;;;;;;;;;
-
-;; Trying to keep cached summaries up-to-date while simultaneously modifying the
-;; subproblem graph is quite difficult and potentially error-prone.
-;; This code allows the set of root subproblems with changed summaries to be recorded
-;; during evaluation and tree update, and then played back once the tree is fixed,
-;; decoupling the processes of tree change and summary updates.
-
-;; Only increase should ever be change of status. live->blocked or solved.
-;; This can only happen starting at expanded atomic leaf.
-;; It can happen automatically, with no explicit calls to summary.
-;; Iff status is increased with identical cost, propagate it all the way up
-;; until hit a +.
-;; Otherwise, it's a decrease.
-;; Increase never changes children.
-;; by simply following active links as long as cost i
+;; TODO: put back bounding
+;; (Currently asserting consistency in a sense, despite DM not having it.
+;;  Causes some errors, e.g., with rand-nth.)
 
 ;; TODO: summary/+ should take order into account !  live iff left live or left solved, right live, ..
-
-;; In fact, what does blocked even do for us ? ?  ??? ? ?? ? ?? ??
-;; Just forces us to work on left sometimes, that's all.
-;; It's not a real part of the summary.
 
 ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
 ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;  Subproblems  ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
 ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
-
-;; Subproblem has keys :name :input-set :output-set  :expand! :refine-input-fn
-;; and fns  publish-child! list-children subscribe-children!
-;;  subsuming-sps add-subsuming-sp! sp-ts
 
 (defn- make-subproblem
   "Make a subproblem with the given name and input-set.  If this is a wrapping
@@ -130,9 +63,8 @@
                :output-sets out-set
                :ts-atom (atom wrapped-ts)
                :child-channel    (channel/make-channel)
-               :inner-child-channel (channel/make-channel)
+               :constituent-channel (channel/make-channel)
                :subsuming-sp-set (IdentityHashMap.)
-               :child-output-map        (HashMap.)
                :refine-input-fn ri-fn
                :summarize-fn summary-fn)    
     {:type ::Subproblem}))
@@ -168,41 +100,36 @@
 (defn- connect-ts! [p c]
   (sg/connect! p (sp-ts c)))
 
-;; TODO: issue is a general one with summary propagation and loops
-;; This was never really properly handled -- lazy was the way out.
-
-;; TODO TODO: this solution is not correct in presence of bounding ...
-;; Is there an easy way to fix it ? ??
-;; OC should treat parent as a child.
 
 (declare publish-child! refine-input)
 
-(defn refine-channel [channel refined-sp]
-  (channel/subscribe! channel #(publish-child! refined-sp (refine-input % (:input-sets refined-sp))))
+(defn refine-constituents! [parent-sp refined-sp]
+  (channel/subscribe!
+   (:constituent-channel parent-sp)
+   #(publish-child! refined-sp true (refine-input % (:input-sets refined-sp))))
   refined-sp)
 
-;; TODO: put out-sets back?
-
-(defn make-output-collector [config nm inp-sets out-sets]
+(defn make-output-collector [config k nm inp-sets out-sets]
   (make-subproblem
    config
-   [:OC nm #_ out-sets #_ (angelic.env.state/extract-context (second out-sets) (angelic.env.state/current-context (second out-sets)))] inp-sets out-sets nil 
-   (fn ri-fn [oc ni]
+   [(gensym "oc") nm] inp-sets out-sets nil 
+   (fn ri-fn [oc ni]     
      (if (fs/eq-sets = ni inp-sets)
        oc
-       (refine-channel (:inner-child-channel oc) (make-output-collector config nm ni out-sets))))
+       (do (.remove ^HashMap (:oc-map config) k) ;; Prevent further modifications.
+           (refine-constituents! oc (make-output-collector config nil nm ni out-sets)))))
    (util/safe-get config :or-summarize)))
 
 
 (defn- publish-inner-child! [sp child-sp]
-  (connect-and-watch! sp child-sp (partial publish-child! sp))
-  (channel/publish! (:inner-child-channel sp) child-sp)
+  (connect-and-watch! sp child-sp (partial publish-child! sp false))
   (sg/status-increased! sp child-sp))
 
-(defn publish-child! [sp child-sp]
+(defn publish-child! [sp constituent? child-sp]
   (when child-sp			
     (util/print-debug 2 "AC" sp child-sp)
     (util/assert-is (not (identical? sp child-sp)))
+    (when constituent? (channel/publish! (:constituent-channel sp) child-sp))
     (if (and (util/safe-get (:config sp) :collect?)
              (fs/eq-sets fs/=-state-sets (:output-sets sp) (:output-sets child-sp)))
       (publish-inner-child! sp child-sp)
@@ -210,18 +137,21 @@
             (sg/connect-subsumed! (sp-ts sp) (sp-ts child-sp))
             (sg/connect! (sp-ts sp) (sp-ts child-sp))
             (sg/status-increased! (sp-ts sp) (sp-ts child-sp)))
-          (if (util/safe-get (:config sp) :collect?)
-            (let [^HashMap com (:child-output-map sp)
-                  [oc new?] (or (when-let [oc  (.get com (:output-sets child-sp))]
+          (if (= :hierarchical (util/safe-get (:config sp) :collect?))
+            (let [^HashMap com (:oc-map (:config sp))
+                  k         [(:name sp) (System/identityHashCode sp) (:output-sets child-sp)]
+                  [oc new?] (or (when-let [oc  (.get com k)]
                                   [oc false])
                                 (let [oc (make-output-collector
-                                          (:config sp) (:name sp) (:input-sets sp) (:output-sets child-sp))]
-                                  (.put com (:output-sets child-sp) oc)
+                                          (:config sp) k (:name sp) (:input-sets sp) (:output-sets child-sp))]
+                                  (.put com k oc)
                                   [oc true]))]
-              (publish-inner-child! oc child-sp)
-              (when new? (channel/publish! (:child-channel sp) oc)))              
-            (do (channel/publish! (:child-channel sp) child-sp)))))))
-;; TODO: how to refine-input of output collector ??
+              (if (or new? (<= (summary/max-reward (sg/summary child-sp)) (summary/max-reward (sg/summary oc))))
+                (do (publish-inner-child! oc child-sp)
+                    (when new?
+                      (channel/publish! (:child-channel sp) oc)))
+                (channel/publish! (:child-channel sp) child-sp))) 
+            (channel/publish! (:child-channel sp) child-sp))))))
 
 
 (defn subsuming-sps        [s] (keys (:subsuming-sp-set s)))
@@ -246,7 +176,7 @@
                     (add-subsuming-sp! can-child can-subsuming-child))))))))))))
 
 
-;; Note: used to verify =-state-sets on entry to sa
+;; Note: we used to verify =-state-sets on entry to sa
 (defn refine-input    [s ni]
   (if (fs/eq-sets = (:input-sets s) ni)
     s
@@ -308,16 +238,6 @@
 ;; Initially we are evaluated but have no children. (Lazy can be simulated by hierarchy)
 ;; Expanding generates and publishes child subproblems, based on children of subsuming if possible.
 
-
-
-;; TODO: this assumes no inner child releases another inner child.  
-;; Note: treatment of subsuming-sps was wrong in several ways ...
-;; Right thing is: if not expandable, start fresh.
-;; If expandable and expanded, do current thing (except, also wait on inner???)
-;; If expandable and not expanded, do current thing
-;; (problem is, inner bits may be hidden; may have non-correspondence).
-;; TODO: all-child-channel!
-
 (defmacro cache-under [dc ks body]
   `(if-let [^HashMap dc# ~dc]
      (util/cache-with dc# ~ks ~body)
@@ -340,16 +260,17 @@
              (fn summarize [s] (@summary-fn s)))
             :subsuming-sp subsuming-sp
             :expanded?-atom expanded?
+            :data [config fs inp-sets out-sets rewards status]
             :expand!-fn
             (fn expand! [s]
               (util/print-debug 1 "expand" nm)
               (reset! expanded? true)
               (reset! summary-fn (util/safe-get config :or-summarize))
               (if (and subsuming-sp @(:expanded?-atom subsuming-sp)) ;; TODO: don't require expanded?
-                (do (refine-channel (:child-channel subsuming-sp) s)
-                    (refine-channel (:inner-child-channel subsuming-sp) s))
+;                (do (refine-channel (:child-channel subsuming-sp) s))
+                (refine-constituents! subsuming-sp s)
                 (doseq [ref-name (refinement-names config fs inp-sets)] 
-                  (publish-child! s (get-subproblem config ref-name inp-sets))))))))))))
+                  (publish-child! s true (get-subproblem config ref-name inp-sets))))))))))))
 
 (defmethod get-subproblem :Atomic [config [_ fs] inp-sets]
   (make-atomic-subproblem config fs inp-sets nil))          
@@ -391,7 +312,7 @@
 		      (sg/disconnect! ss (sp-ts right-sp))
 		      (subscribe-children! left-sp (fn [c] (def *bad* [ss c]) (assert (not "S + C"))))
 		      (connect-and-watch! ss right-sp
-                        #(publish-child! (util/safe-singleton (sg/parent-nodes ss))
+                        #(publish-child! (util/safe-singleton (sg/parent-nodes ss)) false
                                          (make-pair-subproblem config left-sp %))))
 	  ss          (assoc (sg/make-simple-cached-node)
                         :summarize-fn
@@ -411,13 +332,12 @@
                           (go-right! ss)))
 	  ret (make-subproblem config nm (:input-sets left-sp) (:output-sets right-sp) nil 		 
 		(fn ri-fn [s ni]
-		  (refine-channel (:child-channel s)
-                   (make-half-pair-subproblem config (refine-input left-sp ni) #(refine-input right-sp %))))
+                  (make-half-pair-subproblem config (refine-input left-sp ni) #(refine-input right-sp %)))
                 (util/safe-get config :or-summarize))]    
       (sg/connect! ret ss) 
       (connect-ts! ss right-sp)
       (connect-and-watch! ss left-sp
-	#(publish-child! ret (make-pair-subproblem config % (refine-input right-sp (:output-sets %)))))    
+	#(publish-child! ret false (make-pair-subproblem config % (refine-input right-sp (:output-sets %)))))    
       ret)))
 
 (defn make-half-pair-subproblem [config left-sp right-fn]
@@ -429,13 +349,11 @@
    (get-subproblem config left-name inp-sets)
    #(get-subproblem config right-name %)))
 
-;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
+
 ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;    SA Wrapper     ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
 
-
-
 ;; Note: subsumed subproblems can have different irrelevant vars
-;; Also note: new input can have subset of variables of old. (=-state-sets does ntthis now).
+;; Also note: new input can have subset of variables of old. 
 (defn- make-state-abstracted-subproblem [config fs inner-sp inp-sets]
   (when inner-sp
     (let [ret (make-subproblem 
@@ -447,13 +365,11 @@
                  (if (fs/eq-sets fs/=-state-sets ni inp-sets) sp
                      (let [log-ni (fs/map-sets fs/get-logger fs ni)
                            ri     (refine-input inner-sp log-ni)]                      
-                       (refine-channel (:child-channel sp)
-                         (make-state-abstracted-subproblem config fs ri ni)))))
+                       (make-state-abstracted-subproblem config fs ri ni))))
                (util/safe-get config :or-summarize))]      
       (connect-and-watch! ret inner-sp 
-       #(publish-child! ret (make-state-abstracted-subproblem config fs % inp-sets)))
+       #(publish-child! ret false (make-state-abstracted-subproblem config fs % inp-sets)))
       ret)))
-
 
 (defmethod get-subproblem :SA [config [_ inner-n :as n] inp-sets]
   (let [fs (atomic-name-fs inner-n)]
@@ -463,21 +379,18 @@
       inp-sets)))
 
 
-
 ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
 ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;; Planning ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
 ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
 
 (declare *root*)
 
-(defn- expand! [s]  ((:expand!-fn s) s))
-
 (defn extract-action [sp]
   (let [fs (second (:name sp)) n (fs/fs-name fs)]
     (when-not (= (first n) :noop) fs)))
 
 (defn implicit-dash-a* [henv & {:as opts}] 
-  (let [defaults {:collect?               true  ; Don't publish child subproblems with identical outputs?
+  (let [defaults {:collect?               :flat ; Collect children with = output? nil, :flat, or :hierarchical
                   :decompose?             true  ; Decomposition.  Requires :collect?
                   :abstract?              true  ; State Abstraction.  Requires :d
                   :choice-fn              last  ; Choose a child node to evaluate 
@@ -495,12 +408,17 @@
                               {:or-summarize sg/or-summary
                                :make-summary (fn [[p-r o-r] stat src]
                                                (summary/make-simple-summary
-                                                (min (sg/get-bound src) o-r) stat src))})))
+                                                (min (sg/get-bound src) o-r) stat src))}))
+                      (assoc :oc-map (HashMap.)))
         [init fs] (fs/make-init-pair henv)
-        root      (sp-ts (make-atomic-subproblem config fs [(when (:weight opts) init) init] nil))]
+        root      (sp-ts (make-atomic-subproblem config fs [(when (:weight opts) init) init] nil))
+        expand!   (if (= (:collect? config) :hierarchical)
+                    (fn [s] ((:expand!-fn s) s) #_ (.clear ^HashMap (:oc-map config)))
+                    (fn [s] ((:expand!-fn s) s)))]
     (let [ks (util/keyset defaults)] (doseq [k (keys opts)] (util/assert-is (ks k))))
     (when (:abstract? config)  (assert (:decompose? config)))
     (when (:decompose? config)  (assert (:collect? config)))
+    (assert (contains? #{nil :flat :hierarchical} (:collect? config)))
     (def *root* root)
     (case (:search-strategy config)
           :ldfs (do (sg/ldfs! root (:choice-fn config) Double/NEGATIVE_INFINITY expand!)
@@ -521,11 +439,11 @@
 
 ;; (do (use 'clojure.test) (use 'angelic.test.search.implicit.dash-astar-opt-simple) (run-tests 'angelic.test.search.implicit.dash-astar-opt-simple))
 
-;; (dotimes [_ 1] (reset! sg/*summary-count* 0) (debug 0 (let [h (make-nav-switch-hierarchy (make-random-nav-switch-env 20 4 0) true)]  (time (println (run-counted #(identity (implicit-dash-a* h :gather true :d true :s :eager :dir :right))) @sg/*summary-count*)))))
+;; (dotimes [_ 1] (reset! sg/*summary-count* 0) (debug 0 (let [h (make-nav-switch-hierarchy (make-random-nav-switch-env 20 4 0) true)]  (time (println (run-counted #(identity (implicit-dash-a* h))) @sg/*summary-count*)))))
 
-;; (dotimes [_ 1] (reset! sg/*summary-count* 0) (debug 0 (let [h (make-discrete-manipulation-hierarchy  (make-random-hard-discrete-manipulation-env 3 3))]   (time (println (run-counted #(identity (implicit-dash-a*-opt h :gather true :d true :s :eager :dir :right))) @sg/*summary-count*)))))
+;; (dotimes [_ 1] (reset! sg/*summary-count* 0) (debug 0 (let [h (make-discrete-manipulation-hierarchy  (make-random-hard-discrete-manipulation-env 3 3))]   (time (println (run-counted #(identity (implicit-dash-a*-opt h))) @sg/*summary-count*)))))
 
-;; (dotimes [_ 1] (reset! sg/*summary-count* 0) (debug 1 (let [h (make-discrete-manipulation-hierarchy  (make-discrete-manipulation-env-regions [4 4] [1 1] [ [ [2 2] [3 3] ] ] [ [:a [2 2] [ [3 3] [3 3 ] ] ] ] 1 2 2 1))]   (time (println (run-counted #(identity (implicit-dash-a* h :gather true :d true :s :eager :dir :right))) @sg/*summary-count*)))))
+;; (dotimes [_ 1] (reset! sg/*summary-count* 0) (debug 1 (let [h (make-discrete-manipulation-hierarchy  (make-discrete-manipulation-env-regions [4 4] [1 1] [ [ [2 2] [3 3] ] ] [ [:a [2 2] [ [3 3] [3 3 ] ] ] ] 1 2 2 1))]   (time (println (run-counted #(identity (implicit-dash-a* h))) @sg/*summary-count*)))))
 
 
 
