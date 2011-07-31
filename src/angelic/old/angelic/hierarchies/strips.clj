@@ -205,7 +205,7 @@
 
 
 (comment 
-  (parse-hierarchy "/Users/jawolfe/Projects/angel/src/angelic/old/domains/nav_switch.hierarchy"
+  (parse-hierarchy "/Users/w01fe/Projects/angel/src/angelic/old/domains/nav_switch.hierarchy"
 		   (make-nav-switch-strips-domain))
 
 		    )
@@ -328,7 +328,7 @@
 
 (comment 
   (instantiate-hierarchy
-   (parse-hierarchy "/Users/jawolfe/Projects/angel/src/angelic/old/domains/nav_switch.hierarchy"
+   (parse-hierarchy "/Users/w01fe/Projects/angel/src/angelic/old/domains/nav_switch.hierarchy"
 		    (make-nav-switch-strips-domain))
    (make-nav-switch-strips-env 2 2 [[0 0]] [1 0] true [0 1]))
 
@@ -455,7 +455,7 @@
   (let [domain (make-nav-switch-strips-domain), env (constant-predicate-simplify (make-nav-switch-strips-env 2 2 [[0 0]] [1 0] true [0 1])), node (make-initial-top-down-forward-node :angelic.old.angelic.dnf-simple-valuations/DNFSimpleValuation  (instantiate-hierarchy (make-flat-strips-hierarchy-schema domain (constantly 0)) env))] (count node))
 
 
-  (let [domain (make-nav-switch-strips-domain), env (constant-predicate-simplify (make-nav-switch-strips-env 2 2 [[0 0]] [1 0] true [0 1])), node (make-initial-top-down-forward-node :angelic.old.angelic.dnf-simple-valuations/DNFSimpleValuation  (instantiate-hierarchy (parse-hierarchy "/Users/jawolfe/Projects/angel/src/angelic/old/domains/nav_switch.hierarchy" domain) env))] (count node))
+  (let [domain (make-nav-switch-strips-domain), env (constant-predicate-simplify (make-nav-switch-strips-env 2 2 [[0 0]] [1 0] true [0 1])), node (make-initial-top-down-forward-node :angelic.old.angelic.dnf-simple-valuations/DNFSimpleValuation  (instantiate-hierarchy (parse-hierarchy "/Users/w01fe/Projects/angel/src/angelic/old/domains/nav_switch.hierarchy" domain) env))] (count node))
 
 
  ;(time (second (a-star-search node))))

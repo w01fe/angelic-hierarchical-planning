@@ -39,12 +39,23 @@
 ;; Impelemented: start new OC after input refined.  Don't add to OC if > reward.
 
 ;; TODO: RI of child not connected to child of RI.
+;; TODO: suboptimal eficiency in presernce of increasing outputs.
+
+;; tODO: think again about
 
 ;; TODO: put back bounding
 ;; (Currently asserting consistency in a sense, despite DM not having it.
 ;;  Causes some errors, e.g., with rand-nth.)
 
 ;; TODO: summary/+ should take order into account !  live iff left live or left solved, right live, ..
+
+;; Last main issue: how we fit bounding into:
+;;  Current eager framework for cost propagation
+;;  Framework that includes local decreases. 
+
+;;  For LDFS, can handle bounding eagerly, with no propagation, nothing extra.
+;; For AO, put them in initial set, but only include things in LDFS that actually decreased.
+;;  In principle need multiple iterations of KLD with bounding, but we can ignore it...
 
 ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
 ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;  Subproblems  ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;

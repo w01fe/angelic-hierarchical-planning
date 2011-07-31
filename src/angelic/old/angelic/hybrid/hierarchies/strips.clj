@@ -164,9 +164,9 @@
 
 
 (comment
-  (parse-hierarchy "/Users/jawolfe/Projects/angel/src/angelic/old/domains/road_trip.hierarchy" (make-road-trip-strips-domain))
-  (parse-hierarchy "/Users/jawolfe/Projects/angel/src/angelic/old/domains/simple_road_trip.hierarchy" (make-simple-road-trip-strips-domain))
-  (parse-hierarchy "/Users/jawolfe/Projects/angel/src/angelic/old/domains/hybrid_blocks.hierarchy" (make-hybrid-blocks-strips-domain))
+  (parse-hierarchy "/Users/w01fe/Projects/angel/src/angelic/old/domains/road_trip.hierarchy" (make-road-trip-strips-domain))
+  (parse-hierarchy "/Users/w01fe/Projects/angel/src/angelic/old/domains/simple_road_trip.hierarchy" (make-simple-road-trip-strips-domain))
+  (parse-hierarchy "/Users/w01fe/Projects/angel/src/angelic/old/domains/hybrid_blocks.hierarchy" (make-hybrid-blocks-strips-domain))
 )
 
 
@@ -258,10 +258,10 @@
 
 (comment
     (instantiate-hierarchy 
-	 (parse-hierarchy "/Users/jawolfe/Projects/angel/src/angelic/old/domains/road_trip.hierarchy" (make-road-trip-strips-domain)) (make-road-trip-strips-env [['a 3 2] ['b 0 0]] '[[a b 2]] 'a 'b 1 4 1))
+	 (parse-hierarchy "/Users/w01fe/Projects/angel/src/angelic/old/domains/road_trip.hierarchy" (make-road-trip-strips-domain)) (make-road-trip-strips-env [['a 3 2] ['b 0 0]] '[[a b 2]] 'a 'b 1 4 1))
 
     (instantiate-hierarchy
-     (parse-hierarchy "/Users/jawolfe/Projects/angel/src/angelic/old/domains/hybrid_blocks.hierarchy" (make-hybrid-blocks-strips-domain))
+     (parse-hierarchy "/Users/w01fe/Projects/angel/src/angelic/old/domains/hybrid_blocks.hierarchy" (make-hybrid-blocks-strips-domain))
      (make-hybrid-blocks-strips-env 6 2 [1 1] '[[a 1 1 2 1] [b 4 1 2 1]] '[[a [[b]]]])
      )
 )
@@ -372,10 +372,10 @@
 
 (comment
     (instantiate-hierarchy 
-	 (parse-hierarchy "/Users/jawolfe/Projects/angel/src/angelic/old/domains/road_trip.hierarchy" (make-road-trip-strips-domain)) (make-road-trip-strips-env [['a 3 2] ['b 0 0]] '[[a b 2]] 'a 'b 1 4 1))
+	 (parse-hierarchy "/Users/w01fe/Projects/angel/src/angelic/old/domains/road_trip.hierarchy" (make-road-trip-strips-domain)) (make-road-trip-strips-env [['a 3 2] ['b 0 0]] '[[a b 2]] 'a 'b 1 4 1))
 
     (interactive-search  (alt-node (instantiate-hierarchy
-                                    (parse-hierarchy "/Users/jawolfe/Projects/angel/src/angelic/old/domains/hybrid_blocks.hierarchy" (make-hybrid-blocks-strips-domain))
+                                    (parse-hierarchy "/Users/w01fe/Projects/angel/src/angelic/old/domains/hybrid_blocks.hierarchy" (make-hybrid-blocks-strips-domain))
                                     (make-hybrid-blocks-strips-env 6 2 [1 1] '[[a 1 1 2 1] [b 4 1 2 1]] '[[a [[b]]]])
                                     ) {:cache? false :graph? false}))
     

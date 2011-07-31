@@ -317,8 +317,8 @@
 	 [[:cost combiner-fn (datasets/ds-fn [cost] cost)]]) 
        [:algorithm :type :ref-choice] 
        :max-refs :cost 
-       {:term "solid dashed size 3,2" :xrange "[0:5000]" :yrange "[70:3000]" :key "3000, 1800"  
-	:title (str "Online Warehouse World") :ylog "t"
+       {:term "solid dashed size 3,2" :xrange "[0:3000]" :yrange "[0:2000]" :key "3000, 1800"  
+	:title (str "Online Warehouse World") ;:ylog "t"
 	:xlabel "Allowed refinements per env step" 
 	:ylabel "Cost to reach goal (avg of 7 instances)"} 
       (let [c (util/counter-from 0)]
@@ -330,7 +330,7 @@
         "/Users/jawolfe/Desktop/new-charts/online-ww.pdf"))
 
    ; Nav Switch
-   (doseq [[sz keyloc maxx] [[100 "3500, 500" 5000] [500 "1800, 4500" 2000]]]
+#_   (doseq [[sz keyloc maxx] [[100 "3500, 500" 5000] [500 "1800, 4500" 2000]]]
     (charts/plot (datasets/ds->chart 
       (datasets/ds-summarize 
         (datasets/ds-derive (datasets/ds-fn [output ] (- (or (second output) -20000))) 

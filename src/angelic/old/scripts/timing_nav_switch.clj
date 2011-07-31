@@ -239,7 +239,7 @@
 (doseq [[name simplifier]  (take 3 *strips-hierarchy-simplifiers*)]
   (time-and-check-hierarchical (format  "square %s strips-hierarchy, %s, heuristic" *huge-ns-size* name) 
     *huge-ns-reward*
-    (hierarchies/parse-hierarchy "/Users/jawolfe/Projects/angel/src/angelic/old/domains/nav_switch2.hierarchy" 
+    (hierarchies/parse-hierarchy "/Users/w01fe/Projects/angel/src/angelic/old/domains/nav_switch2.hierarchy" 
      (nav-switch/make-nav-switch-strips-domain)) 
     (simplifier (apply nav-switch/make-nav-switch-strips-env *huge-ns-args*))
     ::dnf-valuations/DNFValuation))

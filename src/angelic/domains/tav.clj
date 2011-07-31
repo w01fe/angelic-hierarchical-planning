@@ -151,7 +151,7 @@
   env/FactoredEnv
   (goal-map      [_] {'[t] T}))
 
-(defonce demo-tav-files (read-tav-files "/Users/jawolfe/Projects/angel/problems/tav/0" 16 100))
+(defonce demo-tav-files (read-tav-files "/Users/w01fe/Projects/angel/problems/tav/0" 16 100))
 (defn make-demo-tav-env
   ([] (make-demo-tav-env 16 100))
   ([s t] (TAVEnv. s t demo-tav-files)))
