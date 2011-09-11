@@ -8,6 +8,10 @@
 
 (set! *warn-on-reflection* true)
 
+;; TODO: before publish:
+FIX refine-input for oc subproblem to solution in thesis
+FIX no publications from solved.
+
 ;; Take dash_astar_opt_simple and add back complexities from
 ;; dash_astar.clj.
 
@@ -114,6 +118,7 @@
 
 (declare publish-child! refine-input)
 
+;; TODO: this can cycle, if oc includes itself?!
 (defn refine-constituents! [parent-sp refined-sp]
   (channel/subscribe!
    (:constituent-channel parent-sp)
