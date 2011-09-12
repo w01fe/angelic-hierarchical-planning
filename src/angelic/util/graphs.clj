@@ -1,7 +1,6 @@
 (ns angelic.util.graphs
   (:import [java.util Stack HashSet Map HashMap LinkedList ArrayList])
-  (:use clojure.test angelic.util angelic.util.queues angelic.util.disjoint-sets
-        angelic.util.lp))
+  (:use clojure.test angelic.util angelic.util.queues angelic.util.disjoint-sets))
 
 ;;;; Incremental directed acyclic graphs for cycle detection (only).
 
@@ -273,52 +272,53 @@
 ;                 (into out (map vector (get scc-nodes source) (repeat i))) (inc i)))))))
 
 
-;; Seems buggy in several ways; just try on 4x3 grid world.  Loses connectivity, voltages are messed up, etc.  
-(defn find-shortest-path-stu-edges
-  "Take a directed edge list, list of source nodes, and list of target nodes,
+;; Seems buggy in several ways; just try on 4x3 grid world.  Loses connectivity, voltages are messed up, etc.
+(comment
+ (defn find-shortest-path-stu-edges
+   "Take a directed edge list, list of source nodes, and list of target nodes,
    and return a list of edges that may participate in a shortest s->x->t path
    where all edges have unit cost. Usees a circuit-based LP solving method.
    Not sure if this is actually useful for anyone..."
-  [edge-list sources sinks]
-  (let [nodes     (distinct (apply concat sources sinks edge-list))
-        all-nodes (set (concat nodes [::SOURCE ::SINK]))
-        all-edges (concat edge-list 
-                          (for [source sources] [::SOURCE source])
-                          (for [sink sinks]     [sink     ::SINK]))
-        out-map   (map-vals #(map second %) (group-by first all-edges)) 
-        in-map    (map-vals #(map first %)  (group-by second all-edges))]
-    (map key
-     (filter #(and (not (all-nodes (key %))) (not (some #{::SOURCE ::SINK} (key %))) (> (val %) 0))
-              (first 
-                 (solve-lp-clp
-                  (make-lp
-                   (into {}
-                         (concat
-                          [[::SOURCE [0 0]]
-                           [::SINK   [1 1]]]
-                          (for [node nodes]     [node [nil nil]])
-                          (for [edge all-edges] [edge [0 nil]])))
-                   (into {} (for [edge all-edges] [edge -1])) ; Minimize current
-                   (into {}
-                         (concat
-                          (for [node nodes] ;; Current conservation
-                            [(into {}
-                                   (concat
-                                    (for [in  (in-map node)]  [[in node]   1])
-                                    (for [out (out-map node)] [[node out] -1])))
-                             [0 0]])
-                          (for [[s t :as edge] all-edges] ;; I >= v_t - v_s
-                            [{edge 1, s 1, t -1} [0 nil]]))))))))))
+   [edge-list sources sinks]
+   (let [nodes     (distinct (apply concat sources sinks edge-list))
+         all-nodes (set (concat nodes [::SOURCE ::SINK]))
+         all-edges (concat edge-list 
+                           (for [source sources] [::SOURCE source])
+                           (for [sink sinks]     [sink     ::SINK]))
+         out-map   (map-vals #(map second %) (group-by first all-edges)) 
+         in-map    (map-vals #(map first %)  (group-by second all-edges))]
+     (map key
+          (filter #(and (not (all-nodes (key %))) (not (some #{::SOURCE ::SINK} (key %))) (> (val %) 0))
+                  (first 
+                   (solve-lp-clp
+                    (make-lp
+                     (into {}
+                           (concat
+                            [[::SOURCE [0 0]]
+                             [::SINK   [1 1]]]
+                            (for [node nodes]     [node [nil nil]])
+                            (for [edge all-edges] [edge [0 nil]])))
+                     (into {} (for [edge all-edges] [edge -1])) ; Minimize current
+                     (into {}
+                           (concat
+                            (for [node nodes] ;; Current conservation
+                              [(into {}
+                                     (concat
+                                      (for [in  (in-map node)]  [[in node]   1])
+                                      (for [out (out-map node)] [[node out] -1])))
+                               [0 0]])
+                            (for [[s t :as edge] all-edges] ;; I >= v_t - v_s
+                              [{edge 1, s 1, t -1} [0 nil]]))))))))))
 
-(deftest find-shortest-path-stu-edges-complex
-  (is (= (set (find-shortest-path-stu-edges [[:s :t] [:t :u] [:t :x]] [:s] [:u])) 
-         #{[:s :t] [:t :u]}))
-  (is (= (set (find-shortest-path-stu-edges [[:s :t] [:t :u] [:t :x] [:x :t]] [:s] [:u])) 
-         #{[:s :t] [:t :u]}))
-  (is (= (set (find-shortest-path-stu-edges [[:s :t] [:t :u] [:t :x] [:x :t] [:x :u]] [:s] [:u])) 
-         #{[:s :t] [:t :u] [:t :x] [:x :u]} ))  
- #_  (is (= (set (find-shortest-path-stu-edges [[:s :t] [:t :u] [:t :x] [:x :t] [:x :u] [:s :x]] [:s] [:u]))
-         #{[:s :t] [:t :u] [:t :x] [:x :t] [:x :u] [:s :x]} )))
+ (deftest find-shortest-path-stu-edges-complex
+   (is (= (set (find-shortest-path-stu-edges [[:s :t] [:t :u] [:t :x]] [:s] [:u])) 
+          #{[:s :t] [:t :u]}))
+   (is (= (set (find-shortest-path-stu-edges [[:s :t] [:t :u] [:t :x] [:x :t]] [:s] [:u])) 
+          #{[:s :t] [:t :u]}))
+   (is (= (set (find-shortest-path-stu-edges [[:s :t] [:t :u] [:t :x] [:x :t] [:x :u]] [:s] [:u])) 
+          #{[:s :t] [:t :u] [:t :x] [:x :u]} ))  
+   #_  (is (= (set (find-shortest-path-stu-edges [[:s :t] [:t :u] [:t :x] [:x :t] [:x :u] [:s :x]] [:s] [:u]))
+              #{[:s :t] [:t :u] [:t :x] [:x :t] [:x :u] [:s :x]} ))))
   
 ; Node n is reachable from s iff:
  ; some predecessor of n is reachable from s
