@@ -58,55 +58,28 @@
 	    result#)))))
 
 
-(set! *warn-on-reflection* true)
+(require '[w01fe.hungarian.core :as hung])
 
-(import '[angelic.util Double2Arrays] '[java.util List])
-(defn to-double2 [^List ss] (Double2Arrays/toDouble2Array ss))
-(defn aset-double2 [^"[[D" a i j v] (Double2Arrays/set a i j v))
-(defn aget-double2 [^"[[D" a i j] (Double2Arrays/get a i j))
-
-
-(import '[angelic.util HungarianAlgorithm])
 (defn maximum-matching "Edges are [n1 n2 weight].  Returns weight." 
-  ([^"[[D" arr] (HungarianAlgorithm/hgAlgorithm arr "max"))
+  ([^"[[D" arr] (hung/maximum-matching arr))
   ([left-nodes right-nodes edges]
-  (let [left-nodes    (seq left-nodes)
-	right-nodes   (seq right-nodes)
-	left-node-ids (into {} (map vector left-nodes (iterate inc 0)))
-	right-node-ids (into {} (map vector right-nodes (iterate inc 0)))
-	n        (count left-node-ids)
-	arr      (make-array Double/TYPE n n)]
-    (assert-is (= n (count right-node-ids)))
-    (doseq [i (range n), j (range n)] (aset-double2 arr i j Double/NEGATIVE_INFINITY))
-    (doseq [[n1 n2 v] edges] 
-      (let [i1 (int (safe-get left-node-ids n1)),
-	    i2 (int (safe-get right-node-ids n2))
-	    v  (double v)]
-;	(assert-is (= (Double/NEGATIVE_INFINITY) (aget arr i1 i2)))
-	(aset-double2 arr i1 i2 v)))
-;    (println (map seq (seq arr)))    
-    (maximum-matching arr)
-    )))
+     (hung/maximum-matching left-nodes right-nodes edges)))
       
 
-(set! *warn-on-reflection* false)	
-
-(comment 
-(defn test-maximum-matching [n]
-  (let [nn (range n)
+(deftest maximum-matching-test
+  (doseq [n (range 5 8)]
+    (let [nn (range n)
 	evs (vec (take n (repeatedly (fn [] (vec (take n (repeatedly #(rand-int 10))))))))
 	es  (for [i nn, j nn] [i j (nth (nth evs i) j)])
 	v   (maximum-matching nn nn es)]
-;    (println evs v)
-    (assert-is
+    (is
      (= v 
 	(apply max
 	  (map (fn [p]
 		  (apply +
 		    (for [[i v] (map vector p evs)]
 		      (nth v i))))
-		     (permutations nn)))))))
-    )
+		     (permutations nn))))))))
     
 
 
