@@ -4,12 +4,13 @@
                  [org.clojure/clojure-contrib "1.2.0"]
 ;                [org.clojars.robertpfeiffer/vijual "0.1.0-SNAPSHOT"]
                  [org.swinglabs/pdf-renderer "1.0.5"]
-                 [incanter "1.2.3-SNAPSHOT"]
+;                 [incanter "1.2.3-SNAPSHOT"]
+                 [w01fe/hungarian "0.0.1-SNAPSHOT"]
+                 [w01fe/fibonacci-heap "0.0.1-SNAPSHOT"]
                  ]
-  :dev-dependencies [[swank-clojure "1.2.1"] [mycroft/mycroft "0.0.2"]
-                     [swank-clj "0.1.6"]]
+  :dev-dependencies [[mycroft/mycroft "0.0.2"]
+                     #_ [swank-clj "0.1.6"]]
   :jvm-opts ["-server" "-Xmx1g"
-             #_ "-agentpath:/Applications/YourKit_Java_Profiler_9.0.0.app/bin/mac/libyjpagent.jnilib"
              #_ "-agentlib:jdwp=transport=dt_socket,server=y,suspend=n,address=5000" ]
   )
 
