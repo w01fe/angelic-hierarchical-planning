@@ -194,10 +194,12 @@
   [lp]
   (let [[mps-file-data namer var-order dummies] (lp->mps* lp)
 	in-file (util/fresh-random-filename "/tmp/lp")
-	out-file (str in-file ".out")]
+	out-file (str in-file ".out")
+        clp-path "/Volumes/data/old/Users/jawolfe/Projects/research/lp/CoinAll-1.2-mac-osx-x86-gcc4.0.1/bin/clp"
+        ]
 ;    (println in-file "\n"  var-order "\n\n")
     (spit in-file mps-file-data)
-    (cheap-sh "clp" "-max" "-import" in-file "-solve" "-solution" out-file)
+    (cheap-sh clp-path "-max" "-import" in-file "-solve" "-solution" out-file)
     (let [[[status] [obj val rew] & body] (map #(read-string (str "[" % "]")) (util/read-lines out-file))]
       (assert (is (= [obj val] '[Objective value])))
 ;      (assert (is (= (count body) (count var-order))))
@@ -247,9 +249,10 @@
 (defn approx-=-lp-sols [[m1 r1] [m2 r2]]
   (and (approx-=-maps m1 m2) (approx-= r1 r2)))
 
-(deftest test-glpk
-  (is (approx-=-lp-sols (solve-lp-glpk *wiki-lp*) *wiki-lp-sol*))
-  (is (approx-=-lp-sols (solve-lp-glpk *another-lp*) *another-lp-sol*)))
+(comment
+ (deftest test-glpk
+   (is (approx-=-lp-sols (solve-lp-glpk *wiki-lp*) *wiki-lp-sol*))
+   (is (approx-=-lp-sols (solve-lp-glpk *another-lp*) *another-lp-sol*))))
 
 (deftest test-clp
   (is (approx-=-lp-sols (solve-lp-clp *wiki-lp*) *wiki-lp-sol*))
