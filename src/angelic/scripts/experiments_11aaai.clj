@@ -151,7 +151,7 @@
 
 
 (defn make-ns-charts 
-  ([] (make-ns-charts "/Users/jawolfe/Projects/reports/11-aaai/graphs/"))
+  ([] (make-ns-charts "/Volumes/data/old/Users/jawolfe/Projects/reports/11-aaai/graphs/"))
   ([dir]
      (doseq [[n ylabel field] [["evals" "\\# of evaluations" :opt-count]
                                ["time"  "runtime (s)" :secs]]]
@@ -238,7 +238,7 @@
 
 
 (defn make-dm-charts 
-  ([] (make-dm-charts "/Users/jawolfe/Projects/reports/11-aaai/graphs/"))
+  ([] (make-dm-charts "/Volumes/data/old/Users/jawolfe/Projects/reports/11-aaai/graphs/"))
   ([dir]
      (doseq [[n ylabel field] [["evals" "\\# of evaluations" :opt-count]
                                ["time"  "runtime (s)" :secs]]]

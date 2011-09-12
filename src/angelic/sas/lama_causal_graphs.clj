@@ -67,7 +67,7 @@
     (vec (map #(util/safe-get m %) o)))) 
 
 (def *working-dir* "/tmp/")
-(def *lama-dir* "/Users/jawolfe/Projects/research/planners/seq-sat-lama/lama/")
+(def *lama-dir* "/Volumes/data/old/Users/jawolfe/Projects/research/planners/seq-sat-lama/lama/")
 
 (defn lama-translate [stem]
   (util/sh (str *lama-dir* "translate/translate.py") (str stem "-domain.pddl") (str stem ".pddl")
@@ -94,6 +94,6 @@
 
 
 
-; (show-directed-graph (read-causal-graph  "/Users/jawolfe/Projects/research/planners/seq-sat-lama/lama/output"))
+; (show-directed-graph (read-causal-graph  "/Volumes/data/old/Users/jawolfe/Projects/research/planners/seq-sat-lama/lama/output"))
 
-; (doseq [ [i g]  (indexed (read-ordered-groups  "/Users/jawolfe/Projects/research/planners/seq-sat-lama/lama/test.groups" "/Users/jawolfe/Projects/research/planners/seq-sat-lama/lama/output")) ] (println i "\n" g))
+; (doseq [ [i g]  (indexed (read-ordered-groups  "/Volumes/data/old/Users/jawolfe/Projects/research/planners/seq-sat-lama/lama/test.groups" "/Volumes/data/old/Users/jawolfe/Projects/research/planners/seq-sat-lama/lama/output")) ] (println i "\n" g))

@@ -102,7 +102,7 @@
 	(experiments/read-experiment-set-results (make-vac-experiment-set)))))
 
 (defn make-vac-csv []
-  (spit "/Users/jawolfe/Desktop/vac.csv"
+  (spit "/Volumes/data/old/Users/jawolfe/Desktop/vac.csv"
     (util/str-join "\n"
       (map #(util/str-join "," %)
 	(cons ["rooms" "type" "search-strategy" "prune" "commit" "choice" 
@@ -118,7 +118,7 @@
 
 (comment
 (defn make-offline-charts 
-  ([] (make-offline-charts "/Users/jawolfe/Desktop/new-charts/"))
+  ([] (make-offline-charts "/Volumes/data/old/Users/jawolfe/Desktop/new-charts/"))
   ([dir] 
    (doseq [[y-axis y-label file-suffix]
 	   [[:ms "Solution Time (ms)" "time"]

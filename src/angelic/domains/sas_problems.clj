@@ -10,7 +10,7 @@
   (assert (< 0 n 100))
   (if (< n 10) (str "0" n) (str n)))
 
-(def ipc1-dir "/Users/jawolfe/Projects/research/IPC/IPC1/")
+(def ipc1-dir "/Volumes/data/old/Users/jawolfe/Projects/research/IPC/IPC1/")
 (def ipc1-problems 
   (into {}
     (concat
@@ -35,7 +35,7 @@
       ;     [["2x2-taxi"  (taxi/write-taxi-strips (taxi/make-random-taxi-env 2 2 2 1))]]
       (for [domain ["elevators" "openstacks" "parcprinter" "pegsol" "scanalyzer" #_ "sokoban" "transport" "woodworking"]]
         [(str "IPC6-" domain)
-         (str "/Users/jawolfe/Projects/research/IPC/ipc2008-no-cybersec/seq-opt/" domain "-strips/p"
+         (str "/Volumes/data/old/Users/jawolfe/Projects/research/IPC/ipc2008-no-cybersec/seq-opt/" domain "-strips/p"
               (dig2 n))]))
     
         )
@@ -48,7 +48,7 @@
   (sort (comparator (fn [^String s1, ^String s2] (or (< (count s1) (count s2)) (and (= (count s1) (count s2)) (< (compare s1 s2) 0))))) strs))
 
 
-(def ipc2-dir "/Users/jawolfe/Projects/research/IPC/IPC2/2000-Tests/Logistics/Track1/Typed/")
+(def ipc2-dir "/Volumes/data/old/Users/jawolfe/Projects/research/IPC/IPC2/2000-Tests/Logistics/Track1/Typed/")
 (def direct-ipc2-logistics
      (for [f (funky-sort (remove #{"probLOGISTICS-11-0.pddl"} (filter #(.startsWith ^String % "probL") (seq (.list (File. ipc2-dir))))))]
        (delay (do (println f) (sas/make-sas-problem-from-pddl (str ipc2-dir "domain.pddl") (str ipc2-dir  f))))))
@@ -70,7 +70,7 @@
 
 
 
-(def ipc2-miconic-src-dir "/Users/jawolfe/Projects/research/IPC/IPC2/2000-Tests/Elevator/m10-strips/")
+(def ipc2-miconic-src-dir "/Volumes/data/old/Users/jawolfe/Projects/research/IPC/IPC2/2000-Tests/Elevator/m10-strips/")
 
 (def ipc2-miconic-names
      (for [i (range 1 31) j (range 5)] (str i "-" j)))
@@ -95,7 +95,7 @@
 
 
 
-(def cptdir "/Users/jawolfe/Projects/research/IPC/cpt/pddl/")
+(def cptdir "/Volumes/data/old/Users/jawolfe/Projects/research/IPC/cpt/pddl/")
 (def cpt-logistics
      (for [i (range 1 10)]
        (delay (sas/make-sas-problem-from-pddl 
@@ -109,7 +109,7 @@
                (str cptdir "logisticsaips" (dig2 i) ".pddl")))))
 
 
-(def ipc3-depots-dir "/Users/jawolfe/Projects/research/IPC/IPC3/Tests1/Depots/Strips/")
+(def ipc3-depots-dir "/Volumes/data/old/Users/jawolfe/Projects/research/IPC/IPC3/Tests1/Depots/Strips/")
 
 (def ipc3-depots
   (for [i (range 1 23)]

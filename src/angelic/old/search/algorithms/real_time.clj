@@ -68,8 +68,8 @@
 ; uninformed lookahead
 (second (or (let [instance 
 	(read-strips-planning-instance
-	 (read-strips-planning-domain "/Users/jawolfe/Projects/research/IPC/IPC2/2000-Tests/Blocks/Track1/Typed/domain.pddl")
-	 "/Users/jawolfe/Projects/research/IPC/IPC2/2000-Tests/Blocks/Track1/Typed/probBLOCKS-4-0.pddl")
+	 (read-strips-planning-domain "/Volumes/data/old/Users/jawolfe/Projects/research/IPC/IPC2/2000-Tests/Blocks/Track1/Typed/domain.pddl")
+	 "/Volumes/data/old/Users/jawolfe/Projects/research/IPC/IPC2/2000-Tests/Blocks/Track1/Typed/probBLOCKS-4-0.pddl")
 	space (state-space-search-space instance (constantly 0))]
     (time 
      (lookahead-search 
@@ -80,8 +80,8 @@
 ; greedy lookahead - # of conjuncts
 (let [instance 
 	(read-strips-planning-instance
-	 (read-strips-planning-domain "/Users/jawolfe/Projects/research/IPC/IPC2/2000-Tests/Blocks/Track1/Typed/domain.pddl")
-	 "/Users/jawolfe/Projects/research/IPC/IPC2/2000-Tests/Blocks/Track1/Typed/probBLOCKS-4-0.pddl")
+	 (read-strips-planning-domain "/Volumes/data/old/Users/jawolfe/Projects/research/IPC/IPC2/2000-Tests/Blocks/Track1/Typed/domain.pddl")
+	 "/Volumes/data/old/Users/jawolfe/Projects/research/IPC/IPC2/2000-Tests/Blocks/Track1/Typed/probBLOCKS-4-0.pddl")
 	    space (state-space-search-space instance #(- (count (util/difference (util/to-set (:goal-atoms instance)) %))))]
 	(frequencies (map #(when % true) (take 1000 (repeatedly (fn []
      (lookahead-search 
@@ -93,8 +93,8 @@
 ; lrta* - # of conjuncts
 (let [instance 
 	(read-strips-planning-instance
-	 (read-strips-planning-domain "/Users/jawolfe/Projects/research/IPC/IPC2/2000-Tests/Blocks/Track1/Typed/domain.pddl")
-	 "/Users/jawolfe/Projects/research/IPC/IPC2/2000-Tests/Blocks/Track1/Typed/probBLOCKS-4-0.pddl")]
+	 (read-strips-planning-domain "/Volumes/data/old/Users/jawolfe/Projects/research/IPC/IPC2/2000-Tests/Blocks/Track1/Typed/domain.pddl")
+	 "/Volumes/data/old/Users/jawolfe/Projects/research/IPC/IPC2/2000-Tests/Blocks/Track1/Typed/probBLOCKS-4-0.pddl")]
   (frequencies (map #(when % true) (take 100 (repeatedly (fn []
      (lrta-star
       instance

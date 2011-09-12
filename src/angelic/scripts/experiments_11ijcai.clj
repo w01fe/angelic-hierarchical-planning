@@ -198,7 +198,7 @@
       (if (= type-key :pairwise)
         #(order % :title (map second *alg-order2*))
         #(order % :title (map second *alg-order*))))
-     (str "/Users/jawolfe/Projects/reports/11-ijcai/graphs/" file ".pdf"))))
+     (str "/Volumes/data/old/Users/jawolfe/Projects/reports/11-ijcai/graphs/" file ".pdf"))))
 
 
 

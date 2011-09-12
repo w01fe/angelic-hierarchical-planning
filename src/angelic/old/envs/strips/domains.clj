@@ -173,7 +173,7 @@
     (make-strips-action-schema :Act3 [] [[:p0] [:p1a :a1] [:p2bc :b1 :b1]] [] [] 1)
      ])
   
-  (read-strips-planning-domain "/Users/jawolfe/Projects/research/IPC/IPC2/2000-Tests/Blocks/Track1/Typed/domain.pddl")
+  (read-strips-planning-domain "/Volumes/data/old/Users/jawolfe/Projects/research/IPC/IPC2/2000-Tests/Blocks/Track1/Typed/domain.pddl")
 )
 
 

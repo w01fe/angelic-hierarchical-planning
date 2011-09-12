@@ -54,8 +54,8 @@
 
 
 (def *working-dir* "/tmp/")
-(def *lama-root-dir* "/Users/jawolfe/Projects/research/planners/seq-sat-lama/")
-(def *lama-dir* "/Users/jawolfe/Projects/research/planners/seq-sat-lama/lama/")
+(def *lama-root-dir* "/Volumes/data/old/Users/jawolfe/Projects/research/planners/seq-sat-lama/")
+(def *lama-dir* "/Volumes/data/old/Users/jawolfe/Projects/research/planners/seq-sat-lama/lama/")
 
 (defn solve-lama [domain-file inst-file]
   (util/sh (str *lama-root-dir* "plan") domain-file inst-file (str *working-dir* "out")

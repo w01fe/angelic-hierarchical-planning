@@ -85,7 +85,7 @@
     (map #(first (util/safe-get m %)) desired-order)))
 
 (defn make-charts
-  ([] (make-charts "/Users/jawolfe/Projects/reports/10-aaai-btamp/poster/figs/" ))
+  ([] (make-charts "/Volumes/data/old/Users/jawolfe/Projects/reports/10-aaai-btamp/poster/figs/" ))
   ([dir]
      (charts/plot 
       (datasets/ds->chart 

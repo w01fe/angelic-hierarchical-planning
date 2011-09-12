@@ -87,7 +87,7 @@
 
 
 (defn make-taxi-charts 
-  ([] (make-taxi-charts "/Users/jawolfe/Projects/reports/10-icaps/figs/"))
+  ([] (make-taxi-charts "/Volumes/data/old/Users/jawolfe/Projects/reports/10-icaps/figs/"))
   ([dir] 
      (charts/plot 
       (datasets/ds->chart
@@ -119,7 +119,7 @@
 
 
 (defn make-taxi-chart 
-  ([] (make-taxi-chart "/Users/jawolfe/Projects/reports/10-icaps/figs/"))
+  ([] (make-taxi-chart "/Volumes/data/old/Users/jawolfe/Projects/reports/10-icaps/figs/"))
   ([dir] 
      (charts/plot 
       (datasets/ds->chart
@@ -195,7 +195,7 @@
 
 
 (defn make-pp-charts 
-  ([] (make-pp-charts "/Users/jawolfe/Projects/reports/10-icaps/figs/"))
+  ([] (make-pp-charts "/Volumes/data/old/Users/jawolfe/Projects/reports/10-icaps/figs/"))
   ([dir] 
      (charts/plot 
       (datasets/ds->chart
@@ -225,7 +225,7 @@
 
 
 (defn make-pp-chart
-  ([] (make-pp-chart "/Users/jawolfe/Projects/reports/10-icaps/figs/"))
+  ([] (make-pp-chart "/Volumes/data/old/Users/jawolfe/Projects/reports/10-icaps/figs/"))
   ([dir] 
      (charts/plot 
       (datasets/ds->chart

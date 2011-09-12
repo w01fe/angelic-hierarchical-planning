@@ -111,7 +111,7 @@
 	      (eval `(fn ncstrips-cost-fn ~(vec (map second (concat vars cost-parameters))) ~cost-expr)))))))
    vars))
 
-;   (parse-hierarchy "/Users/jawolfe/projects/angel/src/angelic/old/domains/warehouse.hierarchy" (make-warehouse-strips-domain))
+;   (parse-hierarchy "/Volumes/data/old/Users/jawolfe/projects/angel/src/angelic/old/domains/warehouse.hierarchy" (make-warehouse-strips-domain))
 
 
 ;; At this point, when we instantiate, we have to handle four sets of CSPs
@@ -167,7 +167,7 @@
 	 :const-pred-map (get instance :const-pred-map)))
 
 
-;  (instantiate-hierarchy (parse-hierarchy "/Users/jawolfe/projects/angel/src/angelic/old/domains/warehouse.hierarchy" (make-warehouse-strips-domain)) (make-warehouse-strips-env 2 2 [1 1] false {0 '[a]} nil ['[a table1]]))
+;  (instantiate-hierarchy (parse-hierarchy "/Volumes/data/old/Users/jawolfe/projects/angel/src/angelic/old/domains/warehouse.hierarchy" (make-warehouse-strips-domain)) (make-warehouse-strips-env 2 2 [1 1] false {0 '[a]} nil ['[a table1]]))
 
 
 (defstruct ncstrips-effect 

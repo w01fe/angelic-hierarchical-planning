@@ -208,7 +208,7 @@
       (fn [[alg constrain?]] (let [v (cond (and (= alg :asplan) (not constrain?)) 1 (= alg :asplan) 4 constrain? 3 :else 2)] {:lw 3 :pt v :lt v}))
       *alg-names*  #_ #(let [n (first %)] (if (= (last n) \U) (apply str (concat (drop-last n) "-UCS")) (str n "*")))
       #(order % :title (map second *alg-order*)))
-     (str "/Users/jawolfe/Projects/reports/11-icaps/graphs/" file ".pdf"))))
+     (str "/Volumes/data/old/Users/jawolfe/Projects/reports/11-icaps/graphs/" file ".pdf"))))
 
 
 
@@ -222,7 +222,7 @@
      (map #(first (util/safe-get m %)) desired-order)))
 
  (defn make-charts
-   ([] (make-charts "/Users/jawolfe/Projects/reports/10-aaai-btamp/poster/figs/" ))
+   ([] (make-charts "/Volumes/data/old/Users/jawolfe/Projects/reports/10-aaai-btamp/poster/figs/" ))
    ([dir]
       (charts/plot 
        (datasets/ds->chart 

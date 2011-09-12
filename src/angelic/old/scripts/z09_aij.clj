@@ -170,25 +170,25 @@
 	 (map (fn [m] (if (= :warehouse (:domain m)) 
 			(update-in m [:instance-num] #(position % ww-order)) 
 			m)) 
-	      (experiment-set-results->dataset (read-experiment-set-results (make-offline-experiment-set) "/Users/jawolfe/Desktop/")))))
+	      (experiment-set-results->dataset (read-experiment-set-results (make-offline-experiment-set) "/Volumes/data/old/Users/jawolfe/Desktop/")))))
 
   (plot (ds->chart (filter (ds-fn [type domain] (and (= type :strips) (= domain :warehouse))) *offline*) [] :instance-num :ref-count {:ylog "t"} {}))
  
 ; offline-ww
-  (plot (ds->chart (filter (ds-fn [domain hierarchy algorithm ms] (and ms (#{:aha-star :ahss} algorithm) (= (count (str hierarchy)) 67) (= domain :warehouse))) (filter #_(constantly true)  #(= (:ref-choice %) :first-gap) *offline*)) [:type :graph? :ref-choice :algorithm ] :instance-num :plan-count {:ylog "t" :key "12,100000" :yrange "[10:100000]" :xlabel "Problem number" :ylabel "# plans evaluated"} {}) "/Users/jawolfe/Desktop/new-charts/offline-ww.pdf")
+  (plot (ds->chart (filter (ds-fn [domain hierarchy algorithm ms] (and ms (#{:aha-star :ahss} algorithm) (= (count (str hierarchy)) 67) (= domain :warehouse))) (filter #_(constantly true)  #(= (:ref-choice %) :first-gap) *offline*)) [:type :graph? :ref-choice :algorithm ] :instance-num :plan-count {:ylog "t" :key "12,100000" :yrange "[10:100000]" :xlabel "Problem number" :ylabel "# plans evaluated"} {}) "/Volumes/data/old/Users/jawolfe/Desktop/new-charts/offline-ww.pdf")
 
 ; offline-nav
-(plot (ds->chart (ds-summarize (filter (fn [m] (and (contains? #{:full nil} (:graph? m)) (= (:switches m) 20) (contains? #{:first-gap nil} (:ref-choice m)))) (filter (ds-fn [type algorithm domain] (and (= domain :nav-switch) (#{:strips :hierarchy} type) (#{:aha-star :a-star-graph} algorithm))) *offline*)) [:type :graph? :ref-choice :algorithm :switches :size] [[:ref-count  (fn [& args] (when (every? first args) (apply mean (map second args)))) (ds-fn [run plan-count] [run plan-count])]])  [:type :graph? :ref-choice :algorithm :switches] :size :ref-count {:ylog "t" :xlog "t" :key "45,1000000" :xlabel "Board size (per side)" :ylabel "Number of plans evaluated" :xrange "[5:1000]" :yrange "[50:1000000]"} {}) "/Users/jawolfe/Desktop/new-charts/offline-nav.pdf")
+(plot (ds->chart (ds-summarize (filter (fn [m] (and (contains? #{:full nil} (:graph? m)) (= (:switches m) 20) (contains? #{:first-gap nil} (:ref-choice m)))) (filter (ds-fn [type algorithm domain] (and (= domain :nav-switch) (#{:strips :hierarchy} type) (#{:aha-star :a-star-graph} algorithm))) *offline*)) [:type :graph? :ref-choice :algorithm :switches :size] [[:ref-count  (fn [& args] (when (every? first args) (apply mean (map second args)))) (ds-fn [run plan-count] [run plan-count])]])  [:type :graph? :ref-choice :algorithm :switches] :size :ref-count {:ylog "t" :xlog "t" :key "45,1000000" :xlabel "Board size (per side)" :ylabel "Number of plans evaluated" :xrange "[5:1000]" :yrange "[50:1000000]"} {}) "/Volumes/data/old/Users/jawolfe/Desktop/new-charts/offline-nav.pdf")
 
 ; slides
-(plot (ds->chart (ds-summarize (filter (fn [m] (and (contains? #{:full nil} (:graph? m)) (= (:switches m) 20) (contains? #{:first-gap nil} (:ref-choice m)))) (filter (ds-fn [type algorithm domain] (and (= domain :nav-switch) (#{:strips :hierarchy} type) (#{:aha-star :a-star-graph} algorithm))) *offline*)) [:type :graph? :ref-choice :algorithm :switches :size] [[:ref-count  (fn [& args] (when (every? first args) (apply mean (map second args)))) (ds-fn [run plan-count] [run plan-count])]])  [:type :graph? :ref-choice :algorithm :switches] :size :ref-count {:term " solid color size 3,2" :ylog "t" :xlog "t" :key "70,600000" :xlabel "World size (per side)" :ylabel "Number of plans evaluated (avg. of 3 instances)" :xrange "[5:1000]" :yrange "[50:1000000]" :title "Offline Optimal Nav-Switch (20 switches)"} (constantly {:lw 4}) (fn [[type graph? ref-choice algorithm switches]] (if (= type :hierarchy) "AHA*"  "A* Graph Search")) #(sort-by first %) ) "/Users/jawolfe/Desktop/new-charts/offline-nav-slides.pdf")
+(plot (ds->chart (ds-summarize (filter (fn [m] (and (contains? #{:full nil} (:graph? m)) (= (:switches m) 20) (contains? #{:first-gap nil} (:ref-choice m)))) (filter (ds-fn [type algorithm domain] (and (= domain :nav-switch) (#{:strips :hierarchy} type) (#{:aha-star :a-star-graph} algorithm))) *offline*)) [:type :graph? :ref-choice :algorithm :switches :size] [[:ref-count  (fn [& args] (when (every? first args) (apply mean (map second args)))) (ds-fn [run plan-count] [run plan-count])]])  [:type :graph? :ref-choice :algorithm :switches] :size :ref-count {:term " solid color size 3,2" :ylog "t" :xlog "t" :key "70,600000" :xlabel "World size (per side)" :ylabel "Number of plans evaluated (avg. of 3 instances)" :xrange "[5:1000]" :yrange "[50:1000000]" :title "Offline Optimal Nav-Switch (20 switches)"} (constantly {:lw 4}) (fn [[type graph? ref-choice algorithm switches]] (if (= type :hierarchy) "AHA*"  "A* Graph Search")) #(sort-by first %) ) "/Volumes/data/old/Users/jawolfe/Desktop/new-charts/offline-nav-slides.pdf")
 
 
   (plot (ds->chart (filter (ds-fn [domain ms] (and ms (= domain :warehouse))) *offline*) [:type :graph? :ref-choice :algorithm] :instance-num :ref-count {:ylog "t" :key "8,100000" :yrange "[10:100000]"} {}))
 
-(plot (ds->chart (filter (ds-fn [algorithm domain timeout? memout?] (and (not timeout?) (not memout?) (= domain :warehouse) (contains? #{:aha-star :a-star-graph} algorithm))) *offline*) [:type :graph? :ref-choice :algorithm] :instance-num :ref-count {:ylog "t" :key "22,200" :xlabel "WW instance" :ylabel "Number of refs" :yrange "[10:100000]"} {}) #_ "/Users/jawolfe/Desktop/charts/optimal-ww-refs.pdf")
+(plot (ds->chart (filter (ds-fn [algorithm domain timeout? memout?] (and (not timeout?) (not memout?) (= domain :warehouse) (contains? #{:aha-star :a-star-graph} algorithm))) *offline*) [:type :graph? :ref-choice :algorithm] :instance-num :ref-count {:ylog "t" :key "22,200" :xlabel "WW instance" :ylabel "Number of refs" :yrange "[10:100000]"} {}) #_ "/Volumes/data/old/Users/jawolfe/Desktop/charts/optimal-ww-refs.pdf")
 
-(plot (ds->chart (filter (fn [m] (contains? #{nil :full} (:graph? m))) (filter (ds-fn [algorithm domain ms] (and ms (= domain :warehouse) (contains? #{:aha-star :a-star-graph :ahss} algorithm))) *offline*)) [:type :graph? :ref-choice :algorithm] :instance-num :ref-count {:ylog "t" :key "21,200" :xlabel "WW instance" :ylabel "Number of refs" :yrange "[10:100000]"} {}) #_ "/Users/jawolfe/Desktop/charts/suboptimal-ww-refs.pdf")
+(plot (ds->chart (filter (fn [m] (contains? #{nil :full} (:graph? m))) (filter (ds-fn [algorithm domain ms] (and ms (= domain :warehouse) (contains? #{:aha-star :a-star-graph :ahss} algorithm))) *offline*)) [:type :graph? :ref-choice :algorithm] :instance-num :ref-count {:ylog "t" :key "21,200" :xlabel "WW instance" :ylabel "Number of refs" :yrange "[10:100000]"} {}) #_ "/Volumes/data/old/Users/jawolfe/Desktop/charts/suboptimal-ww-refs.pdf")
 
   
 
@@ -239,7 +239,7 @@
      ]))
 
 (comment 
-  (def *online* (experiment-set-results->dataset (read-experiment-set-results (make-online-experiment-set) "/Users/jawolfe/Desktop/")))
+  (def *online* (experiment-set-results->dataset (read-experiment-set-results (make-online-experiment-set) "/Volumes/data/old/Users/jawolfe/Desktop/")))
 
 ; scouting out ww
 (doseq [i (range 22)]  (plot (ds->chart (ds-derive (ds-fn [output ] (- (or (second output) -10000))) (filter (ds-fn [ms instance-num max-primitives hierarchy ref-choice] (and ms  (= instance-num i) (nil? max-primitives) (= (count (str hierarchy)) 64) (= ref-choice :first-gap))) (filter (ds-fn [domain] (= domain :warehouse)) *online*)) :cost) [:algorithm :type :ref-choice] :max-refs :cost {:ylog "t" :xlog "t" :key "7000, 6000" :xlabel (str i)} {})))
@@ -247,11 +247,11 @@
 "[18 17.0 16 15 14* 13 12* 9* 8-6e 4* 2* 1/0e]"
  
 ;; Average of selected instances
-(plot (ds->chart (ds-summarize (ds-derive (ds-fn [output ] (- (or (second output) -10000))) (filter (ds-fn [ms instance-num max-primitives hierarchy ref-choice] (and ms  (#{18 17 15 14 13 12 11 10  4 3 2 9 5} instance-num) (nil? max-primitives) (= (count (str hierarchy)) 64) (= ref-choice :first-gap))) (filter (ds-fn [domain] (= domain :warehouse)) *online*)) :cost) [:type :graph? :ref-choice :algorithm :switches :size :max-refs] [[:cost mean (ds-fn [cost] cost)]]) [:algorithm :type :ref-choice] :max-refs :cost { :xrange "[0:5000]" :key "5000, 2000"  :title "Warehouse world - averaged over 13 instances" :xlabel "Allowed refinements per env step" :ylabel "Cost to reach goal"} {} ) "/Users/jawolfe/Desktop/new-charts/online-ww.pdf")
+(plot (ds->chart (ds-summarize (ds-derive (ds-fn [output ] (- (or (second output) -10000))) (filter (ds-fn [ms instance-num max-primitives hierarchy ref-choice] (and ms  (#{18 17 15 14 13 12 11 10  4 3 2 9 5} instance-num) (nil? max-primitives) (= (count (str hierarchy)) 64) (= ref-choice :first-gap))) (filter (ds-fn [domain] (= domain :warehouse)) *online*)) :cost) [:type :graph? :ref-choice :algorithm :switches :size :max-refs] [[:cost mean (ds-fn [cost] cost)]]) [:algorithm :type :ref-choice] :max-refs :cost { :xrange "[0:5000]" :key "5000, 2000"  :title "Warehouse world - averaged over 13 instances" :xlabel "Allowed refinements per env step" :ylabel "Cost to reach goal"} {} ) "/Volumes/data/old/Users/jawolfe/Desktop/new-charts/online-ww.pdf")
 
 
 ; Slides friendly
- (plot (ds->chart (ds-summarize (ds-derive (ds-fn [output ] (- (or (second output) -10000))) (filter (ds-fn [ms instance-num max-primitives hierarchy ref-choice] (and ms  (#{18 17 15 14 13 12 11 10  4 3 2 9 5} instance-num) (nil? max-primitives) (= (count (str hierarchy)) 64) (= ref-choice :first-gap))) (filter (ds-fn [domain] (= domain :warehouse)) *online*)) :cost) [:type :graph? :ref-choice :algorithm :switches :size :max-refs] [[:cost mean (ds-fn [cost] cost)]]) [:algorithm :type :ref-choice] :max-refs :cost {:term " solid color size 3,2" :xrange "[0:3000]" :key "2500, 2000"  :title "Online Warehouse World" :xlabel "Allowed refinements per env step" :ylabel "Cost to reach goal (average over 13 instances)"} (constantly {:lw 4}) (fn [[alg type ref]] (if (= type :hierarchy) "AHLRTA*" "LRTA*"))) "/Users/jawolfe/Desktop/new-charts/online-ww-slides.pdf")
+ (plot (ds->chart (ds-summarize (ds-derive (ds-fn [output ] (- (or (second output) -10000))) (filter (ds-fn [ms instance-num max-primitives hierarchy ref-choice] (and ms  (#{18 17 15 14 13 12 11 10  4 3 2 9 5} instance-num) (nil? max-primitives) (= (count (str hierarchy)) 64) (= ref-choice :first-gap))) (filter (ds-fn [domain] (= domain :warehouse)) *online*)) :cost) [:type :graph? :ref-choice :algorithm :switches :size :max-refs] [[:cost mean (ds-fn [cost] cost)]]) [:algorithm :type :ref-choice] :max-refs :cost {:term " solid color size 3,2" :xrange "[0:3000]" :key "2500, 2000"  :title "Online Warehouse World" :xlabel "Allowed refinements per env step" :ylabel "Cost to reach goal (average over 13 instances)"} (constantly {:lw 4}) (fn [[alg type ref]] (if (= type :hierarchy) "AHLRTA*" "LRTA*"))) "/Volumes/data/old/Users/jawolfe/Desktop/new-charts/online-ww-slides.pdf")
 
 
 
@@ -260,13 +260,13 @@
 
 
 ; single 500x500 - 0.001 
-(plot (ds->chart (ds-derive (ds-fn [output ] (- (or (second output) -10000))) (filter (ds-fn [run ms size switches max-primitives hierarchy ref-choice] (and ms (= run 3) (= size 500) (= switches 0.001) (nil? max-primitives) (= ref-choice :first-gap))) (filter (ds-fn [domain] (= domain :nav-switch)) *online*)) :cost) [:algorithm :type :ref-choice] :max-refs :cost { :yrange "[0:3000]" :xlog "t" :key "100, 1500" :title (str "Nav Switch 500x500 - 250 switches") :xlabel "Allowed refinements per env step" :ylabel "Cost to reach goal"} {}) "/Users/jawolfe/Desktop/new-charts/online-nav-500.pdf")
+(plot (ds->chart (ds-derive (ds-fn [output ] (- (or (second output) -10000))) (filter (ds-fn [run ms size switches max-primitives hierarchy ref-choice] (and ms (= run 3) (= size 500) (= switches 0.001) (nil? max-primitives) (= ref-choice :first-gap))) (filter (ds-fn [domain] (= domain :nav-switch)) *online*)) :cost) [:algorithm :type :ref-choice] :max-refs :cost { :yrange "[0:3000]" :xlog "t" :key "100, 1500" :title (str "Nav Switch 500x500 - 250 switches") :xlabel "Allowed refinements per env step" :ylabel "Cost to reach goal"} {}) "/Volumes/data/old/Users/jawolfe/Desktop/new-charts/online-nav-500.pdf")
 
 ; slides
-(plot (ds->chart (ds-derive (ds-fn [output ] (- (or (second output) -10000))) (filter (ds-fn [run ms size switches max-primitives hierarchy ref-choice] (and ms (= run 3) (= size 500) (= switches 0.001) (nil? max-primitives) (= ref-choice :first-gap))) (filter (ds-fn [domain] (= domain :nav-switch)) *online*)) :cost) [:algorithm :type :ref-choice] :max-refs :cost { :term " solid color size 3,2" :yrange "[0:3000]" :xrange "[10:500]" :key "300, 1500" :title (str "Online Nav Switch 500x500 - 250 switches") :xlabel "Allowed refinements per env step" :ylabel "Cost to reach goal"} (constantly {:lw 4}) (fn [[alg type ref]] (if (= type :hierarchy) "AHLRTA*" "LRTA*"))) "/Users/jawolfe/Desktop/new-charts/online-nav-500-slides.pdf")
+(plot (ds->chart (ds-derive (ds-fn [output ] (- (or (second output) -10000))) (filter (ds-fn [run ms size switches max-primitives hierarchy ref-choice] (and ms (= run 3) (= size 500) (= switches 0.001) (nil? max-primitives) (= ref-choice :first-gap))) (filter (ds-fn [domain] (= domain :nav-switch)) *online*)) :cost) [:algorithm :type :ref-choice] :max-refs :cost { :term " solid color size 3,2" :yrange "[0:3000]" :xrange "[10:500]" :key "300, 1500" :title (str "Online Nav Switch 500x500 - 250 switches") :xlabel "Allowed refinements per env step" :ylabel "Cost to reach goal"} (constantly {:lw 4}) (fn [[alg type ref]] (if (= type :hierarchy) "AHLRTA*" "LRTA*"))) "/Volumes/data/old/Users/jawolfe/Desktop/new-charts/online-nav-500-slides.pdf")
 
 ; 100x100 - 0.001 - averaged over 3
-(plot (ds->chart (ds-summarize (ds-derive (ds-fn [output ] (- (or (second output) -10000))) (filter (ds-fn [run ms size switches max-primitives hierarchy ref-choice] (and ms (= size 100) (= switches 0.001) (nil? max-primitives) (= ref-choice :first-gap))) (filter (ds-fn [domain] (= domain :nav-switch)) *online*)) :cost) [:type :graph? :max-refs :ref-choice :algorithm :switches :size] [[:cost mean (ds-fn [cost] cost)]]) [:algorithm :type :ref-choice] :max-refs :cost { :xlog "t" :key "5000, 600" :title "Nav Switch 100x100 - 10 switches - averaged over 3 instances" :xlabel "Allowed refinements per env step" :ylabel "Cost to reach goal" :yrange "[0:600]"} {}) "/Users/jawolfe/Desktop/new-charts/online-nav-100.pdf")
+(plot (ds->chart (ds-summarize (ds-derive (ds-fn [output ] (- (or (second output) -10000))) (filter (ds-fn [run ms size switches max-primitives hierarchy ref-choice] (and ms (= size 100) (= switches 0.001) (nil? max-primitives) (= ref-choice :first-gap))) (filter (ds-fn [domain] (= domain :nav-switch)) *online*)) :cost) [:type :graph? :max-refs :ref-choice :algorithm :switches :size] [[:cost mean (ds-fn [cost] cost)]]) [:algorithm :type :ref-choice] :max-refs :cost { :xlog "t" :key "5000, 600" :title "Nav Switch 100x100 - 10 switches - averaged over 3 instances" :xlabel "Allowed refinements per env step" :ylabel "Cost to reach goal" :yrange "[0:600]"} {}) "/Volumes/data/old/Users/jawolfe/Desktop/new-charts/online-nav-100.pdf")
 
 
 
@@ -345,17 +345,17 @@
 	 (map (fn [m] (if (= :warehouse (:domain m)) 
 			(update-in m [:instance-num] #(position % ww-order)) 
 			m)) 
-	      (experiment-set-results->dataset (read-experiment-set-results (make-offline-experiment-set) "/Users/jawolfe/Desktop/")))))
+	      (experiment-set-results->dataset (read-experiment-set-results (make-offline-experiment-set) "/Volumes/data/old/Users/jawolfe/Desktop/")))))
 
   (plot (ds->chart (filter (ds-fn [type domain] (and (= type :strips) (= domain :warehouse))) *offline*) [] :instance-num :ref-count {:ylog "t"} {}))
  
   (plot (ds->chart (filter (ds-fn [domain ms] (and ms (= domain :warehouse))) *offline*) [:type :graph? :ref-choice :algorithm] :instance-num :ref-count {:ylog "t" :key "8,100000" :yrange "[10:100000]"} {}))
 
-(plot (ds->chart (filter (ds-fn [algorithm domain timeout? memout?] (and (not timeout?) (not memout?) (= domain :warehouse) (contains? #{:aha-star :a-star-graph} algorithm))) *offline*) [:type :graph? :ref-choice :algorithm] :instance-num :ref-count {:ylog "t" :key "22,200" :xlabel "WW instance" :ylabel "Number of refs" :yrange "[10:100000]"} {}) #_ "/Users/jawolfe/Desktop/charts/optimal-ww-refs.pdf")
+(plot (ds->chart (filter (ds-fn [algorithm domain timeout? memout?] (and (not timeout?) (not memout?) (= domain :warehouse) (contains? #{:aha-star :a-star-graph} algorithm))) *offline*) [:type :graph? :ref-choice :algorithm] :instance-num :ref-count {:ylog "t" :key "22,200" :xlabel "WW instance" :ylabel "Number of refs" :yrange "[10:100000]"} {}) #_ "/Volumes/data/old/Users/jawolfe/Desktop/charts/optimal-ww-refs.pdf")
 
-(plot (ds->chart (filter (fn [m] (contains? #{nil :full} (:graph? m))) (filter (ds-fn [algorithm domain ms] (and ms (= domain :warehouse) (contains? #{:aha-star :a-star-graph :ahss} algorithm))) *offline*)) [:type :graph? :ref-choice :algorithm] :instance-num :ref-count {:ylog "t" :key "21,200" :xlabel "WW instance" :ylabel "Number of refs" :yrange "[10:100000]"} {}) #_ "/Users/jawolfe/Desktop/charts/suboptimal-ww-refs.pdf")
+(plot (ds->chart (filter (fn [m] (contains? #{nil :full} (:graph? m))) (filter (ds-fn [algorithm domain ms] (and ms (= domain :warehouse) (contains? #{:aha-star :a-star-graph :ahss} algorithm))) *offline*)) [:type :graph? :ref-choice :algorithm] :instance-num :ref-count {:ylog "t" :key "21,200" :xlabel "WW instance" :ylabel "Number of refs" :yrange "[10:100000]"} {}) #_ "/Volumes/data/old/Users/jawolfe/Desktop/charts/suboptimal-ww-refs.pdf")
 
-(plot (ds->chart (ds-summarize (filter (fn [m] (and (contains? #{:full nil} (:graph? m)) (contains? #{:first-gap nil} (:ref-choice m)))) (filter (ds-fn [type algorithm domain] (and (= domain :nav-switch) (#{:strips :hierarchy} type) (#{:aha-star :a-star-graph} algorithm))) *offline*)) [:type :graph? :ref-choice :algorithm :switches :size] [[:ref-count  (fn [& args] (when (every? first args) (apply mean (map second args)))) (ds-fn [run ref-count] [run ref-count])]])  [:type :graph? :ref-choice :algorithm :switches] :size :ref-count {:ylog "t" :xlog "t" :key "45,1000000" :xlabel "Nav size" :ylabel "Number of refs" :xrange "[5:1000]" :yrange "[10:1000000]"} {}) #_"/Users/jawolfe/Desktop/charts/optimal-nav-refs.pdf")  
+(plot (ds->chart (ds-summarize (filter (fn [m] (and (contains? #{:full nil} (:graph? m)) (contains? #{:first-gap nil} (:ref-choice m)))) (filter (ds-fn [type algorithm domain] (and (= domain :nav-switch) (#{:strips :hierarchy} type) (#{:aha-star :a-star-graph} algorithm))) *offline*)) [:type :graph? :ref-choice :algorithm :switches :size] [[:ref-count  (fn [& args] (when (every? first args) (apply mean (map second args)))) (ds-fn [run ref-count] [run ref-count])]])  [:type :graph? :ref-choice :algorithm :switches] :size :ref-count {:ylog "t" :xlog "t" :key "45,1000000" :xlabel "Nav size" :ylabel "Number of refs" :xrange "[5:1000]" :yrange "[10:1000000]"} {}) #_"/Volumes/data/old/Users/jawolfe/Desktop/charts/optimal-nav-refs.pdf")  
 
   
   )
@@ -405,7 +405,7 @@
      [:recheck-graph? [true]]
      ]))
 
-  (def *online* (experiment-set-results->dataset (read-experiment-set-results (make-online-experiment-set) "/Users/jawolfe/Desktop/")))
+  (def *online* (experiment-set-results->dataset (read-experiment-set-results (make-online-experiment-set) "/Volumes/data/old/Users/jawolfe/Desktop/")))
 
   (plot (ds->chart (ds-derive (ds-fn [output] (- (or (second output) -20000))) (filter (ds-fn [ms instance-num max-primitives ref-level-map] (and ms (not ref-level-map) (= instance-num 9) (= max-primitives 5))) (filter (ds-fn [domain] (= domain :warehouse)) *online*)) :cost) [:algorithm :type :ref-choice ] :max-refs :cost {:ylog "t" :xlog "t" :key "7000, 6000"} {})) 
  
@@ -443,7 +443,7 @@
              [:product [:graph? [:bhaskara]] [:recheck-graph? [false]]]]
      ]))
 
-    (def *online2* (experiment-set-results->dataset (read-experiment-set-results (make-online-experiment-set2) "/Users/jawolfe/Desktop/")))
+    (def *online2* (experiment-set-results->dataset (read-experiment-set-results (make-online-experiment-set2) "/Volumes/data/old/Users/jawolfe/Desktop/")))
 
   (plot (ds->chart (ds-derive (ds-fn [output] (- (or (second output) -10000))) (filter (ds-fn [ms instance-num ref-level-map] (and ms (not ref-level-map) (= instance-num 3))) (filter (ds-fn [domain] (= domain :warehouse)) *online2*)) :cost) [:algorithm :type :ref-choice :graph?] :max-refs :cost {:ylog "t" :xlog "t" :key "7000, 6000"} {}))
  
@@ -453,7 +453,7 @@
 
 
 (comment 
-    (def *online2* (experiment-set-results->dataset (read-experiment-set-results (make-online-experiment-set2) "/Users/jawolfe/Desktop/")))
+    (def *online2* (experiment-set-results->dataset (read-experiment-set-results (make-online-experiment-set2) "/Volumes/data/old/Users/jawolfe/Desktop/")))
 
   (plot (ds->chart (ds-derive (ds-fn [output] (- (or (second output) -10000))) (filter (ds-fn [ms instance-num ref-level-map] (and ms (not ref-level-map) (= instance-num 3))) (filter (ds-fn [domain] (= domain :warehouse)) *online2*)) :cost) [:algorithm :type :ref-choice :graph?] :max-refs :cost {:ylog "t" :xlog "t" :key "7000, 6000"} {}))
  
@@ -461,7 +461,7 @@
   )
 
 (comment 
-  (def *online* (experiment-set-results->dataset (read-experiment-set-results (make-online-experiment-set) "/Users/jawolfe/Desktop/")))
+  (def *online* (experiment-set-results->dataset (read-experiment-set-results (make-online-experiment-set) "/Volumes/data/old/Users/jawolfe/Desktop/")))
   )
 
 (comment 
@@ -479,11 +479,11 @@
 
 (plot (ds->chart (filter (ds-fn [domain] (and (= domain :warehouse))) *offline*) [:type :graph? :ref-choice :algorithm] :instance-num :ref-count {:ylog "t" :key "4,100000"} {}))
 
-(plot (ds->chart (filter (ds-fn [algorithm domain timout?] (and (not timout?) (= domain :warehouse) (contains? #{:aha-star :a-star-graph} algorithm))) *offline*) [:type :graph? :ref-choice :algorithm] :instance-num :ref-count {:ylog "t" :key "4.5,10000" :xlabel "WW instance" :ylabel "Number of refs" :yrange "[10:10000]"} {}) "/Users/jawolfe/Desktop/charts/optimal-ww-refs.pdf")
+(plot (ds->chart (filter (ds-fn [algorithm domain timout?] (and (not timout?) (= domain :warehouse) (contains? #{:aha-star :a-star-graph} algorithm))) *offline*) [:type :graph? :ref-choice :algorithm] :instance-num :ref-count {:ylog "t" :key "4.5,10000" :xlabel "WW instance" :ylabel "Number of refs" :yrange "[10:10000]"} {}) "/Volumes/data/old/Users/jawolfe/Desktop/charts/optimal-ww-refs.pdf")
 
-(plot (ds->chart (filter (fn [m] (contains? #{nil :full} (:graph? m))) (filter (ds-fn [algorithm domain timout?] (and (not timout?) (= domain :warehouse) (contains? #{:aha-star :a-star-graph :ahss} algorithm))) *offline*)) [:type :graph? :ref-choice :algorithm] :instance-num :ref-count {:ylog "t" :key "4.5,10000" :xlabel "WW instance" :ylabel "Number of refs" :yrange "[10:10000]"} {}) "/Users/jawolfe/Desktop/charts/suboptimal-ww-refs.pdf")
+(plot (ds->chart (filter (fn [m] (contains? #{nil :full} (:graph? m))) (filter (ds-fn [algorithm domain timout?] (and (not timout?) (= domain :warehouse) (contains? #{:aha-star :a-star-graph :ahss} algorithm))) *offline*)) [:type :graph? :ref-choice :algorithm] :instance-num :ref-count {:ylog "t" :key "4.5,10000" :xlabel "WW instance" :ylabel "Number of refs" :yrange "[10:10000]"} {}) "/Volumes/data/old/Users/jawolfe/Desktop/charts/suboptimal-ww-refs.pdf")
 
-(plot (ds->chart (filter (fn [m] (and (contains? #{:full nil} (:graph? m)) (contains? #{:first-gap nil} (:ref-choice m)))) (filter (ds-fn [type algorithm domain timout?] (and (not timout?) (= domain :nav-switch) (#{:strips :hierarchy} type) (#{:aha-star :a-star-graph} algorithm))) *offline*)) [:type :graph? :ref-choice :algorithm :switches] :size :ref-count {:ylog "t" :xlog "t" :key "30,10000" :xlabel "Nav size" :ylabel "Number of refs" :xrange "[5:500]" :yrange "[10:10000]"} {}) "/Users/jawolfe/Desktop/charts/optimal-nav-refs.pdf")
+(plot (ds->chart (filter (fn [m] (and (contains? #{:full nil} (:graph? m)) (contains? #{:first-gap nil} (:ref-choice m)))) (filter (ds-fn [type algorithm domain timout?] (and (not timout?) (= domain :nav-switch) (#{:strips :hierarchy} type) (#{:aha-star :a-star-graph} algorithm))) *offline*)) [:type :graph? :ref-choice :algorithm :switches] :size :ref-count {:ylog "t" :xlog "t" :key "30,10000" :xlabel "Nav size" :ylabel "Number of refs" :xrange "[5:500]" :yrange "[10:10000]"} {}) "/Volumes/data/old/Users/jawolfe/Desktop/charts/optimal-nav-refs.pdf")
 
 
 

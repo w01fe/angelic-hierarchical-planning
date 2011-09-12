@@ -282,8 +282,8 @@
        (primitive-refinements-depth 
 	(state-space-search-node  
 	 (read-strips-planning-instance
-	  (read-strips-planning-domain "/Users/jawolfe/Projects/research/IPC/IPC2/2000-Tests/Blocks/Track1/Typed/domain.pddl")
-   "/Users/jawolfe/Projects/research/IPC/IPC2/2000-Tests/Blocks/Track1/Typed/probBLOCKS-4-0.pddl")) 2)))
+	  (read-strips-planning-domain "/Volumes/data/old/Users/jawolfe/Projects/research/IPC/IPC2/2000-Tests/Blocks/Track1/Typed/domain.pddl")
+   "/Volumes/data/old/Users/jawolfe/Projects/research/IPC/IPC2/2000-Tests/Blocks/Track1/Typed/probBLOCKS-4-0.pddl")) 2)))
 
 
 

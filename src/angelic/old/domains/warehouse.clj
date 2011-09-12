@@ -300,7 +300,7 @@
         (check-solution env
 	  (a-star-graph-search (make-initial-state-space-node env (constantly 0)))) 2)))))
 
-  (parse-hierarchy "/Users/jawolfe/projects/angel/src/angelic/old/domains/warehouse.hierarchy" (make-warehouse-strips-domain))
+  (parse-hierarchy "/Volumes/data/old/Users/jawolfe/projects/angel/src/angelic/old/domains/warehouse.hierarchy" (make-warehouse-strips-domain))
 
   (time (map :name (first (a-star-search (alt-node (get-hierarchy *warehouse-hierarchy* (constant-predicate-simplify (make-warehouse-strips-env 2 2 [1 1] false {0 '[a]} nil ['[a table1]]))))))))
 
