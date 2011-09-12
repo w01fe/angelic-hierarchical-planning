@@ -28,7 +28,7 @@
 		  "-o" (str (util/file-stem f) ".out")
 		  "-e" (str (util/file-stem f) ".err")]
 		*default-qsub-options*
-		[:in (str "java -server -Xmx1024m -cp " user/*classpath* " clojure.main " f) :dir (util/dirname f)])))))))
+		[:in (str "java -server -Xmx1024m -cp " (System/getProperty "java.class.path") " clojure.main " f) :dir (util/dirname f)])))))))
 
 (defn run-experiment-set-subprocesses [es]
   (run-files-subprocesses 
