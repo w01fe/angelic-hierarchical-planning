@@ -109,7 +109,7 @@
 		[:optional [:auxillary-fluents ~@aux]]
 		[:predicates ~@predicates]
 		~@actions]
-	       (read-string (.toLowerCase (slurp file)))]
+	       (read-string (.toLowerCase ^String (slurp file)))]
     (let [requirements (set requirements)]
       (util/assert-is (util/subset? requirements #{:strips :typing :equality}))
       (util/assert-is (util/subset? #{:strips :typing} requirements))

@@ -86,7 +86,7 @@
 	   [:objects ~@objects]
 	   [:init    ~@init-facts]
 	   [:goal    ~goal-conj]]
-	  (read-string (.toLowerCase (slurp file)))]
+	  (read-string (.toLowerCase ^String (slurp file)))]
     (util/assert-is (= domain-name (:name domain)))
     (make-strips-planning-instance
      name
