@@ -41,6 +41,14 @@
     (when (contains? (get (state/get-var s :const) :switch-set) [cur-x cur-y])
       (make-specific-switch cur-h cur-x cur-y))))
 
+(defn simple-ns-heuristic [s]
+  (let [[gx gy] (:goal (state/get-var s :const))
+        x (state/get-var s '[x])
+        y (state/get-var s '[y])
+        h (state/get-var s '[h])]
+    (->> (map #(util/abs (- %1 %2)) [x y] [gx gy])
+         (map * [-2 -2])
+         (apply +))))
 
 ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
 ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;; Env ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
@@ -50,7 +58,10 @@
   env/Env
   (initial-state [_]
     {'[x] sx '[y] sy '[h] (if sh? true false)
-     :const {'[x] width '[y] height :switch-set (util/to-set switch-set)}})
+     :const {'[x] width '[y] height
+             :switch-set (util/to-set switch-set)
+             :goal [gx gy]
+             }})
   (actions-fn    [_]
    (fn nav-switch-actions [s]
      (filter identity (map #(% s) [make-left make-right make-up make-down make-switch]))))
@@ -78,6 +89,8 @@
   ([size n-switches seed]
      (make-nav-switch-env size [size 1] true [1 size] 
                           (make-random-switch-set size size n-switches seed))))
+
+
 
 
 ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;

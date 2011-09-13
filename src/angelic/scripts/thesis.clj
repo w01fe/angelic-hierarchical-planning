@@ -4,11 +4,14 @@
            [angelic [env :as env] [hierarchy :as hierarchy] [sas :as sas]]
            [angelic.search.textbook :as textbook]
            [angelic.domains.discrete-manipulation :as dm]
-           [angelic.domains.nav-switch :as ns]           
+           [angelic.domains.nav-switch :as ns]
+           [angelic.search.explicit.hierarchical :as hes]
            [angelic.search.implicit
             [ah-astar :as aha]
             [sahtn :as sahtn]
-            [dash-astar-opt :as dao]]))
+            [dash-astar-opt :as dao]]
+           [angelic.search.explicit.depth-first :as dfbb]
+           ))
 
 
 ;;;;;;;;;;;;;;;;;; Helpers  ;;;;;;;;;;;;;;;;;;;;;;;;;
@@ -75,6 +78,43 @@
 ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
 ;;;;;;;;;;;;;;;;;;;;;;;; Nav Switch experiments ;;;;;;;;;;;;;;;;;;;;;;;;;;
 ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
+
+
+(defn ns-test []
+  (let [s (rand-int 100)
+        e (ns/make-random-nav-switch-env 10 5 s)
+        h (ns/make-nav-switch-hierarchy e true)
+        o (second (textbook/uniform-cost-search e true))]
+    (println "seed" s "\n")
+    (doseq [[n a]
+            [["dijkstra "#(textbook/uniform-cost-search e true)]
+             ["a*" #(textbook/a*-search e ns/simple-ns-heuristic true)]
+
+             #_ ["dfbb" #(dfbb/dfbb h)]
+             #_["opt-dfbb" #(dfbb/dfbb h o)]
+             #_ ["graph-dfbb" #(dfbb/graph-dfbb h)]
+             ["graph-opt-dfbb" #(dfbb/graph-dfbb h o)]
+
+             ["sahtn" #(sahtn/sahtn h #{:nav :reach :discretem-tla 'top 'navh 'navv})]
+
+             ["h-ucs" #(hes/h-ucs-fast h)]
+             ["dsh-ucs" #(hes/dsh-ucs h)]
+             ["dij-dsh-ucs" #(hes/dsh-ucs-dijkstra h)]
+             ["inv-dsh-ucs" #(hes/dsh-ucs-inverted h)]
+
+             ["optimistic-ah-a*" #(aha/ah-a* h false)]
+             ["full-ah-a*" #(aha/ah-a* h true)]             
+
+             ["explicit-ah-a*" #(hes/explicit-simple-ah-a* h)]
+             ["explicit-dash-a*" #(hes/explicit-simple-dash-a* h)]
+
+             
+             ]]
+      (println (pad-right n 20)
+               (update-in (hierarchy/run-counted a) [0 0] count)))))
+
+;; note: sahtn with dijkstra, not as described.
+;; note: right now dfbb set to shuffle.
 
 (def +ns-sizes+ [5 10 20 50 100 200 500])
 
