@@ -1,4 +1,4 @@
-(ns angelic.search.implicit.dash-astar-simple
+(ns angelic.search.implicit.dash-astar
   (:require [angelic.util :as util]
 	    [angelic.util.channel :as channel]
             [angelic.search.summary :as summary]            
@@ -9,8 +9,13 @@
 (set! *warn-on-reflection* true)
 
 ;; TODO: before publish:
-;FIX refine-input for oc subproblem to solution in thesis
-;FIX no publications from solved.
+;;FIX refine-input for oc subproblem to solution in thesis
+;;FIX no publications from solved.
+;; FIX fail on hard  2 0
+;; TODO: tricky part is:
+;;  status-increased can call summary before we're done.
+;;  This can give it stale summary.
+;;  We could just skip it, but then decrease may be screwed.
 
 ;; Take dash_astar_opt_simple and add back complexities from
 ;; dash_astar.clj.
@@ -136,7 +141,8 @@
 
 (defn- publish-inner-child! [sp child-sp]
   (connect-and-watch! sp child-sp (partial publish-child! sp false))
-  (sg/status-increased! sp child-sp))
+  (swap! (-> sp :config :status-increases) conj [sp child-sp])
+  #_ (sg/status-increased! sp child-sp))
 
 (defn publish-child! [sp constituent? child-sp]
   (when child-sp			
@@ -149,7 +155,9 @@
       (do (when (canonical? sp)
             (sg/connect-subsumed! (sp-ts sp) (sp-ts child-sp))
             (sg/connect! (sp-ts sp) (sp-ts child-sp))
-            (sg/status-increased! (sp-ts sp) (sp-ts child-sp)))
+            (swap! (-> sp :config :status-increases) conj
+                   [(sp-ts sp) (sp-ts child-sp)])
+            #_ (sg/status-increased! (sp-ts sp) (sp-ts child-sp)))
           (if (= :hierarchical (util/safe-get (:config sp) :collect?))
             (let [^HashMap com (:oc-map (:config sp))
                   k         [(:name sp) (System/identityHashCode sp) (:output-sets child-sp)]
@@ -276,7 +284,7 @@
             :data [config fs inp-sets out-sets rewards status]
             :expand!-fn
             (fn expand! [s]
-              (util/print-debug 1 "expand" nm)
+              (util/print-debug 1 "expand" nm (and subsuming-sp @(:expanded?-atom subsuming-sp) true))
               (reset! expanded? true)
               (reset! summary-fn (util/safe-get config :or-summarize))
               (if (and subsuming-sp @(:expanded?-atom subsuming-sp)) ;; TODO: don't require expanded?
@@ -411,6 +419,7 @@
                   :left-recursive?        false ; Factor sequences into pairs using left recursion
                   :propagate-subsumption? true  ; propagate subsumption from parents to matching children?
                   :weight                 nil}   ; Weight for bw-summary, nil for simple-summary.
+        status-increases (atom nil)
         config    (-> (merge defaults opts)
                       (update-in [:decompose?] #(when % (HashMap.)))
                       (into (if-let [w (:weight opts)]
@@ -422,7 +431,8 @@
                                :make-summary (fn [[p-r o-r] stat src]
                                                (summary/make-simple-summary
                                                 (min (sg/get-bound src) o-r) stat src))}))
-                      (assoc :oc-map (HashMap.)))
+                      (assoc :oc-map (HashMap.)
+                             :status-increases status-increases))
         [init fs] (fs/make-init-pair henv)
         root      (sp-ts (make-atomic-subproblem config fs [(when (:weight opts) init) init] nil))
         expand!   (if (= (:collect? config) :hierarchical)
@@ -441,7 +451,12 @@
            (sg/best-leaf-operator
             (:choice-fn config)
             (case (:search-strategy config) :ao true :al-global false)
-            (fn [s] (expand! s) (sg/summaries-decreased! [s])))
+            (fn [s]
+              (expand! s)
+              (doseq [[p c] @status-increases]
+                (sg/status-increased! p c))
+              (reset! status-increases nil)
+              (sg/summaries-decreased! [s])))
            extract-action))))
 
 
