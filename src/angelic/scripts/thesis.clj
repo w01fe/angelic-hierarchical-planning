@@ -11,7 +11,9 @@
             [sahtn :as sahtn]
             [dash-astar-opt :as dao]
             [dash-astar-opt-simple :as daos]
-            [dash-astar :as da]]
+            [dash-astar :as da]
+            [dash-astar-old :as oda]
+            ]
            [angelic.search.explicit.depth-first :as dfbb]
            ))
 
@@ -127,7 +129,8 @@
   (let [e (apply dm/make-random-hard-discrete-manipulation-env args)
         h (dm/make-discrete-manipulation-hierarchy e)]
     (doseq [[n f]
-            [["dash-a*" #(da/implicit-dash-a* h :abstract? false :decompose? false)]
+            [["dash-a*" #(da/implicit-dash-a* h)]
+             ["old dash-a*" #(oda/implicit-dash-a* h)]
              ["o-dash-a*" #(dao/implicit-dash-a*-opt h)]
              ["os-dash-a*" #(daos/implicit-dash-a*-opt h)]]]
       (println (pad-right n 20)

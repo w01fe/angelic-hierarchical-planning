@@ -11,14 +11,13 @@
 ;; TODO: before publish:
 ;;FIX refine-input for oc subproblem to solution in thesis
 ;;FIX no publications from solved.
-;; FIX fail on hard  2 0
-;; TODO: tricky part is:
+
+
+;; Note: back to scheduled status increases
 ;;  status-increased can call summary before we're done.
 ;;  This can give it stale summary.
-;;  We could just skip it, but then decrease may be screwed.
-
-;; Take dash_astar_opt_simple and add back complexities from
-;; dash_astar.clj.
+;;  So, we batch them, and skip when parent has no summary yet.
+;; (parent must get attached somewhere, that'll handle it.)
 
 ;; For now, just do single tree on (pess, opt) pairs. (or pure opt).
 ;; Ideally, would have separate opt & pess trees as well for caching.
@@ -32,28 +31,18 @@
 ;; top.  Or, as scaffolding which controls construction of lower trees.
 ;; Scaffolding seems preferable.
 
-;; Also try to add real output collecting, since without it, any change
-;; in a recursive hierarchy can trigger an infinite loop.
-;; NOTE: output collecting is not really good enough, since any change in
-;; recursive hierarchy can trigger infinite loop.  Need hierarchical
-;; collecting of some sort.
-
-;; Except this comes with problems of its own, loses current syntatic guarantees.
-;; This really throws a wrengh in things, cause output things are no longer really
-;; subproblems, shouldn't have tree summarizers (?), etc.
-
+;; Also add hierarchical output collecting.
 ;; Solution to avoid huge syntactic/semantic mess of true hierarchical output
 ;; collection, and infinite loops of flat output collection:
 ;; start new OC after input refined.  Don't add to OC if > reward.
 
 ;; TODO: RI of child not connected to child of RI.
-;; TODO: suboptimal eficiency in presernce of increasing outputs.
 
 ;; TODO: put back bounding
 ;; (Currently asserting consistency in a sense, despite DM not having it.
 ;;  Causes some errors, e.g., with rand-nth.)
 
-;; TODO: summary/+ should take order into account !  live iff left live or left solved, right live, ..
+;; TODO: summary/+ should take order into account? !  live iff left live or left solved, right live, ..
 
 ;; Last main issue: how we fit bounding into:
 ;;  Current eager framework for cost propagation
@@ -141,8 +130,7 @@
 
 (defn- publish-inner-child! [sp child-sp]
   (connect-and-watch! sp child-sp (partial publish-child! sp false))
-  (swap! (-> sp :config :status-increases) conj [sp child-sp])
-  #_ (sg/status-increased! sp child-sp))
+  (swap! (-> sp :config :status-increases) conj [sp child-sp]))
 
 (defn publish-child! [sp constituent? child-sp]
   (when child-sp			
@@ -155,9 +143,7 @@
       (do (when (canonical? sp)
             (sg/connect-subsumed! (sp-ts sp) (sp-ts child-sp))
             (sg/connect! (sp-ts sp) (sp-ts child-sp))
-            (swap! (-> sp :config :status-increases) conj
-                   [(sp-ts sp) (sp-ts child-sp)])
-            #_ (sg/status-increased! (sp-ts sp) (sp-ts child-sp)))
+            (swap! (-> sp :config :status-increases) conj [(sp-ts sp) (sp-ts child-sp)]))
           (if (= :hierarchical (util/safe-get (:config sp) :collect?))
             (let [^HashMap com (:oc-map (:config sp))
                   k         [(:name sp) (System/identityHashCode sp) (:output-sets child-sp)]
