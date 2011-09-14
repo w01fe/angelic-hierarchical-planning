@@ -42,6 +42,7 @@
 
 (defn plan-refinements [{:keys [opt-sol opt-seq]}]
   (let [[[s rfs] r stat] (first opt-seq)]
+;    (println (-> opt-seq last second))
     (assert (= stat :solved))
     (assert (seq rfs))
     (keep
@@ -71,6 +72,15 @@
   [henv]
   (-?>
    henv henv->root-plan plan->simple-node
+   (is/make-flat-incremental-dijkstra
+    #(->> % :data plan-refinements (map plan->simple-node)))
+   is/first-goal-node :data plan->solution-pair))
+
+(defn optimistic-ah-a-part*
+  "AHA* with no pessimistic descriptions, but repeated hstate elimination"
+  [ss fs]
+  (-?>
+   (make-plan [] [[ss [fs]] 0 :solved]) plan->simple-node
    (is/make-flat-incremental-dijkstra
     #(->> % :data plan-refinements (map plan->simple-node)))
    is/first-goal-node :data plan->solution-pair))
