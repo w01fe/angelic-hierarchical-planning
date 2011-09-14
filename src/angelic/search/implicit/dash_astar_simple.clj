@@ -9,8 +9,8 @@
 (set! *warn-on-reflection* true)
 
 ;; TODO: before publish:
-FIX refine-input for oc subproblem to solution in thesis
-FIX no publications from solved.
+;FIX refine-input for oc subproblem to solution in thesis
+;FIX no publications from solved.
 
 ;; Take dash_astar_opt_simple and add back complexities from
 ;; dash_astar.clj.
@@ -39,13 +39,10 @@ FIX no publications from solved.
 
 ;; Solution to avoid huge syntactic/semantic mess of true hierarchical output
 ;; collection, and infinite loops of flat output collection:
-;; - Only allow each to grow on a single step.  But, this is slow.
-;; Impelemented: start new OC after input refined.  Don't add to OC if > reward.
+;; start new OC after input refined.  Don't add to OC if > reward.
 
 ;; TODO: RI of child not connected to child of RI.
 ;; TODO: suboptimal eficiency in presernce of increasing outputs.
-
-;; tODO: think again about
 
 ;; TODO: put back bounding
 ;; (Currently asserting consistency in a sense, despite DM not having it.
