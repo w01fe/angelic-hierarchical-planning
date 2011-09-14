@@ -100,9 +100,8 @@
   PSet
    (empty? [ss]  (some empty? (vals init)))
    (singleton [ss]
-     (let [vals-seq (map singleton (util/unchunk (vals init)))]
-       (when (every? identity vals-seq)
-         (extract-logging-state ss (zipmap (keys init) vals-seq)))))
+     (when (every? util/singleton? (vals init))
+       (extract-logging-state ss (zipmap (keys init) (map first (vals init))))))
    (some-element [ss]
      (extract-logging-state ss (util/map-vals some-element init)))
    (explicit-set [ss]
