@@ -9,7 +9,9 @@
            [angelic.search.implicit
             [ah-astar :as aha]
             [sahtn :as sahtn]
-            [dash-astar-opt :as dao]]
+            [dash-astar-opt :as dao]
+            [dash-astar-opt-simple :as daos]
+            [dash-astar :as da]]
            [angelic.search.explicit.depth-first :as dfbb]
            ))
 
@@ -81,6 +83,11 @@
 
 ;; TODO! with split-nav, pruning fail.
 
+(defn run-timed [f]
+  (try
+    (let [[r t] (util/get-time-pair (hierarchy/run-counted f))] (conj r t))
+    (catch Exception e (println e))))
+
 (defn ns-test []
   (let [s (rand-int 100)
         e (ns/make-random-nav-switch-env 7 3 s)
@@ -115,6 +122,16 @@
              ]]
       (println (pad-right n 20)
                (update-in (hierarchy/run-counted a) [0 0] count)))))
+
+(defn dm-test [& args]
+  (let [e (apply dm/make-random-hard-discrete-manipulation-env args)
+        h (dm/make-discrete-manipulation-hierarchy e)]
+    (doseq [[n f]
+            [["dash-a*" #(da/implicit-dash-a* h :abstract? false :decompose? false)]
+             ["o-dash-a*" #(dao/implicit-dash-a*-opt h)]
+             ["os-dash-a*" #(daos/implicit-dash-a*-opt h)]]]
+      (println (pad-right n 20)
+               (update-in (run-timed f) [0 0] count)))))
 
 ;; note: sahtn with dijkstra, not as described.
 ;; note: right now dfbb set to shuffle.
