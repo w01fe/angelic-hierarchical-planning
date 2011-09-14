@@ -1,92 +1,163 @@
 (ns angelic.search.implicit.ah-astar
+  (:use clojure.contrib.core)
   (:require [angelic.util :as util]
+            [angelic.util.queues :as queues]
             [angelic.search.function-sets :as fs]
             [angelic.search.explicit.core :as is])
   (:import  [java.util HashMap]))
 
 
-;; Simple implicit version of AHA* with implicit descriptions,
-;; and limited pruning.
+;; Implicit AHA*, with several pruning options.
 
-;; Keep graph queue of (input set, tail plan),
-;; where tail starts at first HLA.
+;; All algorithms do pruning when a plan is popped.
 
-;; Optional pruning of strictly dominated optimistic tails.
+;; TODO: tiebreaking?
 
+;; opt-sol is a prefix of primitive function sets
+;; opt-seq and pess-seq are lazy seqs of tuples representing the rest of plan.
+;; tuples are [[reachable-set remaining-fs] reward status]
+(defrecord Plan [opt-sol opt-seq pess-seq])
 
- ; bind to HashMap from name to solved-reward-to-state.
-(def ^HashMap *pruning-cache* nil)
+(defn tuple-seq [[[s rfs] r :as init-tuple] next-f]
+  (lazy-seq
+   (when s
+     (cons
+      init-tuple
+      (when-let [[fs & rfs] (seq rfs)]
+        (let [[next-s step-r stat] (next-f fs s)]
+          (tuple-seq [[next-s rfs] (+ step-r r) stat] next-f)))))))
 
+(defn split-exact-prefix [opt-seq]
+  (let [[e o] (split-with #(= (nth % 2) :solved) opt-seq)]
+    [(butlast e) (cons (last e) o)]))
 
-(defrecord Plan [input-set input-reward opt-sol fs-seq output-set output-reward])
+(defn make-plan [opt-sol init-exact]
+  (assert (= (nth init-exact 2) :solved))
+  (let [[exact-seq opt-seq] (split-exact-prefix (tuple-seq init-exact fs/apply-opt))]
+    (when (-> opt-seq last first second empty?)
+     (Plan.
+      (concat opt-sol (for [[[_ [fs]]] exact-seq] fs))
+      opt-seq
+      (tuple-seq (first opt-seq) fs/apply-pess)))))
 
-(defn plan-name [plan]
-  [(:input-set plan) (map fs/fs-name (:fs-seq plan))])
+(defn plan-refinements [{:keys [opt-sol opt-seq]}]
+  (let [[[s rfs] r stat] (first opt-seq)]
+    (assert (= stat :solved))
+    (assert (seq rfs))
+    (keep
+     #(make-plan opt-sol [[s (concat % (next rfs))] r :solved])
+     (fs/child-seqs (first rfs) s))))
 
-(defn make-plan [pre-sol input-set input-reward remaining-fs]
-  (loop [init-set input-set init-reward input-reward
-         input-set input-set input-reward input-reward
-         remaining-fs remaining-fs final-fs [] sol pre-sol]
-    (if (empty? remaining-fs)
-      (Plan. init-set init-reward sol final-fs input-set input-reward)
-      (let [[fs & more-fs] remaining-fs
-            [out-set step-rew stat :as outcome] (fs/apply-opt fs input-set)
-            out-rew (+ input-reward step-rew)]
-        (when out-set
-         (when (= stat :blocked) (util/assert-is (not (empty? final-fs)) "%s" [fs #_ (def *bad* [fs input-set])]))
-         (if (and (empty? final-fs) (= stat :solved))
-           (do #_ (util/assert-is (empty? final-fs) "%s" [fs])
-               (when-let [^HashMap pc *pruning-cache*]
-                 (let [k [out-set (map fs/fs-name more-fs)]]
-                   (.put *pruning-cache* k (max out-rew (get *pruning-cache* k Double/NEGATIVE_INFINITY)))))
-               (recur out-set out-rew out-set out-rew more-fs [] (conj sol fs)))
-           (when (or (not *pruning-cache*)
-                     (let [^HashMap pc *pruning-cache*
-                           k [out-set (map fs/fs-name more-fs)]
-                           r (.get pc k)]
-                       (or (not r) (> out-rew r))))
-             (recur init-set init-reward out-set out-rew more-fs (conj final-fs fs) sol))))))))
+(defn plan->solution-pair [plan]
+  [(->> plan :opt-sol (map fs/fs-name) (remove #(= (first %) :noop)))
+   (->  plan :opt-seq util/safe-singleton second)])
 
-(defn plan-refinements [p]
-  (keep
-   #(make-plan (:opt-sol p) (:input-set p) (:input-reward p) (concat % (next (:fs-seq p))))
-   (fs/child-seqs (first (:fs-seq p)) (:input-set p))))
-
-
-(defn plan->implicit-aha-star-node [plan]
-;  (println (:input-reward plan) (:output-reward plan) (second (plan-name plan)))
-  (is/make-simple-node (plan-name plan) (:output-reward plan) (empty? (:fs-seq plan)) plan))
-
-(defn make-aha-star-simple-search [root-plan]
-  (is/make-flat-incremental-dijkstra 
-   (plan->implicit-aha-star-node root-plan)
-   #(->> % :data plan-refinements (map plan->implicit-aha-star-node))))
-
-(defn ah-a* [henv pruning?]
-  (binding [*pruning-cache*  (when pruning? (HashMap.))]
-    (let [[init-ss root-fs] (fs/make-init-pair henv)]    
-      (when-let [g (-> (make-plan [] init-ss 0 [root-fs])
-                       make-aha-star-simple-search
-                       is/first-goal-node
-                       :data)]
-        [(remove #(= (first %) :noop) (map fs/fs-name (:opt-sol g)))
-         (:output-reward g)]))))
-
-;; (debug 0 (let [h (make-discrete-manipulation-hierarchy  (make-random-hard-discrete-manipulation-env 1 3))]   (time (println (run-counted #(identity (ah-a* h false)))))))
-;; (debug 0 (let [h (make-discrete-manipulation-hierarchy  (make-random-hard-discrete-manipulation-env 1 3))]   (time (println (run-counted #(identity (ah-a* h false)))))))
-
-;; (dotimes [_ 1] (reset! sg/*summary-count* 0) (debug 0 (let [h  (make-discrete-manipulation-hierarchy  (make-random-hard-discrete-manipulation-env 1 3))]   (time (println (run-counted #(identity (implicit-dash-a*-opt h :gather true :d true :s :eager :dir :right))) @sg/*summary-count*))  (time (println (run-counted #(identity (ah-a* h true))))))))
-
-;; (dotimes [_ 1] (reset! sg/*summary-count* 0) (debug 0 (let [h (make-nav-switch-hierarchy (make-random-nav-switch-env 20 4 0) true)]   (time (println (run-counted #(identity (implicit-dash-a*-opt h :gather true :d true :s :eager :dir :right))) @sg/*summary-count*))  (time (println (run-counted #(identity (ah-a* h true))))))))
-
-;;  (dotimes [_ 1] (reset! sg/*summary-count* 0) (debug 0 (let [h (make-nav-switch-hierarchy (make-random-nav-switch-env 500 20 2) true)]   (time (println (run-counted #(second (implicit-dash-a*-opt h :gather true :d true :s :eager :dir :right :choice-fn rand-nth :dijkstra #{}))) @sg/*summary-count*)) (time (println (run-counted #(second (implicit-dash-a*-opt h :gather true :d true :s :eager :dir :right :choice-fn rand-nth :dijkstra #{'navv 'navh}))) @sg/*summary-count*))  (time (println (run-counted #(second (ah-a* h true))))))))
-
-;; TODO: ImplicitAHA*Env
+(defn henv->root-plan [henv]
+  (let [[init-ss root-fs] (fs/make-init-pair henv)]
+    (make-plan [] [[init-ss [root-fs]] 0 :solved])))
 
 
 
 
-(comment ;; For debugging, I guess?
+(defn plan->simple-node [plan]
+  (is/make-simple-node 
+   (-> plan :opt-seq first)
+   (-> plan :opt-seq last second)
+   (-> plan :opt-seq first first second empty?)
+   plan))
+
+(defn optimistic-ah-a*
+  "AHA* with no pessimistic descriptions, but repeated hstate elimination"
+  [henv]
+  (-?>
+   henv henv->root-plan plan->simple-node
+   (is/make-flat-incremental-dijkstra
+    #(->> % :data plan-refinements (map plan->simple-node)))
+   is/first-goal-node :data plan->solution-pair))
+
+
+
+
+(defn register-strict! [^HashMap h {:keys [pess-seq]}]
+  (doseq [[k r] pess-seq]
+    (.put h k (max r (get h k Double/NEGATIVE_INFINITY)))))
+
+(defn strictly-prunable? [^HashMap h {:keys [opt-seq]}]
+  (some (fn [[k r]]
+          (< r (get h k Double/NEGATIVE_INFINITY))) 
+        opt-seq))
+
+(defn strict-ah-a*
+  "AHA* with strict pruning and repeated hstate elimination"
+  [henv]
+  
+  (let [h (HashMap.)]
+    (-?>
+     henv henv->root-plan plan->simple-node
+     (is/make-flat-incremental-dijkstra
+      (fn [{p :data}]
+        (when-not (strictly-prunable? h p)
+          (map #(do (register-strict! h %) (plan->simple-node %))
+               (plan-refinements p)))))
+     is/first-goal-node :data plan->solution-pair)))
+
+
+
+(defn plan->tree-node [plan]
+  (is/make-simple-node 
+   (gensym)
+   (-> plan :opt-seq last second)
+   (-> plan :opt-seq first first second empty?)
+   plan))
+
+(defn register-weak! [^HashMap h name {:keys [pess-seq]}]
+;  (println "R" name (-> pess-seq first first second))
+  (doseq [[k r] pess-seq]
+;    (println name k r)
+    (let [[pr nds] (or (get h k) [Double/NEGATIVE_INFINITY #{}])]
+      (cond (> r pr) (.put h k [r #{name}])
+            (= r pr) (.put h k [r (conj nds name)])))))
+
+(defn deregister-weak! [^HashMap h name {:keys [pess-seq]}]
+;  (println "D" name (-> pess-seq first first second))
+  (doseq [[k r] pess-seq]
+    (when-let [[pr nds] (get h k)]
+      (.put h k [pr (disj nds name)]))))
+
+(defn prunable? [^HashMap h {:keys [opt-seq]}]
+  (some (fn [[k r]]
+          (when-let [[pr nds] (.get h k)]
+            (or (when (< r pr) #_ (println "strict") true)
+;                (when (and (= r pr) (empty? nds)) (println "almost!" nds))
+                (when (and (= r pr) (seq nds)) #_ (println "weak") true)))) 
+        opt-seq))
+
+(defn full-ah-a*
+  "AHA* with string pruning, weak pruning on live plans, and no other
+   repeated hstate elimination."
+  [henv]
+  (let [h (HashMap.)]
+    (-?>
+     henv henv->root-plan plan->tree-node
+     (is/make-flat-incremental-dijkstra
+      (fn [{p :data n :name}]
+        (deregister-weak! h n p)
+        (when-not (prunable? h p)
+;          (println (-> p :opt-seq first first))
+          (map #(let [{:keys [name] :as nd} (plan->tree-node %)]
+                  (register-weak! h name %)
+                  nd)
+               (plan-refinements p)))))
+     is/first-goal-node :data plan->solution-pair)))
+
+
+
+;; (hierarchy/run-counted #(angelic.search.implicit.ah-astar/optimistic-ah-a* (ns/make-nav-switch-hierarchy (ns/make-random-nav-switch-env 5 2 1) true)))
+
+
+
+
+(comment ;; For debugging descriptions, I guess?
 
   ;            [angelic.env :as env]
 ;            [angelic.hierarchy :as hierarchy]

@@ -79,11 +79,12 @@
 ;;;;;;;;;;;;;;;;;;;;;;;; Nav Switch experiments ;;;;;;;;;;;;;;;;;;;;;;;;;;
 ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
 
+;; TODO! with split-nav, pruning fail.
 
 (defn ns-test []
   (let [s (rand-int 100)
-        e (ns/make-random-nav-switch-env 10 5 s)
-        h (ns/make-nav-switch-hierarchy e true)
+        e (ns/make-random-nav-switch-env 7 3 s)
+        h (ns/make-nav-switch-hierarchy e false #_ true);; TODO: split?
         o (second (textbook/uniform-cost-search e true))]
     (println "seed" s "\n")
     (doseq [[n a]
@@ -95,15 +96,17 @@
              #_ ["graph-dfbb" #(dfbb/graph-dfbb h)]
              ["graph-opt-dfbb" #(dfbb/graph-dfbb h o)]
 
-             ["sahtn" #(sahtn/sahtn h #{:nav :reach :discretem-tla 'top 'navh 'navv})]
+             ["sahtn" #(sahtn/sahtn h #{:nav :reach :discretem-tla
+                                        'top 'nav 'navh 'navv})]
 
              ["h-ucs" #(hes/h-ucs-fast h)]
              ["dsh-ucs" #(hes/dsh-ucs h)]
              ["dij-dsh-ucs" #(hes/dsh-ucs-dijkstra h)]
              ["inv-dsh-ucs" #(hes/dsh-ucs-inverted h)]
 
-             ["optimistic-ah-a*" #(aha/ah-a* h false)]
-             ["full-ah-a*" #(aha/ah-a* h true)]             
+             ["optimistic-ah-a*" #(aha/optimistic-ah-a* h)]
+             ["strict-ah-a*" #(aha/strict-ah-a* h)]
+             ["full-ah-a*" #(aha/full-ah-a* h)]                          
 
              ["explicit-ah-a*" #(hes/explicit-simple-ah-a* h)]
              ["explicit-dash-a*" #(hes/explicit-simple-dash-a* h)]
@@ -115,6 +118,8 @@
 
 ;; note: sahtn with dijkstra, not as described.
 ;; note: right now dfbb set to shuffle.
+;; TODO: inverted diff.
+;; TODO: queue counts.
 
 (def +ns-sizes+ [5 10 20 50 100 200 500])
 
