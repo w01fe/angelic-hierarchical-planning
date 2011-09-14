@@ -75,15 +75,32 @@
                :summarize-fn summary-fn)    
     {:type ::Subproblem}))
 
+(defn list-children        [s] (channel/publications (:child-channel s)))
+
+(defn subscribe-children!  [s w] (channel/subscribe! (:child-channel s) w))
+
+(defn- connect-and-watch! [p c child-f]
+  (sg/connect! p c)
+  (subscribe-children! c child-f))
+
 (defn sp-ts [sp]
   (or @(:ts-atom sp)
-      (reset! (:ts-atom sp)
-              (doto (with-meta (merge {:ts-sp sp
+      (reset!
+       (:ts-atom sp)
+       (let [ts (with-meta (merge {:ts-sp sp
                                        :summarize-fn (util/safe-get (:config sp) :or-summarize)}
                                       (sg/make-simple-cached-node))
-                      {:type ::TreeSummarizer})
-                (sg/connect! sp)
-                (sg/connect-subsumed! sp)))))
+                  {:type ::TreeSummarizer})]
+         (sg/connect-subsumed! ts sp)
+         (connect-and-watch!
+          ts sp
+          (fn [pub-sp]
+            (sg/connect-subsumed! ts (sp-ts pub-sp))
+            (sg/connect! ts (sp-ts pub-sp))
+            (swap! (-> sp :config :status-increases) conj [ts (sp-ts pub-sp)])))
+         ts))))
+
+
 
 (defmethod print-method  ::TreeSummarizer [s o]
   (print-method (format "#<TS %s>" (print-str (:ts-sp s))) o))
@@ -94,17 +111,6 @@
 
 
 
-
-(defn list-children        [s] (channel/publications (:child-channel s)))
-
-(defn subscribe-children!  [s w] (channel/subscribe! (:child-channel s) w))
-
-(defn- connect-and-watch! [p c child-f]
-  (sg/connect! p c)
-  (subscribe-children! c child-f))
-
-(defn- connect-ts! [p c]
-  (sg/connect! p (sp-ts c)))
 
 
 (declare publish-child! refine-input)
@@ -140,25 +146,21 @@
     (if (and (util/safe-get (:config sp) :collect?)
              (fs/eq-sets fs/=-state-sets (:output-sets sp) (:output-sets child-sp)))
       (publish-inner-child! sp child-sp)
-      (do (when (canonical? sp)
-            (sg/connect-subsumed! (sp-ts sp) (sp-ts child-sp))
-            (sg/connect! (sp-ts sp) (sp-ts child-sp))
-            (swap! (-> sp :config :status-increases) conj [(sp-ts sp) (sp-ts child-sp)]))
-          (if (= :hierarchical (util/safe-get (:config sp) :collect?))
-            (let [^HashMap com (:oc-map (:config sp))
-                  k         [(:name sp) (System/identityHashCode sp) (:output-sets child-sp)]
-                  [oc new?] (or (when-let [oc  (.get com k)]
-                                  [oc false])
-                                (let [oc (make-output-collector
-                                          (:config sp) k (:name sp) (:input-sets sp) (:output-sets child-sp))]
-                                  (.put com k oc)
-                                  [oc true]))]
-              (if (or new? (<= (summary/max-reward (sg/summary child-sp)) (summary/max-reward (sg/summary oc))))
-                (do (publish-inner-child! oc child-sp)
-                    (when new?
-                      (channel/publish! (:child-channel sp) oc)))
-                (channel/publish! (:child-channel sp) child-sp))) 
-            (channel/publish! (:child-channel sp) child-sp))))))
+      (if (= :hierarchical (util/safe-get (:config sp) :collect?))
+        (let [^HashMap com (:oc-map (:config sp))
+              k         [(:name sp) (System/identityHashCode sp) (:output-sets child-sp)]
+              [oc new?] (or (when-let [oc  (.get com k)]
+                              [oc false])
+                            (let [oc (make-output-collector
+                                      (:config sp) k (:name sp) (:input-sets sp) (:output-sets child-sp))]
+                              (.put com k oc)
+                              [oc true]))]
+          (if (or new? (<= (summary/max-reward (sg/summary child-sp)) (summary/max-reward (sg/summary oc))))
+            (do (publish-inner-child! oc child-sp)
+                (when new?
+                  (channel/publish! (:child-channel sp) oc)))
+            (channel/publish! (:child-channel sp) child-sp))) 
+        (channel/publish! (:child-channel sp) child-sp)))))
 
 
 (defn subsuming-sps        [s] (keys (:subsuming-sp-set s)))
@@ -342,7 +344,7 @@
                   (make-half-pair-subproblem config (refine-input left-sp ni) #(refine-input right-sp %)))
                 (util/safe-get config :or-summarize))]    
       (sg/connect! ret ss) 
-      (connect-ts! ss right-sp)
+      (sg/connect! ss (sp-ts right-sp))
       (connect-and-watch! ss left-sp
 	#(publish-child! ret false (make-pair-subproblem config % (refine-input right-sp (:output-sets %)))))    
       ret)))

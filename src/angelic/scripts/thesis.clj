@@ -129,7 +129,7 @@
   (let [e (apply dm/make-random-hard-discrete-manipulation-env args)
         h (dm/make-discrete-manipulation-hierarchy e)]
     (doseq [[n f]
-            [["dash-a*" #(da/implicit-dash-a* h)]
+            [["dash-a*" #(da/implicit-dash-a* h :propagate-subsumption? false)]
              ["old dash-a*" #(oda/implicit-dash-a* h)]
              ["o-dash-a*" #(dao/implicit-dash-a*-opt h)]
              ["os-dash-a*" #(daos/implicit-dash-a*-opt h)]]]
