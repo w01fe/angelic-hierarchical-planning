@@ -149,8 +149,10 @@
             ])
           [n f]
           [["dash-a*" #(da/implicit-dash-a* h :collect? :hierarchical)]
-           ["dash-a*" #(da/implicit-dash-a* h :collect? :hierarchical :choice-fn first)]
-           ["dash-a*" #(da/implicit-dash-a* h :collect? :hierarchical :choice-fn rand-nth)]
+           ["dash-a*" #(da/implicit-dash-a* h :collect? :hierarchical :search-strategy :ldfs
+                                            :choice-fn rand-nth)]
+           #_["dash-a*" #(da/implicit-dash-a* h :collect? :hierarchical :choice-fn first)]
+           #_["dash-a*" #(da/implicit-dash-a* h :collect? :hierarchical :choice-fn rand-nth)]
            #_ ["old dash-a*" #(oda/implicit-dash-a* h)]]]
     (println an (pad-right n 20) (update-in (run-timed f) [0 0] count))))
 

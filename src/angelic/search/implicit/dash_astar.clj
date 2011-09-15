@@ -10,8 +10,6 @@
 
 ;; TODO: before publish:
 ;;FIX refine-input for oc subproblem to solution in thesis
-;;FIX no publications from solved.
-
 
 ;; Note: back to scheduled status increases
 ;;  status-increased can call summary before we're done.
@@ -38,19 +36,7 @@
 
 ;; TODO: RI of child not connected to child of RI.
 
-;; TODO: put back bounding
-;; (Currently asserting consistency in a sense, despite DM not having it.
-;;  Causes some errors, e.g., with rand-nth.)
-
 ;; TODO: summary/+ should take order into account? !  live iff left live or left solved, right live, ..
-
-;; Last main issue: how we fit bounding into:
-;;  Current eager framework for cost propagation
-;;  Framework that includes local decreases. 
-
-;;  For LDFS, can handle bounding eagerly, with no propagation, nothing extra.
-;; For AO, put them in initial set, but only include things in LDFS that actually decreased.
-;;  In principle need multiple iterations of KLD with bounding, but we can ignore it...
 
 ;; We refine right iff the left set is a singleton-in-context, which guarantees it cannot
 ;; have any refinemetns.
@@ -63,8 +49,6 @@
 ;; TODO:
 ;;  - fix constituents
 ;;  - Make OCs expandable
-;;  - no distinction between blocked and solved
-;;  - Pair left-expanding iff left output singleton-in-context.
 
 ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
 ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;  Subproblems  ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
@@ -296,7 +280,8 @@
             :data [config fs inp-sets out-sets rewards status]
             :expand!-fn
             (fn expand! [s]
-              (util/print-debug 1 "expand" s (when subsuming-sp true) (and subsuming-sp @(:expanded?-atom subsuming-sp)))
+              (util/print-debug 1 "expand" s (when subsuming-sp true)
+                                (and subsuming-sp @(:expanded?-atom subsuming-sp)))
               (reset! expanded? true)
               (reset! summary-fn (util/safe-get config :or-summarize))
               (if (and subsuming-sp @(:expanded?-atom subsuming-sp)) ;; TODO: don't require expanded?
@@ -322,16 +307,7 @@
 ;;   - The tree summarizer of the other subproblem.
 
 ;; For now, always attempt to branch on the left subproblem first, unless the
-;; left subproblem is terminal (no children), in which case we branch right.
-;; Unfortunately, we don't know when we start if the left will be terminal
-;; (under *collect-equal-outputs*), so we assume it's not, then switch if,
-;; at any point, it becomes terminal.
-;; Unfortunately, the only place we can tell if it becomes terminal is while
-;; computing the summary of this node.  But, at that point we don't want to
-;; trigger any tree modifications, since when summary updates and tree modifications
-;; get interleaved arbitrarily, it gets really hard to maintain correctness.
-;; So, if right-sp already has children, we make the SP a leaf and wait for
-;; it to be evaluated to switch; otherwise, we safely switch immediately.
+;; left subproblem cannot have refined outputs,
 
 
 (declare make-half-pair-subproblem)
@@ -439,7 +415,14 @@
                              :status-increases status-increases))
         [init fs] (fs/make-init-pair henv)
         root      (sp-ts (make-atomic-subproblem config fs [(when (:weight opts) init) init] nil))
-        expand!   (fn [s] ((:expand!-fn s) s))]
+        expand!   #_(fn [s] ((:expand!-fn s) s))
+                  (fn [s]
+                    ((:expand!-fn s) s)
+                   (util/print-debug 1.2 "\nSTARTING INCREASES")
+                   (doseq [[p c] @status-increases]
+                     (sg/status-increased! p c))
+                   (reset! status-increases nil)
+                   (util/print-debug 1.2 "\nSTARTING DECREASES"))]
     (let [ks (util/keyset defaults)] (doseq [k (keys opts)] (util/assert-is (ks k))))
     (when (:abstract? config)  (assert (:decompose? config)))
     (when (:decompose? config)  (assert (:collect? config)))
@@ -455,11 +438,6 @@
             (case (:search-strategy config) :ao true :al-global false)
             (fn [s]
               (expand! s)
-              (util/print-debug 1.2 "\nSTARTING INCREASES")
-              (doseq [[p c] @status-increases]
-                (sg/status-increased! p c))
-              (reset! status-increases nil)
-              (util/print-debug 1.2 "\nSTARTING DECREASES")
               (sg/summaries-decreased! [s])))
            extract-action))))
 

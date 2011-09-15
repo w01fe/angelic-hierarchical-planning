@@ -315,8 +315,10 @@
     (let [kids (summary/children (summary root))]
       (do (if (empty? kids)
             (op!-fn root)
-            (let [c (consistent-choice-fn (filter (comp summary/live? summary summary/source) kids))]
-              (ldfs! (summary/source c) consistent-choice-fn (summary/max-reward c) op!-fn)))
+            (when-let [cs (seq (filter (comp summary/live? summary summary/source) kids))];; TODO?
+              (let [c (consistent-choice-fn cs)]
+                (ldfs! (summary/source c) consistent-choice-fn (summary/max-reward c) op!-fn))))
           (update-summary! root)
+          (reset! (:bound-atom root) (summary/max-reward (summary root)))
           (when (summary/live? (summary root))
             (recur root consistent-choice-fn bound op!-fn))))))
