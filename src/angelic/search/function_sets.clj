@@ -136,3 +136,5 @@
 
 (defn transfer-effects [to-set from-set]
   (state/transfer-effects to-set from-set))
+
+(defn unrefinable-set? [s] (state-set/singleton-in-context? s))

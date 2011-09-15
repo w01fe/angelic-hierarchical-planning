@@ -52,8 +52,10 @@
 ;; For AO, put them in initial set, but only include things in LDFS that actually decreased.
 ;;  In principle need multiple iterations of KLD with bounding, but we can ignore it...
 
-;; Broken things herE:
-;; -
+;; We retain the solved/blocked distinction in name, although both are now understood to
+;; mean solved iff init and final are singletons, otherwise who knows or cares.
+
+;; We explicitly set summaries to keywords until nodes are ready, to catch bugs early.
 
 ;; TODO:
 ;;  - fix constituents
@@ -85,7 +87,6 @@
                :summarize-fn summary-fn)    
     {:type ::Subproblem}))
 
-(defn list-children        [s] (channel/publications (:child-channel s)))
 
 (defn subscribe-children!  [s w] (channel/subscribe! (:child-channel s) w))
 
@@ -159,34 +160,28 @@
 (defn publish-child! [sp constituent? child-sp]
   (when child-sp			
     (util/assert-is (not (identical? sp child-sp)))
-    (when-let [s @(:summary-atom sp)]
-      (when-not (= s :NOT-READY)
-        (util/assert-is (not (= :solved (summary/status s))))))
     (when constituent? (channel/publish! (:constituent-channel sp) child-sp))
-    (let [child-solved? (= :solved (summary/status (sg/summary child-sp)))]
-      (util/print-debug 2 "AC" sp child-sp child-solved?
-                        (sg/summary child-sp) (sg/summary (sp-ts child-sp)))
-     (if (and (util/safe-get (:config sp) :collect?)
-              (fs/eq-sets fs/=-state-sets (:output-sets sp) (:output-sets child-sp))
-              (not child-solved?))
-       (publish-inner-child! sp child-sp)
-       (if (= :hierarchical (util/safe-get (:config sp) :collect?))
-         (let [^HashMap com (:oc-map (:config sp))
-               k         [(:name sp) (System/identityHashCode sp) child-solved? (:output-sets child-sp)]
-               [oc new?] (or (when-let [oc (.get com k)]
-                               (when (and (empty? ^HashMap (:oc-ref-map oc))
-                                          (<= (summary/max-reward (sg/summary (sp-ts child-sp)))
-                                              (summary/max-reward (sg/summary (sp-ts oc)))))
-                                 [oc false]))
-                             (let [oc (make-output-collector
-                                       (:config sp) (:name sp) (:input-sets sp) (:output-sets child-sp))]
-                               (.put com k oc)
-                               [oc true]))]
-           (util/print-debug 3 "TO-OC" new? sp child-sp (summary/max-reward (sg/summary (sp-ts child-sp)))
-                                              (when-not new? (summary/max-reward (sg/summary (sp-ts oc)))))
-           (publish-inner-child! oc child-sp)
-           (when new? (channel/publish! (:child-channel sp) oc))) 
-         (channel/publish! (:child-channel sp) child-sp))))))
+    (util/print-debug 2 "AC" sp child-sp)
+    (if (and (util/safe-get (:config sp) :collect?)
+             (fs/eq-sets fs/=-state-sets (:output-sets sp) (:output-sets child-sp)))
+      (publish-inner-child! sp child-sp)
+      (if (= :hierarchical (util/safe-get (:config sp) :collect?))
+        (let [^HashMap com (:oc-map (:config sp))
+              k         [(:name sp) (System/identityHashCode sp) (:output-sets child-sp)]
+              [oc new?] (or (when-let [oc (.get com k)]
+                              (when (and (empty? ^HashMap (:oc-ref-map oc)) ;; TODO: careful here
+                                         (<= (summary/max-reward (sg/summary (sp-ts child-sp)))
+                                             (summary/max-reward (sg/summary (sp-ts oc)))))
+                                [oc false]))
+                            (let [oc (make-output-collector
+                                      (:config sp) (:name sp) (:input-sets sp) (:output-sets child-sp))]
+                              (.put com k oc)
+                              [oc true]))]
+          (util/print-debug 3 "TO-OC" new? sp child-sp (summary/max-reward (sg/summary (sp-ts child-sp)))
+                            (when-not new? (summary/max-reward (sg/summary (sp-ts oc)))))
+          (publish-inner-child! oc child-sp)
+          (when new? (channel/publish! (:child-channel sp) oc))) 
+        (channel/publish! (:child-channel sp) child-sp)))))
 
 
 (defn subsuming-sps        [s] (keys (:subsuming-sp-set s)))
@@ -220,10 +215,6 @@
       (when (canonical? s) (add-subsuming-sp! ret s))
       ret)))
   
-(defn solved-terminal? [sp]
-  (and (empty? (list-children sp))
-       (summary/solved? (sg/summary sp))))
-
 
 (defmethod print-method ::Subproblem [sp o]
   (print-method (format "#<SP$%8h %s>" (System/identityHashCode sp) (:name sp)) o))
@@ -341,44 +332,31 @@
 
 (defn- make-pair-subproblem [config left-sp right-sp]
   (when right-sp
-    (let [nm          (pair-name (:name left-sp) (:name right-sp))
-	  right?-atom (atom false) ;; Expand on right            
-          go-right! (fn [ss]
-		      (reset! right?-atom true)                          
-		      (sg/disconnect! ss (sp-ts right-sp))
-		      (subscribe-children! left-sp (fn [c] (def *bad* [ss c]) (assert (not "S + C"))))
-		      (connect-and-watch! ss right-sp
-                        #(publish-child! (util/safe-singleton (sg/parent-nodes ss)) false
-                                         (make-pair-subproblem config left-sp %))))
-	  ss          (assoc (sg/make-simple-cached-node)
-                        :summary-atom (atom :NOT-READY)
-                        :summarize-fn
-                        (fn [ss] 
-                          (or (and (not @right?-atom)
-                                   (solved-terminal? left-sp)
-                                   (if (empty? (list-children right-sp)) 
-                                     (do (go-right! ss) nil)
-                                     (let [r (min (+ (summary/max-reward (sg/summary left-sp))
-                                                     (summary/max-reward (sg/summary (sp-ts right-sp))))
-                                                  (sg/get-bound ss))]
-                                       ((:make-summary config) [summary/neg-inf r] :live ss))))
-                              (sg/sum-summary ss)))
-                        :expand!-fn
-                        (fn expand! [ss]
-;                          (println "expand pair")
-                          (util/print-debug 1 "expand-pair" nm)
-                          (go-right! ss)))
+    (let [nm (pair-name (:name left-sp) (:name right-sp))
+	  ss (assoc (sg/make-simple-cached-node)
+               :summary-atom (atom :NOT-READY)
+               :summarize-fn sg/sum-summary)
 	  ret (make-subproblem config nm (:input-sets left-sp) (:output-sets right-sp) nil 		 
 		(fn ri-fn [s ni]
                   (make-half-pair-subproblem config (refine-input left-sp ni) #(refine-input right-sp %)))
                 (util/safe-get config :or-summarize))]    
-      (sg/connect! ret ss) 
-      (sg/connect! ss (sp-ts right-sp))
-      (connect-and-watch! ss left-sp
-	#(publish-child! ret false (make-pair-subproblem config % (refine-input right-sp (:output-sets %)))))    
+
+      (sg/connect! ret ss)
+
+      (if (fs/unrefinable-set? (second (:output-sets left-sp)))
+        (do (sg/connect! ss (sp-ts left-sp))
+            (connect-and-watch! ss right-sp
+              #(publish-child! ret false
+                 (make-pair-subproblem config left-sp %))))
+        (do (sg/connect! ss (sp-ts right-sp))
+            (connect-and-watch! ss left-sp
+              #(publish-child! ret false
+                 (make-pair-subproblem config % (refine-input right-sp (:output-sets %)))))))
+    
       (reset! (:summary-atom ret) nil)
       (reset! (:summary-atom ss) nil)      
       ret)))
+
 
 (defn make-half-pair-subproblem [config left-sp right-fn]
   (when left-sp (make-pair-subproblem config left-sp (right-fn (:output-sets left-sp)))))
