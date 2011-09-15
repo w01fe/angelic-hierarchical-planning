@@ -76,13 +76,11 @@
 (defn summarize [n] ((:summarize-fn n) n))
 
 (def *subsumption* true)
-;; TODO: can't kill with KLD.
+;; note: must be careful about killing with kld.
 (def *kill* false #_ true) ;; Remove dead children of OR-nodes.  Doesn't seem to really help or hurt...
 (def *summary-count* (atom 0))
 
 
-;; Note: Interaction between laziness and top-down bounds; 
-;; TODO: pseudo-option ? (Correct Lazy seems untenable with top-down)
 
 (defn make-summary-cache []
   {:summary-atom (atom nil)

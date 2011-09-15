@@ -46,10 +46,6 @@
 
 ;; We explicitly set summaries to keywords until nodes are ready, to catch bugs early.
 
-;; TODO:
-;;  - fix constituents
-;;  - Make OCs expandable
-
 ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
 ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;  Subproblems  ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
 ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
@@ -115,13 +111,14 @@
 
 (declare publish-child! refine-input)
 
-;; TODO: this can cycle, if oc includes itself?!
 (defn refine-constituents! [parent-sp refined-sp]
   (channel/subscribe!
    (:constituent-channel parent-sp)
    #(publish-child! refined-sp true (refine-input % (:input-sets refined-sp))))
   refined-sp)
 
+;; TODO: This could potentially cause an infinite loop, which the thesis solution fixes.
+;; but, the RIOC case never seems to happen, so we skip it for now.
 (defn make-output-collector [config nm inp-sets out-sets]
   (let [ref-map (HashMap.)]
     (assoc
@@ -131,8 +128,7 @@
       (fn ri-fn [oc ni] (println "RIOC")    
         (if (fs/eq-sets = ni inp-sets)
           oc
-          (do (println (count (channel/publications (:constituent-channel oc))))
-           (util/cache-with ref-map ni (refine-constituents! oc (make-output-collector config nm ni out-sets))))))
+          (util/cache-with ref-map ni (refine-constituents! oc (make-output-collector config nm ni out-sets)))))
       (util/safe-get config :or-summarize))
      :oc-ref-map ref-map
      :summary-atom (atom nil))))
@@ -143,7 +139,6 @@
   (swap! (-> sp :config :status-increases) conj [sp child-sp]))
 
 ;; TODO: no OC when we can prove we don't need it?
-;; NOTE: must be careful, since parent may not have summary yet when we find cached kids.
 (defn publish-child! [sp constituent? child-sp]
   (when child-sp			
     (util/assert-is (not (identical? sp child-sp)))
@@ -169,6 +164,7 @@
           (util/print-debug 3 "TO-OC" new? sp child-sp (summary/max-reward (sg/summary (sp-ts child-sp)))
                             (when-not new? (summary/max-reward (sg/summary (sp-ts oc)))))
           (publish-inner-child! oc child-sp)
+          (channel/publish! (:constituent-channel oc) child-sp)
           (when new? (channel/publish! (:child-channel sp) oc))) 
         (channel/publish! (:child-channel sp) child-sp)))))
 

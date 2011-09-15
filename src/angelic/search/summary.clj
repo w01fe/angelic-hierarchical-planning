@@ -16,7 +16,8 @@
 ;; BUT, note that this can lead to apparent INCREASES in summary,
 ;; as a plan goes from, e.g., live to solved.
 
-;; TODO: this could be fixed by separating opt and pess summaries ?
+;; This is now fixed, by just ignoring the difference between blocked
+;; and solved -- was a false dichotomy anyway, in a sense.
 
 ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
 ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;; Summary ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
