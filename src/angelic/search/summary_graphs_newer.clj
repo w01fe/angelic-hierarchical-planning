@@ -94,10 +94,12 @@
 (declare update-summary!)
 
 (defn summary [n]
-  (or @(:summary-atom n) (update-summary! n)))
+  (or @(:summary-atom n)
+      (let [s (update-summary! n)]
+        (reset! (:bound-atom n) (summary/max-reward s))
+        s)))
 
-(defn get-bound [n] @(:bound-atom n))
-(defn add-bound! [n b] ::TODO)
+(defn get-bound [n] 0 @(:bound-atom n))
 
 
 (comment
@@ -131,7 +133,7 @@
 
 (defn set-summary! [n s]
   #_  (check-cost! n s)
-  (when (= "[:Atomic [:discretem-tla]]"
+  #_ (when (= "[:Atomic [:discretem-tla]]"
            (str (or (:name n)
                 (:name (:ts-sp n)))))
     (println "SET" n @(:summary-atom n) s)
@@ -152,49 +154,65 @@
 
 
 ;; its new summary may be better, due to inconsistencies.
-(defn status-increased! [parent child]
-  (when @(:summary-atom parent) ;; TODO: correct?
-    (let [cs (summary child)
-          ops (summary parent)]
-      ;; also false due to incons.
-      ;;      (util/assert-is (>= (summary/max-reward ops) (summary/max-reward cs)) (str parent child))
-      (when (> (summary/status-val (summary/status cs))
-               (summary/status-val (summary/status ops)))
-        (let [nps (summarize parent)]
-          #_ (println "SI" (:name parent) (:name child) cs ops nps
-                      (map summary (parent-nodes parent))
-                      (map summarize (parent-nodes parent))                 
-                      )
+(comment
+ (defn status-increased! [parent child]
+   (when @(:summary-atom parent) ;; TODO: correct?
+     (let [cs (summary child)
+           ops (summary parent)]
+       ;; also false due to incons.
+       ;;      (util/assert-is (>= (summary/max-reward ops) (summary/max-reward cs)) (str parent child))
+       (when (> (summary/status-val (summary/status cs))
+                (summary/status-val (summary/status ops)))
+         (let [nps (summarize parent)]
+           #_ (println "SI" (:name parent) (:name child) cs ops nps
+                       (map summary (parent-nodes parent))
+                       (map summarize (parent-nodes parent))                 
+                       )
 
                                         ;        (println parent ops nps) (Thread/sleep 100)
-          (when (>= (summary/max-reward nps) (summary/max-reward ops)) ;; accomodate pair case.
-            ;; may not be true due to inconsistencies.
-            ;;(util/assert-is (= (summary/max-reward nps) (summary/max-reward ops)) "%s" (def *bad* [parent child]))
-            (set-summary! parent nps) #_ (reset! (:summary-atom parent) nps)
-            (when (> (summary/status-val (summary/status nps))
-                     (summary/status-val (summary/status ops)))
-              (doseq [gp (doall (seq (parent-nodes parent)))] ;; TODO: comodification in pair -- safe?
-                (status-increased! gp parent)))))))))
+           (when (>= (summary/max-reward nps) (summary/max-reward ops)) ;; accomodate pair case.
+             ;; may not be true due to inconsistencies.
+             ;;(util/assert-is (= (summary/max-reward nps) (summary/max-reward ops)) "%s" (def *bad* [parent child]))
+             (set-summary! parent nps) #_ (reset! (:summary-atom parent) nps)
+             (when (> (summary/status-val (summary/status nps))
+                      (summary/status-val (summary/status ops)))
+               (doseq [gp (doall (seq (parent-nodes parent)))] ;; TODO: comodification in pair -- safe?
+                 (status-increased! gp parent))))))))))
+
+
+;; Just increase status, if you can do it without making parent worse.
+;; Basic formula: take bounded summary.
+;; Child can be better than parent, or worse.
+
+;; Status can increase in update-summary-dec without changing parent b/c of inconsistencies.
+
+(defn status-increased! [parent child]
+  (when-let [ops @(:summary-atom parent)]
+    (util/assert-is (= (summary/max-reward ops) @(:bound-atom parent))
+                    (do (def *b* [parent child]) (pr-str  ops (summary child))))
+    (let [cs (summary child)]
+;      (println "SI"  parent #_ child ops cs #_ (summarize parent))
+      (when (and (summary/live? ops) (not (summary/live? cs)))
+        (let [nps (summarize parent)]
+          (assert (<= (summary/max-reward nps) (summary/max-reward ops)))
+          (when (and (= (summary/max-reward nps) (summary/max-reward ops))
+                     (not (summary/live? nps)))
+            (set-summary! parent nps)
+            (doseq [gp (doall (seq (parent-nodes parent)))]
+              (status-increased! gp parent))))))))
+
 
 (defn- update-summary! [n]
   (util/print-debug 4 "US" n @(:summary-atom n) (summarize n))
   (set-summary! n (summarize n))#_(reset! (:summary-atom n) (summarize n)))
 
+;; can produce suboptimal summaries
 (defn- update-summary-inc?! [n]
-  (when-let [old   (summary n)]
-    (let [new (update-summary! n)]
-      (not (summary/>= old new 0)))))
-
-;; Summaries at this stage can be suboptimal
-(defn- update-summary-inc-subopt?! [n]
   (when-let [old   (summary n)]
     (let [new (reset! (:summary-atom n) (summarize n))]
       (not (summary/>= old new 0)))))
 
-(defn- update-summary-dec?! [n]
-  (when-let [old   (summary n)]
-    (let [new (update-summary! n)]
-      (not (summary/>= new old 0)))))
+
 
 ;; Run KLD and return any nodes whose summaries have changed.
 (defn knuth-lightest-derivation! [active-nodes]
@@ -207,21 +225,36 @@
     (doseq [n active-nodes]
       (.put all n (summary n))
       #_ (reset! (:summary-atom n) summary/+worst-simple-summary+)
+      (util/print-debug 2 "NILLING" n (summary n))
       (set-summary! n summary/+worst-simple-summary+))
     (doseq [n (keys all)]
-      (when (update-summary-inc-subopt?! n)
+      (when (update-summary-inc?! n)
         (.put open n true)
         (queues/pq-add! q n (cost n))))
     (while (not (queues/pq-empty? q)) ;; Can short circuit on dead too.
       (let [n (queues/pq-remove-min! q)]
         (.remove all n)
+        (reset! (:bound-atom n) (summary/max-reward (summary n)))
+        (util/print-debug 2 "SET" n (summary n))
         (doseq [p (parent-nodes n)]
           (when (.containsKey all p)
             (when (update-summary-inc?! p)
               (if (.containsKey open p)
                 (queues/pq-remove! q p)
                 (.put open p true))
-              (queues/pq-add! q p (cost p)))))))))
+              (queues/pq-add! q p (cost p)))))))
+    (doseq [n (keys all)]
+      (util/print-debug 2 "KILLING" n)
+      (reset! (:bound-atom n) Double/NEGATIVE_INFINITY))))
+
+;; Also allow status increases.  maybe better to use i-c.
+(defn- update-summary-dec?! [n]
+  (when-let [old   (summary n)]
+    (let [new (update-summary! n)]
+;     (util/assert-is (summary/>= old new 0) (do (def *b* [n old new]) (pr-str n old new)))
+      #_      (not (summary/>= new old 0))
+      (or (< (summary/max-reward new) (summary/max-reward old))
+          (and (summary/live? old) (not (summary/live? new)))))))
 
 ;; Find and locally update all nodes that need updating
 ;; Return a conservative estimate of nodes that may be in cycles
@@ -230,11 +263,11 @@
   (let [active-set (IdentityHashMap.)
         chase      (fn chase [n]
                      (when @(:summary-atom n)
-                      (when-not (.containsKey active-set n)
-                        (when (update-summary-dec?! n)
-                          (.put active-set n true)
-                          (doseq [p (parent-nodes n)]
-                            (chase p))))))]
+                       (when-not (.containsKey active-set n)
+                         (when (update-summary-dec?! n)
+                           (.put active-set n true)
+                           (doseq [p (parent-nodes n)]
+                             (chase p))))))]
     (doseq [n active-nodes]
       (chase n))
     (keys active-set)))
@@ -249,43 +282,6 @@
 (defn summaries-decreased! [nodes]
   (when-let [cycle-nodes (update-and-find-cycles! nodes)]
     (knuth-lightest-derivation! cycle-nodes)))
-
-
-(comment
- (defn add-bound! [n b]
-   (let [bound-atom (:bound-atom n)]
-     (when (and b *subsumption* (< b @bound-atom))
-       (util/print-debug 3 "UB" n @bound-atom b) 
-       (reset! bound-atom b)
-       (doseq [s (doall (subsumed-nodes n))]
-         (add-bound! s b))
-       true)))
-
- (defn- update-summary! [n]
-   (let [bound-atom (:bound-atom n)
-         summary-atom (:summary-atom n)]
-     (util/print-debug 3 "SUS" n  @summary-atom @bound-atom)
-     (let [s (summarize n),
-           r (summary/max-reward s)]
-       (util/print-debug 3 "US" n  @summary-atom s @bound-atom)
-       (when r (util/assert-is (<= r @bound-atom) "%s" [n r @bound-atom (def *bad* n)]))
-       (reset! summary-atom s)
-       (update-bound! n r) 
-       s)))
-
- (defn summary-decreased! [n]
-   (util/print-debug 4 "SI" n)
-   (let [cache (:summary-atom n)]
-     (when-let [old @cache]
-       (assert (summary/>= old (update-summary! n) 0)))))
-
- (defn summary-increased! [n]
-   (util/print-debug 4 "SI" n)
-   (let [cache (:summary-atom n)]
-     (when-let [old @cache]
-       (when (summary/>= (update-summary! n) old 0)
-         (doseq [p (doall (parent-nodes n))]
-           (summary-increased! p)))))))
 
 
 

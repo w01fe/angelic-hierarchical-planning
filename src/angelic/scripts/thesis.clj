@@ -138,15 +138,20 @@
 
 (defn dash-test []
   (doseq [[an h]
-          (take 4
+          (take 100
            [["nav" (ns/make-nav-switch-hierarchy (ns/make-random-nav-switch-env 20 5 0) false)]
             ["dm1" (dm/make-discrete-manipulation-hierarchy (dm/make-random-hard-discrete-manipulation-env 2 1))]
             ["dm2" (dm/make-discrete-manipulation-hierarchy (dm/make-random-discrete-manipulation-env 3 1))]
-            ["dm3" (dm/make-discrete-manipulation-hierarchy (dm/make-random-discrete-manipulation-env 4 6))]           ])
+            ["dm3" (dm/make-discrete-manipulation-hierarchy (dm/make-random-discrete-manipulation-env 4 6))]
+            ["dm3" (dm/make-discrete-manipulation-hierarchy (dm/make-random-discrete-manipulation-env 4 2))]
+            ["dm3" (dm/make-discrete-manipulation-hierarchy (dm/make-random-discrete-manipulation-env 4 1))]
+            ["dm3" (dm/make-discrete-manipulation-hierarchy (dm/make-random-discrete-manipulation-env 4 7))]
+            ])
           [n f]
           [["dash-a*" #(da/implicit-dash-a* h :collect? :hierarchical)]
            ["dash-a*" #(da/implicit-dash-a* h :collect? :hierarchical :choice-fn first)]
-           ["old dash-a*" #(oda/implicit-dash-a* h)]]]
+           ["dash-a*" #(da/implicit-dash-a* h :collect? :hierarchical :choice-fn rand-nth)]
+           #_ ["old dash-a*" #(oda/implicit-dash-a* h)]]]
     (println an (pad-right n 20) (update-in (run-timed f) [0 0] count))))
 
 ;; note: sahtn with dijkstra, not as described.
@@ -166,6 +171,7 @@
 
 ;; Now, question is: if OC is never refined, then what is?
 ;; Doesn't that mean we're wasting effort making this thing??
+
 
 
 (def +ns-sizes+ [5 10 20 50 100 200 500])
