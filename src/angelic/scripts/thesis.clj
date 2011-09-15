@@ -152,6 +152,17 @@
 ;; TODO: inverted diff.
 ;; TODO: queue counts.
 
+;; TODO: something I'm missing here.
+;; Once a tree summary goes solved, is there ever any utility in refining?
+;; (Yes, with state abstraction...)
+;; (But if sets are the same, *there is not*).
+;; This is a reason for not doing HOC differently for solved.
+;; This explains perf difference.
+
+;; Note also, there are two types of solved.
+;; Really solved, and blocked-solved.?
+
+
 (def +ns-sizes+ [5 10 20 50 100 200 500])
 
 (defn make-ns-exp-set []

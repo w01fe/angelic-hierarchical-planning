@@ -84,6 +84,9 @@
     (when (every? seq seqs)
       (lazy-seq (step v-original-seqs)))))
 
+(defprotocol PLoggingFactoredStateSet
+  (singleton-in-context? [ss]))
+
 (deftype LoggingFactoredStateSet [init ^java.util.Set context puts ooc meta] 
   Object 
   (equals   [ss lfs]
@@ -97,6 +100,10 @@
    (meta [this] meta)
    (withMeta [this new-meta] (LoggingFactoredStateSet. init context puts ooc new-meta))
 
+  PLoggingFactoredStateSet
+  (singleton-in-context? [ss]
+    (every? (comp util/singleton? init) context))
+  
   PSet
    (empty? [ss]  (some empty? (vals init)))
    (singleton [ss]
