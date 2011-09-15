@@ -139,11 +139,13 @@
 
 (defmacro cache-with [^HashMap m key expr]
   `(let [m# ~m, key# ~key]
-    (if (.containsKey m# key#) 
-      (.get m# key#)
-      (let [result# ~expr]
-        (.put m# key# result#)
-        result#))))
+     (if m#
+      (if (.containsKey m# key#) 
+       (.get m# key#)
+       (let [result# ~expr]
+         (.put m# key# result#)
+         result#))
+      ~expr)))
 
 (defn pp-map [m]
   (doseq [[k v] m] (println "  " k "\t:" v)))

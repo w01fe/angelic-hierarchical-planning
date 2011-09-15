@@ -431,7 +431,7 @@
            #(sg/summary root)
            (sg/best-leaf-operator
             (:choice-fn config)
-            (case (:search-strategy config) :ao true :al-global false)
+            (case (:search-strategy config) :ao true :ao-global false)
             (fn [s]
               (expand! s)
               (sg/summaries-decreased! [s])))

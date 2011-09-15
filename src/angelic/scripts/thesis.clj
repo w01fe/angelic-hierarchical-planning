@@ -92,7 +92,7 @@
 
 (defn ns-test []
   (let [s (rand-int 100)
-        e (ns/make-random-nav-switch-env 7 3 s)
+        e (ns/make-random-nav-switch-env 50 3 s)
         h (ns/make-nav-switch-hierarchy e false #_ true);; TODO: split?
         o (second (textbook/uniform-cost-search e true))]
     (println "seed" s "\n")
@@ -103,9 +103,9 @@
              #_ ["dfbb" #(dfbb/dfbb h)]
              #_["opt-dfbb" #(dfbb/dfbb h o)]
              #_ ["graph-dfbb" #(dfbb/graph-dfbb h)]
-             ["graph-opt-dfbb" #(dfbb/graph-dfbb h o)]
+             #_ ["graph-opt-dfbb" #(dfbb/graph-dfbb h o)]
 
-             ["sahtn" #(sahtn/sahtn h #{:nav :reach :discretem-tla
+             #_["sahtn" #(sahtn/sahtn h #{:nav :reach :discretem-tla
                                         'top 'nav 'navh 'navv})]
 
              ["h-ucs" #(hes/h-ucs-fast h)]
@@ -120,19 +120,83 @@
              ["explicit-ah-a*" #(hes/explicit-simple-ah-a* h)]
              ["explicit-dash-a*" #(hes/explicit-simple-dash-a* h)]
 
-             
+             ["ao-l-dash-a*" #(da/implicit-dash-a* h)]
+             ["ao-f-dash-a*" #(da/implicit-dash-a* h :choice-fn first)]
+             ["ldfs-l-dash-a*" #(da/implicit-dash-a* h :search-strategy :ldfs)]
+             ["ao-l-dash-a*" #(da/implicit-dash-a* h :collect? :hierarchical)]
+             ["ao-f-dash-a*" #(da/implicit-dash-a* h :choice-fn first :collect? :hierarchical)]
+             ["ldfs-l-dash-a*" #(da/implicit-dash-a* h :search-strategy :ldfs :collect? :hierarchical)]              
              ]]
       (println (pad-right n 20)
-               (update-in (hierarchy/run-counted a) [0 0] count)))))
+               (update-in (run-timed a) [0 0] count)))))
+
+(defn shallowest [level-map]
+  (fn [s]
+    (apply
+     min-key
+     #(util/safe-get level-map (-> % :name second angelic.search.function-sets/fs-name first))
+     s)))
 
 (defn dm-test [& args]
   (let [e (apply dm/make-random-hard-discrete-manipulation-env args)
-        h (dm/make-discrete-manipulation-hierarchy e)]
+        h (dm/make-discrete-manipulation-hierarchy e)
+        o (second (da/implicit-dash-a* h))]
     (doseq [[n f]
-            [["dash-a*" #(da/implicit-dash-a* h :propagate-subsumption? false)]
-             ["old dash-a*" #(oda/implicit-dash-a* h)]
-             ["o-dash-a*" #(dao/implicit-dash-a*-opt h)]
-             ["os-dash-a*" #(daos/implicit-dash-a*-opt h)]]]
+            [#_ ["dijkstra "#(textbook/uniform-cost-search e true)]
+             #_ ["a*" #(textbook/a*-search e ns/simple-ns-heuristic true)]
+
+             #_ ["dfbb" #(dfbb/dfbb h)]
+             #_ ["opt-dfbb" #(dfbb/dfbb h o)]
+             #_ ["graph-dfbb" #(dfbb/graph-dfbb h)]
+             #_ ["graph-opt-dfbb" #(dfbb/graph-dfbb h o)]
+
+             #_ ["sahtn" #(sahtn/sahtn h #{:nav :reach :discretem-tla
+                                        'top 'nav 'navh 'navv})]
+
+             #_ ["h-ucs" #(hes/h-ucs-fast h)]
+             #_ ["dsh-ucs" #(hes/dsh-ucs h)]
+             #_ ["dij-dsh-ucs" #(hes/dsh-ucs-dijkstra h)]
+             #_ ["inv-dsh-ucs" #(hes/dsh-ucs-inverted h)]
+
+             ["optimistic-ah-a*" #(aha/optimistic-ah-a* h false)]
+             ["strict-ah-a*" #(aha/strict-ah-a* h false)]
+             ["full-ah-a*" #(aha/full-ah-a* h false)]
+             ["optimistic-ah-a*" #(aha/optimistic-ah-a* h true)]
+             ["strict-ah-a*" #(aha/strict-ah-a* h true)]
+             ["full-ah-a*" #(aha/full-ah-a* h true)]                                       
+
+             ["explicit-ah-a*" #(hes/explicit-simple-ah-a* h)]
+             ["explicit-dash-a*" #(hes/explicit-simple-dash-a* h)]
+
+             ["nps-dash-a*" #(da/implicit-dash-a* h :propagate-subsumption? false)]
+             ["ldfs-dash-a*" #(da/implicit-dash-a* h :search-strategy :ldfs)]
+             ["dash-a*" #(da/implicit-dash-a* h)]
+             ["first-dash-a*" #(da/implicit-dash-a* h :choice-fn first)]             
+             ["shallowest-dash-a*" #(da/implicit-dash-a*
+                          h :search-strategy :ao-global
+                          :choice-fn (shallowest {:discretem-tla 0
+                                                  :move-to-goal 1
+                                                  :go-grasp 2 :go-drop 2
+                                                  :go-drop-at 3
+                                                  :grasp 4 :drop-at 4
+                                                  :move-base 5
+                                                  :nav 6
+                                                  :reach 7
+                                                  }))]
+             ["h-first-dash-a*" #(da/implicit-dash-a* h :collect? :hierarchical)]
+             ["h-shallowest-dash-a*" #(da/implicit-dash-a*
+                          h :search-strategy :ao-global :collect? :hierarchical
+                          :choice-fn (shallowest {:discretem-tla 0
+                                                  :move-to-goal 1
+                                                  :go-grasp 2 :go-drop 2
+                                                  :go-drop-at 3
+                                                  :grasp 4 :drop-at 4
+                                                  :move-base 5
+                                                  :nav 6
+                                                  :reach 7
+                                                  }))]
+             
+             ]]
       (println (pad-right n 20)
                (update-in (run-timed f) [0 0] count)))))
 
@@ -158,21 +222,10 @@
 
 ;; note: sahtn with dijkstra, not as described.
 ;; note: right now dfbb set to shuffle.
-;; TODO: inverted diff.
+;; note: explicit algs effectively use different, more accurate heuristics.
+
 ;; TODO: queue counts.
 
-;; TODO: something I'm missing here.
-;; Once a tree summary goes solved, is there ever any utility in refining?
-;; (Yes, with state abstraction...)
-;; (But if sets are the same, *there is not*).
-;; This is a reason for not doing HOC differently for solved.
-;; This explains perf difference.
-
-;; Note also, there are two types of solved.
-;; Really solved, and blocked-solved.?
-
-;; Now, question is: if OC is never refined, then what is?
-;; Doesn't that mean we're wasting effort making this thing??
 
 
 

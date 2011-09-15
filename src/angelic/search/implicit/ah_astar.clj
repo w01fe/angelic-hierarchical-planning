@@ -16,7 +16,26 @@
 ;; opt-sol is a prefix of primitive function sets
 ;; opt-seq and pess-seq are lazy seqs of tuples representing the rest of plan.
 ;; tuples are [[reachable-set remaining-fs] reward status]
-(defrecord Plan [opt-sol opt-seq pess-seq])
+(defrecord Plan [tupler opt-sol opt-seq pess-seq])
+
+(defn memo-tuple-seq []
+  (let [h (HashMap.)]
+    (fn [[[s rfs] r :as init-tuple] next-f]
+      (if-let [p (.get h [s rfs next-f])]
+        (let [o (- r (second (first p)))]
+         (map
+          #(update-in % [1] + o)
+          p))
+        (let [ret 
+              (when s
+                (cons
+                 init-tuple
+                 (lazy-seq
+                  (when-let [[fs & rfs] (seq rfs)]
+                    (let [[next-s step-r stat] (next-f fs s)]
+                      (tuple-seq [[next-s rfs] (+ step-r r) stat] next-f))))))]
+          (.put h [s rfs next-f] ret)
+          ret)))))
 
 (defn tuple-seq [[[s rfs] r :as init-tuple] next-f]
   (lazy-seq
@@ -31,31 +50,32 @@
   (let [[e o] (split-with #(= (nth % 2) :solved) opt-seq)]
     [(butlast e) (cons (last e) o)]))
 
-(defn make-plan [opt-sol init-exact]
+(defn make-plan [tupler opt-sol init-exact]
   (assert (= (nth init-exact 2) :solved))
-  (let [[exact-seq opt-seq] (split-exact-prefix (tuple-seq init-exact fs/apply-opt))]
+  (let [[exact-seq opt-seq] (split-exact-prefix (tupler init-exact fs/apply-opt))]
     (when (-> opt-seq last first second empty?)
-     (Plan.
-      (concat opt-sol (for [[[_ [fs]]] exact-seq] fs))
-      opt-seq
-      (tuple-seq (first opt-seq) fs/apply-pess)))))
+      (Plan.
+       tupler
+       (concat opt-sol (for [[[_ [fs]]] exact-seq] fs))
+       opt-seq
+       (tupler (first opt-seq) fs/apply-pess)))))
 
-(defn plan-refinements [{:keys [opt-sol opt-seq]}]
+(defn plan-refinements [{:keys [tupler opt-sol opt-seq]}]
   (let [[[s rfs] r stat] (first opt-seq)]
 ;    (println (-> opt-seq last second))
     (assert (= stat :solved))
     (assert (seq rfs))
     (keep
-     #(make-plan opt-sol [[s (concat % (next rfs))] r :solved])
+     #(make-plan tupler opt-sol [[s (concat % (next rfs))] r :solved])
      (fs/child-seqs (first rfs) s))))
 
 (defn plan->solution-pair [plan]
   [(->> plan :opt-sol (map fs/fs-name) (remove #(= (first %) :noop)))
    (->  plan :opt-seq util/safe-singleton second)])
 
-(defn henv->root-plan [henv]
+(defn henv->root-plan [henv tupler]
   (let [[init-ss root-fs] (fs/make-init-pair henv)]
-    (make-plan [] [[init-ss [root-fs]] 0 :solved])))
+    (make-plan tupler [] [[init-ss [root-fs]] 0 :solved])))
 
 
 
@@ -69,18 +89,18 @@
 
 (defn optimistic-ah-a*
   "AHA* with no pessimistic descriptions, but repeated hstate elimination"
-  [henv]
+  [henv cache-tails?]
   (-?>
-   henv henv->root-plan plan->simple-node
+   henv (henv->root-plan (if cache-tails? (memo-tuple-seq) tuple-seq)) plan->simple-node
    (is/make-flat-incremental-dijkstra
     #(->> % :data plan-refinements (map plan->simple-node)))
    is/first-goal-node :data plan->solution-pair))
 
 (defn optimistic-ah-a-part*
-  "AHA* with no pessimistic descriptions, but repeated hstate elimination"
+  "For debugging."
   [ss fs]
   (-?>
-   (make-plan [] [[ss [fs]] 0 :solved]) plan->simple-node
+   (make-plan (memo-tuple-seq) [] [[ss [fs]] 0 :solved]) plan->simple-node
    (is/make-flat-incremental-dijkstra
     #(->> % :data plan-refinements (map plan->simple-node)))
    is/first-goal-node :data plan->solution-pair))
@@ -99,11 +119,10 @@
 
 (defn strict-ah-a*
   "AHA* with strict pruning and repeated hstate elimination"
-  [henv]
-  
+  [henv cache-tails?]  
   (let [h (HashMap.)]
     (-?>
-     henv henv->root-plan plan->simple-node
+     henv (henv->root-plan (if cache-tails? (memo-tuple-seq) tuple-seq)) plan->simple-node
      (is/make-flat-incremental-dijkstra
       (fn [{p :data}]
         (when-not (strictly-prunable? h p)
@@ -145,10 +164,10 @@
 (defn full-ah-a*
   "AHA* with string pruning, weak pruning on live plans, and no other
    repeated hstate elimination."
-  [henv]
+  [henv cache-tails?]
   (let [h (HashMap.)]
     (-?>
-     henv henv->root-plan plan->tree-node
+     henv (henv->root-plan (if cache-tails? (memo-tuple-seq) tuple-seq)) plan->tree-node
      (is/make-flat-incremental-dijkstra
       (fn [{p :data n :name}]
         (deregister-weak! h n p)
