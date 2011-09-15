@@ -142,43 +142,6 @@
 
 
 
-;; TODO: just try lumping all together for now?
-;; Called when child is just added as new child of parent.
-;; Status of child may increase status of parent.
-;; Propagate this upwards as status increases and cost does not decrease.
-;; Cost increases are not allowed.  This must only change statuses in the
-;; tree (and perhaps children?) -- rewards must not change.
-;; However, can use some other intuitions as well?
-;; I.e., when a node marked solved, its cost must be right (ie no cycles)
-;; Same is true for blocked.
-
-
-;; its new summary may be better, due to inconsistencies.
-(comment
- (defn status-increased! [parent child]
-   (when @(:summary-atom parent) ;; TODO: correct?
-     (let [cs (summary child)
-           ops (summary parent)]
-       ;; also false due to incons.
-       ;;      (util/assert-is (>= (summary/max-reward ops) (summary/max-reward cs)) (str parent child))
-       (when (> (summary/status-val (summary/status cs))
-                (summary/status-val (summary/status ops)))
-         (let [nps (summarize parent)]
-           #_ (println "SI" (:name parent) (:name child) cs ops nps
-                       (map summary (parent-nodes parent))
-                       (map summarize (parent-nodes parent))                 
-                       )
-
-                                        ;        (println parent ops nps) (Thread/sleep 100)
-           (when (>= (summary/max-reward nps) (summary/max-reward ops)) ;; accomodate pair case.
-             ;; may not be true due to inconsistencies.
-             ;;(util/assert-is (= (summary/max-reward nps) (summary/max-reward ops)) "%s" (def *bad* [parent child]))
-             (set-summary! parent nps) #_ (reset! (:summary-atom parent) nps)
-             (when (> (summary/status-val (summary/status nps))
-                      (summary/status-val (summary/status ops)))
-               (doseq [gp (doall (seq (parent-nodes parent)))] ;; TODO: comodification in pair -- safe?
-                 (status-increased! gp parent))))))))))
-
 
 ;; Just increase status, if you can do it without making parent worse.
 ;; Basic formula: take bounded summary.
