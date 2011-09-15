@@ -136,6 +136,17 @@
       (println (pad-right n 20)
                (update-in (run-timed f) [0 0] count)))))
 
+(defn dash-test []
+  (doseq [[an h]
+          [["nav" (ns/make-nav-switch-hierarchy (ns/make-random-nav-switch-env 20 5 0) false)]
+           ["dm1" (dm/make-discrete-manipulation-hierarchy (dm/make-random-hard-discrete-manipulation-env 2 1))]
+           ["dm2" (dm/make-discrete-manipulation-hierarchy (dm/make-random-discrete-manipulation-env 3 1))]
+           ["dm3" (dm/make-discrete-manipulation-hierarchy (dm/make-random-discrete-manipulation-env 4 6))]           ]
+          [n f]
+          [["dash-a*" #(da/implicit-dash-a* h :collect? :hierarchical)]
+           ["old dash-a*" #(oda/implicit-dash-a* h)]]]
+    (println an (pad-right n 20) (update-in (run-timed f) [0 0] count))))
+
 ;; note: sahtn with dijkstra, not as described.
 ;; note: right now dfbb set to shuffle.
 ;; TODO: inverted diff.

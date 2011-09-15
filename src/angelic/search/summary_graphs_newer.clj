@@ -166,6 +166,7 @@
                 (status-increased! gp parent)))))))))
 
 (defn- update-summary! [n]
+  (util/print-debug 4 "US" n @(:summary-atom n) (summarize n))
   (set-summary! n (summarize n))#_(reset! (:summary-atom n) (summarize n)))
 
 (defn- update-summary-inc?! [n]
