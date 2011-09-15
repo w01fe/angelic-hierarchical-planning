@@ -145,6 +145,7 @@
             ["dm3" (dm/make-discrete-manipulation-hierarchy (dm/make-random-discrete-manipulation-env 4 6))]           ])
           [n f]
           [["dash-a*" #(da/implicit-dash-a* h :collect? :hierarchical)]
+           ["dash-a*" #(da/implicit-dash-a* h :collect? :hierarchical :choice-fn first)]
            ["old dash-a*" #(oda/implicit-dash-a* h)]]]
     (println an (pad-right n 20) (update-in (run-timed f) [0 0] count))))
 
@@ -162,6 +163,9 @@
 
 ;; Note also, there are two types of solved.
 ;; Really solved, and blocked-solved.?
+
+;; Now, question is: if OC is never refined, then what is?
+;; Doesn't that mean we're wasting effort making this thing??
 
 
 (def +ns-sizes+ [5 10 20 50 100 200 500])

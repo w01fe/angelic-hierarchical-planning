@@ -52,6 +52,9 @@
 ;; For AO, put them in initial set, but only include things in LDFS that actually decreased.
 ;;  In principle need multiple iterations of KLD with bounding, but we can ignore it...
 
+;; We refine right iff the left set is a singleton-in-context, which guarantees it cannot
+;; have any refinemetns.
+
 ;; We retain the solved/blocked distinction in name, although both are now understood to
 ;; mean solved iff init and final are singletons, otherwise who knows or cares.
 
@@ -141,7 +144,7 @@
      (make-subproblem
       config
       [(gensym "oc") nm] inp-sets out-sets nil 
-      (fn ri-fn [oc ni]     
+      (fn ri-fn [oc ni] (println "RIOC")    
         (if (fs/eq-sets = ni inp-sets)
           oc
           (do (println (count (channel/publications (:constituent-channel oc))))
@@ -171,7 +174,9 @@
               [oc new?] (or (when-let [oc (.get com k)]
                               (when (and (empty? ^HashMap (:oc-ref-map oc)) ;; TODO: careful here
                                          (<= (summary/max-reward (sg/summary (sp-ts child-sp)))
-                                             (summary/max-reward (sg/summary (sp-ts oc)))))
+                                             (summary/max-reward (sg/summary (sp-ts oc))))
+                                         (<= (summary/max-reward (sg/summary child-sp))
+                                             (summary/max-reward (sg/summary oc))))
                                 [oc false]))
                             (let [oc (make-output-collector
                                       (:config sp) (:name sp) (:input-sets sp) (:output-sets child-sp))]
@@ -211,6 +216,7 @@
   (if (fs/eq-sets = (:input-sets s) ni)
     s
     (when-let [ret ((:refine-input-fn s) s ni)]
+;      (println "RI" s)
       (util/assert-is (= (:name s) (:name ret)))
       (when (canonical? s) (add-subsuming-sp! ret s))
       ret)))
@@ -290,7 +296,7 @@
             :data [config fs inp-sets out-sets rewards status]
             :expand!-fn
             (fn expand! [s]
-              (util/print-debug 1 "expand" s (and subsuming-sp @(:expanded?-atom subsuming-sp) true))
+              (util/print-debug 1 "expand" s (when subsuming-sp true) (and subsuming-sp @(:expanded?-atom subsuming-sp)))
               (reset! expanded? true)
               (reset! summary-fn (util/safe-get config :or-summarize))
               (if (and subsuming-sp @(:expanded?-atom subsuming-sp)) ;; TODO: don't require expanded?
@@ -348,10 +354,10 @@
             (connect-and-watch! ss right-sp
               #(publish-child! ret false
                  (make-pair-subproblem config left-sp %))))
-        (do (sg/connect! ss (sp-ts right-sp))
-            (connect-and-watch! ss left-sp
+        (do (connect-and-watch! ss left-sp
               #(publish-child! ret false
-                 (make-pair-subproblem config % (refine-input right-sp (:output-sets %)))))))
+                 (make-pair-subproblem config % (refine-input right-sp (:output-sets %)))))
+            (sg/connect! ss (sp-ts right-sp))))
     
       (reset! (:summary-atom ret) nil)
       (reset! (:summary-atom ss) nil)      
@@ -449,11 +455,11 @@
             (case (:search-strategy config) :ao true :al-global false)
             (fn [s]
               (expand! s)
-              (util/print-debug 1 "\nSTARTING INCREASES")
+              (util/print-debug 1.2 "\nSTARTING INCREASES")
               (doseq [[p c] @status-increases]
                 (sg/status-increased! p c))
               (reset! status-increases nil)
-              (util/print-debug 1 "\nSTARTING DECREASES")
+              (util/print-debug 1.2 "\nSTARTING DECREASES")
               (sg/summaries-decreased! [s])))
            extract-action))))
 

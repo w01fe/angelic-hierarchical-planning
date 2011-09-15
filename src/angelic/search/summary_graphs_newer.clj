@@ -130,7 +130,12 @@
                (throw (RuntimeException. "SUX"))))))))))
 
 (defn set-summary! [n s]
-#_  (check-cost! n s)
+  #_  (check-cost! n s)
+  (when (= "[:Atomic [:discretem-tla]]"
+           (str (or (:name n)
+                (:name (:ts-sp n)))))
+    (println "SET" n @(:summary-atom n) s)
+    )
   (reset! (:summary-atom n) s))
 
 
@@ -143,11 +148,16 @@
 ;; tree (and perhaps children?) -- rewards must not change.
 ;; However, can use some other intuitions as well?
 ;; I.e., when a node marked solved, its cost must be right (ie no cycles)
-;; Same is true for blocked. 
+;; Same is true for blocked.
+
+
+;; its new summary may be better, due to inconsistencies.
 (defn status-increased! [parent child]
   (when @(:summary-atom parent) ;; TODO: correct?
     (let [cs (summary child)
           ops (summary parent)]
+      ;; also false due to incons.
+      ;;      (util/assert-is (>= (summary/max-reward ops) (summary/max-reward cs)) (str parent child))
       (when (> (summary/status-val (summary/status cs))
                (summary/status-val (summary/status ops)))
         (let [nps (summarize parent)]
@@ -158,7 +168,8 @@
 
                                         ;        (println parent ops nps) (Thread/sleep 100)
           (when (>= (summary/max-reward nps) (summary/max-reward ops)) ;; accomodate pair case.
-            (util/assert-is (= (summary/max-reward nps) (summary/max-reward ops)) "%s" (def *bad* [parent child]))
+            ;; may not be true due to inconsistencies.
+            ;;(util/assert-is (= (summary/max-reward nps) (summary/max-reward ops)) "%s" (def *bad* [parent child]))
             (set-summary! parent nps) #_ (reset! (:summary-atom parent) nps)
             (when (> (summary/status-val (summary/status nps))
                      (summary/status-val (summary/status ops)))
@@ -218,11 +229,12 @@
 (defn update-and-find-cycles! [active-nodes]
   (let [active-set (IdentityHashMap.)
         chase      (fn chase [n]
-                     (when-not (.containsKey active-set n)
-                       (when (update-summary-dec?! n)
-                         (.put active-set n true)
-                         (doseq [p (parent-nodes n)]
-                           (chase p)))))]
+                     (when @(:summary-atom n)
+                      (when-not (.containsKey active-set n)
+                        (when (update-summary-dec?! n)
+                          (.put active-set n true)
+                          (doseq [p (parent-nodes n)]
+                            (chase p))))))]
     (doseq [n active-nodes]
       (chase n))
     (keys active-set)))
