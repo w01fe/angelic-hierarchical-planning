@@ -131,15 +131,7 @@
    (* (level-weight (depth env start end))
       ((:window-lb env) start end target-count))])
 
-(defn dash-successors [s vs dash w]
-  ((fn succs [s vs c]
-     (if-let [[fv & rvs] (seq vs)]
-       (concat
-        (succs (state/set-var s fv 0) rvs (+ c 1))
-        (succs (state/set-var s fv 1) rvs (+ c 2)))
-       [[s (* -1 w c)]]))
-   (state/set-var s [:current] (next-current (last vs)))
-   vs dash))
+
 
 (defn explicit-dash-opt [s env sp start end prev-count target-count level-weight]
   (assert (= (state/get-var s [:count]) prev-count))
@@ -198,23 +190,29 @@
     (DashHLA. env sp start end prev-count target-count level-weight)))
 
 
+(defn tla-ps [env from-sp]
+  (let [{:keys [nsp nv]} env]
+    (into #{[:count] [:bit]}
+          (for [sp (range from-sp nsp), i (range nv)]
+            [sp i]))))
 
-(defrecord DashTLA [env level-weight finish-state] 
+;; Right factoring is crucial for perf! 
+(defrecord DashTLA [env from-sp level-weight finish-state] 
   env/Action
   (action-name [_] [:dash-tla])
   (primitive?  [_] false)
 
   env/ContextualAction
-  (precondition-context [_ s] (set (state/list-vars s)))
+  (precondition-context [_ s] (tla-ps env from-sp))
 
   hierarchy/HighLevelAction
   (immediate-refinements- [this s]
     (let [{:keys [nsp nv target-count]} env]
-      [(concat
-        (apply concat (for [sp (range nsp)]
-                        [(make-dash env sp 0 nv 0 target-count level-weight)
-                         (make-next env sp)]))
-        [(env-util/make-finish-action env)])])) 
+      (if (= from-sp nsp)
+        [[(env-util/make-finish-action env)]]
+        [[(make-dash env from-sp 0 nv 0 target-count level-weight)
+          (make-next env from-sp)
+          (DashTLA. env (inc from-sp) level-weight finish-state)]]))) 
   (cycle-level- [_ s] nil)
 
   angelic/ExplicitAngelicAction
@@ -222,7 +220,7 @@
   (pessimistic-map- [_ s] nil)
 
   angelic/ImplicitAngelicAction
-  (precondition-context-set [_ ss] (set (state/list-vars ss)))  
+  (precondition-context-set [_ ss] (tla-ps env from-sp))  
   (can-refine-from-set? [a ss] true)
   (immediate-refinements-set- [a ss]
     (for [p (hierarchy/immediate-refinements- a (state-set/some-element ss))] [{} p]))
@@ -235,7 +233,7 @@
   [^DashEnv env level-weight]
   (hierarchy-util/make-simple-hierarchical-env
    env
-   [(DashTLA. env level-weight (env-util/make-finish-goal-state env))]))
+   [(DashTLA. env 0 level-weight (env-util/make-finish-goal-state env))]))
 
 
 

@@ -204,23 +204,40 @@
 (defn interpolating-heuristic [w depth]
   #(+ w (* (- 1.0 w) (/ % depth))))
 
+(defn top? [r]
+  (when-let [n (-> r :ts-sp :name)]
+    (when (= (first n) :Pair)
+      (let [n (nth n 2)]
+        (when (= (first n) :SA)
+          (let [n (angelic.search.function-sets/fs-name (second (second n)))]
+;            (println (= n [:dash-tla])) (Thread/sleep 100)
+            (= n [:dash-tla])))))))
+
+(defn flast-choice [s]
+  (if (top? (last s))
+    (last s)
+    (first s)))
+
+;; TODO: first-last ordering.
+;; Note: right factoring is crucial!
+;; hierarchical hurts here.
 (defn dd-test [sps depth target]
   (let [e (dd/make-dash-env sps depth target)
-        h8i (dd/make-dash-hierarchy e (interpolating-heuristic 0.8 depth))
+        h8i (dd/make-dash-hierarchy e (interpolating-heuristic 0.9 depth))
         o (* (:nsp e) (:nv e))]
     (println o)
     (doseq [[n f]
             [#_ ["dijkstra "#(textbook/uniform-cost-search e true)]
              ["dash-a*" #(da/implicit-dash-a* h8i)]
-             ["1.0-a*" #(textbook/a*-search e (partial dd/simple-dash-heuristic e 1) true)]
+             #_ ["1.0-a*" #(textbook/a*-search e (partial dd/simple-dash-heuristic e 1) true)]
              ["0.9-a*" #(textbook/a*-search e (partial dd/simple-dash-heuristic e 0.9) true)]
-             ["0.8-a*" #(textbook/a*-search e (partial dd/simple-dash-heuristic e 0.8) true)]
+             #_ ["0.8-a*" #(textbook/a*-search e (partial dd/simple-dash-heuristic e 0.8) true)]
              
-             ["1.0-opt-ah-a*"
+             #_ ["1.0-opt-ah-a*"
               #(aha/optimistic-ah-a* (dd/make-dash-hierarchy e (constantly 1))  true)]
-             ["0.9-opt-ah-a*"
+             #_ ["0.9-opt-ah-a*"
               #(aha/optimistic-ah-a* (dd/make-dash-hierarchy e (constantly 0.9)) true)]
-             ["0.8-opt-ah-a*"
+             #_ ["0.8-opt-ah-a*"
               #(aha/optimistic-ah-a* (dd/make-dash-hierarchy e (constantly 0.8))  true)]
              ["0.8i-opt-ah-a*" #(aha/optimistic-ah-a* h8i true)]
 

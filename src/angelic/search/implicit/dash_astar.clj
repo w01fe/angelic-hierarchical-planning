@@ -196,7 +196,7 @@
   (if (fs/eq-sets = (:input-sets s) ni)
     s
     (when-let [ret ((:refine-input-fn s) s ni)]
-;      (println "RI" s)
+;      (println "RI" s (:input-sets s) ni)
       (util/assert-is (= (:name s) (:name ret)))
       (when (canonical? s) (add-subsuming-sp! ret s))
       ret)))
