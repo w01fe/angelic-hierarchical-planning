@@ -1,6 +1,7 @@
 (ns angelic.search.implicit.dash-astar
   (:require [angelic.util :as util]
 	    [angelic.util.channel :as channel]
+            [angelic.env.state :as state]
             [angelic.search.summary :as summary]            
             [angelic.search.summary-graphs-newer :as sg]
             [angelic.search.function-sets :as fs])
@@ -50,19 +51,45 @@
 ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;  Subproblems  ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
 ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
 
+
+(defn extract-context [inp-sets context]
+  (if context
+   [(when (first inp-sets) (state/extract-context (first inp-sets) context))
+    (state/extract-context (second inp-sets) context)]
+   inp-sets))
+
+(defn get-logger [inp-sets context]
+  (if context
+    [(when (first inp-sets) (state/get-logger (first inp-sets) context))
+     (state/get-logger (second inp-sets) context)]
+    inp-sets))
+
+(defn transfer-effects [inp-sets out-sets context]
+  (if context
+    (map #(when %2 (state/transfer-effects %1 %2)) inp-sets out-sets)
+    out-sets))
+
+(defn equal-in-context? [ss1 ss2 context]
+  (fs/eq-sets (if context
+                (fn [s1 s2] (every? identity (map #(= (state/get-var s1 %) (state/get-var s2 %)) context)))
+                =)
+              ss1 ss2))
+
+
 (defn- make-subproblem
   "Make a subproblem with the given name and input-set.  If this is a wrapping
    subproblem (e.g., output collector or state abstractor), pass tree summarizer
    of wrapped SP; otherwise, pass nil and a tree summarizer will be created.
    eval!-fn, ri-fn, and summary-fn specify how to evaluate, refine input, and summarize."
-  [config nm inp-set out-set wrapped-ts ri-fn summary-fn]
+  [config nm context inp-set out-set ri-fn summary-fn]
   (with-meta (assoc (sg/make-simple-cached-node)
                :summary-atom (atom :NOT-READY)
                :config config
                :name nm
+               :context context
                :input-sets inp-set
                :output-sets out-set
-               :ts-atom (atom wrapped-ts)
+               :ts-atom (atom nil)
                :child-channel    (channel/make-channel)
                :constituent-channel (channel/make-channel)
                :subsuming-sp-set (IdentityHashMap.)
@@ -101,12 +128,6 @@
 (defmethod print-method  ::TreeSummarizer [s o]
   (print-method (format "#<TS %s>" (print-str (:ts-sp s))) o))
 
-;; Canonical SPs are Atomic and Pair; wrappers use TS of inner SP.
-(defn- canonicalize [sp] (:ts-sp (sp-ts sp)))
-(defn- canonical? [sp] (identical? sp (canonicalize sp)))
-
-
-
 
 
 (declare publish-child! refine-input)
@@ -119,16 +140,14 @@
 
 ;; TODO: This could potentially cause an infinite loop, which the thesis solution fixes.
 ;; but, the RIOC case never seems to happen, so we skip it for now.
-(defn make-output-collector [config nm inp-sets out-sets]
+(defn make-output-collector [config nm context inp-sets out-sets]
   (let [ref-map (HashMap.)]
     (assoc
      (make-subproblem
       config
-      [(gensym "oc") nm] inp-sets out-sets nil 
+      [(gensym "oc") nm] context inp-sets out-sets 
       (fn ri-fn [oc ni] (println "RIOC")    
-        (if (fs/eq-sets = ni inp-sets)
-          oc
-          (util/cache-with ref-map ni (refine-constituents! oc (make-output-collector config nm ni out-sets)))))
+        (util/cache-with ref-map ni (refine-constituents! oc (make-output-collector config nm context ni out-sets))))
       (util/safe-get config :or-summarize))
      :oc-ref-map ref-map
      :summary-atom (atom nil))))
@@ -142,10 +161,11 @@
 (defn publish-child! [sp constituent? child-sp]
   (when child-sp			
     (util/assert-is (not (identical? sp child-sp)))
+    (util/assert-is (= (:context sp) (:context child-sp))) ;; TODO: assert same irrel.
     (when constituent? (channel/publish! (:constituent-channel sp) child-sp))
     (util/print-debug 2 "AC" sp child-sp)
     (if (and (util/safe-get (:config sp) :collect?)
-             (fs/eq-sets fs/=-in-context (:output-sets sp) (:output-sets child-sp)))
+             (fs/eq-sets = (:output-sets sp) (:output-sets child-sp)))
       (publish-inner-child! sp child-sp)
       (if (= :hierarchical (util/safe-get (:config sp) :collect?))
         (let [^HashMap com (:oc-map (:config sp))
@@ -158,7 +178,7 @@
                                              (summary/max-reward (sg/summary oc))))
                                 [oc false]))
                             (let [oc (make-output-collector
-                                      (:config sp) (:name sp) (:input-sets sp) (:output-sets child-sp))]
+                                      (:config sp) (:name sp) (:context sp) (:input-sets sp) (:output-sets child-sp))]
                               (.put com k oc)
                               [oc true]))]
           (util/print-debug 3 "TO-OC" new? sp child-sp (summary/max-reward (sg/summary (sp-ts child-sp)))
@@ -172,8 +192,6 @@
 (defn subsuming-sps        [s] (keys (:subsuming-sp-set s)))
 
 (defn add-subsuming-sp! [s subsuming-sp]
-  (util/assert-is (canonical? s))
-  (util/assert-is (canonical? subsuming-sp))                     
   (util/assert-is (= (:name s) (:name subsuming-sp)))
   (let [^IdentityHashMap subsuming-sp-set (:subsuming-sp-set s)]
   (when-not (or (identical? s subsuming-sp)
@@ -183,22 +201,20 @@
     (when (util/safe-get (:config s) :propagate-subsumption?)
       (subscribe-children! s
         (fn [child]
-          (let [can-child (canonicalize child)]
-            (subscribe-children! subsuming-sp
-              (fn [subsuming-child]
-                (let [can-subsuming-child (canonicalize subsuming-child)]
-                  (when (= (:name can-child) (:name can-subsuming-child))
-                    (add-subsuming-sp! can-child can-subsuming-child))))))))))))
+          (subscribe-children! subsuming-sp
+            (fn [subsuming-child]
+              (when (= (:name child) (:name subsuming-child))
+                (add-subsuming-sp! child subsuming-child))))))))))
 
 
 ;; Note: we used to verify =-state-sets on entry to sa
 (defn refine-input    [s ni]
-  (if (fs/eq-sets fs/=-in-context (:input-sets s) ni)
+  (if (equal-in-context? (:input-sets s) ni (:context s))
     s
-    (when-let [ret ((:refine-input-fn s) s ni)]
-;      (println "RI" s (:input-sets s) ni (try (fs/=-in-context (second (:input-sets s)) (second ni)) (catch Exception e :e)))
+    (when-let [ret ((:refine-input-fn s) s (get-logger ni (:context s)))]
+                                        ;      (println "RI" s (:input-sets s) ni (try (fs/=-in-context (second (:input-sets s)) (second ni)) (catch Exception e :e)))
       (util/assert-is (= (:name s) (:name ret)))
-      (when (canonical? s) (add-subsuming-sp! ret s))
+      (add-subsuming-sp! ret s)
       ret)))
   
 
@@ -220,9 +236,6 @@
 
 (defn pair-name [l r] [:Pair l r])
 
-(defn sa-name [inner-name] [:SA inner-name])
-
-
 (defn- left-factor [is]
   (loop [s (next is) ret (first is)]
     (if s (recur (next s) (pair-name ret (first s))) ret)))
@@ -236,12 +249,9 @@
   [config fs inp-sets]
   (for [fs-seq (fs/child-seqs fs (second inp-sets))]
     ((if (util/safe-get config :left-recursive?) left-factor right-factor)
-     (map (if (util/safe-get config :abstract?)
-            (comp sa-name atomic-name)
-            atomic-name)
-          fs-seq))))
+     (map atomic-name fs-seq))))
 
-(defmulti get-subproblem (fn get-sp-dispatch [config nm inp-sets] (first nm)))
+(defmulti get-subproblem (fn get-sp-dispatch [config nm context inp-sets] (first nm)))
 
 
 ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;      Atomic       ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
@@ -255,25 +265,27 @@
      (util/cache-with dc# ~ks ~body)
      ~body))
 
+
+
 (defn- make-atomic-subproblem [config fs inp-sets subsuming-sp]
-  (let [nm (atomic-name fs)]
+  (let [nm (atomic-name fs)
+        context (when (util/safe-get config :abstract?)
+                  (fs/precondition-context-set fs (second inp-sets)))]
     (cache-under (util/safe-get config :decompose?)
-                 [nm (if (util/safe-get config :abstract?)
-                       (fs/map-sets fs/extract-context fs inp-sets)
-                       inp-sets)]
-     (let [[out-sets rewards status] (fs/apply-descs fs inp-sets)]
+                 [nm (extract-context inp-sets context)]
+     (let [inp-sets (get-logger inp-sets context)
+           [out-sets rewards status] (fs/apply-descs fs inp-sets)]
        (when out-sets
          (let [expanded?  (atom false)
                summary-fn (atom #((:make-summary config) rewards status %))]
            (assoc 
             (make-subproblem
-             config nm inp-sets out-sets nil     
+             config nm context inp-sets out-sets 
              (fn [s ri] (make-atomic-subproblem config fs ri (when (= status :live) s)))
              (fn summarize [s] (@summary-fn s)))
             :summary-atom (atom nil)
             :subsuming-sp subsuming-sp
             :expanded?-atom expanded?
-            :data [config fs inp-sets out-sets rewards status]
             :expand!-fn
             (fn expand! [s]
               (util/print-debug 1 "expand" s (when subsuming-sp true)
@@ -284,9 +296,9 @@
 ;                (do (refine-channel (:child-channel subsuming-sp) s))
                 (refine-constituents! subsuming-sp s)
                 (doseq [ref-name (refinement-names config fs inp-sets)] 
-                  (publish-child! s true (get-subproblem config ref-name inp-sets))))))))))))
+                  (publish-child! s true (get-subproblem config ref-name context inp-sets))))))))))))
 
-(defmethod get-subproblem :Atomic [config [_ fs] inp-sets]
+(defmethod get-subproblem :Atomic [config [_ fs] context inp-sets]
   (make-atomic-subproblem config fs inp-sets nil))          
 
 
@@ -308,15 +320,16 @@
 
 (declare make-half-pair-subproblem)
 
-(defn- make-pair-subproblem [config left-sp right-sp]
+(defn- make-pair-subproblem [config context inp-sets mid-sets left-sp right-sp]
   (when right-sp
     (let [nm (pair-name (:name left-sp) (:name right-sp))
 	  ss (assoc (sg/make-simple-cached-node)
                :summary-atom (atom :NOT-READY)
                :summarize-fn sg/sum-summary)
-	  ret (make-subproblem config nm (:input-sets left-sp) (:output-sets right-sp) nil 		 
-		(fn ri-fn [s ni]
-                  (make-half-pair-subproblem config (refine-input left-sp ni) #(refine-input right-sp %)))
+          out-sets (transfer-effects mid-sets (:output-sets right-sp) context)
+	  ret (make-subproblem config nm context inp-sets out-sets
+		(fn ri-fn [s ni] ;; TODO:
+                  (make-half-pair-subproblem config context ni (refine-input left-sp ni) #(refine-input right-sp %)))
                 (util/safe-get config :or-summarize))]    
 
       (sg/connect! ret ss)
@@ -326,56 +339,29 @@
       (if (fs/unrefinable-set? (second (:output-sets left-sp)))
         (do (sg/connect! ss (sp-ts left-sp))
             (connect-and-watch! ss right-sp
-              #(publish-child! ret false
-                 (make-pair-subproblem config left-sp %))))
+              (fn [rc] (publish-child! ret false
+                        (make-pair-subproblem config context inp-sets mid-sets left-sp rc)))))
         (do (connect-and-watch! ss left-sp
-              #(publish-child! ret false
-                 (make-pair-subproblem config % (refine-input right-sp (:output-sets %)))))
+              (fn [lc] (publish-child! ret false
+                        (make-half-pair-subproblem config context inp-sets lc
+                                                  #(refine-input right-sp %)))))
             (sg/connect! ss (sp-ts right-sp))))
     
       (reset! (:summary-atom ret) nil)
       (reset! (:summary-atom ss) nil)      
       ret)))
 
+(defn make-half-pair-subproblem [config context inp-sets left-sp right-fn]
+  (when left-sp
+    (let [mid-sets (transfer-effects inp-sets (:output-sets left-sp) context)]
+     (make-pair-subproblem config context inp-sets mid-sets left-sp (right-fn mid-sets)))))
 
-(defn make-half-pair-subproblem [config left-sp right-fn]
-  (when left-sp (make-pair-subproblem config left-sp (right-fn (:output-sets left-sp)))))
+(defmethod get-subproblem :Pair [config [_ left-name right-name :as n] context inp-sets]
+  (make-half-pair-subproblem 
+   config context (get-logger inp-sets context)
+   (get-subproblem config left-name context inp-sets)
+   #(get-subproblem config right-name context %)))
 
-(defmethod get-subproblem :Pair [config [_ left-name right-name :as n] inp-sets]
-  (make-half-pair-subproblem
-   config 
-   (get-subproblem config left-name inp-sets)
-   #(get-subproblem config right-name %)))
-
-
-;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;    SA Wrapper     ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
-
-;; Note: subsumed subproblems can have different irrelevant vars
-;; Also note: new input can have subset of variables of old. 
-(defn- make-state-abstracted-subproblem [config fs inner-sp inp-sets]
-  (when inner-sp
-    (let [ret (make-subproblem 
-               config (sa-name (:name inner-sp))
-               inp-sets (map #(when %2 (fs/transfer-effects %1 %2))
-                             inp-sets (:output-sets inner-sp))
-               (sp-ts inner-sp)
-               (fn ri-fn [sp ni]
-                 (identity ;if (fs/eq-sets fs/=-in-context ni inp-sets) sp ;; TODO??
-                     (let [log-ni (fs/map-sets fs/get-logger fs ni)
-                           ri     (refine-input inner-sp log-ni)]                      
-                       (make-state-abstracted-subproblem config fs ri ni))))
-               (util/safe-get config :or-summarize))]      
-      (connect-and-watch! ret inner-sp 
-        #(publish-child! ret false (make-state-abstracted-subproblem config fs % inp-sets)))
-      (reset! (:summary-atom ret) nil)
-      ret)))
-
-(defmethod get-subproblem :SA [config [_ inner-n :as n] inp-sets]
-  (let [fs (atomic-name-fs inner-n)]
-    (assert (second inp-sets))
-    (make-state-abstracted-subproblem config fs
-      (get-subproblem config inner-n (fs/map-sets fs/get-logger fs inp-sets))
-      inp-sets)))
 
 
 ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;

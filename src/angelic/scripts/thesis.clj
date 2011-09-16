@@ -139,7 +139,7 @@
      s)))
 
 (defn dm-test [& args]
-  (let [e (apply dm/make-random-hard-discrete-manipulation-env args)
+  (let [e (apply dm/make-random-discrete-manipulation-env args)
         h (dm/make-discrete-manipulation-hierarchy e)
         o (second (da/implicit-dash-a* h))]
     (doseq [[n f]
@@ -163,11 +163,11 @@
          #_    ["strict-ah-a*" #(aha/strict-ah-a* h false)]
          #_    ["full-ah-a*" #(aha/full-ah-a* h false)]
          #_    ["optimistic-ah-a*" #(aha/optimistic-ah-a* h true)]
-             ["strict-ah-a*" #(aha/strict-ah-a* h true)]
-             ["full-ah-a*" #(aha/full-ah-a* h true)]                                       
+            #_ ["strict-ah-a*" #(aha/strict-ah-a* h true)]
+             #_["full-ah-a*" #(aha/full-ah-a* h true)]                                       
 
-             ["explicit-ah-a*" #(hes/explicit-simple-ah-a* h)]
-             ["explicit-dash-a*" #(hes/explicit-simple-dash-a* h)]
+             #_["explicit-ah-a*" #(hes/explicit-simple-ah-a* h)]
+             #_["explicit-dash-a*" #(hes/explicit-simple-dash-a* h)]
 
              ["nps-dash-a*" #(da/implicit-dash-a* h :propagate-subsumption? false)]
              ["ldfs-dash-a*" #(da/implicit-dash-a* h :search-strategy :ldfs)]

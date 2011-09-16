@@ -58,7 +58,7 @@
       dead-outcome))
 
 (defn- make-fs [action prim? status-fn child-seq-fn]
-0  (let [n (env/action-name action)]
+  (let [n (env/action-name action)]
    (reify
     Object
     (hashCode [fs] (hash n))
@@ -83,14 +83,22 @@
 (defn make-primitive-fs [action]
   (make-fs action true (constantly :solved) (fn [i] (throw (UnsupportedOperationException.)))))
 
+;; Now requrie all pairs.
 (defn- simple-immediate-refinements-set [a input-set]
   (for [[constraint ref] (angelic/immediate-refinements-set a input-set)]
-    (if (or (empty? ref) (seq constraint))
-      (cons
-       (env-util/make-factored-primitive [:noop constraint]
-         (util/map-vals util/safe-singleton constraint) {} 0)     
-       ref)
-      ref)))
+    (cond (empty? ref)
+          [(env-util/make-factored-primitive [:noop constraint]
+            (util/map-vals util/safe-singleton constraint) {} 0)
+           (env-util/make-factored-primitive [:noop] {} {} 0)]
+          
+          (or (= 1 (count ref)) (seq constraint))
+          (cons
+           (env-util/make-factored-primitive [:noop constraint]
+            (util/map-vals util/safe-singleton constraint) {} 0)     
+           ref)
+
+          :else
+          ref)))
 
 (defn make-hla-fs [action]
   (make-fs action false
