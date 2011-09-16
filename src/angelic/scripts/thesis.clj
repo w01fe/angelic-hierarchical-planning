@@ -4,6 +4,7 @@
            [angelic [env :as env] [hierarchy :as hierarchy] [sas :as sas]]
            [angelic.search.textbook :as textbook]
            [angelic.domains.discrete-manipulation :as dm]
+           [angelic.domains.dash :as dd]           
            [angelic.domains.nav-switch :as ns]
            [angelic.search.explicit.hierarchical :as hes]
            [angelic.search.implicit
@@ -92,7 +93,7 @@
 
 (defn ns-test []
   (let [s (rand-int 100)
-        e (ns/make-random-nav-switch-env 50 3 s)
+        e (ns/make-random-nav-switch-env 20 3 s)
         h (ns/make-nav-switch-hierarchy e false #_ true);; TODO: split?
         o (second (textbook/uniform-cost-search e true))]
     (println "seed" s "\n")
@@ -113,9 +114,9 @@
              ["dij-dsh-ucs" #(hes/dsh-ucs-dijkstra h)]
              ["inv-dsh-ucs" #(hes/dsh-ucs-inverted h)]
 
-             ["optimistic-ah-a*" #(aha/optimistic-ah-a* h)]
-             ["strict-ah-a*" #(aha/strict-ah-a* h)]
-             ["full-ah-a*" #(aha/full-ah-a* h)]                          
+             ["optimistic-ah-a*" #(aha/optimistic-ah-a* h true)]
+             ["strict-ah-a*" #(aha/strict-ah-a* h true)]
+             ["full-ah-a*" #(aha/full-ah-a* h true)]                          
 
              ["explicit-ah-a*" #(hes/explicit-simple-ah-a* h)]
              ["explicit-dash-a*" #(hes/explicit-simple-dash-a* h)]
@@ -196,6 +197,37 @@
                                                   :reach 7
                                                   }))]
              
+             ]]
+      (println (pad-right n 20)
+               (update-in (run-timed f) [0 0] count)))))
+
+(defn interpolating-heuristic [w depth]
+  #(+ w (* (- 1.0 w) (/ % depth))))
+
+(defn dd-test [sps depth target]
+  (let [e (dd/make-dash-env sps depth target)
+        h8i (dd/make-dash-hierarchy e (interpolating-heuristic 0.8 depth))
+        o (* (:nsp e) (:nv e))]
+    (println o)
+    (doseq [[n f]
+            [#_ ["dijkstra "#(textbook/uniform-cost-search e true)]
+             ["dash-a*" #(da/implicit-dash-a* h8i)]
+             ["1.0-a*" #(textbook/a*-search e (partial dd/simple-dash-heuristic e 1) true)]
+             ["0.9-a*" #(textbook/a*-search e (partial dd/simple-dash-heuristic e 0.9) true)]
+             ["0.8-a*" #(textbook/a*-search e (partial dd/simple-dash-heuristic e 0.8) true)]
+             
+             ["1.0-opt-ah-a*"
+              #(aha/optimistic-ah-a* (dd/make-dash-hierarchy e (constantly 1))  true)]
+             ["0.9-opt-ah-a*"
+              #(aha/optimistic-ah-a* (dd/make-dash-hierarchy e (constantly 0.9)) true)]
+             ["0.8-opt-ah-a*"
+              #(aha/optimistic-ah-a* (dd/make-dash-hierarchy e (constantly 0.8))  true)]
+             ["0.8i-opt-ah-a*" #(aha/optimistic-ah-a* h8i true)]
+
+             ["inv-dsh-ucs" #(hes/dsh-ucs-inverted h8i)]
+             
+             ["dash-a*" #(da/implicit-dash-a* h8i)]
+             #_ ["explicit-ah-a*" #(hes/explicit-simple-ah-a* h1)]
              ]]
       (println (pad-right n 20)
                (update-in (run-timed f) [0 0] count)))))
