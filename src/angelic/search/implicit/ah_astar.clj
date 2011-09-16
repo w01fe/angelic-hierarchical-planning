@@ -18,14 +18,18 @@
 ;; tuples are [[reachable-set remaining-fs] reward status]
 (defrecord Plan [tupler opt-sol opt-seq pess-seq])
 
+(defmethod print-method angelic.search.implicit.ah-astar.Plan [o s]
+  (print-method (str "#<Plan " (first (:opt-seq o)) ">") s))
+
 (defn memo-tuple-seq []
   (let [h (HashMap.)]
-    (fn [[[s rfs] r :as init-tuple] next-f]
+    (fn ts* [[[s rfs] r :as init-tuple] next-f]
       (if-let [p (.get h [s rfs next-f])]
         (let [o (- r (second (first p)))]
-         (map
-          #(update-in % [1] + o)
-          p))
+          (cons init-tuple
+           (map
+           #(update-in % [1] + o)
+           (next p))))
         (let [ret 
               (when s
                 (cons
@@ -33,7 +37,7 @@
                  (lazy-seq
                   (when-let [[fs & rfs] (seq rfs)]
                     (let [[next-s step-r stat] (next-f fs s)]
-                      (tuple-seq [[next-s rfs] (+ step-r r) stat] next-f))))))]
+                      (ts* [[next-s rfs] (+ step-r r) stat] next-f))))))]
           (.put h [s rfs next-f] ret)
           ret)))))
 
@@ -53,12 +57,14 @@
 (defn make-plan [tupler opt-sol init-exact]
   (assert (= (nth init-exact 2) :solved))
   (let [[exact-seq opt-seq] (split-exact-prefix (tupler init-exact fs/apply-opt))]
-    (when (-> opt-seq last first second empty?)
+    (if (-> opt-seq last first second empty?)
       (Plan.
        tupler
        (concat opt-sol (for [[[_ [fs]]] exact-seq] fs))
        opt-seq
-       (tupler (first opt-seq) fs/apply-pess)))))
+       (tupler (first opt-seq) fs/apply-pess))
+      (util/print-debug 2 "dead-end at " opt-seq )
+      )))
 
 (defn plan-refinements [{:keys [tupler opt-sol opt-seq]}]
   (let [[[s rfs] r stat] (first opt-seq)]
