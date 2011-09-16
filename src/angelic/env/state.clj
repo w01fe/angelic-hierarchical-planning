@@ -9,7 +9,8 @@
   (current-context [s])
   (extract-context [s c])
   (apply-effects   [s e])
-  (get-logger      [s c-set]))
+  (get-logger      [s c-set])
+  (equal-in-context [s os]))
 
 
 (defprotocol LoggingState
@@ -72,7 +73,10 @@
    (current-context [state ]  context)
    (extract-context [state c] (fast-select-keys init c))
    (apply-effects   [state e] (set-vars state e))
-   (get-logger      [state c] (make-logging-factored-state (as-map init) c)))
+   (get-logger      [state c] (make-logging-factored-state (as-map init) c))
+   (equal-in-context [state other]
+     (util/assert-is (= context (current-context other)))
+     (every? identity (map #(= (get-var state %) (get-var other %)) context))))
 
 (defn make-logging-factored-state [init-state context] 
   (LoggingFactoredState. init-state context {} {} {}))
@@ -84,7 +88,8 @@
 
 (def *m1* {:set-var assoc :set-vars into :get-var util/safe-get :list-vars keys :as-map identity})
 (def *m2* {:current-context util/keyset :extract-context select-keys 
-                   :apply-effects into :get-logger make-logging-factored-state})
+           :apply-effects into :get-logger make-logging-factored-state
+           :equal-in-context =})
 
 (extend clojure.lang.PersistentHashMap FactoredState *m1*  ContextualState *m2*)
 (extend clojure.lang.PersistentArrayMap FactoredState *m1*  ContextualState *m2*)

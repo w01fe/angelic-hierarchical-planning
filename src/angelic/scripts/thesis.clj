@@ -159,10 +159,10 @@
              #_ ["dij-dsh-ucs" #(hes/dsh-ucs-dijkstra h)]
              #_ ["inv-dsh-ucs" #(hes/dsh-ucs-inverted h)]
 
-             ["optimistic-ah-a*" #(aha/optimistic-ah-a* h false)]
-             ["strict-ah-a*" #(aha/strict-ah-a* h false)]
-             ["full-ah-a*" #(aha/full-ah-a* h false)]
-             ["optimistic-ah-a*" #(aha/optimistic-ah-a* h true)]
+         #_    ["optimistic-ah-a*" #(aha/optimistic-ah-a* h false)]
+         #_    ["strict-ah-a*" #(aha/strict-ah-a* h false)]
+         #_    ["full-ah-a*" #(aha/full-ah-a* h false)]
+         #_    ["optimistic-ah-a*" #(aha/optimistic-ah-a* h true)]
              ["strict-ah-a*" #(aha/strict-ah-a* h true)]
              ["full-ah-a*" #(aha/full-ah-a* h true)]                                       
 
@@ -219,7 +219,7 @@
     (first s)))
 
 ;; TODO: first-last ordering.
-;; Note: right factoring is crucial!
+;; Note: right factoring is crucial! (hsould also sub-factor tla refs?)
 ;; hierarchical hurts here.
 (defn dd-test [sps depth target]
   (let [e (dd/make-dash-env sps depth target)

@@ -58,7 +58,7 @@
       dead-outcome))
 
 (defn- make-fs [action prim? status-fn child-seq-fn]
-  (let [n (env/action-name action)]
+0  (let [n (env/action-name action)]
    (reify
     Object
     (hashCode [fs] (hash n))
@@ -125,6 +125,10 @@
   (util/assert-is (clojure.set/subset? (state/current-context s1)
                                        (state/current-context s2)) "%s" [s1 s2])
   (= s1 s2))
+
+(defn =-in-context [s1 s2]
+  #_ (=-state-sets s1 s2)
+  (state/equal-in-context s1 s2))
 
 (defn map-sets [f fs [ps os]] [(when ps (f fs ps)) (f fs os)])
 

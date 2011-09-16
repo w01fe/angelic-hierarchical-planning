@@ -40,6 +40,8 @@
     (is (not-any? singleton [s2 s3 s4]))
     (is (not-any? singleton-in-context? [s2 s3 s4]))
     (is (singleton-in-context? (state/get-logger s2 #{:b})))
+    (is (not (state/equal-in-context s1 s2)))
+    (is (state/equal-in-context (state/get-logger s1 #{:b}) (state/get-logger s2 #{:b})))
 ;;    (is (thrown? AssertionError (constrain s1 {:c #{5}})))
     (is (empty? (constrain s3 {:a #{5}})))
     (is (= (set (map state/as-map (explicit-set (state/set-var s3 :c #{4 5}))))

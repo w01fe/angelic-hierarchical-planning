@@ -166,7 +166,10 @@
    (current-context [ss ]  context)
    (extract-context [ss c] (state/fast-select-keys init c))
    (apply-effects   [ss e] (state/set-vars ss e))
-   (get-logger      [ss c] (LoggingFactoredStateSet. (state/as-map init) c {} {} {})))
+   (get-logger      [ss c] (LoggingFactoredStateSet. (state/as-map init) c {} {} {}))
+   (equal-in-context [state other]
+     (util/assert-is (= context (state/current-context other)))
+     (every? identity (map #(= (state/get-var state %) (state/get-var other %)) context))))
 
 (defn extract-logging-state [^LoggingFactoredStateSet ss concrete-map]
   (angelic.env.state.LoggingFactoredState.

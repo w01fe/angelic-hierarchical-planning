@@ -145,7 +145,7 @@
     (when constituent? (channel/publish! (:constituent-channel sp) child-sp))
     (util/print-debug 2 "AC" sp child-sp)
     (if (and (util/safe-get (:config sp) :collect?)
-             (fs/eq-sets fs/=-state-sets (:output-sets sp) (:output-sets child-sp)))
+             (fs/eq-sets fs/=-in-context (:output-sets sp) (:output-sets child-sp)))
       (publish-inner-child! sp child-sp)
       (if (= :hierarchical (util/safe-get (:config sp) :collect?))
         (let [^HashMap com (:oc-map (:config sp))
@@ -193,10 +193,10 @@
 
 ;; Note: we used to verify =-state-sets on entry to sa
 (defn refine-input    [s ni]
-  (if (fs/eq-sets = (:input-sets s) ni)
+  (if (fs/eq-sets fs/=-in-context (:input-sets s) ni)
     s
     (when-let [ret ((:refine-input-fn s) s ni)]
-;      (println "RI" s (:input-sets s) ni)
+;      (println "RI" s (:input-sets s) ni (try (fs/=-in-context (second (:input-sets s)) (second ni)) (catch Exception e :e)))
       (util/assert-is (= (:name s) (:name ret)))
       (when (canonical? s) (add-subsuming-sp! ret s))
       ret)))
@@ -321,6 +321,8 @@
 
       (sg/connect! ret ss)
 
+      #_(println "RIGHT:" (fs/unrefinable-set? (second (:output-sets left-sp)))
+               left-sp right-sp (second (:output-sets left-sp)))
       (if (fs/unrefinable-set? (second (:output-sets left-sp)))
         (do (sg/connect! ss (sp-ts left-sp))
             (connect-and-watch! ss right-sp
@@ -358,7 +360,7 @@
                              inp-sets (:output-sets inner-sp))
                (sp-ts inner-sp)
                (fn ri-fn [sp ni]
-                 (if (fs/eq-sets fs/=-state-sets ni inp-sets) sp
+                 (identity ;if (fs/eq-sets fs/=-in-context ni inp-sets) sp ;; TODO??
                      (let [log-ni (fs/map-sets fs/get-logger fs ni)
                            ri     (refine-input inner-sp log-ni)]                      
                        (make-state-abstracted-subproblem config fs ri ni))))
