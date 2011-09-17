@@ -242,6 +242,9 @@
              512 nil ::ExpResult)))
       (count +dm-sizes+) +dm-reps+]]))
 
+#_ (do (use 'angelic.scripts.thesis 'angelic.util.experiments 'angelic.util.cluster)
+       (cluster-smart-runner (make-dm-exps) false (str *default-run-dir* "/thesis-dm/")))
+
 
 (comment
  ;; DASH-A* blows the stack on the cluster for no good reason, so I'm running
@@ -285,6 +288,68 @@
 
 
 
+
+
+;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
+;;;;;;;;;;;;;;;;;;;;;;;;;; DASH experiments ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
+;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
+
+
+(defn interpolating-heuristic [w depth]
+  #(+ w (* (- 1.0 w) (/ % depth))))
+
+(defn top? [r]
+  (when-let [n (-> r :ts-sp :name)]
+    (when (= (first n) :Pair)
+      (let [n (nth n 2)]
+        (when (= (first n) :SA)
+          (let [n (angelic.search.function-sets/fs-name (second (second n)))]
+;            (println (= n [:dash-tla])) (Thread/sleep 100)
+            (= n [:dash-tla])))))))
+
+(defn flast-choice [s]
+  (if (top? (last s))
+    (last s)
+    (first s)))
+
+
+(defn ddh [e] (dd/make-dash-hierarchy e (interpolating-heuristic 0.9 (:depth e))))
+
+(def dd-algs
+  [["dijkstra" `(textbook/uniform-cost-search ~'init true)]
+   ["inv-dsh-ucs" `(hes/dsh-ucs-inverted (ddh ~'init))]
+   ["optimistic-ah-astar" `(aha/optimistic-ah-a* (ddh ~'init) true)]
+   ["dash-astar" `(da/implicit-dash-a* (ddh ~'init))]])
+
+
+(def +dd-sizes+ 1 #_ 10)
+(def +dd-reps+ 1 #_ 3)
+
+(defn make-dd-exps [& [test]]
+  (for [[pn pf] [["num"  (fn [s] [(+ 1 s) 3 3])]
+                 ["size" (fn [s] [1 (+ 2 s) 3])] 
+                 ["both" (fn [s] [(+ 1 s) (+ 2 s) 3])]]
+        [n f] dd-algs]
+    [(str pn "_" n)
+     [(fn [sz rep]
+        (let [[sps bits target-count :as args] (pf sz)]
+            (experiments/make-experiment
+             (str pn "_" n "-" sz "-" rep)
+             {:problem pn :alg n :size-i sz :sps sps :bits bits :target-count target-count}
+             'angelic.scripts.thesis
+             `(dd/make-dash-env ~sps ~bits ~target-count)
+             f
+             nil 1
+             ;10 3600
+             512 nil ::ExpResult)))
+      +dd-sizes+ +dd-reps+]]))
+
+#_ (do (use 'angelic.scripts.thesis 'angelic.util.experiments 'angelic.util.cluster)
+       (cluster-smart-runner (make-dd-exps) false (str *default-run-dir* "/thesis-dd/")))
+
+
+;; Note: right factoring is crucial! (hsould also sub-factor tla refs?)
+;; hierarchical hurts here.
 
 
 
@@ -406,22 +471,7 @@
       (println (pad-right n 20)
                (update-in (run-timed f) [0 0] count)))))
 
-(defn interpolating-heuristic [w depth]
-  #(+ w (* (- 1.0 w) (/ % depth))))
 
-(defn top? [r]
-  (when-let [n (-> r :ts-sp :name)]
-    (when (= (first n) :Pair)
-      (let [n (nth n 2)]
-        (when (= (first n) :SA)
-          (let [n (angelic.search.function-sets/fs-name (second (second n)))]
-;            (println (= n [:dash-tla])) (Thread/sleep 100)
-            (= n [:dash-tla])))))))
-
-(defn flast-choice [s]
-  (if (top? (last s))
-    (last s)
-    (first s)))
 
 ;; TODO: first-last ordering.
 ;; Note: right factoring is crucial! (hsould also sub-factor tla refs?)
@@ -435,10 +485,10 @@
             [#_ ["dijkstra "#(textbook/uniform-cost-search e true)]
              ["dash-a*" #(da/implicit-dash-a* h8i)]
              ["dash-a*" #(da/implicit-dash-a* h8i :choice-fn flast-choice)]
-             ["dash-a*" #(da/implicit-dash-a* h8i :collect? :hierarchical)]
-             ["dash-a*" #(da/implicit-dash-a* h8i :choice-fn flast-choice :collect? :hierarchical)]                          
+             #_["dash-a*" #(da/implicit-dash-a* h8i :collect? :hierarchical)]
+             #_["dash-a*" #(da/implicit-dash-a* h8i :choice-fn flast-choice :collect? :hierarchical)]                          
              #_ ["1.0-a*" #(textbook/a*-search e (partial dd/simple-dash-heuristic e 1) true)]
-             ["0.9-a*" #(textbook/a*-search e (partial dd/simple-dash-heuristic e 0.9) true)]
+             #_ ["0.9-a*" #(textbook/a*-search e (partial dd/simple-dash-heuristic e 0.9) true)]
              #_ ["0.8-a*" #(textbook/a*-search e (partial dd/simple-dash-heuristic e 0.8) true)]
              
              #_ ["1.0-opt-ah-a*"
@@ -451,7 +501,7 @@
 
              ["inv-dsh-ucs" #(hes/dsh-ucs-inverted h8i)]
              
-             ["dash-a*" #(da/implicit-dash-a* h8i)]
+             #_ ["dash-a*" #(da/implicit-dash-a* h8i)]
              #_ ["explicit-ah-a*" #(hes/explicit-simple-ah-a* h1)]
              ]]
       (println (pad-right n 20)
