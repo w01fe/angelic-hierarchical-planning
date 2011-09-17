@@ -161,7 +161,7 @@
 (defn publish-child! [sp constituent? child-sp]
   (when child-sp			
     (util/assert-is (not (identical? sp child-sp)))
-    (util/assert-is (= (:context sp) (:context child-sp))) ;; TODO: assert same irrel.
+;    (util/assert-is (= (:context sp) (:context child-sp))) ;; TODO: assert same irrel.
     (when constituent? (channel/publish! (:constituent-channel sp) child-sp))
     (util/print-debug 2 "AC" sp child-sp)
     (if (and (util/safe-get (:config sp) :collect?)
@@ -212,7 +212,6 @@
   (if (equal-in-context? (:input-sets s) ni (:context s))
     s
     (when-let [ret ((:refine-input-fn s) s (get-logger ni (:context s)))]
-                                        ;      (println "RI" s (:input-sets s) ni (try (fs/=-in-context (second (:input-sets s)) (second ni)) (catch Exception e :e)))
       (util/assert-is (= (:name s) (:name ret)))
       (add-subsuming-sp! ret s)
       ret)))

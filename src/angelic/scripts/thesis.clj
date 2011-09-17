@@ -138,6 +138,16 @@
      #(util/safe-get level-map (-> % :name second angelic.search.function-sets/fs-name first))
      s)))
 
+(def shallowest-dm
+  (shallowest {:discretem-tla 0
+               :move-to-goal 1
+               :go-grasp 2 :go-drop 2
+               :go-drop-at 3
+               :grasp 4 :drop-at 4
+               :move-base 5
+               :nav 6
+               :reach 7}))
+
 (defn dm-test [& args]
   (let [e (apply dm/make-random-discrete-manipulation-env args)
         h (dm/make-discrete-manipulation-hierarchy e)
@@ -169,33 +179,25 @@
              #_["explicit-ah-a*" #(hes/explicit-simple-ah-a* h)]
              #_["explicit-dash-a*" #(hes/explicit-simple-dash-a* h)]
 
-             ["nps-dash-a*" #(da/implicit-dash-a* h :propagate-subsumption? false)]
-             ["ldfs-dash-a*" #(da/implicit-dash-a* h :search-strategy :ldfs)]
+#_             ["nps-dash-a*" #(da/implicit-dash-a* h :propagate-subsumption? false)]
+#_             ["ldfs-dash-a*" #(da/implicit-dash-a* h :search-strategy :ldfs)]
              ["dash-a*" #(da/implicit-dash-a* h)]
+#_             ["dah-a*" #(da/implicit-dash-a* h :abstract? false)]
+#_             ["ah-a*" #(da/implicit-dash-a* h :abstract? false :decompose? false)]                          
              ["first-dash-a*" #(da/implicit-dash-a* h :choice-fn first)]             
              ["shallowest-dash-a*" #(da/implicit-dash-a*
                           h :search-strategy :ao-global
-                          :choice-fn (shallowest {:discretem-tla 0
-                                                  :move-to-goal 1
-                                                  :go-grasp 2 :go-drop 2
-                                                  :go-drop-at 3
-                                                  :grasp 4 :drop-at 4
-                                                  :move-base 5
-                                                  :nav 6
-                                                  :reach 7
-                                                  }))]
+                          :choice-fn shallowest-dm)]
+             ["shallowest-dah-a*" #(da/implicit-dash-a*
+                          h :search-strategy :ao-global :abstract? false
+                          :choice-fn shallowest-dm)]
+             ["shallowest-ah-a*" #(da/implicit-dash-a*
+                          h :search-strategy :ao-global :abstract? false :decompose? false
+                          :choice-fn shallowest-dm)]             
              ["h-first-dash-a*" #(da/implicit-dash-a* h :collect? :hierarchical)]
              ["h-shallowest-dash-a*" #(da/implicit-dash-a*
                           h :search-strategy :ao-global :collect? :hierarchical
-                          :choice-fn (shallowest {:discretem-tla 0
-                                                  :move-to-goal 1
-                                                  :go-grasp 2 :go-drop 2
-                                                  :go-drop-at 3
-                                                  :grasp 4 :drop-at 4
-                                                  :move-base 5
-                                                  :nav 6
-                                                  :reach 7
-                                                  }))]
+                          :choice-fn shallowest-dm)]
              
              ]]
       (println (pad-right n 20)
@@ -229,6 +231,9 @@
     (doseq [[n f]
             [#_ ["dijkstra "#(textbook/uniform-cost-search e true)]
              ["dash-a*" #(da/implicit-dash-a* h8i)]
+             ["dash-a*" #(da/implicit-dash-a* h8i :choice-fn flast-choice)]
+             ["dash-a*" #(da/implicit-dash-a* h8i :collect? :hierarchical)]
+             ["dash-a*" #(da/implicit-dash-a* h8i :choice-fn flast-choice :collect? :hierarchical)]                          
              #_ ["1.0-a*" #(textbook/a*-search e (partial dd/simple-dash-heuristic e 1) true)]
              ["0.9-a*" #(textbook/a*-search e (partial dd/simple-dash-heuristic e 0.9) true)]
              #_ ["0.8-a*" #(textbook/a*-search e (partial dd/simple-dash-heuristic e 0.8) true)]
