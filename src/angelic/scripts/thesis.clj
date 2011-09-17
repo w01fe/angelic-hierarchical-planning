@@ -322,8 +322,8 @@
    ["dash-astar" `(da/implicit-dash-a* (ddh ~'init))]])
 
 
-(def +dd-sizes+ 1 #_ 10)
-(def +dd-reps+ 1 #_ 3)
+(def +dd-sizes+  10)
+(def +dd-reps+  3)
 
 (defn make-dd-exps [& [test]]
   (for [[pn pf] [["num"  (fn [s] [(+ 1 s) 3 3])]
@@ -339,8 +339,8 @@
              'angelic.scripts.thesis
              `(dd/make-dash-env ~sps ~bits ~target-count)
              f
-             nil 1
-             ;10 3600
+             ;nil 1
+             10 3600
              512 nil ::ExpResult)))
       +dd-sizes+ +dd-reps+]]))
 
