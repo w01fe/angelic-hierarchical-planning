@@ -109,7 +109,10 @@
     (if (not (viable? (current-summary incremental-search) neg-inf)) results
         (recur (util/cons-when (next-goal incremental-search neg-inf) results)))))
 
+(def *queue-counter* (atom 0))
 
+(defn reset-counters! []
+  (reset! *queue-counter* 0))
 
 ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
 ;;;;;;;;;;;;;;;;;;;;;;;; Generic Search Implementations ;;;;;;;;;;;;;;;;;;;;;;;;
@@ -120,6 +123,10 @@
 (defn pq-add-node  [pq node] #_(print node) (util/assert-is (not= :re-added (queues/g-pq-add! pq (node-name node) node)) "%s" [node]))
 (defn pq-add-nodes [pq nodes] (doseq [node nodes] (pq-add-node pq node)))
 (defn pq-summary   [pq] (if (queues/g-pq-empty? pq) worst-simple-summary (nth (queues/g-pq-peek-min pq) 1)))
+
+(defn pq-pop! [pq]
+  (swap! *queue-counter* inc)
+  (queues/pq-remove-min-with-cost! pq))
 
 ;;;;;;;;;;;;;;;;;;;;;;;;;;;; Flat Dijkstra over Nodes ;;;;;;;;;;;;;;;;;;;;;;;;;;
 
@@ -132,7 +139,7 @@
        (current-summary [_] (pq-summary queue))
        (next-goal       [this min-reward]
          (when (viable-search? this min-reward)
-           (let [best (nth (queues/pq-remove-min-with-cost! queue) 1)]       
+           (let [best (nth (pq-pop! queue) 1)]       
              (util/print-debug 2 "\n\nGot" best)
              (if (node-goal? best) 
                  best 
@@ -174,7 +181,7 @@
 ;                        (println "\n Ref-rec" root (max-reward (current-summary this)) min-reward [(queues/pq-size search-queue) (queues/pq-size node-queue)]) (Thread/sleep 100)
          (when (viable-search? this min-reward)
            (if (neg? (compare (pq-summary search-queue) (pq-summary node-queue)))
-             (let [[best-sgs summary] (queues/pq-remove-min-with-cost! search-queue)
+             (let [[best-sgs summary] (pq-pop! search-queue)
                    next-min-reward    (max min-reward (max-reward (current-summary this)))]
 ;               (println "AAA" next-min-reward "\n") (Thread/sleep 100)
                (queues/pq-replace! search-queue best-sgs summary) ; Add back for recursive call
@@ -185,7 +192,7 @@
                    (queues/pq-replace! search-queue best-sgs new-summary)
                    (queues/pq-remove! search-queue best-sgs)))
                (recur min-reward))
-             (let [best-node (nth (queues/pq-remove-min-with-cost! node-queue) 1)]
+             (let [best-node (nth (pq-pop! node-queue) 1)]
 ;               (println "EEE" (node-goal? best-node) (max-reward best-node) "\n") (Thread/sleep 100)               
                (if (node-goal? best-node)
                  best-node

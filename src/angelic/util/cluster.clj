@@ -41,8 +41,13 @@
       (:name (first es))
       (experiments/write-experiment-set es min max))))
 
+(defn cluster-smart-runner [job-map & [continue? run-dir]]
+  (experiments/smart-runner
+   job-map
+   (fn [name file] (run-files-cluster name [file]))
+   continue? run-dir))
+
+
 ;(defn run-in-subprocess [filename forms] 
 ;  (spit filename (util/str-join "\n" forms))
 ;  (util/sh *default-clj* filename))
-
-

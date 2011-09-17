@@ -6,14 +6,16 @@
            [angelic.domains.discrete-manipulation :as dm]
            [angelic.domains.dash :as dd]           
            [angelic.domains.nav-switch :as ns]
+           [angelic.search.summary-graphs-newer :as sgn]
+           [angelic.search.explicit.core :as hcore]           
            [angelic.search.explicit.hierarchical :as hes]
            [angelic.search.implicit
             [ah-astar :as aha]
             [sahtn :as sahtn]
-            [dash-astar-opt :as dao]
-            [dash-astar-opt-simple :as daos]
+;            [dash-astar-opt :as dao]
+;            [dash-astar-opt-simple :as daos]
             [dash-astar :as da]
-            [dash-astar-old :as oda]
+;            [dash-astar-old :as oda]
             ]
            [angelic.search.explicit.depth-first :as dfbb]
            ))
@@ -49,10 +51,11 @@
 
 (defstruct exp-result 
   :class :experiment :commit-id :timeout? :memout? :output :printed :init-ms :ms :mb
-  :next-count :opt-count :pess-count :ref-count :plan-count)
+  :next-count :opt-count :pess-count :ref-count :plan-count :eh-queue-count :dash-summary-count :dash-expand-count)
 
 (defmethod experiments/setup-experiment-result ::ExpResult [experiment]
   (env/reset-next-counter)
+  (hcore/reset-counters!)
   (hierarchy/reset-ref-counter))
 
 (defmethod experiments/make-experiment-result ::ExpResult 
@@ -63,26 +66,127 @@
           (util/sref-get hierarchy/*optimistic-counter*)
           (util/sref-get hierarchy/*pessimistic-counter*)
           (util/sref-get hierarchy/*ref-counter*)
-          (util/sref-get hierarchy/*plan-counter*)))
+          (util/sref-get hierarchy/*plan-counter*)
+          @hcore/*queue-counter*
+          @sgn/*summary-counter*
+          @da/*expand-counter*
+          ))
 
 (defmacro defresults [name es-maker]
   (let [sn (util/symbol-cat '* name '-results*)]
     `(do (defonce ~sn nil)
          (defn ~(util/symbol-cat 'read- name '-results) []
            (def ~sn
-                (experiments/experiment-set-results->dataset
-                 (experiments/read-experiment-set-results (~es-maker))))))))
+             (experiments/experiment-set-results->dataset
+              (experiments/read-experiment-set-results (~es-maker))))))))
 
 (def alg-forms
-     {:sahtn   (fn [m] `(sahtn/sahtn ~'init #{:nav :reach :discretem-tla '~'top '~'navh '~'navv}))
-      :aha*    (fn [m] `(aha/ah-a* ~'init true))
-      :dash-a* (fn [m] `(dao/implicit-dash-a*-opt ~'init :gather true :d true :s :eager :dir :right
-                                                  :choice-fn rand-nth))})
+  {:sahtn   (fn [m] `(sahtn/sahtn ~'init #{:nav :reach :discretem-tla '~'top '~'navh '~'navv}))
+   :aha*    (fn [m] `(aha/ah-a* ~'init true))
+   :dash-a* (fn [m] `(dao/implicit-dash-a*-opt ~'init :gather true :d true :s :eager :dir :right
+                                               :choice-fn rand-nth))})
 
 
 ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
 ;;;;;;;;;;;;;;;;;;;;;;;; Nav Switch experiments ;;;;;;;;;;;;;;;;;;;;;;;;;;
 ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
+
+
+
+(def +ns-sizes+ [5 10 20 50 100 200 500
+                 ])
+(def +ns-reps+ 3)
+
+(defn nsh [e] (ns/make-nav-switch-hierarchy e false))
+
+(def ns-algs
+  [["dijkstra" `(textbook/uniform-cost-search ~'init true)]
+   ["astar" `(textbook/a*-search ~'init ns/simple-ns-heuristic true)]
+
+;   ["dfbb" #(dfbb/dfbb h)]
+;   ["opt-dfbb" #(dfbb/dfbb h o)]
+;   ["graph-dfbb" #(dfbb/graph-dfbb h)]
+   ["go-dfbb" `(dfbb/graph-dfbb (nsh ~'init) (* -6 (dec (:width ~'init))))]
+
+   ["sahtn" `(sahtn/sahtn (nsh ~'init) #{:nav :reach :discretem-tla '~'top '~'nav '~'navh '~'navv})]
+
+   ["h-ucs" `(hes/h-ucs-fast (nsh ~'init))]
+   ["dsh-ucs" `(hes/dsh-ucs (nsh ~'init))]
+;   ["dij-dsh-ucs" `(hes/dsh-ucs-dijkstra (nsh ~'init))]
+   ["inv-dsh-ucs" `(hes/dsh-ucs-inverted (nsh ~'init))]
+
+   ["optimistic-ah-astar" `(aha/optimistic-ah-a* (nsh ~'init) true)]
+   ["strict-ah-astar" `(aha/strict-ah-a* (nsh ~'init) true)]
+   ["full-ah-astar" `(aha/full-ah-a* (nsh ~'init) true)]                          
+
+   ["explicit-ah-astar" `(hes/explicit-simple-ah-a* (nsh ~'init))]
+   ["explicit-dash-astar" `(hes/explicit-simple-dash-a* (nsh ~'init))]
+
+   ["dash-astar" `(da/implicit-dash-a* (nsh ~'init))]
+   ["dash-astar-first" `(da/implicit-dash-a* (nsh ~'init) :choice-fn first)]
+   ["dash-astar-ldfs" `(da/implicit-dash-a* (nsh ~'init) :search-strategy :ldfs)]
+   ["dash-astar-hoc" `(da/implicit-dash-a* (nsh ~'init) :collect? :hierarchical)]
+   ["dash-astar-nos" `(da/implicit-dash-a* (nsh ~'init) :abstract? false)]
+   ["dash-astar-nods" `(da/implicit-dash-a* (nsh ~'init) :abstract? false :decompose? false)]])
+
+
+
+(defn make-ns-exps [& [test]]
+  (for [[n f] ns-algs]
+    [n [(fn [sz rep]
+          (let [size (nth +ns-sizes+ sz)]
+            (experiments/make-experiment
+             (str n "-" sz "-" rep)
+             {:alg n :size-i sz :size size :rep rep}
+             'angelic.scripts.thesis
+             `(ns/make-random-nav-switch-env ~size 20 ~rep)
+             f
+             10 3600 512 nil ::ExpResult)))
+        (count +ns-sizes+) +ns-reps+]]))
+
+;; (cluster-smart-runner (make-ns-exps) false (str *default-run-dir* "/thesis-ns/"))
+
+
+
+(defn make-ns-exp-set []
+  (experiments/make-experiment-set "11thesis-ns"
+    [:product
+     [:size   +ns-sizes+]
+     [:alg    (keys alg-forms)]
+     [:rand   [0 1 2]]]
+    (fn [m]
+      `(ns/make-nav-switch-hierarchy
+        (ns/make-random-nav-switch-env ~(:size m) 20 ~(:rand m)) true))
+    (fn [m] ((util/safe-get alg-forms (:alg m)) m))
+    'angelic.scripts.thesis nil #_ 10 3600 512 false ::ExpResult))
+
+(defn make-ns-dd-exp-set []
+  (experiments/make-experiment-set "11thesis-ns-dd"
+    [:product
+     [:size   +ns-sizes+]
+     [:alg    [:dash-a*-dijkstra]]
+     [:rand   [0 1 2]]]
+    (fn [m]
+      `(ns/make-nav-switch-hierarchy
+        (ns/make-random-nav-switch-env ~(:size m) 20 ~(:rand m)) true))
+    (fn [m] `(dao/implicit-dash-a*-opt ~'init :gather true :d true :s :eager :dir :right
+                                       :choice-fn rand-nth :dijkstra #{'~'navv '~'navh}))
+    'angelic.scripts.thesis nil #_ 10 3600 512 false ::ExpResult))
+
+(comment
+  (defresults ns make-ns-exp-set)
+  (defresults ns-dd make-ns-dd-exp-set))
+
+
+
+
+
+
+
+
+
+
+
 
 ;; TODO! with split-nav, pruning fail.
 
@@ -147,6 +251,9 @@
                :move-base 5
                :nav 6
                :reach 7}))
+
+(defn worst-leaf [ss]
+  (apply min-key (comp :min-leaf angelic.search.summary-graphs-newer/summary) ss))
 
 (defn dm-test [& args]
   (let [e (apply dm/make-random-discrete-manipulation-env args)
@@ -282,36 +389,6 @@
 
 
 
-
-(def +ns-sizes+ [5 10 20 50 100 200 500])
-
-(defn make-ns-exp-set []
-  (experiments/make-experiment-set "11thesis-ns"
-    [:product
-     [:size   +ns-sizes+]
-     [:alg    (keys alg-forms)]
-     [:rand   [0 1 2]]]
-    (fn [m]
-      `(ns/make-nav-switch-hierarchy
-        (ns/make-random-nav-switch-env ~(:size m) 20 ~(:rand m)) true))
-    (fn [m] ((util/safe-get alg-forms (:alg m)) m))
-    'angelic.scripts.thesis nil #_ 10 3600 512 false ::ExpResult))
-
-(defn make-ns-dd-exp-set []
-  (experiments/make-experiment-set "11thesis-ns-dd"
-    [:product
-     [:size   +ns-sizes+]
-     [:alg    [:dash-a*-dijkstra]]
-     [:rand   [0 1 2]]]
-    (fn [m]
-      `(ns/make-nav-switch-hierarchy
-        (ns/make-random-nav-switch-env ~(:size m) 20 ~(:rand m)) true))
-    (fn [m] `(dao/implicit-dash-a*-opt ~'init :gather true :d true :s :eager :dir :right
-                                       :choice-fn rand-nth :dijkstra #{'~'navv '~'navh}))
-    'angelic.scripts.thesis nil #_ 10 3600 512 false ::ExpResult))
-
-(defresults ns make-ns-exp-set)
-(defresults ns-dd make-ns-dd-exp-set)
 
 
 ;; DASH-A* blows the stack on the cluster for no good reason, so I'm running

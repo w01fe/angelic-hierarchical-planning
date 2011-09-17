@@ -139,7 +139,7 @@
     (let [new-stat (min-key status-val stat (status other))
 	  r        (clojure.core/+ max-rew (max-reward other))]
       (when (= new-stat :solved) (assert (clojure.core/>= bound r)))      
-      (SimpleSummary. (min r bound) (min min-leaf (:min-leaf other)) new-stat new-src [s other]))))
+      (SimpleSummary. (min r bound) (min min-leaf (or (:min-leaf other) 0)) new-stat new-src [s other]))))
 
 (defn make-live-simple-summary [max-reward source] (SimpleSummary. max-reward max-reward :live source nil))
 (defn make-blocked-simple-summary [max-reward source] (SimpleSummary. max-reward max-reward :blocked source nil))

@@ -70,10 +70,14 @@
 
 ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;; SummaryCache ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
 
+(def *summary-counter* (atom 0))
+
+(defn reset-counters [] (reset! *summary-counter* 0))
+
 ;; Basic idea here is to keep contents of summaries accurate, but children
 ;; may be stale.  i.e., call (comp summary source) in traversal.
 
-(defn summarize [n] ((:summarize-fn n) n))
+(defn summarize [n] (swap! *summary-counter* inc) ((:summarize-fn n) n))
 
 (def *subsumption* true)
 ;; note: must be careful about killing with kld.

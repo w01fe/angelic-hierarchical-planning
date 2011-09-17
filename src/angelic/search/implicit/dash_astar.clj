@@ -47,10 +47,12 @@
 
 ;; We explicitly set summaries to keywords until nodes are ready, to catch bugs early.
 
+;; We now require that everything is at leaset a pair, because the context for
+;; state abstraction is held in the pair. 
+
 ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
 ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;  Subproblems  ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
 ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
-
 
 (defn extract-context [inp-sets context]
   (if context
@@ -367,6 +369,9 @@
 ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;; Planning ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
 ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
 
+(def *expand-counter* (atom 0))
+(defn reset-counters [] (reset! *expand-counter* 0))
+
 (declare *root*)
 
 (defn extract-action [sp]
@@ -400,6 +405,7 @@
         root      (sp-ts (make-atomic-subproblem config fs [(when (:weight opts) init) init] nil))
         expand!   #_(fn [s] ((:expand!-fn s) s))
                   (fn [s]
+                    (swap! *expand-counter* inc)
                     ((:expand!-fn s) s)
                    (util/print-debug 1.2 "\nSTARTING INCREASES")
                    (doseq [[p c] @status-increases]

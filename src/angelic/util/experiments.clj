@@ -1,5 +1,6 @@
 (ns angelic.util.experiments
-  (:require [angelic.util :as util] [angelic.old  [search :as search]  [envs :as envs] [angelic :as angelic]]))
+  (:require [angelic.util :as util] [angelic.old  [search :as search]  [envs :as envs] [angelic :as angelic]])
+  (:import [java.util HashMap]))
 
 
 (defmulti setup-experiment-result (fn [experiment] (util/safe-get experiment :result-type)))
@@ -87,9 +88,10 @@
 (defn write-experiment [experiment clj-file out-file]
   (spit clj-file
     (util/str-join "\n"
-      `[(~'use  'angelic.util.experiments 'angelic.util)
+      `[(~'ns ~(gensym "exp") (:use   ~'angelic.util.experiments ~'angelic.util))
 	(spit ~out-file (run-experiment '~experiment))
-	(System/exit 0)])))
+;	(System/exit 0) 
+        ])))
 
   ; Take: some implicit representation of params (ordered!) and a fn that returns 
    ; [init-form form] given 
@@ -222,6 +224,95 @@
 
 (comment 
   (run-experiment-set (make-experiment-set "test" '[:product [:x [1 2 3]] [:y [3 4 5]]] (fn [m] (:x m)) (fn [m] `(+ ~'init ~(:y m))) 'user nil 2 1 nil *simple-experiment-result*))  )
+
+
+(defn smart-file [id size rep]
+  (str id "-" size "-" rep))
+
+(defn try-read-file [s]
+  (when (util/file-exists? s)
+    (try (util/read-file s)
+         (catch Exception e (println "Error reading" s e)))))
+
+(defn smart-runner
+  "Take a map from id to [make-experiment size-count rep-count] tuples,
+   where make-experiment takes a size in (range size-count) and rep in ..., 
+   an experiment scheduling function that takes a name and clojure file to run,
+   a bool indicating if this is a continuation of an old run, and a run dir.
+   Stops running when more than half fail."
+  [job-map schedule! & [continue? run-dir]]
+  (let [run-dir (or run-dir (str *default-run-dir* "thesis/"))
+        in-dir  (str run-dir "in/")
+	out-dir (str run-dir "out/")
+        run-data (HashMap.)]
+    (when-not continue?
+      (util/mkdirs in-dir out-dir)
+      (doseq [[id [maker size-count rep-count]] job-map
+              size (range size-count)
+              rep  (range rep-count)]
+        (let [file (smart-file id size rep)]
+          (write-experiment (maker size rep) (str in-dir file ".clj") (str out-dir file ".txt"))))
+      (println "Done setting up experiment."))
+    (while (not (every?
+                 (fn [[id [_ size-count rep-count]]]
+                   (= (first (get run-data id)) size-count))
+                 job-map))
+      (doseq [[id [_ size-count rep-count]] job-map]
+        (let [[cur-size data] (get run-data id [0 nil])]
+          (when (< cur-size size-count)
+            (when (nil? data)
+              (if (util/file-exists? (str out-dir (smart-file id cur-size 0) ".txt"))
+                (println  id cur-size "CONTINUE (appears already started; waiting for results)")
+                (do (println id cur-size "STARTING")
+                    (dotimes [rep rep-count]
+                      (let [f (smart-file id cur-size rep)]
+                        (spit (str out-dir f ".txt") [])
+                        (schedule! f (str in-dir f ".clj")))))))
+           (let [results (for [rep (range rep-count)]
+                           [rep (try-read-file (str out-dir (smart-file id cur-size rep) ".txt"))])
+                 counts  (frequencies (for [[_ r] results] (when (seq r) (if (seq (:output r)) :success :fail))))]
+             (doseq [[rep r] results]
+               (when (and (not (seq (get data rep))) (seq r))
+                 (println id cur-size rep "RUN COMPLETED" (if (seq (:output r)) "SUCCESS" "FAIL")
+                          (if (:timeout? r) "timeout" "") (if (:memout? r) "memout" "")
+                          " (overall:" counts ")"
+                          (second (:output r)))))
+             (cond (> (get counts :success 0) (/ rep-count 2))
+                   (do (println id (inc cur-size) (if (= (inc cur-size) size-count) "FINISHED" "NEXT ROUND") "******************")
+                       (.put run-data id [(inc cur-size) nil]))
+
+                   (> (get counts :fail 0) (/ rep-count 2))
+                   (do (println id cur-size "FAILED ********************")
+                       (.put run-data id [size-count nil]))
+
+                   :else (.put run-data id [cur-size (into {} results)]))))))
+      (print ".")
+      (Thread/sleep 1000))))
+
+(defn local-test-runner [exps]
+  (let [d (str "/tmp/run" (rand-int 1000) "/")]
+    (println d)
+    (smart-runner exps #(load-file %2) false d)))
+
+(defn test-smart-runner []
+  (smart-runner
+   {"test"
+    [(fn [sz rep]
+       (make-experiment "test" {} 'angelic.util.experiments
+                        `(* ~sz 1000)
+                        `(do (Thread/sleep (int ~'init)) ["YAY"])
+                        nil 2 nil nil ::SimpleExperimentResult))
+     5 3]
+    "fee"
+    [(fn [sz rep]
+       (make-experiment "test" {} 'angelic.util.experiments
+                        `(+ (* ~sz 200) (* ~rep 1000))
+                        `(do (Thread/sleep (int ~'init)) ["YAY"])
+                        nil 2 nil nil ::SimpleExperimentResult))
+     5 3]}
+   #(do (println "----------scheduling" %1) (load-file %2))
+   false
+   "/tmp/foo/"))
 
 ; Args is seq of [param-map init-form form] tuples
 	   
