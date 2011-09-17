@@ -19,16 +19,16 @@
 (defn run-files-cluster 
   ([files]      (run-files-cluster "jawolfe" files))
   ([name files]
-     (println name)
+     (println "---- submitting" name)
      (doseq [f files]
-       (println 
-	(apply util/sh 
-               (util/prln (concat ["qsub"
-		  "-N" name 
-		  "-o" (str (util/file-stem f) ".out")
-		  "-e" (str (util/file-stem f) ".err")]
-		*default-qsub-options*
-		[:in (str "java -server -Xmx1024m -cp " (System/getProperty "java.class.path") " clojure.main " f) :dir (util/dirname f)])))))))
+       (println
+        (apply util/sh 
+               (concat ["qsub"
+                        "-N" name 
+                        "-o" (str (util/file-stem f) ".out")
+                        "-e" (str (util/file-stem f) ".err")]
+                       *default-qsub-options*
+                       [:in (str "java -server -Xmx1024m -cp " (System/getProperty "java.class.path") " clojure.main " f) :dir (util/dirname f)]))))))
 
 (defn run-experiment-set-subprocesses [es]
   (run-files-subprocesses 
