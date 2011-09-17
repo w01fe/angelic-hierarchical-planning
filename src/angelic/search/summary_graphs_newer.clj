@@ -238,20 +238,6 @@
           (add! n)))
       (keys active-set))))
 
-(comment
-  (defn update-and-find-cycles! [active-nodes]
-  (let [active-set (IdentityHashMap.)
-        chase      (fn chase [n]
-                     (when @(:summary-atom n)
-                       (when-not (.containsKey active-set n)
-                         (when (update-summary-dec?! n)
-                           (.put active-set n true)
-                           (doseq [p (parent-nodes n)]
-                             (chase p))))))]
-    (doseq [n active-nodes]
-      (chase n))
-    (keys active-set))))
-
 
 ;; Summaries of nodes may have decreased.  Propagate these changes upwards
 ;; using a version of KLD, which can properly handle cycles without infinite

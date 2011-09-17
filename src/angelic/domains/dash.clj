@@ -190,6 +190,55 @@
     (DashHLA. env sp start end prev-count target-count level-weight)))
 
 
+
+(comment ;; doesn't actualy hlep?
+ (defrecord DashSPHLA [env sp level-weight] 
+   env/Action
+   (action-name [_] [:dashsp sp])
+   (primitive?  [_] false)
+
+   env/ContextualAction
+   (precondition-context [_ s] (dash-pc sp 0 (:nv env)))
+
+   hierarchy/HighLevelAction
+   (immediate-refinements- [this s]
+     (let [{:keys [nv target-count]} env]
+       [[(make-dash env sp 0 nv 0 target-count level-weight)
+         (make-next env sp)]])) 
+   (cycle-level- [_ s] nil)
+
+   angelic/ExplicitAngelicAction
+   (optimistic-map-  [_ s]
+     (let [{:keys [window-lb nv target-count set-rews]} env]
+       (into {}
+             (for [is (util/combinations (range 0 nv) target-count)]
+               [(state/set-vars
+                 s
+                 (concat [[[:bit] [(inc sp) 0]] [[:count] 0]]
+                         (for [i is]
+                           [[sp i] 1])))
+                (* (level-weight 0)
+                   (reduce + (window-lb 0 nv 0)
+                           (map set-rews is)))]))))
+   (pessimistic-map- [_ s] nil)
+
+   angelic/ImplicitAngelicAction
+   (precondition-context-set [_ ss] (dash-pc sp 0 (:nv env)))  
+   (can-refine-from-set? [a ss] true)
+   (immediate-refinements-set- [a ss]
+     (for [p (hierarchy/immediate-refinements- a :dummy)] [{} p]))
+   (optimistic-set-and-reward- [a ss]
+     (let [{:keys [window-lb nv target-count]} env]
+       [(state/set-vars
+         ss
+         (concat [[[:bit] #{[(inc sp) 0]}] [[:count] #{0}]]
+                 (for [i (range 0 nv)] 
+                   [[sp i] #{0 1}])))
+        (* (level-weight 0) (window-lb 0 nv target-count))]))
+   (pessimistic-set-and-reward- [a ss] nil)))
+
+
+
 (defn tla-ps [env from-sp]
   (let [{:keys [nsp nv]} env]
     (into #{[:count] [:bit]}
@@ -208,11 +257,12 @@
   hierarchy/HighLevelAction
   (immediate-refinements- [this s]
     (let [{:keys [nsp nv target-count]} env]
-      (if (= from-sp nsp)
-        [[(env-util/make-finish-action env)]]
-        [[(make-dash env from-sp 0 nv 0 target-count level-weight)
-          (make-next env from-sp)
-          (DashTLA. env (inc from-sp) level-weight finish-state)]]))) 
+     (if (= from-sp (:nsp env))
+       [[(env-util/make-finish-action env)]]
+       [[(make-dash env from-sp 0 nv 0 target-count level-weight)
+         (make-next env from-sp)
+         #_(DashSPHLA. env from-sp level-weight)
+         (DashTLA. env (inc from-sp) level-weight finish-state)]]))) 
   (cycle-level- [_ s] nil)
 
   angelic/ExplicitAngelicAction
