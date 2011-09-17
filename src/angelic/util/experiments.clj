@@ -229,7 +229,7 @@
 (defn smart-file [id size rep]
   (str id "-" size "-" rep))
 
-(defn try-read-file [s]
+(defn try-read-file [s] 
   (when (util/file-exists? s)
     (try (util/read-file s)
          (catch Exception e (println "Error reading" s e)))))
@@ -277,7 +277,7 @@
                           (if (:timeout? r) "timeout" "") (if (:memout? r) "memout" "")
                           " (overall:" counts ")"
                           (second (:output r)))))
-             (cond (> (get counts :success 0) (/ rep-count 2))
+             (cond (>= (get counts :success 0) (/ rep-count 2))
                    (do (println id (inc cur-size) (if (= (inc cur-size) size-count) "FINISHED" "NEXT ROUND") "******************")
                        (.put run-data id [(inc cur-size) nil]))
 
@@ -288,6 +288,18 @@
                    :else (.put run-data id [cur-size (into {} results)]))))))
       (print ".")
       (Thread/sleep 1000))))
+
+(defn read-smart-results 
+  [es run-dir]
+  (into {}
+        (for [[id [_ size-count rep-count]] es]
+          [id
+           (filter seq
+                   (for [s (range size-count)]
+                     (for [r (range rep-count)
+                           :let [res (try-read-file (str run-dir "out/" (smart-file id s r) ".txt"))]
+                           :when (seq res)]
+                       res)))])))
 
 (defn local-test-runner [exps]
   (let [d (str "/tmp/run" (rand-int 1000) "/")]

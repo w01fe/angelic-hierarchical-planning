@@ -144,40 +144,143 @@
              10 3600 512 nil ::ExpResult)))
         (count +ns-sizes+) +ns-reps+]]))
 
-;; (cluster-smart-runner (make-ns-exps) false (str *default-run-dir* "/thesis-ns/"))
+; (defn read-ns-results)
+;;
+#_ (do (use 'angelic.scripts.thesis 'angelic.util.experiments 'angelic.util.cluster)
+       (cluster-smart-runner (make-ns-exps) false (str *default-run-dir* "/thesis-ns/")))
 
+; (def ns-res (experiments/read-smart-results (make-ns-exps) (str experiments/*default-run-dir* "thesis-ns/")))
 
+;(cluster-smart-runner (take 1 (make-ns-exps)) false (str *default-run-dir* "/thesis-ns/"))
 
-(defn make-ns-exp-set []
-  (experiments/make-experiment-set "11thesis-ns"
-    [:product
-     [:size   +ns-sizes+]
-     [:alg    (keys alg-forms)]
-     [:rand   [0 1 2]]]
-    (fn [m]
-      `(ns/make-nav-switch-hierarchy
-        (ns/make-random-nav-switch-env ~(:size m) 20 ~(:rand m)) true))
-    (fn [m] ((util/safe-get alg-forms (:alg m)) m))
-    'angelic.scripts.thesis nil #_ 10 3600 512 false ::ExpResult))
-
-(defn make-ns-dd-exp-set []
-  (experiments/make-experiment-set "11thesis-ns-dd"
-    [:product
-     [:size   +ns-sizes+]
-     [:alg    [:dash-a*-dijkstra]]
-     [:rand   [0 1 2]]]
-    (fn [m]
-      `(ns/make-nav-switch-hierarchy
-        (ns/make-random-nav-switch-env ~(:size m) 20 ~(:rand m)) true))
-    (fn [m] `(dao/implicit-dash-a*-opt ~'init :gather true :d true :s :eager :dir :right
-                                       :choice-fn rand-nth :dijkstra #{'~'navv '~'navh}))
-    'angelic.scripts.thesis nil #_ 10 3600 512 false ::ExpResult))
 
 (comment
   (defresults ns make-ns-exp-set)
   (defresults ns-dd make-ns-dd-exp-set))
 
 
+;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
+;;;;;;;;;;;;;;;;;; Discrete Manipulation experiments ;;;;;;;;;;;;;;;;;;;;;
+;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
+
+(def +dm-sizes+ [1 2 3 4 5 6 7 8 9 10
+                 ])
+(def +dm-reps+ 3)
+
+
+(defn shallowest [level-map]
+  (fn [s]
+    (apply
+     min-key
+     #(util/safe-get level-map (-> % :name second angelic.search.function-sets/fs-name first))
+     s)))
+
+(def shallowest-dm
+  (shallowest {:discretem-tla 0
+               :move-to-goal 1
+               :go-grasp 2 :go-drop 2
+               :go-drop-at 3
+               :grasp 4 :drop-at 4
+               :move-base 5
+               :nav 6
+               :reach 7}))
+
+(defn dmh [e] (dm/make-discrete-manipulation-hierarchy e))
+
+(def dm-algs
+  [["dijkstra" `(textbook/uniform-cost-search ~'init true)]
+   #_ ["astar" `(textbook/a*-search ~'init ??? true)]
+
+   ["sahtn" `(sahtn/sahtn (dmh ~'init) #{:nav :reach :discretem-tla '~'top '~'nav '~'navh '~'navv})]
+
+   ["h-ucs" `(hes/h-ucs-fast (dmh ~'init))]
+   ["dsh-ucs" `(hes/dsh-ucs (dmh ~'init))]
+   ["inv-dsh-ucs" `(hes/dsh-ucs-inverted (dmh ~'init))]
+
+   ["optimistic-ah-astar" `(aha/optimistic-ah-a* (dmh ~'init) true)]
+   ["strict-ah-astar" `(aha/strict-ah-a* (dmh ~'init) true)]
+   ["full-ah-astar" `(aha/full-ah-a* (dmh ~'init) true)]                          
+
+   ["explicit-ah-astar" `(hes/explicit-simple-ah-a* (dmh ~'init))]
+   ["explicit-dash-astar" `(hes/explicit-simple-dash-a* (dmh ~'init))]
+
+   ["dash-astar" `(da/implicit-dash-a* (dmh ~'init))]
+   ["dash-astar-first" `(da/implicit-dash-a* (dmh ~'init) :choice-fn first)]
+   ["dash-astar-ldfs" `(da/implicit-dash-a* (dmh ~'init) :search-strategy :ldfs)]
+   ["dash-astar-hoc" `(da/implicit-dash-a* (dmh ~'init) :collect? :hierarchical)]
+   ["dash-astar-nos" `(da/implicit-dash-a* (dmh ~'init) :abstract? false)]
+   ["dash-astar-nods" `(da/implicit-dash-a* (dmh ~'init) :abstract? false :decompose? false)]
+
+   ["dash-astar-sh-hoc" `(da/implicit-dash-a* (dmh ~'init)
+                            :search-strategy :ao-global :choice-fn shallowest-dm
+                            :collect? :hierarchical)]
+   ["dash-astar-sh" `(da/implicit-dash-a* (dmh ~'init) 
+                           :search-strategy :ao-global :choice-fn shallowest-dm)]
+   ["dash-astar-sh-nos" `(da/implicit-dash-a* (dmh ~'init)
+                           :search-strategy :ao-global :choice-fn shallowest-dm
+                           :abstract? false)]
+   ["dash-astar-sh-nods" `(da/implicit-dash-a* (dmh ~'init)
+                           :search-strategy :ao-global :choice-fn shallowest-dm
+                           :abstract? false :decompose? false)]])
+
+
+(defn make-dm-exps [& [test]]
+  (for [[pn pf] [["easy" `dm/make-random-discrete-manipulation-env]
+                 ["hard" `dm/make-random-hard-discrete-manipulation-env]]
+        [n f] dm-algs]
+    [(str pn "_" n)
+     [(fn [sz rep]
+          (let [size (nth +dm-sizes+ sz)]
+            (experiments/make-experiment
+             (str pn "_" n "-" sz "-" rep)
+             {:problem pn :alg n :size-i sz :size size :rep rep}
+             'angelic.scripts.thesis
+             `(~pf ~size ~rep)
+             f
+             ;nil 1
+             10 3600
+             512 nil ::ExpResult)))
+      (count +dm-sizes+) +dm-reps+]]))
+
+
+(comment
+ ;; DASH-A* blows the stack on the cluster for no good reason, so I'm running
+ ;; those experiments locally.
+
+ (let [es (make-ns-exp-set)]
+   (doseq [[i e] (indexed es)]
+     (when (= (:alg (:parameters e)) :dash-a*)
+       (run-experiment-set! es i (inc i))))))
+
+
+
+
+(comment
+  (defresults dm make-dm-exp-set)
+  (defresults dm-lama make-dm-lama-exp-set)
+
+
+  (defn read-all-results [] (read-dm-results) (read-dm-lama-results)))
+
+
+
+
+;;;;;;;;;;;;;;;;;;;;;;;;;;;;  Discrete charts ;;;;;;;;;;;;;;;;;;;;;;;;;;;;
+
+;; note: sahtn with dijkstra, not as described.
+;; note: right now dfbb set to shuffle.
+;; note: explicit algs effectively use different, more accurate heuristics.
+
+
+
+
+
+;(use '[angelic.util experiments cluster] 'angelic.scripts.thesis)
+;(run-experiment-set-cluster (make-dm-exp-set))
+
+;; (time (run-experiment-set! (make-dm-lama-exp-set) 6 9))
+
+;; (plot (ds->chart (experiment-set-results->dataset res) [:alg] :objects :ms {:key "top left" } {} first))
 
 
 
@@ -185,6 +288,15 @@
 
 
 
+
+
+
+
+
+
+;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
+;;;;;;;;;;;;;;;;;;;;;;;;;;;; Testing Code ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
+;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
 
 
 
@@ -235,22 +347,6 @@
       (println (pad-right n 20)
                (update-in (run-timed a) [0 0] count)))))
 
-(defn shallowest [level-map]
-  (fn [s]
-    (apply
-     min-key
-     #(util/safe-get level-map (-> % :name second angelic.search.function-sets/fs-name first))
-     s)))
-
-(def shallowest-dm
-  (shallowest {:discretem-tla 0
-               :move-to-goal 1
-               :go-grasp 2 :go-drop 2
-               :go-drop-at 3
-               :grasp 4 :drop-at 4
-               :move-base 5
-               :nav 6
-               :reach 7}))
 
 (defn worst-leaf [ss]
   (apply min-key (comp :min-leaf angelic.search.summary-graphs-newer/summary) ss))
@@ -381,72 +477,4 @@
            #_ ["old dash-a*" #(oda/implicit-dash-a* h)]]]
     (println an (pad-right n 20) (update-in (run-timed f) [0 0] count))))
 
-;; note: sahtn with dijkstra, not as described.
-;; note: right now dfbb set to shuffle.
-;; note: explicit algs effectively use different, more accurate heuristics.
-
-;; TODO: queue counts.
-
-
-
-
-
-;; DASH-A* blows the stack on the cluster for no good reason, so I'm running
-;; those experiments locally.
-
-#_ (let [es (make-ns-exp-set)]
-     (doseq [[i e] (indexed es)]
-      (when (= (:alg (:parameters e)) :dash-a*)
-        (run-experiment-set! es i (inc i)))))
-
-
-;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
-;;;;;;;;;;;;;;;;;; Discrete manipulation experiments ;;;;;;;;;;;;;;;;;;;;;
-;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
-
-
-(defn make-dm-exp-set []
-  (experiments/make-experiment-set "11thesis-dm"
-    [:product
-     [:objects [1 2 3 4 5 6]]
-     [:alg     (keys alg-forms)]
-     [:rand    [0 1 2 3 4]]]
-    (fn [m]
-      `(dm/make-discrete-manipulation-hierarchy
-        (dm/make-random-hard-discrete-manipulation-env ~(:objects m) ~(:rand m))))
-    (fn [m] ((util/safe-get alg-forms (:alg m)) m))
-    'angelic.scripts.thesis 10 3600 1024 false ::ExpResult))
-
-(defn make-dm-lama-exp-set []
-  (experiments/make-experiment-set "11thesis-dm-lama"
-    [:product
-     [:objects [1 2 3 4 5 6]]
-     [:rand    [1 2 3]]
-     [:alg     [:lama]]]
-    (fn [m]
-      `(dm/make-random-hard-discrete-manipulation-env ~(:objects m) ~(:rand m)))
-    (fn [m] `(dm/solve-dmh-lama ~'init))
-    'angelic.scripts.thesis nil 3600 512 false ::ExpResult))
-
-
-(defresults dm make-dm-exp-set)
-(defresults dm-lama make-dm-lama-exp-set)
-
-
-(defn read-all-results [] (read-dm-results) (read-dm-lama-results))
-
-
-;;;;;;;;;;;;;;;;;;;;;;;;;;;;  Discrete charts ;;;;;;;;;;;;;;;;;;;;;;;;;;;;
-
-
-
-
-
-
-;(use '[angelic.util experiments cluster] 'angelic.scripts.thesis)
-;(run-experiment-set-cluster (make-dm-exp-set))
-
-;; (time (run-experiment-set! (make-dm-lama-exp-set) 6 9))
-
-;; (plot (ds->chart (experiment-set-results->dataset res) [:alg] :objects :ms {:key "top left" } {} first))
 
