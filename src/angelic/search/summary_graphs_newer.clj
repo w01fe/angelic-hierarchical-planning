@@ -220,7 +220,26 @@
 ;; Find and locally update all nodes that need updating
 ;; Return a conservative estimate of nodes that may be in cycles
 ;; TODO: add cycle checking.
+;; Note we always include a node if its child in active set.
 (defn update-and-find-cycles! [active-nodes]
+  (let [active-set (IdentityHashMap.)]
+    (letfn [(add! [n]
+              (.put active-set n true)
+              (doseq [p (parent-nodes n)]
+                (chase! p n)))
+            (chase! [p c]
+              (when @(:summary-atom p)
+                (when-not (.containsKey active-set p)
+                  (when (or (update-summary-dec?! p)
+                            (some #(identical? (summary/source %) c) (summary/children (summary p))))
+                    (add! p)))))]
+      (doseq [n active-nodes]
+        (when (update-summary-dec?! n)
+          (add! n)))
+      (keys active-set))))
+
+(comment
+  (defn update-and-find-cycles! [active-nodes]
   (let [active-set (IdentityHashMap.)
         chase      (fn chase [n]
                      (when @(:summary-atom n)
@@ -231,7 +250,7 @@
                              (chase p))))))]
     (doseq [n active-nodes]
       (chase n))
-    (keys active-set)))
+    (keys active-set))))
 
 
 ;; Summaries of nodes may have decreased.  Propagate these changes upwards
