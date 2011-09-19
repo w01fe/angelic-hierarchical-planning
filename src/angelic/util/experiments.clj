@@ -299,7 +299,7 @@
                      (for [r (range rep-count)
                            :let [res (try-read-file (str run-dir "out/" (smart-file id s r) ".txt"))]
                            :when (seq res)]
-                       res)))])))
+                       (experiment-result->map res))))])))
 
 (defn local-test-runner [exps]
   (let [d (str "/tmp/run" (rand-int 1000) "/")]

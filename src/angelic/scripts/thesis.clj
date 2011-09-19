@@ -92,10 +92,14 @@
 ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
 
 
+(comment
+ (def +ns-sizes+ [5 10 20 50 100 200 500
+                  ])
+ (def +ns-reps+ 3))
 
-(def +ns-sizes+ [5 10 20 50 100 200 500
-                 ])
-(def +ns-reps+ 3)
+
+(def +ns-sizes+ [5 10 15 20 30 40 50 75 100 150 200 250 300 350 400 450 500])
+(def +ns-reps+ 5)
 
 (defn nsh [e] (ns/make-nav-switch-hierarchy e false))
 
@@ -144,20 +148,8 @@
              10 3600 512 nil ::ExpResult)))
         (count +ns-sizes+) +ns-reps+]]))
 
-; (defn read-ns-results)
-;;
 #_ (do (use 'angelic.scripts.thesis 'angelic.util.experiments 'angelic.util.cluster)
        (cluster-smart-runner (make-ns-exps) false (str *default-run-dir* "/thesis-ns/")))
-
-; (def ns-res (experiments/read-smart-results (make-ns-exps) (str experiments/*default-run-dir* "thesis-ns/")))
-
-;(cluster-smart-runner (take 1 (make-ns-exps)) false (str *default-run-dir* "/thesis-ns/"))
-
-
-(comment
-  (defresults ns make-ns-exp-set)
-  (defresults ns-dd make-ns-dd-exp-set))
-
 
 ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
 ;;;;;;;;;;;;;;;;;; Discrete Manipulation experiments ;;;;;;;;;;;;;;;;;;;;;
@@ -256,18 +248,6 @@
        (run-experiment-set! es i (inc i))))))
 
 
-
-
-(comment
-  (defresults dm make-dm-exp-set)
-  (defresults dm-lama make-dm-lama-exp-set)
-
-
-  (defn read-all-results [] (read-dm-results) (read-dm-lama-results)))
-
-
-
-
 ;;;;;;;;;;;;;;;;;;;;;;;;;;;;  Discrete charts ;;;;;;;;;;;;;;;;;;;;;;;;;;;;
 
 ;; note: sahtn with dijkstra, not as described.
@@ -355,8 +335,138 @@
 
 
 
+;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
+;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;; Charts ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
+;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
 
 
+(defn smart-results->dataset [smart-results combiner]
+  (for [[_ results] smart-results
+        size-results results
+        :let [comb (combiner size-results)]
+        :when (seq comb)]    
+    (into {}
+          (concat (apply clojure.set/intersection (map set size-results))
+                  comb))))
+
+(defn derive-median [target-field source-field & [mapper]]
+  (fn [s]
+    (when-let [r (median-of 3 (map (if mapper (comp mapper source-field) source-field)
+                                   (filter :ms s)))]
+      {target-field r})))
+
+(def alg-styles
+  {:h-ucs 1}
+  )
+
+;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;  Nav charts ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
+
+(def ns-results (delay (experiments/read-smart-results (make-ns-exps) (str experiments/*default-run-dir* "thesis-ns/"))))
+
+
+(defn make-ns-charts 
+   ([] (make-ns-charts "/Users/w01fe/Projects/phdthesis/graphs/"))
+   ([dir]
+      (let [field :secs ylabel "runtime (s)"]
+        (-> (smart-results->dataset @ns-results (derive-median :secs :ms #(/ % 1000)))
+           (datasets/ds->chart
+            [:alg] :size field
+            {:term "dashed size 4.0,3.0"
+;             :ylog  "t"  :xlog "t"
+             :ylog  nil :xlog nil             
+             :xrange "[5:500]"   :yrange "[0:50]"
+             :title "nav-switch problems" :key "bottom right" #_"at 2.6, 445"
+             :xlabel "grid size (side length)" :ylabel ylabel}            
+            (constantly {:lw 3}) #_ (let [c (util/counter-from 0)] (fn [& args] (let [v ([1 2 3 6] (c))]  {:lw 3 :pt v :lt v})))
+            (comp keyword first)            
+            identity #_(fn [l] (sort-by #(if (=  "UCS" (:title %)) "Q" (:title  %)) l)))
+           (charts/plot #_ (str dir "ns-" n ".pdf"))))))
+
+
+; (def ns-res (experiments/read-smart-results (make-ns-exps) (str experiments/*default-run-dir* "thesis-ns/")))
+
+;(cluster-smart-runner (take 1 (make-ns-exps)) false (str *default-run-dir* "/thesis-ns/"))
+
+
+(comment
+  (defresults ns make-ns-exp-set)
+  (defresults ns-dd make-ns-dd-exp-set))
+
+
+;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;  DM charts ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
+
+(def dm-results
+  (delay (experiments/read-smart-results
+          (make-dm-exps)
+          (str experiments/*default-run-dir* "thesis-dm/"))))
+
+
+(defn first-segment [^String s] (first (.split s "_")))
+(defn rest-segments [^String s] (second (.split s "_")))
+
+(defn group-fs [m]
+  (util/map-vals
+   (partial util/map-keys rest-segments)
+   (group-by (comp first-segment first) m)))
+
+(defn add-sol-length [ds t]
+  (map
+   #(assoc % :sol-length
+           (let [si (:size-i %)]
+             (case t
+                   "both" (* (inc si) (inc (util/expt 2 (+ 2 si))))
+                   "num"  (* 9 (inc si))
+                   "size" (inc (util/expt 2 (+ 2 si))))))
+   ds))
+
+
+(defn make-dm-charts 
+   ([] (make-dm-charts "/Users/w01fe/Projects/phdthesis/graphs/"))
+   ([dir]
+      (doseq [[t data] (group-fs @dm-results)]
+        (let [field :opt-count #_ :secs ylabel "runtime (s)"]
+          (-> (smart-results->dataset data (derive-median field field) #_ (derive-median :secs :ms #(/ % 1000)))
+              (datasets/ds->chart
+               [:alg] :size field
+               {:term "dashed size 4.0,3.0"
+                :ylog  "t"  ;:xlog "t"
+                ;:xrange "[5:500]"
+;                :yrange "[0.01:100]"
+                :title (str "dm problems" t) :key "bottom right" #_"at 2.6, 445"
+                :xlabel "size" :ylabel ylabel}            
+               (constantly {:lw 3}) #_ (let [c (util/counter-from 0)] (fn [& args] (let [v ([1 2 3 6] (c))]  {:lw 3 :pt v :lt v})))
+               (comp keyword first)            
+               identity #_(fn [l] (sort-by #(if (=  "UCS" (:title %)) "Q" (:title  %)) l)))
+              (charts/plot #_ (str dir "dm-" t ".pdf")))))))
+
+
+;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;; DD charts ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
+
+(def dd-results
+  (delay (experiments/read-smart-results
+          (make-dd-exps)
+          (str experiments/*default-run-dir* "thesis-dd/"))))
+
+
+(defn make-dd-charts 
+   ([] (make-dd-charts "/Users/w01fe/Projects/phdthesis/graphs/"))
+   ([dir]
+      (doseq [[t data] (group-fs @dd-results)]
+        (let [field :secs ylabel "runtime (s)"]
+          (-> (smart-results->dataset data  (derive-median :secs :ms #(/ % 1000)))
+              (add-sol-length t)
+              (datasets/ds->chart
+               [:alg] :sol-length field
+               {:term "dashed size 4.0,3.0"
+                :ylog  "t"  :xlog "t"
+                ;:xrange "[5:500]"
+                :yrange "[0.01:100]"
+                :title (str "dd problems" t) :key "bottom right" #_"at 2.6, 445"
+                :xlabel "size" :ylabel ylabel}            
+               (constantly {:lw 3}) #_ (let [c (util/counter-from 0)] (fn [& args] (let [v ([1 2 3 6] (c))]  {:lw 3 :pt v :lt v})))
+               (comp keyword first)            
+               identity #_(fn [l] (sort-by #(if (=  "UCS" (:title %)) "Q" (:title  %)) l)))
+              (charts/plot #_ (str dir "dd-" t ".pdf")))))))
 
 
 ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;

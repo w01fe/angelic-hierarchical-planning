@@ -56,7 +56,7 @@
 
 
 (defn dump-chart 
-  ([chart] (dump-chart chart (fresh-random-filename *default-gnuplot-dir* ".pdf")))
+  ([chart] (dump-chart chart (fresh-random-filename *default-gnuplot-dir* ".eps")))
   ([chart pdf-file] (dump-chart chart pdf-file (fresh-random-filename *default-gnuplot-dir* ".tmpgp")))
   ([chart pdf-file filename]
      (let [chart                  (merge-with fn-or *default-chart-options* chart)
@@ -79,7 +79,7 @@
 	      (str "set " field " " (double-quote ((keyword field) chart)) "\n")))
 	  (if (:xlog chart) "set logscale x\n" "unset logscale x\n")
 	  (if (:ylog chart) "set logscale y\n" "unset logscale y\n")
-	  "set term pdf enhanced " (:term chart) "\n"
+	  "set term postscript eps enhanced clip color " (:term chart) "\n"
 ;	  "set term size 100, 100\n"
 	  "set output " (single-quote pdf-file) "\n"
 	  (apply str (for [c (:extra-commands chart)] (str c "\n")))
@@ -105,11 +105,17 @@
   ([chart] (plot chart (fresh-random-filename *default-gnuplot-dir* ".pdf")))
   ([chart pdf-file] (plot chart pdf-file true))
   ([chart pdf-file show?]
-     (prln (sh "gnuplot" (prln (dump-chart chart pdf-file))))
-     (when show?
-       (show-pdf-page pdf-file))
-     (crop pdf-file)
-     pdf-file))
+     (let [stem (fresh-random-filename *default-gnuplot-dir* )
+           eps-file (str stem ".eps")]
+       (prln (sh "gnuplot" (prln (dump-chart chart eps-file))))
+       (println eps-file pdf-file)
+       (println (sh "epstopdf" #_ (str "--outfile=\"" pdf-file "\"") eps-file))
+       (sh "cp" (str stem ".pdf") pdf-file)
+       (when show? (show-pdf-page pdf-file))
+       pdf-file)))
+
+#_ 
+    #_ (crop pdf-file)
 ;       (sh "fixbb" ps-file)
 ;       (sh "open" "-a" "texshop" ps-file))))
 
