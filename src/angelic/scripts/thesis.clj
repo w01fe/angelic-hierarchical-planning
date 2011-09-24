@@ -481,8 +481,8 @@
                    :size (inc (util/expt 2 (+ 2 si))))))
    ds))
 
-
-(defn make-dd-charts 
+(comment
+ (defn make-dd-charts 
    ([] (make-dd-charts "/Users/w01fe/Projects/phdthesis/graphs/"))
    ([dir]
       (doseq [[t data] (group-fs @dd-results)]
@@ -493,14 +493,14 @@
                [:alg] :sol-length field
                {:term "dashed size 4.0,3.0"
                 :ylog  "t"  :xlog "t"
-                ;:xrange "[5:500]"
+                                        ;:xrange "[5:500]"
                 :yrange "[0.01:100]"
                 :title (str "dd problems" t) :key "bottom right" #_"at 2.6, 445"
                 :xlabel "size" :ylabel ylabel}            
                (constantly {:lw 3}) #_ (let [c (util/counter-from 0)] (fn [& args] (let [v ([1 2 3 6] (c))]  {:lw 3 :pt v :lt v})))
                (comp keyword first)            
                identity #_(fn [l] (sort-by #(if (=  "UCS" (:title %)) "Q" (:title  %)) l)))
-              (charts/plot #_ (str dir "dd-" t ".pdf")))))))
+              (charts/plot #_ (str dir "dd-" t ".pdf"))))))))
 
 ;; Note: right factoring is crucial! (hsould also sub-factor tla refs?)
 ;; hierarchical hurts here.
