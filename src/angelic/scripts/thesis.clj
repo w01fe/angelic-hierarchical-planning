@@ -348,6 +348,10 @@
                                    (filter :ms s)))]
       {target-field r})))
 
+(def chart-opts
+  {:term "dashed size 5.0,3.0"
+   :key "out right center Left box lw 0.5 reverse width -2" #_"bottom right" #_"at 2.6, 445"})
+
 (let [fl 1 bb 2 sa 3 na 4 ah 5 ex 6 da 7]
  (def alg-styles
    {:dijkstra            [fl 1  "UCS"]
@@ -375,11 +379,37 @@
     :dash-astar-nos      [da 17 "DAcH-A*"]
     :dash-astar-nods     [da 18 "DAxH-A*"]}))
 
+(defn alg-title [a] (-> alg-styles a (nth 2)))
+(defn alg-style [a]
+  (let [[t c] (alg-styles a)]
+    {:lw 3 :lt t :pt t :lc c}))
+
+(def chart-dir "/Users/w01fe/Projects/phdthesis/graphs/")
+
+(defn make-chart [ds algs field & [more-chart-opts derive pdf-file]]
+  (util/assert-is (empty? (remove ds algs)))
+  (let [sks (map alg-title algs)]
+    (-> (smart-results->dataset
+         (select-keys ds algs)
+         (or derive
+             (if (= field :secs)
+               (derive-median :secs :ms #(/ % 1000))
+               (derive-median field field))))
+        (datasets/ds->chart
+         [:alg] :size field
+         (merge chart-opts more-chart-opts)
+         (comp alg-style keyword first)
+         (comp alg-title keyword first)
+         (fn [arg] (sort-by #(util/position (:title %) sks) arg)))
+        (#(if pdf-file (charts/plot % (str chart-dir pdf-file)) (charts/plot %))))))
+
+
 ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;  Nav charts ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
 
 (def ns-results
   (->> (str experiments/*default-run-dir* "thesis-ns2/")
        (experiments/read-smart-results (make-ns-exps) )
+       (util/map-keys keyword)
        delay))
 
 ;; Skip: explicit-ah-astar explicit-dash-astar
@@ -391,33 +421,25 @@
 (def ns-fast-algs [:dash-astar-nods :astar :dash-astar-first :dash-astar  :dash-astar-hoc :dash-astar-nos 
                    :full-ah-astar :dash-astar-ldfs])
 
-(defn make-ns-charts 
-   ([] (make-ns-charts "/Users/w01fe/Projects/phdthesis/graphs/"))
-   ([dir]
-      (let [field #_ :next-count :secs
-            ylabel "runtime (s)"
-            kds (util/map-keys keyword @ns-results)]
-        (doseq [[t ks opts]
-                [["slow" ns-slow-algs   {:xrange "[5:500]" :yrange "[0:50]"}]
-                 ["fast" ns-fast-algs   {:xrange "[5:500]" :yrange "[0:50]"}]]
-                :let [sks (map #(nth (alg-styles %) 2) ks)]]
-          (util/assert-is (empty? (remove kds ks)))
-          (-> (smart-results->dataset (select-keys kds ks)
-                                      (if (= field :secs)
-                                        (derive-median :secs :ms #(/ % 1000))
-                                        (derive-median field field)))
-              (datasets/ds->chart
-               [:alg] :size field
-               (merge opts
-                      {:term "dashed size 5.0,3.0"
-                                        ;                :xrange "[5:500]"   :yrange "[0:50]"
-                       :title (str t " nav-switch problems")
-                       :key "out right center Left box lw 0.5 reverse width -2" #_"bottom right" #_"at 2.6, 445"
-                       :xlabel "grid size (side length)" :ylabel ylabel})
-               (fn [[alg]] (zipmap [:lw :pt :lc] (cons 3 (alg-styles (keyword alg)))))
-               (fn [[alg]] (nth (alg-styles (keyword alg)) 2))
-               (fn [arg] (sort-by #(util/position (:title %) sks) arg)))
-              (charts/plot #_ (str dir "ns-" t ".pdf")))))))
+
+
+(defn make-ns-charts []
+  (doseq [[t ks opts]
+          [["slower" ns-slow-algs {:xrange "[5:500]" :yrange "[0:50]"}]
+           ["faster" ns-fast-algs {:xrange "[5:500]" :yrange "[0:12]"}]]]
+    (make-chart
+     @ns-results ks :secs
+     (assoc opts
+       :title (str "random nav-switch problems - " t " algorithms")
+       :xlabel "grid size (side length)" :ylabel "runtime (s)"))))
+
+(defn make-ns-charts []
+  (let [opts (fn [t yr]
+               {:title (str "random nav-switch problems - " t " algorithms")
+                :xlabel "grid size (side length)" :ylabel "runtime (s)"
+                :xrange "[5:500]" :yrange yr})]
+    (make-chart @ns-results ns-slow-algs :secs (opts "slower" "[0:50]"))
+    (make-chart @ns-results ns-fast-algs :secs (opts "faster" "[0:12]"))))
 
 
 ; (def ns-res (experiments/read-smart-results (make-ns-exps) (str experiments/*default-run-dir* "thesis-ns/")))
