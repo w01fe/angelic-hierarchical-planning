@@ -164,6 +164,7 @@
 ; objects are [name [cx cy] goal-pos-set] -- no goal means static 
 ; g-rad is gripper "radius" -- diamond shaped.
 
+
 ; Note, if you pass unreachable goal positions this will suffer.
 (defn make-discrete-manipulation-env 
   ([size base obstacles objects g-rad]
@@ -270,6 +271,19 @@
      (for [[i start] (util/indexed (take n-objects (pseudo-shuffle random table-positions)))]
        [(keyword (str (char (+ (int \a) i)))) start (nth tables (mod (.nextInt random) 4))])
      1 10 10 (long (+ 17 (* 13 seed))))))
+
+(defn make-random-smaller-discrete-manipulation-env [n-objects seed]
+  (let [tables [[[1 1] [2 3]] [[17 1] [19 2]] [[1 18] [3 19]] [[18 17] [19 19]] [[9 9] [11 11]]]
+        table-positions (apply concat (map region-cells tables))
+        random (Random. (long seed))]
+    (make-discrete-manipulation-env-regions
+     [20 20]
+     [3 1]
+     tables
+     (for [[i start] (util/indexed (take n-objects (pseudo-shuffle random table-positions)))]
+       [(keyword (str (char (+ (int \a) i)))) start (nth tables (mod (.nextInt random) (count tables)))])
+     1 2 4 (long (+ 17 (* 13 seed))))))
+
 
 (defn state-map [s]
   (let [const   (state/get-var s :const)

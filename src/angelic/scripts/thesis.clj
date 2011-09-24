@@ -72,14 +72,6 @@
           @da/*expand-counter*
           ))
 
-(defmacro defresults [name es-maker]
-  (let [sn (util/symbol-cat '* name '-results*)]
-    `(do (defonce ~sn nil)
-         (defn ~(util/symbol-cat 'read- name '-results) []
-           (def ~sn
-             (experiments/experiment-set-results->dataset
-              (experiments/read-experiment-set-results (~es-maker))))))))
-
 
 ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
 ;;;;;;;;;;;;;;;;;;;;;;;; Nav Switch experiments ;;;;;;;;;;;;;;;;;;;;;;;;;;
@@ -150,7 +142,7 @@
 
 (def +dm-sizes+ [1 2 3 4 5 6 7 8 9 10
                  ])
-(def +dm-reps+ 3)
+(def +dm-reps+ 5)
 
 
 (defn shallowest [level-map]
@@ -231,35 +223,33 @@
        (cluster-smart-runner (make-dm-exps) false (str *default-run-dir* "/thesis-dm/")))
 
 
-(comment
- ;; DASH-A* blows the stack on the cluster for no good reason, so I'm running
- ;; those experiments locally.
+(defn make-dm-exps2 [& [test]]
+  (for [[pn pf] [["smaller" `dm/make-random-smaller-discrete-manipulation-env]]
+        [n f] dm-algs]
+    [(str pn "_" n)
+     [(fn [sz rep]
+          (let [size (nth +dm-sizes+ sz)]
+            (experiments/make-experiment
+             (str pn "_" n "-" sz "-" rep)
+             {:problem pn :alg n :size-i sz :size size :rep rep}
+             'angelic.scripts.thesis
+             `(~pf ~size ~rep)
+             f
+             ;nil 1
+             10 3600
+             512 nil ::ExpResult)))
+      (count +dm-sizes+) +dm-reps+]]))
 
+
+#_ (do (use 'angelic.scripts.thesis 'angelic.util.experiments 'angelic.util.cluster)
+       (cluster-smart-runner (make-dm-exps2) false (str *default-run-dir* "/thesis-dm2/")))
+
+
+(comment ;; to run locally, if needed.
  (let [es (make-ns-exp-set)]
    (doseq [[i e] (indexed es)]
      (when (= (:alg (:parameters e)) :dash-a*)
        (run-experiment-set! es i (inc i))))))
-
-
-;;;;;;;;;;;;;;;;;;;;;;;;;;;;  Discrete charts ;;;;;;;;;;;;;;;;;;;;;;;;;;;;
-
-;; note: sahtn with dijkstra, not as described.
-;; note: right now dfbb set to shuffle.
-;; note: explicit algs effectively use different, more accurate heuristics.
-
-
-
-
-
-;(use '[angelic.util experiments cluster] 'angelic.scripts.thesis)
-;(run-experiment-set-cluster (make-dm-exp-set))
-
-;; (time (run-experiment-set! (make-dm-lama-exp-set) 6 9))
-
-;; (plot (ds->chart (experiment-set-results->dataset res) [:alg] :objects :ms {:key "top left" } {} first))
-
-
-
 
 
 
@@ -321,8 +311,6 @@
        (cluster-smart-runner (make-dd-exps) false (str *default-run-dir* "/thesis-dd/")))
 
 
-;; Note: right factoring is crucial! (hsould also sub-factor tla refs?)
-;; hierarchical hurts here.
 
 
 
@@ -377,7 +365,14 @@
     :dash-astar-ldfs     [da 20 "DASH-A*-ldfs"]
     :dash-astar-hoc      [da 16 "DASH-A*-hoc"]
     :dash-astar-nos      [da 17 "DAcH-A*"]
-    :dash-astar-nods     [da 18 "DAxH-A*"]}))
+    :dash-astar-nods     [da 18 "DAxH-A*"]
+
+    :dash-astar-sh       [da 21 "DASH-A*-sh"] 
+    :dash-astar-sh-hoc   [da 22 "DASH-A*-sh-hoc"]
+    :dash-astar-sh-nos   [da 23 "DAcH-A*-sh"]
+    :dash-astar-sh-nods  [da 24 "DAxH-A*-sh"]
+
+    }))
 
 (defn alg-title [a] (-> alg-styles a (nth 2)))
 (defn alg-style [a]
@@ -404,7 +399,10 @@
         (#(if pdf-file (charts/plot % (str chart-dir pdf-file)) (charts/plot %))))))
 
 
+
+
 ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;  Nav charts ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
+
 
 (def ns-results
   (->> (str experiments/*default-run-dir* "thesis-ns2/")
@@ -422,17 +420,6 @@
                    :full-ah-astar :dash-astar-ldfs])
 
 
-
-(defn make-ns-charts []
-  (doseq [[t ks opts]
-          [["slower" ns-slow-algs {:xrange "[5:500]" :yrange "[0:50]"}]
-           ["faster" ns-fast-algs {:xrange "[5:500]" :yrange "[0:12]"}]]]
-    (make-chart
-     @ns-results ks :secs
-     (assoc opts
-       :title (str "random nav-switch problems - " t " algorithms")
-       :xlabel "grid size (side length)" :ylabel "runtime (s)"))))
-
 (defn make-ns-charts []
   (let [opts (fn [t yr]
                {:title (str "random nav-switch problems - " t " algorithms")
@@ -442,61 +429,39 @@
     (make-chart @ns-results ns-fast-algs :secs (opts "faster" "[0:12]"))))
 
 
-; (def ns-res (experiments/read-smart-results (make-ns-exps) (str experiments/*default-run-dir* "thesis-ns/")))
-
-;(cluster-smart-runner (take 1 (make-ns-exps)) false (str *default-run-dir* "/thesis-ns/"))
-
-
-(comment
-  (defresults ns make-ns-exp-set)
-  (defresults ns-dd make-ns-dd-exp-set))
 
 
 ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;  DM charts ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
 
-(def dm-results
-  (delay (experiments/read-smart-results
-          (make-dm-exps)
-          (str experiments/*default-run-dir* "thesis-dm/"))))
-
-
 (defn first-segment [^String s] (first (.split s "_")))
 (defn rest-segments [^String s] (second (.split s "_")))
 
-(defn group-fs [m]
-  (util/map-vals
-   (partial util/map-keys rest-segments)
-   (group-by (comp first-segment first) m)))
+(def dm-results
+  (->> (str experiments/*default-run-dir* "thesis-dm/")
+       (experiments/read-smart-results (make-dm-exps))
+       (group-by (comp keyword first-segment first))
+       (util/map-vals (partial util/map-keys (comp keyword rest-segments)))
+       delay))
 
-(defn add-sol-length [ds t]
-  (map
-   #(assoc % :sol-length
-           (let [si (:size-i %)]
-             (case t
-                   "both" (* (inc si) (inc (util/expt 2 (+ 2 si))))
-                   "num"  (* 9 (inc si))
-                   "size" (inc (util/expt 2 (+ 2 si))))))
-   ds))
+;; doseq [[t data] @dm-results]
+
+(def dm-alg-ord [:h-ucs :strict-ah-astar :dsh-ucs :dash-astar-sh-hoc :full-ah-astar :dash-astar-sh :dash-astar-sh-nos :inv-dsh-ucs :dash-astar-first :dash-astar-nos :dijkstra :optimistic-ah-astar :sahtn :explicit-ah-astar :dash-astar-ldfs :dash-astar :dash-astar-nods :explicit-dash-astar :dash-astar-hoc :dash-astar-sh-nods])
+
+;; TODO: opt-count
+(defn make-dm-charts []
+  (make-chart
+   (:easy @dm-results) dm-alg-ord :secs
+   {:ylog  "t"  ;:xlog "t" ;:xrange "[5:500]" :yrange "[0.01:100]"
+    :title (str "discrete manipulation problems") :xlabel "\\# of objects" :ylabel "runtime (s)"})
+  (make-chart
+   (:hard @dm-results) dm-alg-ord :secs
+   {:ylog  "t"  ;:xlog "t" ;:xrange "[5:500]" :yrange "[0.01:100]"
+    :title (str "hard discrete manipulation problems") :xlabel "\\# of objects" :ylabel "runtime (s)"}))
 
 
-(defn make-dm-charts 
-   ([] (make-dm-charts "/Users/w01fe/Projects/phdthesis/graphs/"))
-   ([dir]
-      (doseq [[t data] (group-fs @dm-results)]
-        (let [field :opt-count #_ :secs ylabel "runtime (s)"]
-          (-> (smart-results->dataset data (derive-median field field) #_ (derive-median :secs :ms #(/ % 1000)))
-              (datasets/ds->chart
-               [:alg] :size field
-               {:term "dashed size 4.0,3.0"
-                :ylog  "t"  ;:xlog "t"
-                ;:xrange "[5:500]"
-;                :yrange "[0.01:100]"
-                :title (str "dm problems" t) :key "bottom right" #_"at 2.6, 445"
-                :xlabel "size" :ylabel ylabel}            
-               (constantly {:lw 3}) #_ (let [c (util/counter-from 0)] (fn [& args] (let [v ([1 2 3 6] (c))]  {:lw 3 :pt v :lt v})))
-               (comp keyword first)            
-               identity #_(fn [l] (sort-by #(if (=  "UCS" (:title %)) "Q" (:title  %)) l)))
-              (charts/plot #_ (str dir "dm-" t ".pdf")))))))
+;; note: sahtn with dijkstra, not as described.
+;; note: right now dfbb set to shuffle.
+;; note: explicit algs effectively use different, more accurate heuristics.
 
 
 ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;; DD charts ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
@@ -505,6 +470,16 @@
   (delay (experiments/read-smart-results
           (make-dd-exps)
           (str experiments/*default-run-dir* "thesis-dd/"))))
+
+(defn add-sol-length [ds t]
+  (map
+   #(assoc % :sol-length
+           (let [si (:size-i %)]
+             (case t
+                   :both (* (inc si) (inc (util/expt 2 (+ 2 si))))
+                   :num  (* 9 (inc si))
+                   :size (inc (util/expt 2 (+ 2 si))))))
+   ds))
 
 
 (defn make-dd-charts 
@@ -526,6 +501,19 @@
                (comp keyword first)            
                identity #_(fn [l] (sort-by #(if (=  "UCS" (:title %)) "Q" (:title  %)) l)))
               (charts/plot #_ (str dir "dd-" t ".pdf")))))))
+
+;; Note: right factoring is crucial! (hsould also sub-factor tla refs?)
+;; hierarchical hurts here.
+
+
+
+
+
+
+
+
+
+
 
 
 ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
