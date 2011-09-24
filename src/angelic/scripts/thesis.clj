@@ -80,12 +80,6 @@
              (experiments/experiment-set-results->dataset
               (experiments/read-experiment-set-results (~es-maker))))))))
 
-(def alg-forms
-  {:sahtn   (fn [m] `(sahtn/sahtn ~'init #{:nav :reach :discretem-tla '~'top '~'navh '~'navv}))
-   :aha*    (fn [m] `(aha/ah-a* ~'init true))
-   :dash-a* (fn [m] `(dao/implicit-dash-a*-opt ~'init :gather true :d true :s :eager :dir :right
-                                               :choice-fn rand-nth))})
-
 
 ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
 ;;;;;;;;;;;;;;;;;;;;;;;; Nav Switch experiments ;;;;;;;;;;;;;;;;;;;;;;;;;;
@@ -93,8 +87,7 @@
 
 
 (comment
- (def +ns-sizes+ [5 10 20 50 100 200 500
-                  ])
+ (def +ns-sizes+ [5 10 20 50 100 200 500])
  (def +ns-reps+ 3))
 
 
@@ -149,7 +142,7 @@
         (count +ns-sizes+) +ns-reps+]]))
 
 #_ (do (use 'angelic.scripts.thesis 'angelic.util.experiments 'angelic.util.cluster)
-       (cluster-smart-runner (make-ns-exps) false (str *default-run-dir* "/thesis-ns/")))
+       (cluster-smart-runner (make-ns-exps) false (str *default-run-dir* "/thesis-ns2/")))
 
 ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
 ;;;;;;;;;;;;;;;;;; Discrete Manipulation experiments ;;;;;;;;;;;;;;;;;;;;;
@@ -351,36 +344,80 @@
 
 (defn derive-median [target-field source-field & [mapper]]
   (fn [s]
-    (when-let [r (median-of 3 (map (if mapper (comp mapper source-field) source-field)
+    (when-let [r (median-of (count s) (map (if mapper (comp mapper source-field) source-field)
                                    (filter :ms s)))]
       {target-field r})))
 
-(def alg-styles
-  {:h-ucs 1}
-  )
+(let [fl 1 bb 2 sa 3 na 4 ah 5 ex 6 da 7]
+ (def alg-styles
+   {:dijkstra            [fl 1  "UCS"]
+    :astar               [fl 2  "A*"]
+
+    :go-dfbb             [bb 3  "DFBB"]
+
+    :sahtn               [sa 4  "SAHTN"]
+
+    :h-ucs               [na 5  "H-UCS"]
+    :dsh-ucs             [na 6  "DSH-LDFS"]
+    :inv-dsh-ucs         [na 7  "DSH-UCS"]
+
+    :optimistic-ah-astar [ah 8  "AH-A*-opt"]
+    :strict-ah-astar     [ah 9  "AH-A*-strict"]
+    :full-ah-astar       [ah 10 "AH-A*"]
+
+    :explicit-ah-astar   [ex 11 "EXP-AH-A*-opt"]
+    :explicit-dash-astar [ex 12 "EXP-DASH-A*"]
+
+    :dash-astar          [da 13 "DASH-A*"]
+    :dash-astar-first    [da 14 "DASH-A*-first"]
+    :dash-astar-ldfs     [da 20 "DASH-A*-ldfs"]
+    :dash-astar-hoc      [da 16 "DASH-A*-hoc"]
+    :dash-astar-nos      [da 17 "DAcH-A*"]
+    :dash-astar-nods     [da 18 "DAxH-A*"]}))
 
 ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;  Nav charts ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
 
-(def ns-results (delay (experiments/read-smart-results (make-ns-exps) (str experiments/*default-run-dir* "thesis-ns/"))))
+(def ns-results
+  (->> (str experiments/*default-run-dir* "thesis-ns2/")
+       (experiments/read-smart-results (make-ns-exps) )
+       delay))
 
+;; Skip: explicit-ah-astar explicit-dash-astar
+
+(def ns-slow-algs [:go-dfbb :sahtn :dsh-ucs :inv-dsh-ucs :h-ucs :optimistic-ah-astar :strict-ah-astar :dijkstra :astar 
+                   :full-ah-astar :dash-astar ;-ldfs 
+                   ])
+
+(def ns-fast-algs [:dash-astar-nods :astar :dash-astar-first :dash-astar  :dash-astar-hoc :dash-astar-nos 
+                   :full-ah-astar :dash-astar-ldfs])
 
 (defn make-ns-charts 
    ([] (make-ns-charts "/Users/w01fe/Projects/phdthesis/graphs/"))
    ([dir]
-      (let [field :secs ylabel "runtime (s)"]
-        (-> (smart-results->dataset @ns-results (derive-median :secs :ms #(/ % 1000)))
-           (datasets/ds->chart
-            [:alg] :size field
-            {:term "dashed size 4.0,3.0"
-;             :ylog  "t"  :xlog "t"
-             :ylog  nil :xlog nil             
-             :xrange "[5:500]"   :yrange "[0:50]"
-             :title "nav-switch problems" :key "bottom right" #_"at 2.6, 445"
-             :xlabel "grid size (side length)" :ylabel ylabel}            
-            (constantly {:lw 3}) #_ (let [c (util/counter-from 0)] (fn [& args] (let [v ([1 2 3 6] (c))]  {:lw 3 :pt v :lt v})))
-            (comp keyword first)            
-            identity #_(fn [l] (sort-by #(if (=  "UCS" (:title %)) "Q" (:title  %)) l)))
-           (charts/plot #_ (str dir "ns-" n ".pdf"))))))
+      (let [field #_ :next-count :secs
+            ylabel "runtime (s)"
+            kds (util/map-keys keyword @ns-results)]
+        (doseq [[t ks opts]
+                [["slow" ns-slow-algs   {:xrange "[5:500]" :yrange "[0:50]"}]
+                 ["fast" ns-fast-algs   {:xrange "[5:500]" :yrange "[0:50]"}]]
+                :let [sks (map #(nth (alg-styles %) 2) ks)]]
+          (util/assert-is (empty? (remove kds ks)))
+          (-> (smart-results->dataset (select-keys kds ks)
+                                      (if (= field :secs)
+                                        (derive-median :secs :ms #(/ % 1000))
+                                        (derive-median field field)))
+              (datasets/ds->chart
+               [:alg] :size field
+               (merge opts
+                      {:term "dashed size 5.0,3.0"
+                                        ;                :xrange "[5:500]"   :yrange "[0:50]"
+                       :title (str t " nav-switch problems")
+                       :key "out right center Left box lw 0.5 reverse width -2" #_"bottom right" #_"at 2.6, 445"
+                       :xlabel "grid size (side length)" :ylabel ylabel})
+               (fn [[alg]] (zipmap [:lw :pt :lc] (cons 3 (alg-styles (keyword alg)))))
+               (fn [[alg]] (nth (alg-styles (keyword alg)) 2))
+               (fn [arg] (sort-by #(util/position (:title %) sks) arg)))
+              (charts/plot #_ (str dir "ns-" t ".pdf")))))))
 
 
 ; (def ns-res (experiments/read-smart-results (make-ns-exps) (str experiments/*default-run-dir* "thesis-ns/")))

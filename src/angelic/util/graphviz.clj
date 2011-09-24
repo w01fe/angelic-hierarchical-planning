@@ -46,6 +46,7 @@
      (let [pdf-file (str (file-stem filename) ".pdf")
            indexer (memoize (fn [x] (double-quote (gensym))))
            vis      (HashSet.)]
+       (println filename)
        (spit filename
 	 (str "strict digraph {\n"
 	      " rankdir = LR;\n"
