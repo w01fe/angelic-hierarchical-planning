@@ -237,12 +237,11 @@
              f
              ;nil 1
              10 3600
-             512 nil ::ExpResult)))
+             nil #_ 512 nil ::ExpResult)))
       (count +dm-sizes+) +dm-reps+]]))
 
 
-#_ (do (use 'angelic.scripts.thesis 'angelic.util.experiments 'angelic.util.cluster)
-       (cluster-smart-runner (make-dm-exps2) false (str *default-run-dir* "/thesis-dm2/")))
+#_ (do (use 'angelic.scripts.thesis 'angelic.util.experiments 'angelic.util.cluster) (cluster-smart-runner (make-dm-exps2) false (str *default-run-dir* "/thesis-dm3/")))
 
 
 (comment ;; to run locally, if needed.
@@ -330,9 +329,9 @@
           (concat (apply clojure.set/intersection (map set size-results))
                   comb))))
 
-(defn derive-median [target-field source-field & [mapper]]
+(defn derive-median [c target-field source-field & [mapper]]
   (fn [s]
-    (when-let [r (median-of (count s) (map (if mapper (comp mapper source-field) source-field)
+    (when-let [r (median-of c (map (if mapper (comp mapper source-field) source-field)
                                    (filter :ms s)))]
       {target-field r})))
 
@@ -368,9 +367,9 @@
     :dash-astar-nods     [da 18 "DAxH-A*"]
 
     :dash-astar-sh       [da 21 "DASH-A*-sh"] 
-    :dash-astar-sh-hoc   [da 22 "DASH-A*-sh-hoc"]
-    :dash-astar-sh-nos   [da 23 "DAcH-A*-sh"]
-    :dash-astar-sh-nods  [da 24 "DAxH-A*-sh"]
+    :dash-astar-sh-hoc   [da 16 "DASH-A*-sh-hoc"]
+    :dash-astar-sh-nos   [da 17 "DAcH-A*-sh"]
+    :dash-astar-sh-nods  [da 18 "DAxH-A*-sh"]
 
     }))
 
@@ -383,13 +382,15 @@
 
 (defn make-chart [ds algs field & [more-chart-opts derive pdf-file]]
   (util/assert-is (empty? (remove ds algs)))
-  (let [sks (map alg-title algs)]
+  (let [sks (map alg-title algs)
+        c   (-> ds first second first count)]
+    (println "Medians of" c)
     (-> (smart-results->dataset
          (select-keys ds algs)
          (or derive
              (if (= field :secs)
-               (derive-median :secs :ms #(/ % 1000))
-               (derive-median field field))))
+               (derive-median c :secs :ms #(/ % 1000))
+               (derive-median c field field))))
         (datasets/ds->chart
          [:alg] :size field
          (merge chart-opts more-chart-opts)
@@ -437,26 +438,25 @@
 (defn rest-segments [^String s] (second (.split s "_")))
 
 (def dm-results
-  (->> (str experiments/*default-run-dir* "thesis-dm/")
-       (experiments/read-smart-results (make-dm-exps))
+  (->> (str experiments/*default-run-dir* "thesis-dm3/")
+       (experiments/read-smart-results (make-dm-exps2))
        (group-by (comp keyword first-segment first))
        (util/map-vals (partial util/map-keys (comp keyword rest-segments)))
        delay))
 
-;; doseq [[t data] @dm-results]
 
-(def dm-alg-ord [:h-ucs :strict-ah-astar :dsh-ucs :dash-astar-sh-hoc :full-ah-astar :dash-astar-sh :dash-astar-sh-nos :inv-dsh-ucs :dash-astar-first :dash-astar-nos :dijkstra :optimistic-ah-astar :sahtn :explicit-ah-astar :dash-astar-ldfs :dash-astar :dash-astar-nods :explicit-dash-astar :dash-astar-hoc :dash-astar-sh-nods])
+;; leaving out :strict-ah-astar :full-ah-astar :explicit-ah-astar :dash-astar-nods :dash-astar-nos :dash-astar-hoc
+;; :explicit-dash-astar :dash-astar-first
 
-;; TODO: opt-count
+(def dm-alg-ord [:h-ucs :dijkstra :optimistic-ah-astar :sahtn :dsh-ucs
+                 :dash-astar-sh-nods :inv-dsh-ucs :dash-astar :dash-astar-ldfs
+                 :dash-astar-sh-nos :dash-astar-sh-hoc  :dash-astar-sh ])
+
 (defn make-dm-charts []
   (make-chart
-   (:easy @dm-results) dm-alg-ord :secs
-   {:ylog  "t"  ;:xlog "t" ;:xrange "[5:500]" :yrange "[0.01:100]"
-    :title (str "discrete manipulation problems") :xlabel "\\# of objects" :ylabel "runtime (s)"})
-  (make-chart
-   (:hard @dm-results) dm-alg-ord :secs
-   {:ylog  "t"  ;:xlog "t" ;:xrange "[5:500]" :yrange "[0.01:100]"
-    :title (str "hard discrete manipulation problems") :xlabel "\\# of objects" :ylabel "runtime (s)"}))
+   (:smaller @dm-results) dm-alg-ord #_ :opt-count  :secs
+   {:ylog  "t"   :xtics "1" ;:yrange "[0.3:300]" ;:xlog "t"  :yrange "[0.01:100]"
+    :title (str "discrete manipulation problems") :xlabel "\\# of objects" :ylabel "runtime (s)"}))
 
 
 ;; note: sahtn with dijkstra, not as described.
@@ -466,41 +466,65 @@
 
 ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;; DD charts ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
 
-(def dd-results
-  (delay (experiments/read-smart-results
-          (make-dd-exps)
-          (str experiments/*default-run-dir* "thesis-dd/"))))
+(defn add-size [d]
+  (into {}
+        (for [[t ds] d]
+          [t
+           (util/map-vals
+            (fn [os]
+              (for [is os]
+                (for [x is]
+                  (let [si (:size-i x)]
+                    (assoc x :size 
+                           (case t
+                                 :both (* (inc si) (inc (util/expt 2 (+ 2 si))))
+                                 :num  (* 9 (inc si))
+                                 :size (inc (util/expt 2 (+ 2 si)))))))))
+            ds)])))
 
-(defn add-sol-length [ds t]
-  (map
-   #(assoc % :sol-length
-           (let [si (:size-i %)]
-             (case t
-                   :both (* (inc si) (inc (util/expt 2 (+ 2 si))))
-                   :num  (* 9 (inc si))
-                   :size (inc (util/expt 2 (+ 2 si))))))
-   ds))
+(def dd-results
+  (->> (str experiments/*default-run-dir* "thesis-dd/")
+       (experiments/read-smart-results (make-dd-exps))
+       (group-by (comp keyword first-segment first))
+       (util/map-vals (partial util/map-keys (comp keyword rest-segments)))
+       add-size
+       delay))
+
+
+(defn make-dd-charts []
+  (doseq [[t data] @dd-results]
+    (let [[algs chart-opts]
+          (case t
+           :both [[:dijkstra :optimistic-ah-astar :inv-dsh-ucs :dash-astar]
+                  {:xrange "[5:4000]" :yrange "[0.001:100]"}]
+           :num  [[:dijkstra :optimistic-ah-astar :inv-dsh-ucs :dash-astar]
+                  {:xrange "[9:100]" :yrange "[0.005:10]"}]
+           :size [[:dijkstra :inv-dsh-ucs :optimistic-ah-astar :dash-astar]
+                  {:xrange "[5:500]" :yrange "[0.001:1000]"}
+                  ])]
+      (make-chart
+       data (or algs (keys data)) :secs
+       (assoc chart-opts 
+         :ylog  "t"  :xlog "t" ;:xrange "[5:500]"  :yrange "[0.01:100]"
+         :title (str "dd problems " t) :xlabel "optimal solution length" :ylabel "runtime (s)")))))
 
 (comment
- (defn make-dd-charts 
-   ([] (make-dd-charts "/Users/w01fe/Projects/phdthesis/graphs/"))
-   ([dir]
-      (doseq [[t data] (group-fs @dd-results)]
-        (let [field :secs ylabel "runtime (s)"]
-          (-> (smart-results->dataset data  (derive-median :secs :ms #(/ % 1000)))
-              (add-sol-length t)
-              (datasets/ds->chart
-               [:alg] :sol-length field
-               {:term "dashed size 4.0,3.0"
-                :ylog  "t"  :xlog "t"
+    (doseq [[t data] (group-fs @dd-results)]
+    (let [field :secs ylabel "runtime (s)"]
+      (-> (smart-results->dataset data  (derive-median :secs :ms #(/ % 1000)))
+          (add-sol-length t)
+          (datasets/ds->chart
+           [:alg] :sol-length field
+           {:term "dashed size 4.0,3.0"
+            :ylog  "t"  :xlog "t"
                                         ;:xrange "[5:500]"
-                :yrange "[0.01:100]"
-                :title (str "dd problems" t) :key "bottom right" #_"at 2.6, 445"
-                :xlabel "size" :ylabel ylabel}            
-               (constantly {:lw 3}) #_ (let [c (util/counter-from 0)] (fn [& args] (let [v ([1 2 3 6] (c))]  {:lw 3 :pt v :lt v})))
-               (comp keyword first)            
-               identity #_(fn [l] (sort-by #(if (=  "UCS" (:title %)) "Q" (:title  %)) l)))
-              (charts/plot #_ (str dir "dd-" t ".pdf"))))))))
+               :yrange "[0.01:100]"
+               :title (str "dd problems" t) :key "bottom right" #_"at 2.6, 445"
+               :xlabel "size" :ylabel ylabel}            
+              (constantly {:lw 3}) #_ (let [c (util/counter-from 0)] (fn [& args] (let [v ([1 2 3 6] (c))]  {:lw 3 :pt v :lt v})))
+              (comp keyword first)            
+              identity #_(fn [l] (sort-by #(if (=  "UCS" (:title %)) "Q" (:title  %)) l)))
+             (charts/plot #_ (str dir "dd-" t ".pdf"))))))
 
 ;; Note: right factoring is crucial! (hsould also sub-factor tla refs?)
 ;; hierarchical hurts here.
@@ -512,6 +536,27 @@
 
 
 
+
+
+;;; old stuff
+
+(comment
+  (def dm-results
+  (->> (str experiments/*default-run-dir* "thesis-dm/")
+       (experiments/read-smart-results (make-dm-exps))
+       (group-by (comp keyword first-segment first))
+       (util/map-vals (partial util/map-keys (comp keyword rest-segments)))
+       delay))
+ ;; TODO: opt-count
+ (defn make-dm-charts []
+   (make-chart
+    (:easy @dm-results) dm-alg-ord :secs
+    {:ylog  "t"     ;:xlog "t" ;:xrange "[5:500]" :yrange "[0.01:100]"
+     :title (str "discrete manipulation problems") :xlabel "\\# of objects" :ylabel "runtime (s)"})
+   (make-chart
+    (:hard @dm-results) dm-alg-ord :secs
+    {:ylog  "t"     ;:xlog "t" ;:xrange "[5:500]" :yrange "[0.01:100]"
+     :title (str "hard discrete manipulation problems") :xlabel "\\# of objects" :ylabel "runtime (s)"})))
 
 
 
