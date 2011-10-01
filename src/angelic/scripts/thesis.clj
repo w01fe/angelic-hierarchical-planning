@@ -87,7 +87,7 @@
 (def +ns-reps+ 5)
 
 (defn nsh [e] (ns/make-nav-switch-hierarchy e false))
-
+;asdf
 (def ns-algs
   [["dijkstra" `(textbook/uniform-cost-search ~'init true)]
    ["astar" `(textbook/a*-search ~'init ns/simple-ns-heuristic true)]
@@ -118,11 +118,9 @@
    ["dash-astar-nos" `(da/implicit-dash-a* (nsh ~'init) :abstract? false)]
    ["dash-astar-nods" `(da/implicit-dash-a* (nsh ~'init) :abstract? false :decompose? false)]])
 
-
-
 (defn make-ns-exps [& [test]]
   (for [[n f] ns-algs]
-    [n [(fn [sz rep]
+    [n [(fn [sz rep] 
           (let [size (nth +ns-sizes+ sz)]
             (experiments/make-experiment
              (str n "-" sz "-" rep)
@@ -335,13 +333,18 @@
                                    (filter :ms s)))]
       {target-field r})))
 
+(defn derive-median-multi [c target-field mapper]
+  (fn [s]
+    (when-let [r (median-of c (map mapper (filter :ms s)))]
+      {target-field r})))
+
 (def chart-opts
-  {:term "dashed size 5.0,3.0"
-   :key "out right center Left box lw 0.5 reverse width -2" #_"bottom right" #_"at 2.6, 445"})
+  {:term "dashed size 5.5,3.0 font 18"
+   :key "out right center Left box lw 0.5 reverse width 0" #_"bottom right" #_"at 2.6, 445"})
 
 (let [fl 1 bb 2 sa 3 na 4 ah 5 ex 6 da 7]
  (def alg-styles
-   {:dijkstra            [fl 1  "UCS"]
+   {:dijkstra            [fl 3  "UCS"]
     :astar               [fl 2  "A*"]
 
     :go-dfbb             [bb 3  "DFBB"]
@@ -349,7 +352,7 @@
     :sahtn               [sa 4  "SAHTN"]
 
     :h-ucs               [na 5  "H-UCS"]
-    :dsh-ucs             [na 6  "DSH-LDFS"]
+    :dsh-ucs             [na 26  "DSH-LDFS"]
     :inv-dsh-ucs         [na 7  "DSH-UCS"]
 
     :optimistic-ah-astar [ah 8  "AH-A*-opt"]
@@ -362,13 +365,13 @@
     :dash-astar          [da 13 "DASH-A*"]
     :dash-astar-first    [da 14 "DASH-A*-first"]
     :dash-astar-ldfs     [da 20 "DASH-A*-ldfs"]
-    :dash-astar-hoc      [da 16 "DASH-A*-hoc"]
-    :dash-astar-nos      [da 17 "DAcH-A*"]
+    :dash-astar-hoc      [da 16 "DASH-A*-hog"]
+    :dash-astar-nos      [da 3 "DAcH-A*"]
     :dash-astar-nods     [da 18 "DAxH-A*"]
 
-    :dash-astar-sh       [da 21 "DASH-A*-sh"] 
-    :dash-astar-sh-hoc   [da 16 "DASH-A*-sh-hoc"]
-    :dash-astar-sh-nos   [da 17 "DAcH-A*-sh"]
+    :dash-astar-sh       [da 5 "DASH-A*-sh"] 
+    :dash-astar-sh-hoc   [da 16 "DASH-A*-sh-hog"]
+    :dash-astar-sh-nos   [da 3 "DAcH-A*-sh"]
     :dash-astar-sh-nods  [da 18 "DAxH-A*-sh"]
 
     }))
@@ -413,21 +416,26 @@
 
 ;; Skip: explicit-ah-astar explicit-dash-astar
 
-(def ns-slow-algs [:go-dfbb :sahtn :dsh-ucs :inv-dsh-ucs :h-ucs :optimistic-ah-astar :strict-ah-astar :dijkstra :astar 
+#_(def ns-slow-algs [:go-dfbb :sahtn :dsh-ucs :inv-dsh-ucs :h-ucs :optimistic-ah-astar :strict-ah-astar :dijkstra :astar 
                    :full-ah-astar :dash-astar ;-ldfs 
                    ])
 
-(def ns-fast-algs [:dash-astar-nods :astar :dash-astar-first :dash-astar  :dash-astar-hoc :dash-astar-nos 
-                   :full-ah-astar :dash-astar-ldfs])
+(def ns-slow-algs [:go-dfbb :sahtn :dsh-ucs :inv-dsh-ucs :h-ucs :optimistic-ah-astar :strict-ah-astar :dash-astar-nods :dijkstra :astar :dash-astar-first :dash-astar  :dash-astar-hoc :dash-astar-nos 
+                   :full-ah-astar :dash-astar-ldfs 
+                   ])
+
+(def ns-fast-algs [:optimistic-ah-astar :strict-ah-astar
+                   :dash-astar-nods :dijkstra :astar :dash-astar-first :dash-astar  :dash-astar-hoc :dash-astar-nos 
+                   :full-ah-astar :dash-astar-ldfs ])
 
 
 (defn make-ns-charts []
   (let [opts (fn [t yr]
-               {:title (str "random nav-switch problems - " t " algorithms")
-                :xlabel "grid size (side length)" :ylabel "runtime (s)"
+               {:title (str "nav-switch - runtime - " t " algorithms")
+                :xlabel "grid side length" :ylabel "runtime (s)"
                 :xrange "[5:500]" :yrange yr})]
-    (make-chart @ns-results ns-slow-algs :secs (opts "slower" "[0:50]"))
-    (make-chart @ns-results ns-fast-algs :secs (opts "faster" "[0:12]"))))
+    (make-chart @ns-results ns-slow-algs :secs (opts "all" "[0:50]") nil "ns-slow.pdf")
+    (make-chart @ns-results ns-fast-algs :secs (opts "faster" "[0:9]") nil "ns-fast.pdf")))
 
 
 
@@ -452,11 +460,25 @@
                  :dash-astar-sh-nods :inv-dsh-ucs :dash-astar :dash-astar-ldfs
                  :dash-astar-sh-nos :dash-astar-sh-hoc  :dash-astar-sh ])
 
+(def dm-alg-ord2 [:h-ucs :dijkstra :optimistic-ah-astar 
+                 :dash-astar-sh-nods :dash-astar-sh-nos :dash-astar :dash-astar-ldfs
+                   :dash-astar-sh-hoc  :dash-astar-sh
+                  :sahtn :dsh-ucs :inv-dsh-ucs
+                  ])
+
 (defn make-dm-charts []
   (make-chart
-   (:smaller @dm-results) dm-alg-ord #_ :opt-count  :secs
-   {:ylog  "t"   :xtics "1" ;:yrange "[0.3:300]" ;:xlog "t"  :yrange "[0.01:100]"
-    :title (str "discrete manipulation problems") :xlabel "\\# of objects" :ylabel "runtime (s)"}))
+   (:smaller @dm-results) dm-alg-ord :secs
+   {:ylog  "t" :xtics "1" :yrange "[0.4:1000]"
+    :title (str "discrete manipulation - runtime") :xlabel "\\# of objects" :ylabel "runtime (s)"}
+   nil "dm-runtime.pdf")
+  (make-chart
+   (:smaller @dm-results) dm-alg-ord2 :all-count
+   {:ylog  "t" :xtics "1" :yrange "[100:1000000]"
+    :title (str "discrete manipulation - description evaluations")
+    :xlabel "\\# of objects" :ylabel "\\# of evaluations"}
+   (derive-median-multi 5 :all-count #(+ (:opt-count %) (:next-count %)))
+   "dm-evals.pdf"))
 
 
 ;; note: sahtn with dijkstra, not as described.
@@ -496,35 +518,32 @@
     (let [[algs chart-opts]
           (case t
            :both [[:dijkstra :optimistic-ah-astar :inv-dsh-ucs :dash-astar]
-                  {:xrange "[5:4000]" :yrange "[0.001:100]"}]
+                  {:xrange "[5:4500]" :yrange "[0.001:100]"}]
            :num  [[:dijkstra :optimistic-ah-astar :inv-dsh-ucs :dash-astar]
                   {:xrange "[9:100]" :yrange "[0.005:10]"}]
            :size [[:dijkstra :inv-dsh-ucs :optimistic-ah-astar :dash-astar]
-                  {:xrange "[5:500]" :yrange "[0.001:1000]"}
+                  {:xrange "[5:550]" :yrange "[0.001:1000]"}
                   ])]
       (make-chart
        data (or algs (keys data)) :secs
        (assoc chart-opts 
          :ylog  "t"  :xlog "t" ;:xrange "[5:500]"  :yrange "[0.01:100]"
-         :title (str "dd problems " t) :xlabel "optimal solution length" :ylabel "runtime (s)")))))
+         :title (str "bit-stash - runtime - scaling "
+                     (case t :num "number of subproblems" :size "subproblem size" :both "both"))
+         :xlabel "optimal solution length" :ylabel "runtime (s)")
+       nil (str "dd-" (name t) "-log.pdf")
+       )))
+  (make-chart (:both @dd-results) [:dijkstra :optimistic-ah-astar :inv-dsh-ucs :dash-astar] :secs
+              {:xrange "[0:4500]" :yrange "[0:100]"
+               ;:xrange "[0:10000]" :yrange "[0:400]"
+               :title (str "bit-stash - runtime - scaling both") :xlabel "optimal solution length" :ylabel "runtime (s)"}
+              nil "dd-both.pdf"))
 
-(comment
-    (doseq [[t data] (group-fs @dd-results)]
-    (let [field :secs ylabel "runtime (s)"]
-      (-> (smart-results->dataset data  (derive-median :secs :ms #(/ % 1000)))
-          (add-sol-length t)
-          (datasets/ds->chart
-           [:alg] :sol-length field
-           {:term "dashed size 4.0,3.0"
-            :ylog  "t"  :xlog "t"
-                                        ;:xrange "[5:500]"
-               :yrange "[0.01:100]"
-               :title (str "dd problems" t) :key "bottom right" #_"at 2.6, 445"
-               :xlabel "size" :ylabel ylabel}            
-              (constantly {:lw 3}) #_ (let [c (util/counter-from 0)] (fn [& args] (let [v ([1 2 3 6] (c))]  {:lw 3 :pt v :lt v})))
-              (comp keyword first)            
-              identity #_(fn [l] (sort-by #(if (=  "UCS" (:title %)) "Q" (:title  %)) l)))
-             (charts/plot #_ (str dir "dd-" t ".pdf"))))))
+(defn make-all-charts []
+  (make-ns-charts)
+  (make-dm-charts)
+  (make-dd-charts))
+
 
 ;; Note: right factoring is crucial! (hsould also sub-factor tla refs?)
 ;; hierarchical hurts here.
