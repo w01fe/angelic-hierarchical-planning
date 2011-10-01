@@ -225,6 +225,9 @@
 ;; Return a conservative estimate of nodes that may be in cycles
 ;; TODO: add cycle checking.
 ;; Note we always include a node if its child in active set.
+;; Note: used to try to see if parent could decrease.
+;; This is wrong with bounding, and must be careful since it can change child order.
+;; Version for bounding
 (defn update-and-find-cycles! [active-nodes]
   (let [active-set (IdentityHashMap.)]
     (letfn [(add! [n]
@@ -234,13 +237,31 @@
             (chase! [p c]
               (when @(:summary-atom p)
                 (when-not (.containsKey active-set p)
-                  (when (or (update-summary-dec?! p)
-                            (some #(identical? (summary/source %) c) (summary/children (summary p))))
+                  (when (some #(identical? (summary/source %) c)
+                              (summary/children (summary p)))
                     (add! p)))))]
       (doseq [n active-nodes]
         (when (update-summary-dec?! n)
           (add! n)))
       (keys active-set))))
+
+(comment  ;; version for non-bounding
+ (defn update-and-find-cycles! [active-nodes]
+   (let [active-set (IdentityHashMap.)]
+     (letfn [(add! [n]
+               (.put active-set n true)
+               (doseq [p (parent-nodes n)]
+                 (chase! p n)))
+             (chase! [p c]
+               (when @(:summary-atom p)
+                 (when-not (.containsKey active-set p)
+                   (when (update-summary-dec?! p)
+                     (add! p)))))]
+       (doseq [n active-nodes]
+         (when (update-summary-dec?! n)
+           (add! n)))
+       (keys active-set)))))
+
 
 
 ;; Summaries of nodes may have decreased.  Propagate these changes upwards

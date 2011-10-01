@@ -749,3 +749,4 @@
     (println an (pad-right n 20) (update-in (run-timed f) [0 0] count))))
 
 
+;; (do (require 'angelic.scripts.thesis) (ns angelic.scripts.thesis) (require '[ angelic.search.summary-graphs-newer :as sg] '[angelic.search.summary :as sum]))
