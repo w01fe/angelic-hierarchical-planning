@@ -179,71 +179,129 @@
 
 
 
-;; Run KLD and return any nodes whose summaries have changed.
-(defn knuth-lightest-derivation! [active-nodes]
+ (defn summaries-decreased! [nodes]
+   (when-let [cycle-nodes (update-and-find-cycles! nodes)]
+     (knuth-lightest-derivation! cycle-nodes)))
+
+
+(defn update-and-find-cycles! [active-nodes]
+  (assert (= (count active-nodes) 1))
   (let [open  (IdentityHashMap.)
         all   (IdentityHashMap.)        
         q     (queues/make-fancy-tree-search-pq)
         cost  (fn [n] (let [s (summary n)] [(- (summary/max-reward s))
-                                            (- (summary/status-val (summary/status s)))]))]
-;   (println active-nodes)
-    (doseq [n active-nodes]
-      (.put all n (summary n))
-      #_ (reset! (:summary-atom n) summary/+worst-simple-summary+)
-      (util/print-debug 2 "NILLING" n (summary n))
-      (set-summary! n summary/+worst-simple-summary+))
-    (doseq [n (keys all)]
-      (when (update-summary-inc?! n)
-        (.put open n true)
-        (queues/pq-add! q n (cost n))))
-    (while (not (queues/pq-empty? q)) ;; Can short circuit on dead too.
-      (let [n (queues/pq-remove-min! q)]
-        (.remove all n)
-        (reset! (:bound-atom n) (summary/max-reward (summary n)))
-        (util/print-debug 2 "SET" n (summary n))
-        (doseq [p (parent-nodes n)]
-          (when (.containsKey all p)
-            (when (update-summary-inc?! p)
-              (if (.containsKey open p)
-                (queues/pq-remove! q p)
-                (.put open p true))
-              (queues/pq-add! q p (cost p)))))))
-    (doseq [n (keys all)]
-      (util/print-debug 2 "KILLING" n)
-      (reset! (:bound-atom n) Double/NEGATIVE_INFINITY))))
+                                             (- (summary/status-val (summary/status s)))]))]
+    ((fn add! [c]
+       (when-not (.containsKey all c)
+         (when-let [old @(:summary-atom c)]
+           (let [new (update-summary! c)]
+             (when (or (< (summary/max-reward new) (summary/max-reward old))
+                       (not (summary/live? new)))
+               (set-summary! c summary/+worst-simple-summary+)
+               (.put all c true)
+               (doseq [p (parent-nodes c)]
+                 (add! p)))))))
+     (first active-nodes))
+     
+     (doseq [n (keys all)]
+       (when (update-summary-inc?! n)
+         (.put open n true)
+         (queues/pq-add! q n (cost n))))
 
-;; Also allow status increases.  maybe better to use i-c.
-(defn- update-summary-dec?! [n]
-  (when-let [old   (summary n)]
-    (let [new (update-summary! n)]
-;     (util/assert-is (summary/>= old new 0) (do (def *b* [n old new]) (pr-str n old new)))
-      #_      (not (summary/>= new old 0))
-      (or (< (summary/max-reward new) (summary/max-reward old))
-          (and (summary/live? old) (not (summary/live? new)))))))
+     (while (not (queues/pq-empty? q)) ;; Can short circuit on dead too.
+       (let [n (queues/pq-remove-min! q)]
+         (.remove all n)
+         (reset! (:bound-atom n) (summary/max-reward (summary n)))
+         (util/print-debug 2 "SET" n (summary n))
+         (doseq [p (parent-nodes n)]
+           (when (.containsKey all p)
+             (when (update-summary-inc?! p)
+               (if (.containsKey open p)
+                 (queues/pq-remove! q p)
+                 (.put open p true))
+               (queues/pq-add! q p (cost p)))))))
 
-;; Find and locally update all nodes that need updating
-;; Return a conservative estimate of nodes that may be in cycles
-;; TODO: add cycle checking.
-;; Note we always include a node if its child in active set.
-;; Note: used to try to see if parent could decrease.
-;; This is wrong with bounding, and must be careful since it can change child order.
-;; Version for bounding
-(defn update-and-find-cycles! [active-nodes]
-  (let [active-set (IdentityHashMap.)]
-    (letfn [(add! [n]
-              (.put active-set n true)
-              (doseq [p (parent-nodes n)]
-                (chase! p n)))
-            (chase! [p c]
-              (when @(:summary-atom p)
-                (when-not (.containsKey active-set p)
-                  (when (some #(identical? (summary/source %) c)
-                              (summary/children (summary p)))
-                    (add! p)))))]
-      (doseq [n active-nodes]
-        (when (update-summary-dec?! n)
-          (add! n)))
-      (keys active-set))))
+     (doseq [n (keys all)]
+       (util/print-debug 2 "KILLING" n)
+       (reset! (:bound-atom n) Double/NEGATIVE_INFINITY))))
+
+
+(comment ;; Separte versions, strict trees.
+ ;; Run KLD and return any nodes whose summaries have changed.
+ (defn knuth-lightest-derivation! [active-nodes]
+   (let [open  (IdentityHashMap.)
+         all   (IdentityHashMap.)        
+         q     (queues/make-fancy-tree-search-pq)
+         cost  (fn [n] (let [s (summary n)] [(- (summary/max-reward s))
+                                             (- (summary/status-val (summary/status s)))]))]
+                                        ;   (println active-nodes)
+     (doseq [n active-nodes]
+       (.put all n (summary n))
+       #_ (reset! (:summary-atom n) summary/+worst-simple-summary+)
+       (util/print-debug 2 "NILLING" n (summary n))
+       (set-summary! n summary/+worst-simple-summary+))
+     (doseq [n (keys all)]
+       (when (update-summary-inc?! n)
+         (.put open n true)
+         (queues/pq-add! q n (cost n))))
+     (while (not (queues/pq-empty? q)) ;; Can short circuit on dead too.
+       (let [n (queues/pq-remove-min! q)]
+         (.remove all n)
+         (reset! (:bound-atom n) (summary/max-reward (summary n)))
+         (util/print-debug 2 "SET" n (summary n))
+         (doseq [p (parent-nodes n)]
+           (when (.containsKey all p)
+             (when (update-summary-inc?! p)
+               (if (.containsKey open p)
+                 (queues/pq-remove! q p)
+                 (.put open p true))
+               (queues/pq-add! q p (cost p)))))))
+     (doseq [n (keys all)]
+       (util/print-debug 2 "KILLING" n)
+       (reset! (:bound-atom n) Double/NEGATIVE_INFINITY))))
+
+ ;; Also allow status increases.  maybe better to use i-c.
+ (defn- update-summary-dec?! [n]
+   (when-let [old   (summary n)]
+     (let [new (update-summary! n)]
+                                        ;     (util/assert-is (summary/>= old new 0) (do (def *b* [n old new]) (pr-str n old new)))
+       #_      (not (summary/>= new old 0))
+       (or (< (summary/max-reward new) (summary/max-reward old))
+           (and (summary/live? old) (not (summary/live? new)))))))
+
+ ;; Find and locally update all nodes that need updating
+ ;; Return a conservative estimate of nodes that may be in cycles
+ ;; TODO: add cycle checking.
+ ;; Note we always include a node if its child in active set.
+ ;; Note: used to try to see if parent could decrease.
+ ;; This is wrong with bounding, and must be careful since it can change child order.
+ ;; Version for bounding
+ (defn update-and-find-cycles! [active-nodes]
+   (let [active-set (IdentityHashMap.)]
+     (letfn [(add! [n]
+               (.put active-set n true)
+               (doseq [p (parent-nodes n)]
+                 (chase! p n)))
+             (chase! [p c]
+               (when @(:summary-atom p)
+                 (when-not (.containsKey active-set p)
+                   (when (some #(identical? (summary/source %) c)
+                               (summary/children (summary p)))
+                     (add! p)))))]
+       (doseq [n active-nodes]
+         (when (update-summary-dec?! n)
+           (add! n)))
+       (keys active-set))))
+
+ ;; Summaries of nodes may have decreased.  Propagate these changes upwards
+ ;; using a version of KLD, which can properly handle cycles without infinite
+ ;; loops, or the inefficiencies of an algorithm like LDFS.
+ ;; Algorithm: repeatedly find costs of active set using KLD, assuming
+ ;; all nodes out of active set are fixed, then expand active set to
+ ;; incorporate any new nodes that may change given the new updates.
+ (defn summaries-decreased! [nodes]
+   (when-let [cycle-nodes (update-and-find-cycles! nodes)]
+     (knuth-lightest-derivation! cycle-nodes))))
 
 (comment  ;; version for non-bounding
  (defn update-and-find-cycles! [active-nodes]
@@ -261,19 +319,6 @@
          (when (update-summary-dec?! n)
            (add! n)))
        (keys active-set)))))
-
-
-
-;; Summaries of nodes may have decreased.  Propagate these changes upwards
-;; using a version of KLD, which can properly handle cycles without infinite
-;; loops, or the inefficiencies of an algorithm like LDFS.
-;; Algorithm: repeatedly find costs of active set using KLD, assuming
-;; all nodes out of active set are fixed, then expand active set to
-;; incorporate any new nodes that may change given the new updates.
-(defn summaries-decreased! [nodes]
-  (when-let [cycle-nodes (update-and-find-cycles! nodes)]
-    (knuth-lightest-derivation! cycle-nodes)))
-
 
 
 
