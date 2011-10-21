@@ -6,7 +6,7 @@
            [angelic.domains.discrete-manipulation :as dm]
            [angelic.domains.dash :as dd]           
            [angelic.domains.nav-switch :as ns]
-           [angelic.search.summary-graphs-newer :as sgn]
+           [angelic.search.and-or-graphs :as sgn]
            [angelic.search.explicit.core :as hcore]           
            [angelic.search.explicit.hierarchical :as hes]
            [angelic.search.implicit
@@ -635,7 +635,7 @@
 
 
 (defn worst-leaf [ss]
-  (apply min-key (comp :min-leaf angelic.search.summary-graphs-newer/summary) ss))
+  (apply min-key (comp :min-leaf angelic.search.and-or-graphs/summary) ss))
 
 (defn dm-test [& args]
   (let [e (apply dm/make-random-discrete-manipulation-env args)
@@ -749,4 +749,4 @@
     (println an (pad-right n 20) (update-in (run-timed f) [0 0] count))))
 
 
-;; (do (require 'angelic.scripts.thesis) (ns angelic.scripts.thesis) (require '[ angelic.search.summary-graphs-newer :as sg] '[angelic.search.summary :as sum]))
+;; (do (require 'angelic.scripts.thesis) (ns angelic.scripts.thesis) (require '[ angelic.search.and-or-graphs :as sg] '[angelic.search.summary :as sum]))

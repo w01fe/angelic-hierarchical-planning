@@ -3,7 +3,7 @@
 	    [angelic.util.channel :as channel]
             [angelic.env.state :as state]
             [angelic.search.summary :as summary]            
-            [angelic.search.summary-graphs-newer :as sg]
+            [angelic.search.and-or-graphs :as sg]
             [angelic.search.function-sets :as fs])
   (:import [java.util HashMap ArrayList IdentityHashMap]))
 
@@ -431,7 +431,7 @@
            extract-action))))
 
 
-;; (do (use 'angelic.util '[angelic env hierarchy] 'angelic.domains.nav-switch  'angelic.domains.discrete-manipulation 'angelic.search.implicit.dash-astar-simple) (require '[angelic.search.summary-graphs-newer :as sg] '[angelic.search.summary :as summary]) (defn s [x]  (sg/summarize x)) (defn sc [x] (summary/children x))  (defn src [x] (summary/source x)) (defn nc [x] (sg/child-nodes x)))
+;; (do (use 'angelic.util '[angelic env hierarchy] 'angelic.domains.nav-switch  'angelic.domains.discrete-manipulation 'angelic.search.implicit.dash-astar-simple) (require '[angelic.search.and-or-graphs :as sg] '[angelic.search.summary :as summary]) (defn s [x]  (sg/summarize x)) (defn sc [x] (summary/children x))  (defn src [x] (summary/source x)) (defn nc [x] (sg/child-nodes x)))
 
 ;; (require '[angelic.search.implicit.dash-astar-opt :as dao])
 ;; (require '[angelic.search.implicit.dash-astar-simple :as das])

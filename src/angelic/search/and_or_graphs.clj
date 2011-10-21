@@ -1,4 +1,4 @@
-(ns angelic.search.summary-graphs-newer
+(ns angelic.search.and-or-graphs
   (:require [angelic.util :as util]
             [angelic.util.queues :as queues]
             [angelic.search.summary :as summary])
