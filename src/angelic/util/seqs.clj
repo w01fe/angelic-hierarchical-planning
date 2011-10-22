@@ -207,38 +207,6 @@
            (recur next-state more-in-seq (conj out-seq out-elt)))
          [state out-seq]))))
 
-;(defn find-first [p c]
-;  (when-first [x c]
-;     (if (p x) x (recur p (next c)))))
-
-
-; (map (fn [[k v]] (list k (* (/ 6.0 10000) (count v)))) (categorize identity (take 10000 (repeatedly #(random-permutation '(1 2 3))))))
-
-
-(comment ; already in clojure.contrib with name includes? (no keys though)
-(defn member? 
-  "Is item a member of seq?"
-  ([item seq] (when-first [x seq] (or (= x item) (recur item (next seq)))))
-  ([item seq key test] (when-first [x seq] (or (test (key x) (key item)) (recur item (next seq) key test))))
-  {:test (fn [] (is (member? 1 '(2 1 3)))
-	        (is (not (member? 1 '(2 -1 3))))
-		(is (member? 1 '(2 -1 3) #(Math/abs %) =))
-		(is (member? [1 2] '([3 4] [1 2])))
-		(is (not (member? [1 2] '([3 4] [1 2]) identity ==))))})
-    )
-
-
-	(comment ; not needed in lazy branch
-	(defmacro delay-seq "Create a collection representing this sequence, *really* without evaluating it until needed.  May pass elements before the seq that will be consed onto the front, like apply."
-	  ([] nil) 
-	  ([arg] `(DelayedSeq. (fn [] (seq ~arg))))
-	  ([arg & args] `(lazy-seq ~@(spread (cons arg args)))))
-	
-	(defmacro lazy-seq "Create a lazy seq.  Expands to a bunch of lazy-conses."
-	  ([] nil)
-	  ([arg & args] `(lazy-cons ~arg (lazy-seq ~@args))))
-	
-	 )
 
 (defn unchunk [s]
   (when (seq s)
