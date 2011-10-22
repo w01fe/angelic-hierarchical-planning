@@ -190,39 +190,3 @@
 ;; (hierarchy/run-counted #(angelic.search.implicit.ah-astar/optimistic-ah-a* (ns/make-nav-switch-hierarchy (ns/make-random-nav-switch-env 5 2 1) true)))
 
 
-
-
-(comment ;; For debugging descriptions, I guess?
-
-  ;            [angelic.env :as env]
-;            [angelic.hierarchy :as hierarchy]
-;            [angelic.hierarchy.util :as hierarchy-util]            
-;            [angelic.hierarchy.state-set :as state-set]
-;            [angelic.hierarchy.angelic :as angelic]
-
-(defrecord ImplicitAHA*FEnv [henv]
-  env/Env
-  (initial-state [_]
-    (let [e    (hierarchy/env henv)
-          init (env-util/initial-logging-state e)
-          tla  (hierarchy-util/make-top-level-action e [(hierarchy/initial-plan henv)] 0)]
-      (-> (make-action-node [(state-set/make-logging-factored-state-set [init]) 0 true] {} tla)
-                       vector
-                       make-plan)))
-  (actions-fn [_]
-    (fn [shp]
-      (for [ref (plan-refinements shp)]
-        (reify 
-         env/Action
-         (action-name [_] (plan-name ref))
-         env/PrimitiveAction
-         (applicable? [_ s] (assert (identical? s shp)) true)
-         (next-state-and-reward [_ s]
-           (let [old-rew (second (:output-tuple shp))
-                 new-rew (second (:output-tuple ref))]
-                                        ;             (println old-rew shp new-rew)
-             #_(util/assert-is (<= new-rew old-rew) "%s" (print-str shp ref))
-             [ref (- new-rew old-rew)]))))))
-  (goal-fn [_] (fn [s] (nth (util/safe-get s :output-tuple) 2))))
-
-(defn make-implicit-first-ah-a*-env [henv] (ImplicitAHA*FEnv. henv)))

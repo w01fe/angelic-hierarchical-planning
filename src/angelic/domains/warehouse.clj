@@ -7,6 +7,7 @@
            [angelic.hierarchy :as hierarchy]
            [angelic.hierarchy.util :as hierarchy-util]))
 
+;; Unfinished reimplementation of the warehouse world domain.
 ; Note: WW heuristic is inconsistent.
 
 

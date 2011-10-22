@@ -72,17 +72,3 @@
     [sol rew]))
 
 
-
-
-(comment ; not in use...
-(defn compose-factored-primitives [fp1 fp2]
-  (let [e1 (:effect-map fp1), p2 (:precond-map fp2)
-        common-keys (clojure.set/intersection (util/keyset e1) (util/keyset p2))]   
-    (assert (= (select-keys e1 common-keys) (select-keys p2 common-keys)))
-    (env-util/make-factored-primitive 
-     [::Composed (:name fp1) (:name fp2)]
-     (util/merge-agree (:precond-map fp1) (apply dissoc p2 common-keys))
-     (merge e1 (:effect-map fp2))
-     (+ (:reward fp1) (:reward fp2))))))
-
-

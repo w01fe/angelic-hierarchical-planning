@@ -94,23 +94,7 @@
 (extend clojure.lang.PersistentHashMap FactoredState *m1*  ContextualState *m2*)
 (extend clojure.lang.PersistentArrayMap FactoredState *m1*  ContextualState *m2*)
 
-;(def *m3* {:set-var assoc! :get-var util/safe-get :list-vars keys :as-map persistent!})
-;(extend clojure.lang.PersistentHashMap$TransientHashMap
-;  FactoredState *m3* ContextualState *m2*)
-;(extend clojure.lang.PersistentArrayMap$TransientArrayMap
-;  FactoredState *m3* ContextualState *m2*)
-
 (defn state-matches-map? [fs m]
   (every? (fn [[k v]] (= (get-var fs k) v)) m))
-
-
-
-;; TODO: make method so we can use transients?
-
-
-
-;(defn get-logging-state-gets [s] @(:gets (meta s)))
-;(defn get-logging-state-puts [s] (util/safe-get (meta s) :puts))
-
 
 

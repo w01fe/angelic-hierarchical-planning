@@ -557,26 +557,6 @@
 
 
 
-;;; old stuff
-
-(comment
-  (def dm-results
-  (->> (str experiments/*default-run-dir* "thesis-dm/")
-       (experiments/read-smart-results (make-dm-exps))
-       (group-by (comp keyword first-segment first))
-       (util/map-vals (partial util/map-keys (comp keyword rest-segments)))
-       delay))
- ;; TODO: opt-count
- (defn make-dm-charts []
-   (make-chart
-    (:easy @dm-results) dm-alg-ord :secs
-    {:ylog  "t"     ;:xlog "t" ;:xrange "[5:500]" :yrange "[0.01:100]"
-     :title (str "discrete manipulation problems") :xlabel "\\# of objects" :ylabel "runtime (s)"})
-   (make-chart
-    (:hard @dm-results) dm-alg-ord :secs
-    {:ylog  "t"     ;:xlog "t" ;:xrange "[5:500]" :yrange "[0.01:100]"
-     :title (str "hard discrete manipulation problems") :xlabel "\\# of objects" :ylabel "runtime (s)"})))
-
 
 
 

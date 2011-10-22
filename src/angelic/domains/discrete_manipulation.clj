@@ -48,9 +48,7 @@
 ; pickup-l/r/d/u
                                         ; drop-l/r/d/u
 
-; TODO: implicit descriptions not consistent! in particular, top vs move-to-goal top
-;; TODO: diagnose inconsistency in random d-m 2 3 
-
+;; NOTE: implicit descriptions not consistent! in particular, top vs move-to-goal top
 ;; TODO: nil val is dangerous.
 
 (def dirs [[:l [-1 0]] [:r [1 0]] [:u [0 -1]] [:d [0 1]]])

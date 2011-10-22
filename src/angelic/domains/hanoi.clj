@@ -47,11 +47,3 @@
 
 
 
-;;Var z, vals 0, 1, initially 0.
-;;a can transition along the line with no preconditions, except 0-->1 requires z = 1.
-;;z can transition 0 --> 1 when a = -1.  
-
-;; Simplest case that breaks ASplan-type planning,
-;; Since a must be interleaved with itself.
-
-

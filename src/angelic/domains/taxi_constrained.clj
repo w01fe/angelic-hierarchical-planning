@@ -9,6 +9,7 @@
             [angelic.hierarchy.util :as hierarchy-util])
   (:import [java.util Random]))
 
+;; Taxi domains used for IJCAI'11 paper.
 
 (defn- make-left   [t cx]
   (env-util/make-factored-primitive ['left t cx]  {['atx t] cx} {['atx t] (dec cx)} -1))

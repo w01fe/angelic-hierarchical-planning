@@ -37,8 +37,6 @@
 
 ;; TODO: RI of child not connected to child of RI.
 
-;; TODO: summary/+ should take order into account? !  live iff left live or left solved, right live, ..
-
 ;; We refine right iff the left set is a singleton-in-context, which guarantees it cannot
 ;; have any refinemetns.
 

@@ -9,7 +9,7 @@
             [angelic.hierarchy.util :as hierarchy-util])
   (:import [java.util Random]))
 
-
+;; Encoding of TAV-like inference (Chatterjee et al. ) as angelic search problem
 
 ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
 ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;; Edges ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
