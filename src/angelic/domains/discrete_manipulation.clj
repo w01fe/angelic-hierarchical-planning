@@ -50,6 +50,10 @@
 
 ;; NOTE: implicit descriptions not consistent! in particular, top vs move-to-goal top
 ;; TODO: nil val is dangerous.
+;; TODO: domain seems to have a state abstraction bug on this regions domain:
+;; [[10 10] [1 1] [[[4 4] [6 6]]]
+;;        [[:a [5 5] [[4 4] [6 6]]] [:b [4 5] [[5 5] [6 6]]]] 2 2 2]
+;; (tested with SAHTN)
 
 (def dirs [[:l [-1 0]] [:r [1 0]] [:u [0 -1]] [:d [0 1]]])
 
