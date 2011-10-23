@@ -9,6 +9,10 @@
 ;; It computes the optimal outcomes of each HLA in each context exactly once,
 ;; then pieces the results together to produce an optimal solution.
 
+;; Note: seems to be a bug with the following dm instance:
+;; [[10 10] [1 1] [[[4 4] [6 6]]]
+;;        [[:a [5 5] [[4 4] [6 6]]] [:b [4 5] [[5 5] [6 6]]]] 2 2 2]
+
 ;Implements dijkstra, only correct without mutual recursion...
 
 (set! *warn-on-reflection* true)

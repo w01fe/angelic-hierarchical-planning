@@ -553,9 +553,12 @@
 (defn reach-context 
   ([s] (reach-context (state/get-var s :const) (state/get-var s [:base])))
   ([const base]
-    (into #{[:base] [:gripper-offset]}
-      (for [go (util/safe-get const [:legal-go])]
-        [:object-at (add-pos base go)]))))
+     (let [[w h] (util/safe-get const [:size])]
+       (into #{[:base] [:gripper-offset]}
+             (for [go (util/safe-get const [:legal-go])
+                   :let [[x y :as pos] (add-pos base go)]
+                  :when (and (<= 0 x w) (<= 0 y h))]
+               [:object-at pos])))))
 
 (defn reach-to-context 
   ([const dst]

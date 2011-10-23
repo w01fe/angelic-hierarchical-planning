@@ -23,10 +23,7 @@
 
 
 (def ^:private *discrete-manipulation-test-domains*
-     [[[[10 10] [1 1] [[[4 4] [6 6]]]
-        [[:a [5 5] [[4 4] [6 6]]] [:b [4 5] [[5 5] [6 6]]]] 2 2 2]
-       -29]
-      [[[10 5] [9 4] [[[2 2] [3 3]] [[4 1] [4 1]] [[5 2] [7 3]]]
+     [[[[10 5] [9 4] [[[2 2] [3 3]] [[4 1] [4 1]] [[5 2] [7 3]]]
         [[:a [2 3] [[5 2] [7 3]]] [:b [7 3] [[4 1] [4 1]]] [:c [4 1] [[2 2] [3 3]]]] 1 1 1]
        -133]
       [[[10 5] [9 4] [[[2 2] [3 3]] [[4 1] [4 1]] [[5 2] [7 3]]]
@@ -41,7 +38,7 @@
       (doseq [[args reward] *discrete-manipulation-test-domains*]
         (is (= (-> (apply dm/make-discrete-manipulation-env-regions args)
                    dm/make-discrete-manipulation-hierarchy
-                   alg
+                   f
                    second)
                reward))))))
 
@@ -52,11 +49,11 @@
       [[10 [9 1] false [1 10] #{[1 1] [10 1]}] -42]])
 
 (deftest hierarchical-nav-switch
-  (doseq [[alg-name f]  all-variants]
+  (doseq [[alg-name f]  *test-algorithms*]
     (testing alg-name
       (doseq [[args reward] *nav-switch-test-domains*]
         (is (= (-> (apply ns/make-nav-switch-env args)
-                   (nav-switch/make-nav-switch-hierarchy true)
-                   alg
+                   (ns/make-nav-switch-hierarchy true)
+                   f
                    second)
                reward))))))

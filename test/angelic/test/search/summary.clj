@@ -6,9 +6,7 @@
 
 (def +best-simple-summary+ (summary/make-solved-simple-summary Double/POSITIVE_INFINITY :best))
 
-(defn smin [& stats] (apply summary/max-compare (complement sge) (cons +best-simple-summary+ stats)))
-
-(defn smax [& stats] (apply summary/max-compare sge (cons summary/+worst-simple-summary+ stats)))
+(defn smax [& stats] (summary/apply-max-b stats 10000))
 
 (defn contents [s]
   ((juxt summary/max-reward summary/status) s))
@@ -25,10 +23,6 @@
     (is (= s4 (smax s1 s2 s3 s4 s5 s6 s7)))
     (is (= +best-simple-summary+
            (smax s1 s2 s3 s4 s5 s6 s7 +best-simple-summary+)))    
-    (is (= s2 (smin s1 s2 s3)))
-    (is (= s6 (smin s1 s2 s3 s4 s5 s6 s7)))
-    (is (= summary/+worst-simple-summary+
-           (smin s1 s2 s3 s4 s5 s6 s7 summary/+worst-simple-summary+)))
 
     (is (= (contents (summary/+ s4 s5 :d Double/POSITIVE_INFINITY)) [2 :live]))
     (is (= (contents (summary/+ s4 s3 :d Double/POSITIVE_INFINITY)) [1 :blocked]))    
