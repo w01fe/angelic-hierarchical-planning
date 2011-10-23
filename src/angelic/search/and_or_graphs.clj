@@ -90,8 +90,8 @@
   {:summary-atom (atom nil)
    :bound-atom   (atom 0)})
 
-;; Ignore bounds for now, figure out how to add them back later.
-;; (they're a bit tricky with KLD stuff, since we temporarily do cost increases...)
+
+;; Bounds are manually managed for now, only used with KLD.
 
 (declare update-summary!)
 
@@ -103,44 +103,12 @@
 
 (defn get-bound [n] 0 @(:bound-atom n))
 
-
-(comment
- (let [h (java.util.IdentityHashMap.)]
-  (defn atomic-cost [n]
-    (or (get h n)
-        (let [c
-              (second
-                (angelic.search.implicit.ah-astar/optimistic-ah-a-part*
-                 (second (:input-sets n))
-                 (second (:name n))))
-              #_
-              (try
-               
-               (catch AssertionError e (println e) -100000)
-               )]
-          (.put h n c)
-          c))))
-  
- (defn check-cost! [n s]
-   (when-not (= (summary/max-reward s) Double/NEGATIVE_INFINITY)
-     (when-let [n (:ts-sp n)]
-       (when (= (first (:name n)) :Atomic)
-         (when (angelic.hierarchy.state-set/singleton (second (:input-sets n)))
-           (when (nil? @(:summary-atom n)) (println "DANGER?"))
-           (let [o (atomic-cost n)]
-             (when (< (summary/max-reward s) (or o -100000))
-               (println n o s)
-               (def *flub* [n o s])
-               (throw (RuntimeException. "SUX"))))))))))
-
 (defn set-summary! [n s]
-  #_  (check-cost! n s)
-  #_ (when (= "[:Atomic [:discretem-tla]]"
-           (str (or (:name n)
-                (:name (:ts-sp n)))))
-    (println "SET" n @(:summary-atom n) s)
-    )
   (reset! (:summary-atom n) s))
+
+(defn- update-summary! [n]
+  (util/print-debug 4 "US" n @(:summary-atom n) (summarize n))
+  (set-summary! n (summarize n)))
 
 
 
@@ -167,9 +135,6 @@
               (status-increased! gp parent))))))))
 
 
-(defn- update-summary! [n]
-  (util/print-debug 4 "US" n @(:summary-atom n) (summarize n))
-  (set-summary! n (summarize n))#_(reset! (:summary-atom n) (summarize n)))
 
 ;; can produce suboptimal summaries
 (defn- update-summary-inc?! [n]
